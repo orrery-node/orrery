@@ -1,0 +1,38 @@
+[package]
+name = "switchyard"
+version = "0.1.0"
+description = "Switchyard (working title): payment channels and a provider registry for a peer-to-peer AI inference network on Solana"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "switchyard"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = { version = "1.2.0", features = ["init-if-needed"] }
+anchor-spl = "1.2.0"
+solana-sdk-ids = "3.1.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[dev-dependencies]
+solana-program-runtime = "=3.1.14"
+litesvm = { version = "0.10.0", features = ["precompiles"] }
+solana-account = "3.2.0"
+solana-keypair = "3.0.1"
+solana-message = "3.0.1"
+solana-signer = "3.0.0"
+solana-transaction = "3.0.2"
+solana-ed25519-program = "3.0.0"

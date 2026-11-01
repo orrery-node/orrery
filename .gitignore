@@ -1,0 +1,10 @@
+.local/
+node_modules/
+target/
+.next/
+.env*
+!.env.example
+*.log
+.DS_Store
+web/.cache/
+dist/

@@ -1,0 +1,17 @@
+[toolchain]
+anchor_version = "1.2.0"
+# Build with `anchor build --arch v2`: SBPF v3 (anchor 1.2 default) is not active on mainnet.
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+switchyard = "7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS"
+
+[provider]
+cluster = "localnet"
+wallet = "../.local/keys/local-wallet.json"
+
+[scripts]
+test = "cargo test -p switchyard --test litesvm"
