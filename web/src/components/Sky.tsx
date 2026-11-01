@@ -45,6 +45,17 @@ void main() {
   gl_Position = projectionMatrix * mv;
   vColor = aColor; vAlpha = aAlpha * uDim;
 }`;
+const PULSE_VS = `
+attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+uniform float uScale; uniform float uDim; uniform float uCut;
+varying vec3 vColor; varying float vAlpha;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aSize * uScale / -mv.z;
+  gl_Position = projectionMatrix * mv;
+  vColor = aColor;
+  vAlpha = aAlpha * uDim * smoothstep(uCut - 0.05, uCut + 0.05, gl_Position.x / gl_Position.w);
+}`;
 const POINT_FS = `
 varying vec3 vColor; varying float vAlpha;
 void main() {
@@ -237,7 +248,9 @@ export default function Sky() {
     hGeo.setAttribute('aColor', new THREE.BufferAttribute(hCol, 3));
     hGeo.setAttribute('aSize', new THREE.BufferAttribute(hSize, 1));
     hGeo.setAttribute('aAlpha', new THREE.BufferAttribute(hAlpha, 1));
-    root.add(new THREE.Points(hGeo, material(POINT_FS, uni)));
+    const pulseUni = { uScale: uni.uScale, uDim: uni.uDim, uCut: { value: -2 } };
+    const pulseMat = new THREE.ShaderMaterial({ vertexShader: PULSE_VS, fragmentShader: POINT_FS, uniforms: pulseUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    root.add(new THREE.Points(hGeo, pulseMat));
     const tGeo = new THREE.BufferGeometry();
     const tPos = new Float32Array(POOL * TAIL * 3), tCol = new Float32Array(POOL * TAIL * 3), tAlpha = new Float32Array(POOL * TAIL), tSize = new Float32Array(POOL * TAIL);
     for (let i = 0; i < POOL; i++) for (let s = 0; s < TAIL; s++) tSize[i * TAIL + s] = 1.6 + 8 * Math.pow(1 - s / TAIL, 1.4);
@@ -245,7 +258,7 @@ export default function Sky() {
     tGeo.setAttribute('aColor', new THREE.BufferAttribute(tCol, 3));
     tGeo.setAttribute('aAlpha', new THREE.BufferAttribute(tAlpha, 1));
     tGeo.setAttribute('aSize', new THREE.BufferAttribute(tSize, 1));
-    root.add(new THREE.Points(tGeo, material(POINT_FS, uni)));
+    root.add(new THREE.Points(tGeo, pulseMat));
 
     const bez = (p: Pulse, t: number, out: THREE.Vector3) => {
       const u = 1 - t;
@@ -340,7 +353,16 @@ export default function Sky() {
     let tripIdx = 0, nextAt = performance.now() + 600;
     const mobile = () => width < 760;
 
+    let textRight = 0;
+    const measureText = () => {
+      textRight = 0;
+      for (const sel of ['.hero__text', '.chapter__text']) {
+        const r = document.querySelector(sel)?.getBoundingClientRect();
+        if (r) textRight = Math.max(textRight, r.right);
+      }
+    };
     const resize = () => {
+      measureText();
       const w = window.innerWidth, h = window.innerHeight;
       if (w === width && Math.abs(h - height) < 140) return;
       width = w;
@@ -416,6 +438,7 @@ export default function Sky() {
       const dimTarget = S.dim;
       dim += (dimTarget - dim) * k;
       uni.uDim.value = dim;
+      pulseUni.uCut.value = mobile() ? -2 : stage === 'quiet' ? 2 : ((textRight + 36) / Math.max(1, width)) * 2 - 1;
 
       if (!dragging) {
         yaw += vel;
@@ -516,6 +539,12 @@ export default function Sky() {
       // labels: nearest first, and a label that would sit on one already placed waits its turn
       root.updateMatrixWorld();
       const placed: [number, number, number, number][] = [];
+      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const c0 = v.copy(you.pos).applyMatrix4(root.matrixWorld).project(camera).clone();
+      const c1 = v.copy(you.pos).applyMatrix4(root.matrixWorld).addScaledVector(camRight, 1.2 * diskTilt.scale.x).project(camera);
+      const youX = (c0.x * 0.5 + 0.5) * width, youY = (-c0.y * 0.5 + 0.5) * height;
+      const diskR = Math.abs((c1.x - c0.x) * 0.5 * width);
+      placed.push([youX - diskR, youY - diskR * 0.62, youX + diskR, youY + diskR * 0.62]);
       const order = labelNodes
         .map((n, i) => [i, v.copy(n.pos).applyMatrix4(root.matrixWorld).project(camera).z - (n.named && now < n.detailUntil ? 10 : 0) - (n === you ? 20 : 0)] as const)
         .sort((a, b) => a[1] - b[1]);
@@ -547,14 +576,15 @@ export default function Sky() {
           sizes.set(elx, size);
         }
         const [, w, hgt] = size;
-        const box: [number, number, number, number] = flip ? [x - 18 - w, y - 12, x - 14, y - 10 + hgt + 2] : [x + 14, y - 12, x + 18 + w, y - 10 + hgt + 2];
-        if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) {
+        const gap = n === you ? diskR + 10 : 16;
+        const box: [number, number, number, number] = flip ? [x - gap - 2 - w, y - 12, x - gap + 2, y - 10 + hgt + 2] : [x + gap - 2, y - 12, x + gap + 2 + w, y - 10 + hgt + 2];
+        if (n !== you && placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) {
           elx.style.opacity = '0';
           return;
         }
         placed.push(box);
         elx.classList.toggle('is-flip', flip);
-        elx.style.transform = flip ? `translate3d(calc(${Math.round(x - 16)}px - 100%), ${Math.round(y - 10)}px, 0)` : `translate3d(${Math.round(x + 16)}px, ${Math.round(y - 10)}px, 0)`;
+        elx.style.transform = flip ? `translate3d(calc(${Math.round(x - gap)}px - 100%), ${Math.round(y - 10)}px, 0)` : `translate3d(${Math.round(x + gap)}px, ${Math.round(y - 10)}px, 0)`;
       });
     };
 

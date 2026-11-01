@@ -5,7 +5,7 @@ import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, X_URL } from '@/brand';
 import { rehearsal, ranAtLabel, short } from '@/lib/rehearsal';
 import { Arrow, Mark } from '@/components/Mark';
 
-const PROVIDE_CMDS = 'yard provider register --config provider.json \\\n  --wallet wallet.json\nyard provider start --config provider.json';
+const PROVIDE_CMDS = 'yard provider register \\\n  --config provider.json \\\n  --wallet wallet.json\nyard provider start \\\n  --config provider.json';
 
 function Check() {
   return (
@@ -122,9 +122,11 @@ export default function Home() {
                 <CopyButton text={PROVIDE_CMDS} />
               </div>
               <pre>
-                <span className="cmd__p">$</span> yard provider register --config provider.json \{'\n'}
+                <span className="cmd__p">$</span> yard provider register \{'\n'}
+                {'    '}--config provider.json \{'\n'}
                 {'    '}--wallet wallet.json{'\n'}
-                <span className="cmd__p">$</span> yard provider start --config provider.json
+                <span className="cmd__p">$</span> yard provider start \{'\n'}
+                {'    '}--config provider.json
               </pre>
             </div>
             <p className="aside">The dim points in the network are open slots, drawn for illustration. Scrolling lights them the way listings would.</p>

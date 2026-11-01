@@ -29,7 +29,6 @@
   display: grid;
   gap: 1px;
   opacity: 0;
-  transition: opacity 0.4s var(--ease-out);
   will-change: transform;
   white-space: nowrap;
 }
@@ -800,7 +799,10 @@
     height: 1.75em;
   }
   .log__rows li {
-    grid-template-columns: 2.6em 5.6em 1fr 5.6em;
+    grid-template-columns: 2.6em 5.2em minmax(0, 1fr) 7.2em;
+  }
+  .log__cost {
+    overflow: visible !important;
   }
   .log__model,
   .log__tok,
