@@ -11,3 +11,12 @@ export function Mark({ size = 22 }: { size?: number }) {
     </svg>
   );
 }
+
+// The link arrow, drawn at the same stroke as the mark and the check.
+export function Arrow() {
+  return (
+    <svg className="arrow" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 8h9.4M8.6 4.2 12.4 8l-3.8 3.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

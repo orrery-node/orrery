@@ -55,14 +55,6 @@ void main() {
   float a = (core + halo) * vAlpha;
   gl_FragColor = vec4(vColor * a, a);
 }`;
-const RING_FS = `
-varying vec3 vColor; varying float vAlpha;
-void main() {
-  float d = length(gl_PointCoord - 0.5) * 2.0;
-  float ring = smoothstep(0.07, 0.0, abs(d - 0.82));
-  float a = ring * vAlpha;
-  gl_FragColor = vec4(vColor * a, a);
-}`;
 const LINE_VS = `
 attribute float aAlpha; attribute vec3 aColor; uniform float uDim;
 varying vec3 vColor; varying float vAlpha;
@@ -152,14 +144,29 @@ export default function Sky() {
     const points = new THREE.Points(pGeo, material(POINT_FS, uni));
     root.add(points);
 
-    const ringGeo = new THREE.BufferGeometry();
-    ringGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3));
-    ringGeo.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array([0.71, 0.55, 1]), 3));
-    const ringSize = new THREE.BufferAttribute(new Float32Array([17]), 1);
-    const ringAlpha = new THREE.BufferAttribute(new Float32Array([0.55]), 1);
-    ringGeo.setAttribute('aSize', ringSize);
-    ringGeo.setAttribute('aAlpha', ringAlpha);
-    root.add(new THREE.Points(ringGeo, material(RING_FS, uni)));
+    // your machine sits inside a tilted disk of particles that turns with the scene and swells when a payment lands
+    const DISK = 760;
+    const kPos = new Float32Array(DISK * 3), kCol = new Float32Array(DISK * 3), kSize = new Float32Array(DISK), kAlpha = new Float32Array(DISK);
+    for (let i = 0; i < DISK; i++) {
+      const edge = Math.pow(rand(), 1.8);
+      const r = 0.58 + edge * 0.62, th = rand() * Math.PI * 2;
+      kPos.set([r * Math.cos(th), (rand() - 0.5) * 0.035 * (1 + edge * 3), r * Math.sin(th)], i * 3);
+      const c = VIOLET.clone().lerp(WHITE, 0.55 * (1 - edge));
+      kCol.set([c.r, c.g, c.b], i * 3);
+      kSize[i] = 1.4 + rand() * 1.8 + (1 - edge) * 1.2;
+      kAlpha[i] = (0.85 - edge * 0.6) * (0.55 + rand() * 0.45);
+    }
+    const kGeo = new THREE.BufferGeometry();
+    kGeo.setAttribute('position', new THREE.BufferAttribute(kPos, 3));
+    kGeo.setAttribute('aColor', new THREE.BufferAttribute(kCol, 3));
+    kGeo.setAttribute('aSize', new THREE.BufferAttribute(kSize, 1));
+    kGeo.setAttribute('aAlpha', new THREE.BufferAttribute(kAlpha, 1));
+    const diskDim = { value: 1 };
+    const disk = new THREE.Points(kGeo, material(POINT_FS, { uScale: uni.uScale, uDim: diskDim }));
+    const diskTilt = new THREE.Group();
+    diskTilt.rotation.set(1.12, 0, 0.38);
+    diskTilt.add(disk);
+    root.add(diskTilt);
 
     // edges: a sparse mesh between neighbours, and spokes from you to every node
     const pairs: [number, number][] = [];
@@ -225,18 +232,20 @@ export default function Sky() {
     const POOL = 28, TAIL = 18;
     const pulses: Pulse[] = Array.from({ length: POOL }, () => ({ active: false, a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), t: 0, dur: 1, color: WHITE.clone() }));
     const hGeo = new THREE.BufferGeometry();
-    const hPos = new Float32Array(POOL * 3), hCol = new Float32Array(POOL * 3), hSize = new Float32Array(POOL).fill(9), hAlpha = new Float32Array(POOL);
+    const hPos = new Float32Array(POOL * 3), hCol = new Float32Array(POOL * 3), hSize = new Float32Array(POOL).fill(14), hAlpha = new Float32Array(POOL);
     hGeo.setAttribute('position', new THREE.BufferAttribute(hPos, 3));
     hGeo.setAttribute('aColor', new THREE.BufferAttribute(hCol, 3));
     hGeo.setAttribute('aSize', new THREE.BufferAttribute(hSize, 1));
     hGeo.setAttribute('aAlpha', new THREE.BufferAttribute(hAlpha, 1));
     root.add(new THREE.Points(hGeo, material(POINT_FS, uni)));
     const tGeo = new THREE.BufferGeometry();
-    const tPos = new Float32Array(POOL * TAIL * 6), tCol = new Float32Array(POOL * TAIL * 6), tAlpha = new Float32Array(POOL * TAIL * 2);
+    const tPos = new Float32Array(POOL * TAIL * 3), tCol = new Float32Array(POOL * TAIL * 3), tAlpha = new Float32Array(POOL * TAIL), tSize = new Float32Array(POOL * TAIL);
+    for (let i = 0; i < POOL; i++) for (let s = 0; s < TAIL; s++) tSize[i * TAIL + s] = 1.6 + 8 * Math.pow(1 - s / TAIL, 1.4);
     tGeo.setAttribute('position', new THREE.BufferAttribute(tPos, 3));
     tGeo.setAttribute('aColor', new THREE.BufferAttribute(tCol, 3));
     tGeo.setAttribute('aAlpha', new THREE.BufferAttribute(tAlpha, 1));
-    root.add(new THREE.LineSegments(tGeo, material(LINE_FS, uni)));
+    tGeo.setAttribute('aSize', new THREE.BufferAttribute(tSize, 1));
+    root.add(new THREE.Points(tGeo, material(POINT_FS, uni)));
 
     const bez = (p: Pulse, t: number, out: THREE.Vector3) => {
       const u = 1 - t;
@@ -315,6 +324,7 @@ export default function Sky() {
       labelLayer.appendChild(d);
       return d;
     });
+    const sizes = new Map<HTMLElement, [string, number, number]>();
     const metaOf = (n: SkyNode) => {
       const p = n.named!;
       const cheapest = p.models.reduce((m, x) => (x.input < m.input ? x : m), p.models[0]);
@@ -403,7 +413,7 @@ export default function Sky() {
       const k = 1 - Math.exp(-dt * 2.2);
       dist += ((mobile() ? S.dist + 3.2 : S.dist) - dist) * k;
       offX += ((mobile() ? 0 : S.offX) - offX) * k;
-      const dimTarget = mobile() && stage === 'hero' ? 0.62 : S.dim;
+      const dimTarget = S.dim;
       dim += (dimTarget - dim) * k;
       uni.uDim.value = dim;
 
@@ -416,7 +426,7 @@ export default function Sky() {
       dustGroup.rotation.set(pitch * 0.4, yaw * 0.25, 0);
       camera.position.set(0, 0, dist);
       camera.lookAt(0, 0, 0);
-      const oy = mobile() ? (stage === 'hero' ? 0.31 : -0.22) : 0;
+      const oy = mobile() ? -0.24 : 0;
       camera.setViewOffset(width, height, -offX * width, -oy * height, width, height);
 
       // the trip loop
@@ -429,7 +439,7 @@ export default function Sky() {
 
       // nodes
       const lightCount = Math.round(provideP * slots.length);
-      for (const n of slots) n.litTarget = n.rank < lightCount ? 1 : 0.2;
+      for (const n of slots) n.litTarget = n.rank < lightCount ? 1 : 0.3;
       for (let i = 0; i < N; i++) {
         const n = nodes[i];
         n.lit += (n.litTarget - n.lit) * (1 - Math.exp(-dt * 6));
@@ -443,9 +453,9 @@ export default function Sky() {
         pAlpha[i] = Math.min(1.4, (n.rank >= 0 ? 0.32 + 0.68 * n.lit : 0.95) * tw + n.flare * 0.7);
       }
       you.flareColor.copy(GREEN);
-      ringSize.array[0] = 17 + 6 * you.flare;
-      ringAlpha.array[0] = 0.5 + 0.5 * you.flare;
-      ringSize.needsUpdate = ringAlpha.needsUpdate = true;
+      disk.rotation.y += dt * (reduce ? 0 : 0.32);
+      diskTilt.scale.setScalar(1 + 0.14 * you.flare);
+      diskDim.value = dim * (0.8 + 0.8 * you.flare);
       (pGeo.attributes.aColor as THREE.BufferAttribute).needsUpdate = true;
       (pGeo.attributes.aSize as THREE.BufferAttribute).needsUpdate = true;
       (pGeo.attributes.aAlpha as THREE.BufferAttribute).needsUpdate = true;
@@ -473,7 +483,7 @@ export default function Sky() {
       pulses.forEach((p, i) => {
         if (!p.active) {
           hAlpha[i] = 0;
-          for (let s = 0; s < TAIL; s++) tAlpha[(i * TAIL + s) * 2] = tAlpha[(i * TAIL + s) * 2 + 1] = 0;
+          for (let s = 0; s < TAIL; s++) tAlpha[i * TAIL + s] = 0;
           return;
         }
         p.t += dt / p.dur;
@@ -483,14 +493,10 @@ export default function Sky() {
         p.color.toArray(hCol, i * 3);
         hAlpha[i] = 1.2;
         for (let s = 0; s < TAIL; s++) {
-          const t0 = Math.max(0, ease - ((s + 1) / TAIL) * 0.32), t1 = Math.max(0, ease - (s / TAIL) * 0.32);
-          bez(p, t1, v).toArray(tPos, (i * TAIL + s) * 6);
-          bez(p, t0, v).toArray(tPos, (i * TAIL + s) * 6 + 3);
-          p.color.toArray(tCol, (i * TAIL + s) * 6);
-          p.color.toArray(tCol, (i * TAIL + s) * 6 + 3);
-          const fade = (1 - s / TAIL) * 0.85;
-          tAlpha[(i * TAIL + s) * 2] = fade;
-          tAlpha[(i * TAIL + s) * 2 + 1] = fade * 0.85;
+          const ts = Math.max(0, ease - ((s + 1) / TAIL) * 0.3);
+          bez(p, ts, v).toArray(tPos, (i * TAIL + s) * 3);
+          p.color.toArray(tCol, (i * TAIL + s) * 3);
+          tAlpha[i * TAIL + s] = ease - ts > 0.001 ? Math.pow(1 - s / TAIL, 1.3) * 0.9 : 0;
         }
         if (p.t >= 1) {
           p.active = false;
@@ -502,6 +508,7 @@ export default function Sky() {
       for (const name of ['position', 'aColor', 'aAlpha'] as const) {
         (hGeo.attributes[name] as THREE.BufferAttribute).needsUpdate = true;
         (tGeo.attributes[name] as THREE.BufferAttribute).needsUpdate = true;
+        void LINE_VS;
       }
 
       renderer.render(scene, camera);
@@ -517,32 +524,37 @@ export default function Sky() {
         const elx = labelEls[i];
         v.copy(n.pos).applyMatrix4(root.matrixWorld).project(camera);
         const x = (v.x * 0.5 + 0.5) * width, y = (-v.y * 0.5 + 0.5) * height;
-        const visible = v.z < 1 && x > -40 && x < width + 40 && y > -40 && y < height + 40 && dim > 0.5 && !(mobile() && stage === 'hero' && n !== you);
+        const visible = v.z < 1 && x > -40 && x < width + 40 && y > -40 && y < height + 40 && dim > 0.5;
         if (!visible) {
           elx.style.opacity = '0';
           return;
         }
-        const depth = THREE.MathUtils.clamp(1.15 - (v.z - 0.96) * 18, 0.35, 1);
-        elx.style.opacity = String(depth * Math.min(1, dim));
+        elx.style.opacity = dim >= 0.9 ? '1' : String(Math.min(1, dim));
         const flip = x > width - 250;
         const hot = !!n.named && now < n.detailUntil;
         const showMeta = !mobile() || hot || n === you;
-        const w = Math.max(80, (n.named ? n.named.name.length : 6) * 7.4 + (showMeta && n.named ? 60 : 0));
-        const box: [number, number, number, number] = flip ? [x - 16 - w, y - 12, x - 16, y + (showMeta ? 26 : 12)] : [x + 16, y - 12, x + 16 + w, y + (showMeta ? 26 : 12)];
+        elx.classList.toggle('no-meta', !showMeta);
+        if (n.named) {
+          const meta = elx.lastElementChild as HTMLElement;
+          const want = hot ? n.detail : metaOf(n);
+          if (meta.textContent !== want) meta.textContent = want;
+          elx.classList.toggle('is-hot', hot);
+        }
+        const key = `${elx.textContent}|${showMeta}`;
+        let size = sizes.get(elx);
+        if (!size || size[0] !== key) {
+          size = [key, elx.offsetWidth, elx.offsetHeight];
+          sizes.set(elx, size);
+        }
+        const [, w, hgt] = size;
+        const box: [number, number, number, number] = flip ? [x - 18 - w, y - 12, x - 14, y - 10 + hgt + 2] : [x + 14, y - 12, x + 18 + w, y - 10 + hgt + 2];
         if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) {
           elx.style.opacity = '0';
           return;
         }
         placed.push(box);
         elx.classList.toggle('is-flip', flip);
-        elx.classList.toggle('no-meta', !showMeta);
         elx.style.transform = flip ? `translate3d(calc(${Math.round(x - 16)}px - 100%), ${Math.round(y - 10)}px, 0)` : `translate3d(${Math.round(x + 16)}px, ${Math.round(y - 10)}px, 0)`;
-        if (n.named) {
-          const meta = elx.lastElementChild as HTMLElement;
-          const want = now < n.detailUntil ? n.detail : metaOf(n);
-          if (meta.textContent !== want) meta.textContent = want;
-          elx.classList.toggle('is-hot', now < n.detailUntil);
-        }
       });
     };
 

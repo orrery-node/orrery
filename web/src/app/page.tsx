@@ -3,9 +3,9 @@ import Sky from '@/components/Sky';
 import { CopyButton, NavGround, RehearsalLog, RoutePicker, SealDemo, StageWatcher, VoucherBytes, ZeroCalc } from '@/components/live';
 import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, X_URL } from '@/brand';
 import { rehearsal, ranAtLabel, short } from '@/lib/rehearsal';
-import { Mark } from '@/components/Mark';
+import { Arrow, Mark } from '@/components/Mark';
 
-const PROVIDE_CMDS = 'yard provider register --config provider.json --wallet wallet.json\nyard provider start --config provider.json';
+const PROVIDE_CMDS = 'yard provider register --config provider.json \\\n  --wallet wallet.json\nyard provider start --config provider.json';
 
 function Check() {
   return (
@@ -52,7 +52,7 @@ export default function Home() {
             </p>
             <div className="cta">
               <Link href="/docs#install" className="pill">Install the router</Link>
-              <a href="#provide" className="ghost">Run a provider <span aria-hidden="true">→</span></a>
+              <a href="#provide" className="ghost">Run a provider <Arrow /></a>
             </div>
             <p className="hint">Drag the network to turn it.</p>
           </div>
@@ -117,12 +117,15 @@ export default function Home() {
               A GPU running vLLM or Ollama, a llama.cpp box, or API capacity you already pay for. List it with one command: no application, no approval, no stake required, and the program has no way to delist you. You set the prices. Every router that picks you pays you directly.
             </p>
             <div className="cmd">
+              <div className="cmd__bar">
+                <span>On the machine that serves the model</span>
+                <CopyButton text={PROVIDE_CMDS} />
+              </div>
               <pre>
-                <span className="cmd__p">$</span> yard provider register --config provider.json --wallet wallet.json
-                {'\n'}
+                <span className="cmd__p">$</span> yard provider register --config provider.json \{'\n'}
+                {'    '}--wallet wallet.json{'\n'}
                 <span className="cmd__p">$</span> yard provider start --config provider.json
               </pre>
-              <CopyButton text={PROVIDE_CMDS} />
             </div>
             <p className="aside">The dim points in the network are open slots, drawn for illustration. Scrolling lights them the way listings would.</p>
           </div>
@@ -177,7 +180,7 @@ export default function Home() {
           <h2>Point your AI at the network.</h2>
           <div className="cta">
             <Link href="/docs#install" className="pill">Install the router</Link>
-            <Link href="/docs" className="ghost">Read the docs <span aria-hidden="true">→</span></Link>
+            <Link href="/docs" className="ghost">Read the docs <Arrow /></Link>
           </div>
         </section>
       </main>
@@ -188,7 +191,7 @@ export default function Home() {
         </span>
         <nav aria-label="Elsewhere">
           <Link href="/docs">Docs</Link>
-          <a href={REPO_URL}>GitHub</a>
+          {REPO_URL ? <a href={REPO_URL}>GitHub</a> : <span className="foot__off">GitHub at launch</span>}
           {X_URL ? <a href={X_URL}>X</a> : <span className="foot__off">X soon</span>}
         </nav>
         <span className="foot__note">Settles on Solana. Every number on this page comes from the local rehearsal of {ranAtLabel}.</span>

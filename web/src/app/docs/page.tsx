@@ -7,7 +7,7 @@ import './docs.css';
 
 export const metadata: Metadata = { title: `Docs — ${NAME}` };
 
-const INSTALL = `git clone ${REPO_URL}.git
+const INSTALL = `${REPO_URL ? `git clone ${REPO_URL}.git` : '# the public repository opens at launch'}
 cd switchyard/node && pnpm install
 pnpm yard router --wallet ~/.config/solana/id.json --rpc <your RPC URL>`;
 
