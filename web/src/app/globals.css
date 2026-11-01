@@ -1,0 +1,134 @@
+:root {
+  --ground: #060609;
+  --ground-2: #0b0b11;
+  --ground-3: #111119;
+  --line: #1c1b26;
+  --line-2: #2b2a39;
+  --fg: #eeedf5;
+  --fg-2: #b4b2c6;
+  --fg-3: #82809a;
+  --purple: #9945ff;
+  --purple-fill: #8a3cf0;
+  --purple-fill-hover: #9a52ff;
+  --violet: #b48cff;
+  --green: #14f195;
+  --green-dim: #0e9f64;
+  --coral: #ff7a6b;
+  --sans: var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
+  --mono: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --gutter: clamp(16px, 4vw, 56px);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ground);
+  -webkit-text-size-adjust: 100%;
+  scrollbar-color: var(--line-2) var(--ground);
+  scrollbar-width: thin;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-weight: 300;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+  font-feature-settings: 'ss01' on;
+}
+
+::selection {
+  background: var(--purple);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--ground);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border: 3px solid var(--ground);
+  border-radius: 10px;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 1px;
+}
+a:hover {
+  text-decoration-color: var(--violet);
+}
+
+:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 400;
+  margin: 0;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.green {
+  color: var(--green);
+}
+
+.violet {
+  color: var(--violet);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

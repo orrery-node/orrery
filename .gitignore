@@ -8,3 +8,6 @@ target/
 .DS_Store
 web/.cache/
 dist/
+.impeccable/review/
+*.tsbuildinfo
+next-env.d.ts

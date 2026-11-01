@@ -1,0 +1,287 @@
+{
+  "ranAt": "2026-11-01T16:28:50.313Z",
+  "program": "7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS",
+  "requests": 13,
+  "settledUnits": "199",
+  "trips": [
+    {
+      "route": "price",
+      "model": "llama-3.3-70b",
+      "provider": "Kestrel GPU Co-op",
+      "tokens": "21+23",
+      "cost": "0.000010",
+      "ttftMs": 231,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "auto",
+      "model": "deepseek-v3",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000031",
+      "ttftMs": 47,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "privacy",
+      "model": "qwen3-32b",
+      "provider": "Vault Nine",
+      "tokens": "21+23",
+      "cost": "0.000011",
+      "ttftMs": 97,
+      "sealed": true,
+      "fellThrough": 0
+    },
+    {
+      "route": "privacy",
+      "model": "llama-3.3-70b",
+      "provider": "Vault Nine",
+      "tokens": "21+23",
+      "cost": "0.000020",
+      "ttftMs": 94,
+      "sealed": true,
+      "fellThrough": 0
+    },
+    {
+      "route": "speed",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 43,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "speed",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 42,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "speed",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 43,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "speed",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 44,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "auto",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 44,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "auto",
+      "model": "qwen3-32b",
+      "provider": "Vault Nine",
+      "tokens": "21+23",
+      "cost": "0.000011",
+      "ttftMs": 92,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "auto",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 43,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "auto",
+      "model": "qwen3-32b",
+      "provider": "Vault Nine",
+      "tokens": "21+23",
+      "cost": "0.000011",
+      "ttftMs": 93,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "price",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
+      "ttftMs": 42,
+      "sealed": false,
+      "fellThrough": 1
+    }
+  ],
+  "providers": [
+    {
+      "name": "Kestrel GPU Co-op",
+      "region": "eu-north",
+      "enclave": false,
+      "address": "Ev2BgrYH5QwwibH4V3z6vu9UCxwasXTypTEmwPrx3R78",
+      "models": [
+        {
+          "id": "llama-3.3-70b",
+          "input": 120000,
+          "output": 300000
+        },
+        {
+          "id": "qwen3-32b",
+          "input": 80000,
+          "output": 200000
+        }
+      ],
+      "channel": "6nTxx1uFRk5TuXxiLNu8dStQVys16f5dqcvQWsRv4mpD",
+      "cumulative": "10",
+      "usageHash": "fc54cf73b4007ff6ee9c307bf060e0bddc87e00f38decbf0e25d3b0441db248d",
+      "voucher": "10.fc54cf73b4007ff6ee9c307bf060e0bddc87e00f38decbf0e25d3b0441db248d.3rCRkqkjhN316iLPMcw2XKXLg41mD33hGzTL937BKGBHtvyrentGgCey3NaS9XhzZo5wtEi518BsYC8JyXcWWSHd",
+      "redeemTx": "4bERsBWCUHFLTQ3jDKocFJtFqcNLFqTQ22dfRZVivSJ58MCusxxUwZgtmrFTymtWu5UT61A8mCdQBzUgCcStfHyV"
+    },
+    {
+      "name": "Ironbridge Compute",
+      "region": "us-east",
+      "enclave": false,
+      "address": "7zgesjpXAg9Dw1LUc5vYCN5dJAAKNFxCyjYpF8zyLtyr",
+      "models": [
+        {
+          "id": "llama-3.3-70b",
+          "input": 200000,
+          "output": 450000
+        },
+        {
+          "id": "deepseek-v3",
+          "input": 270000,
+          "output": 1100000
+        }
+      ],
+      "channel": "CmCggJSJPAo2PYn4o2gjbWL7Z72C8TRRDEn9S1DbSfg2",
+      "cumulative": "136",
+      "usageHash": "8101fa4e764e2be22c8e8f2c99638cdd8f51f609cb91e6ac4e9b81837ec34523",
+      "voucher": "136.8101fa4e764e2be22c8e8f2c99638cdd8f51f609cb91e6ac4e9b81837ec34523.pyGeagX1ps66oAkRuJBH3u6g2gFH5YviNrMRgbZdYYE6McYsKNFSzEvJSPyWEPsUDWSDyzP7e6VAu8xgRW51Btz",
+      "redeemTx": "NCigovFLonLhUqmdXinwRzgFRWzZuLK4rMaY5sH9UHTePYEKvzZBJ9L8SqFTQF1td85uxUwnydVVL28fwoeFBSr"
+    },
+    {
+      "name": "Vault Nine",
+      "region": "eu-west",
+      "enclave": true,
+      "address": "BvwdiTqoKnTe8JkAuyeNzSpovidCkbM8xCjB4kD7wmVd",
+      "models": [
+        {
+          "id": "llama-3.3-70b",
+          "input": 250000,
+          "output": 600000
+        },
+        {
+          "id": "qwen3-32b",
+          "input": 150000,
+          "output": 300000
+        }
+      ],
+      "channel": "553wwFVUvXaQgrW8nrmAZiTSPf5xZnTyqBpYvm4wwHUU",
+      "cumulative": "53",
+      "usageHash": "3e4f3ab9e9fcea23df2e2017050cb0be1ea0347ce6b2d3f63f0c0f478fc25b62",
+      "voucher": "53.3e4f3ab9e9fcea23df2e2017050cb0be1ea0347ce6b2d3f63f0c0f478fc25b62.33qaaUptcP6ZYZBML4odktcbj5KDJNvD46kkYXticFDP2rYUbWRrdKCGfZUs3rL2VQ2ZqT6MaeeMiRuvA5ymcznV",
+      "redeemTx": "64QSRQweezEuEnmfgQCoB2SVtjDwdoo9snzJZFaf7K5qcTNTkd93CoqVPYSbNkkWdP5J9qmvWznGGXBeHV6HYhVM"
+    }
+  ],
+  "balances": {
+    "user": "97999864",
+    "providers": "199",
+    "deposits": "1999937"
+  },
+  "session": "CZCbA7bWqkWyTJ6RfSyr5EbxSsX9LjENBbWEP5NaQGAx",
+  "checks": [
+    {
+      "name": "/v1/models lists the network catalog",
+      "ok": true,
+      "detail": "llama-3.3-70b×3 qwen3-32b×2 deepseek-v3×1"
+    },
+    {
+      "name": "price route picks the cheapest llama",
+      "ok": true,
+      "detail": "Kestrel GPU Co-op, $0.000010"
+    },
+    {
+      "name": "streaming works and only Ironbridge has deepseek",
+      "ok": true,
+      "detail": "Requests travel from your computer to a …"
+    },
+    {
+      "name": "privacy route seals the request to the only enclave",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "route header works too",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "speed route settles on the provider with the fastest first token",
+      "ok": true,
+      "detail": "Ironbridge Compute"
+    },
+    {
+      "name": "when the cheapest provider goes dark the request falls through",
+      "ok": true,
+      "detail": "Ironbridge Compute answered"
+    },
+    {
+      "name": "router logged every answered request",
+      "ok": true,
+      "detail": "13 trips"
+    },
+    {
+      "name": "Kestrel GPU Co-op redeemed exactly what the router signed",
+      "ok": true,
+      "detail": "$0.000010 over 1 redeem(s)"
+    },
+    {
+      "name": "Ironbridge Compute redeemed exactly what the router signed",
+      "ok": true,
+      "detail": "$0.000136 over 1 redeem(s)"
+    },
+    {
+      "name": "Vault Nine redeemed exactly what the router signed",
+      "ok": true,
+      "detail": "$0.000053 over 1 redeem(s)"
+    },
+    {
+      "name": "a provider releasing its channel sends the rest straight back to the user",
+      "ok": true,
+      "detail": "refund $0.999864"
+    },
+    {
+      "name": "no fee anywhere: user + providers + open deposits = 100 USDC",
+      "ok": true,
+      "detail": "user $97.9998 · providers $0.0001 · deposits $1.9999"
+    },
+    {
+      "name": "program totals agree",
+      "ok": true,
+      "detail": "settled $0.000199 · 3 channels"
+    }
+  ]
+}

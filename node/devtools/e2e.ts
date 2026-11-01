@@ -148,7 +148,9 @@ const trips = router.trips;
 check('router logged every answered request', trips.length === 13, `${trips.length} trips`);
 
 console.log('\nsettlement');
-for (const n of nodes) await n.redeemDue(1n);
+const redeemTx: Record<string, string> = {};
+for (const n of nodes) for (const d of await n.redeemDue(1n)) redeemTx[n.pda.toBase58()] = d.tx;
+const signed = Object.fromEntries(channels.list().map((c) => [c.provider, { channel: c.channel, cumulative: c.cumulative.toString(), usageHash: c.usageHash.toString('hex'), voucher: c.voucher }]));
 const balance = async (owner: PublicKey) => {
   try {
     return (await getAccount(conn, pda.ata(owner, usdc))).amount;
@@ -190,6 +192,13 @@ check('program totals agree', cfg.settled === paidTotal && cfg.providers === 3n,
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough })),
+  providers: providerSpecs.map((s, i) => ({
+    name: s.name, region: s.region, enclave: s.tee, address: nodes[i].pda.toBase58(),
+    models: s.models.map(([id, input, output]) => ({ id, input, output })),
+    ...(signed[nodes[i].pda.toBase58()] ?? {}), redeemTx: redeemTx[nodes[i].pda.toBase58()] ?? null,
+  })),
+  balances: { user: userNow.toString(), providers: paidTotal.toString(), deposits: inVaults.toString() },
+  session: session.publicKey.toBase58(),
   checks,
 };
 writeFileSync(join(WORK, 'summary.json'), JSON.stringify(summary, null, 2));
