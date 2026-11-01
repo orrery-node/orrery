@@ -1,0 +1,349 @@
+// A provider node: sells inference from any OpenAI-compatible upstream (vLLM, SGLang, Ollama, llama.cpp, or an API
+// you hold capacity on) to routers on the network. It never sees a wallet signature per request: it checks the
+// router's running-total voucher, serves, meters, and redeems the highest voucher on chain when it chooses.
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { decodeChannel, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
+import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
+import { home, loadKeypair, loadOrCreateKeypair, writePrivate } from '../keys.ts';
+import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
+import { costOf, estimateInputTokens, usd } from '../pricing.ts';
+import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type EnclaveKey } from '../seal.ts';
+import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
+import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
+
+export type ProviderOffer = ModelOffer & { upstreamModel?: string };
+
+export type ProviderConfig = {
+  name: string;
+  region?: string;
+  listen: number;
+  host?: string;
+  publicUrl: string;
+  rpcUrl: string;
+  settleMint: string;
+  authority?: string;
+  wallet?: string;
+  nodeKey?: string;
+  dataDir?: string;
+  upstream: { baseUrl: string; apiKey?: string; headers?: Record<string, string> };
+  models: ProviderOffer[];
+  tee?: { mode: 'dev'; kind?: number };
+  redeem?: { everySecs?: number; minUnits?: number };
+};
+
+type Entry = {
+  channel: ChannelAccount;
+  checkedAt: number;
+  owed: bigint;
+  best?: Voucher;
+  usageHash: Buffer;
+  unpaid: (UsageRecord & { owedAfter: bigint })[];
+  redeemed: bigint;
+};
+
+const json = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
+  res.writeHead(status, { 'content-type': 'application/json', ...headers });
+  res.end(JSON.stringify(body, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
+};
+
+const fail = (res: ServerResponse, status: number, code: string, message: string, extra: Record<string, unknown> = {}) =>
+  json(res, status, { error: { code, message, ...extra } });
+
+async function readBody(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let n = 0;
+  for await (const c of req) {
+    n += (c as Buffer).length;
+    if (n > limit) throw new Error('body too large');
+    parts.push(c as Buffer);
+  }
+  return Buffer.concat(parts);
+}
+
+const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
+
+export class ProviderNode {
+  readonly conn: Connection;
+  readonly node: Keypair;
+  readonly authority: PublicKey;
+  readonly pda: PublicKey;
+  readonly mint: PublicKey;
+  readonly manifest: Manifest;
+  readonly manifestBytes: Buffer;
+  readonly enclave: EnclaveKey | null;
+  readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
+  private ledger = new Map<string, Entry>();
+  private server: Server | null = null;
+  private timer: NodeJS.Timeout | null = null;
+  private dir: string;
+  log: (line: string) => void = (l) => console.log(l);
+
+  constructor(readonly cfg: ProviderConfig) {
+    this.conn = new Connection(cfg.rpcUrl, 'confirmed');
+    this.dir = expand(cfg.dataDir ?? home('provider'));
+    this.node = loadOrCreateKeypair(expand(cfg.nodeKey ?? `${this.dir}/node.json`));
+    this.authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${this.dir}/wallet.json`)).publicKey;
+    this.pda = pda.provider(this.authority);
+    this.mint = new PublicKey(cfg.settleMint);
+    if (cfg.tee) {
+      const keyPath = `${this.dir}/enclave.key`;
+      this.enclave = existsSync(keyPath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'hex')) : newEnclaveKey();
+      if (!existsSync(keyPath)) writePrivate(keyPath, this.enclave.secret.toString('hex'));
+      const kind = cfg.tee.kind ?? 1;
+      const measurement = createHash('sha384').update(`switchyard-dev-image:${this.node.publicKey.toBase58()}`).digest();
+      const report = Buffer.from(JSON.stringify({ dev: true, note: 'software stand-in for a hardware quote; routers must not treat it as verified', kind, measurement: measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), node: this.node.publicKey.toBase58() }));
+      this.attestation = { kind, measurement, report, reportHash: createHash('sha256').update(report).digest() };
+    } else {
+      this.enclave = null;
+      this.attestation = null;
+    }
+    this.manifest = {
+      v: 1,
+      name: cfg.name,
+      authority: this.authority.toBase58(),
+      nodeKey: this.node.publicKey.toBase58(),
+      region: cfg.region,
+      models: cfg.models.map(({ upstreamModel: _u, ...o }) => o),
+      tee: this.enclave ? { kind: this.attestation!.kind, enclaveKey: this.enclave.publicKey.toString('hex') } : undefined,
+    };
+    this.manifestBytes = canonical(this.manifest);
+    this.load();
+  }
+
+  get manifestHash(): Buffer {
+    return manifestHash(this.manifestBytes);
+  }
+
+  private ledgerPath() {
+    return `${this.dir}/ledger.json`;
+  }
+
+  private load() {
+    if (!existsSync(this.ledgerPath())) return;
+    const raw = JSON.parse(readFileSync(this.ledgerPath(), 'utf8')) as Record<string, { owed: string; best?: string; usageHash: string; redeemed: string; channel: string; unpaid: (Omit<UsageRecord, 'cost'> & { cost: string; owedAfter: string })[] }>;
+    for (const [k, v] of Object.entries(raw)) {
+      this.raw.set(k, Buffer.from(v.channel, 'base64'));
+      this.ledger.set(k, {
+        channel: decodeChannel(Buffer.from(v.channel, 'base64')),
+        checkedAt: 0,
+        owed: BigInt(v.owed),
+        best: v.best ? decodeVoucher(v.best) : undefined,
+        usageHash: Buffer.from(v.usageHash, 'hex'),
+        redeemed: BigInt(v.redeemed),
+        unpaid: v.unpaid.map((r) => ({ ...r, cost: BigInt(r.cost), owedAfter: BigInt(r.owedAfter) })),
+      });
+    }
+  }
+
+  private raw = new Map<string, Buffer>();
+
+  private save() {
+    const out: Record<string, unknown> = {};
+    for (const [k, e] of this.ledger) {
+      out[k] = {
+        owed: e.owed.toString(), best: e.best ? encodeVoucher(e.best) : undefined, usageHash: e.usageHash.toString('hex'), redeemed: e.redeemed.toString(),
+        channel: (this.raw.get(k) ?? Buffer.alloc(0)).toString('base64'),
+        unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })),
+      };
+    }
+    writePrivate(this.ledgerPath(), JSON.stringify(out));
+  }
+
+  private async entry(address: string, force = false): Promise<Entry> {
+    const have = this.ledger.get(address);
+    if (have && !force && Date.now() - have.checkedAt < 30_000) return have;
+    const info = await this.conn.getAccountInfo(new PublicKey(address));
+    if (!info) throw Object.assign(new Error('channel not found on chain'), { code: 'unknown_channel', status: 404 });
+    if (!info.owner.equals(programId())) throw Object.assign(new Error('not a channel'), { code: 'unknown_channel', status: 400 });
+    const ch = decodeChannel(info.data);
+    if (!ch.provider.equals(this.pda)) throw Object.assign(new Error('channel is for another provider'), { code: 'wrong_provider', status: 400 });
+    if (!ch.mint.equals(this.mint)) throw Object.assign(new Error('channel is in another mint'), { code: 'wrong_mint', status: 400 });
+    this.raw.set(address, Buffer.from(info.data));
+    const e = have ?? { channel: ch, checkedAt: 0, owed: 0n, usageHash: ZERO_HASH, unpaid: [], redeemed: ch.redeemed };
+    e.channel = ch;
+    e.checkedAt = Date.now();
+    if (ch.redeemed > e.redeemed) e.redeemed = ch.redeemed;
+    this.ledger.set(address, e);
+    return e;
+  }
+
+  private accept(address: string, e: Entry, v: Voucher): void {
+    if (!verifyVoucher(e.channel.sessionKey, new PublicKey(address), v)) throw Object.assign(new Error('voucher signature does not match the channel session key'), { code: 'bad_voucher', status: 401 });
+    if (!e.best || v.cumulative > e.best.cumulative) {
+      e.best = v;
+      e.unpaid = e.unpaid.filter((r) => r.owedAfter > v.cumulative);
+    }
+  }
+
+  async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? '/', 'http://x');
+    try {
+      if (req.method === 'GET' && url.pathname === '/v1/manifest') {
+        res.writeHead(200, { 'content-type': 'application/json', 'x-yard-manifest-sha256': this.manifestHash.toString('hex') });
+        return void res.end(this.manifestBytes);
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/attestation') {
+        if (!this.attestation || !this.enclave) return fail(res, 404, 'no_tee', 'this node does not run in an enclave');
+        return json(res, 200, { kind: this.attestation.kind, measurement: this.attestation.measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), report: this.attestation.report.toString('base64'), reportHash: this.attestation.reportHash.toString('hex') });
+      }
+      if (req.method === 'GET' && url.pathname === '/health') {
+        return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
+      }
+      if (req.method === 'POST' && url.pathname === '/yard/voucher') {
+        const b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string };
+        const e = await this.entry(b.channel);
+        this.accept(b.channel, e, decodeVoucher(b.voucher));
+        this.save();
+        return json(res, 200, { paid: e.best?.cumulative ?? 0n, owed: e.owed });
+      }
+      if (req.method === 'POST' && url.pathname === '/v1/chat/completions') return await this.complete(req, res);
+      return fail(res, 404, 'not_found', 'no such route');
+    } catch (err) {
+      const e = err as Error & { code?: string; status?: number };
+      if (!res.headersSent) return fail(res, e.status ?? 500, e.code ?? 'internal', e.message);
+      res.end();
+    }
+  }
+
+  private async complete(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const address = String(req.headers['x-yard-channel'] ?? '');
+    if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-yard-channel');
+    let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
+    let sealKey: Buffer | null = null;
+    if (body.sealed) {
+      if (!this.enclave) return fail(res, 400, 'no_tee', 'sealed request to a node without an enclave');
+      const opened = openRequest(this.enclave, body as unknown as { epk: string; box: string });
+      body = JSON.parse(opened.plaintext.toString('utf8'));
+      sealKey = opened.key;
+    }
+    const offer = this.cfg.models.find((m) => m.id === body.model);
+    if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
+    const e = await this.entry(address);
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (e.channel.closingAt !== 0n && now > e.channel.closingAt - 120n) return fail(res, 409, 'channel_closing', 'channel is closing; open a new one');
+    const vh = req.headers['x-yard-voucher'];
+    if (vh) {
+      const v = decodeVoucher(String(vh));
+      if (v.cumulative > e.channel.deposit) await this.entry(address, true);
+      this.accept(address, e, v);
+    }
+    const paid = e.best?.cumulative ?? 0n;
+    if (paid < e.owed) return fail(res, 402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
+    const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
+    const maxOut = Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
+    const maxCost = costOf(offer.price, estimateInputTokens(body.messages), maxOut);
+    if (e.owed + maxCost > e.channel.deposit) {
+      await this.entry(address, true);
+      if (e.owed + maxCost > e.channel.deposit) return fail(res, 402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
+    }
+
+    const upstream = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      timeoutMs: 30_000,
+      headers: { 'content-type': 'application/json', ...(this.cfg.upstream.apiKey ? { authorization: `Bearer ${this.cfg.upstream.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) },
+      body: JSON.stringify({ ...body, model: offer.upstreamModel ?? offer.id, stream: true, stream_options: { include_usage: true }, max_tokens: maxOut, max_completion_tokens: undefined }),
+    });
+    if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
+
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-yard-sealed': sealKey ? '1' : '0' });
+    const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
+    type Usage = { prompt_tokens?: number; completion_tokens?: number };
+    let usage: Usage | null = null;
+    let chars = 0;
+    for await (const ev of readSse(upstream.body)) {
+      if (ev.data === '[DONE]') break;
+      let chunk: Record<string, unknown>;
+      try {
+        chunk = JSON.parse(ev.data);
+      } catch {
+        continue;
+      }
+      if (chunk.usage) usage = chunk.usage as Usage;
+      for (const c of (chunk.choices as { delta?: { content?: string } }[] | undefined) ?? []) chars += c.delta?.content?.length ?? 0;
+      chunk.model = offer.id;
+      send(JSON.stringify(chunk));
+    }
+    const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body.messages);
+    const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
+    const cost = costOf(offer.price, inputTokens, outputTokens);
+    const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
+    e.owed += record.cost;
+    e.usageHash = nextUsageHash(e.usageHash, record);
+    e.unpaid.push({ ...record, owedAfter: e.owed });
+    this.save();
+    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex') }), 'yard');
+    res.write(sseFrame('[DONE]'));
+    res.end();
+    this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${sealKey ? '  sealed' : ''}`);
+  }
+
+  /** Redeem every channel whose best voucher is ahead of what is on chain, a few channels per transaction. */
+  async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? 1)): Promise<{ channel: string; amount: bigint; tx: string }[]> {
+    const due: [string, Entry][] = [];
+    for (const [k, e] of this.ledger) {
+      if (!e.best || e.best.cumulative <= e.redeemed) continue;
+      const pending = (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) - e.redeemed;
+      const closing = e.channel.closingAt !== 0n;
+      if (pending >= minUnits || (closing && pending > 0n)) due.push([k, e]);
+    }
+    const done: { channel: string; amount: bigint; tx: string }[] = [];
+    for (let i = 0; i < due.length; i += 3) {
+      const batch = due.slice(i, i + 3);
+      const tx = new Transaction();
+      for (const [k, e] of batch) {
+        tx.add(...redeemInstructions({ caller: this.node.publicKey, providerAuthority: this.authority, channel: new PublicKey(k), mint: this.mint, sessionKey: e.channel.sessionKey, voucher: e.best! }));
+      }
+      try {
+        const sig = await sendAndConfirmTransaction(this.conn, tx, [this.node], { commitment: 'confirmed' });
+        for (const [k, e] of batch) {
+          const before = e.redeemed;
+          await this.entry(k, true).catch(() => undefined);
+          e.redeemed = e.channel.redeemed;
+          const amount = e.redeemed - before;
+          done.push({ channel: k, amount, tx: sig });
+          this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
+        }
+        this.save();
+      } catch (err) {
+        this.log(`redeem failed: ${(err as Error).message.split('\n')[0]}`);
+      }
+    }
+    return done;
+  }
+
+  registerInstruction(wallet: PublicKey) {
+    return ins.registerProvider(wallet, this.node.publicKey, this.cfg.publicUrl, this.manifestHash);
+  }
+
+  updateInstruction(wallet: PublicKey) {
+    return ins.updateProvider(wallet, { nodeKey: this.node.publicKey, endpoint: this.cfg.publicUrl, manifestHash: this.manifestHash, active: true });
+  }
+
+  attestInstruction(validSecs = 7 * 86_400) {
+    if (!this.attestation || !this.enclave) throw new Error('no enclave configured');
+    return ins.attest(this.node.publicKey, this.authority, {
+      kind: this.attestation.kind,
+      measurement: this.attestation.measurement,
+      reportHash: this.attestation.reportHash,
+      teeKey: this.enclave.publicKey,
+      expiresAt: BigInt(Math.floor(Date.now() / 1000) + validSecs),
+    });
+  }
+
+  listen(): Promise<Server> {
+    return new Promise((resolve) => {
+      this.server = createServer((req, res) => void this.handle(req, res));
+      this.server.listen(this.cfg.listen, this.cfg.host ?? '0.0.0.0', () => resolve(this.server!));
+      const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
+      this.timer = setInterval(() => void this.redeemDue(), every);
+    });
+  }
+
+  close(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
+    return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
+  }
+}

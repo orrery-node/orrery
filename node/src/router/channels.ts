@@ -1,0 +1,142 @@
+// The router's side of each payment channel. The wallet signs once to open (and to top up); after that a session
+// key on this computer signs a running total after every request, and nothing else is needed per request.
+import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { decodeChannel, ins, pda } from '../chain/program.ts';
+import { encodeVoucher, signVoucher } from '../chain/voucher.ts';
+import { signerOf, writePrivate, type Sign } from '../keys.ts';
+import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
+
+export type ChannelState = {
+  provider: string;
+  channel: string;
+  id: string;
+  deposit: bigint;
+  cumulative: bigint;
+  usageHash: Buffer;
+  voucher: string | null;
+  openedAt: number;
+  checkedAt: number;
+};
+
+export type Spend = { day: string; units: bigint };
+
+export class Channels {
+  private map = new Map<string, ChannelState>();
+  private opening = new Map<string, Promise<ChannelState>>();
+  private sign: Sign;
+  spend: Spend = { day: '', units: 0n };
+
+  constructor(
+    private conn: Connection,
+    private wallet: Keypair | null,
+    readonly session: Keypair,
+    private mint: PublicKey,
+    private path: string,
+    private opts: { deposit: bigint; topUpBelow: bigint; dailyCap: bigint },
+  ) {
+    this.sign = signerOf(session);
+    this.load();
+  }
+
+  private load() {
+    if (!existsSync(this.path)) return;
+    const raw = JSON.parse(readFileSync(this.path, 'utf8'));
+    for (const c of raw.channels ?? []) {
+      this.map.set(c.provider, { ...c, deposit: BigInt(c.deposit), cumulative: BigInt(c.cumulative), usageHash: Buffer.from(c.usageHash, 'hex'), checkedAt: 0 });
+    }
+    if (raw.spend) this.spend = { day: raw.spend.day, units: BigInt(raw.spend.units) };
+  }
+
+  private save() {
+    const channels = [...this.map.values()].map((c) => ({ ...c, deposit: c.deposit.toString(), cumulative: c.cumulative.toString(), usageHash: c.usageHash.toString('hex') }));
+    writePrivate(this.path, JSON.stringify({ channels, spend: { day: this.spend.day, units: this.spend.units.toString() } }, null, 1));
+  }
+
+  list(): ChannelState[] {
+    return [...this.map.values()];
+  }
+
+  get(provider: string): ChannelState | undefined {
+    return this.map.get(provider);
+  }
+
+  remaining(provider: string): bigint {
+    const c = this.map.get(provider);
+    return c ? c.deposit - c.cumulative : 0n;
+  }
+
+  todaySpent(): bigint {
+    const day = new Date().toISOString().slice(0, 10);
+    if (this.spend.day !== day) this.spend = { day, units: 0n };
+    return this.spend.units;
+  }
+
+  overBudget(next: bigint): boolean {
+    return this.todaySpent() + next > this.opts.dailyCap;
+  }
+
+  /** The open channel to `provider`, opening one with the wallet if there is none or the old one is closing. */
+  async ensure(provider: string, need: bigint): Promise<ChannelState> {
+    const have = this.map.get(provider);
+    if (have && Date.now() - have.checkedAt < 5 * 60_000 && have.deposit - have.cumulative >= need) return have;
+    if (have) {
+      const info = await this.conn.getAccountInfo(new PublicKey(have.channel));
+      if (info) {
+        const ch = decodeChannel(info.data);
+        if (ch.closingAt === 0n) {
+          have.deposit = ch.deposit;
+          have.checkedAt = Date.now();
+          if (have.deposit - have.cumulative < need) await this.topUp(provider, need);
+          return have;
+        }
+      }
+      this.map.delete(provider);
+    }
+    const pending = this.opening.get(provider);
+    if (pending) return pending;
+    const p = this.open(provider, need > this.opts.deposit ? need : this.opts.deposit).finally(() => this.opening.delete(provider));
+    this.opening.set(provider, p);
+    return p;
+  }
+
+  private async open(provider: string, deposit: bigint): Promise<ChannelState> {
+    if (!this.wallet) throw new Error('no wallet configured: the router needs one to open a channel (yard router --wallet <keypair.json>)');
+    const id = randomBytes(8).readBigUInt64LE();
+    const providerKey = new PublicKey(provider);
+    const tx = new Transaction().add(ins.openChannel(this.wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey));
+    await sendAndConfirmTransaction(this.conn, tx, [this.wallet], { commitment: 'confirmed' });
+    const state: ChannelState = {
+      provider, channel: pda.channel(this.wallet.publicKey, providerKey, id).toBase58(), id: id.toString(), deposit, cumulative: 0n,
+      usageHash: ZERO_HASH, voucher: null, openedAt: Date.now(), checkedAt: Date.now(),
+    };
+    this.map.set(provider, state);
+    this.save();
+    return state;
+  }
+
+  async topUp(provider: string, atLeast: bigint): Promise<void> {
+    const c = this.map.get(provider);
+    if (!c || !this.wallet) return;
+    const amount = atLeast > this.opts.deposit ? atLeast : this.opts.deposit;
+    const tx = new Transaction().add(ins.topUp(this.wallet.publicKey, new PublicKey(c.channel), this.mint, amount));
+    await sendAndConfirmTransaction(this.conn, tx, [this.wallet], { commitment: 'confirmed' });
+    c.deposit += amount;
+    this.save();
+  }
+
+  /** Pay for one finished request: extend the usage chain, sign the new total, and return the voucher. */
+  settle(provider: string, r: UsageRecord): string {
+    const c = this.map.get(provider);
+    if (!c) throw new Error('no channel');
+    c.cumulative += r.cost;
+    c.usageHash = nextUsageHash(c.usageHash, r);
+    c.voucher = encodeVoucher(signVoucher(this.sign, new PublicKey(c.channel), c.cumulative, c.usageHash));
+    this.todaySpent();
+    this.spend.units += r.cost;
+    this.save();
+    if (c.deposit - c.cumulative < this.opts.topUpBelow) void this.topUp(provider, this.opts.deposit).catch(() => undefined);
+    return c.voucher;
+  }
+}

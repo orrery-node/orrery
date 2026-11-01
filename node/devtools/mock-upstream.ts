@@ -1,0 +1,35 @@
+// A stand-in for vLLM/Ollama: an OpenAI-compatible server that streams a deterministic reply with real usage
+// numbers, after a configurable delay. Used by the local end-to-end run so the network can be exercised without GPUs.
+import { createServer } from 'node:http';
+
+const port = Number(process.argv[2] ?? 9000);
+const delayMs = Number(process.argv[3] ?? 50);
+const label = process.argv[4] ?? 'mock';
+
+const words = 'Requests travel from your computer to a provider and back; the router signs a running total and the provider redeems it on Solana.'.split(' ');
+
+createServer(async (req, res) => {
+  if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
+    res.writeHead(404).end();
+    return;
+  }
+  const parts: Buffer[] = [];
+  for await (const c of req) parts.push(c as Buffer);
+  const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+  const prompt = JSON.stringify(body.messages ?? '');
+  const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
+  const max = Math.min(Number(body.max_tokens ?? 64), 64);
+  const n = Math.min(words.length, Math.max(4, Math.min(max, 24)));
+  await new Promise((r) => setTimeout(r, delayMs));
+  res.writeHead(200, { 'content-type': 'text/event-stream' });
+  const id = `chatcmpl-${label}-${Date.now()}`;
+  const frame = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
+  for (let i = 0; i < n; i++) {
+    frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { content: (i ? ' ' : '') + words[i] }, finish_reason: null }] });
+  }
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n, total_tokens: promptTokens + n } });
+  res.write('data: [DONE]\n\n');
+  res.end();
+}).listen(port, '127.0.0.1', () => console.log(`mock upstream ${label} on :${port} (delay ${delayMs}ms)`));
