@@ -62,6 +62,9 @@
 .sky-label.is-flip {
   text-align: right;
 }
+.sky-label.is-below {
+  text-align: center;
+}
 .sky-label--you .sky-label__name {
   color: var(--violet);
 }

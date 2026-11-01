@@ -584,7 +584,17 @@ export default function Sky() {
         }
         placed.push(box);
         elx.classList.toggle('is-flip', flip);
-        elx.style.transform = flip ? `translate3d(calc(${Math.round(x - gap)}px - 100%), ${Math.round(y - 10)}px, 0)` : `translate3d(${Math.round(x + gap)}px, ${Math.round(y - 10)}px, 0)`;
+        const GUTTER = 16;
+        let left = flip ? x - gap - w : x + gap;
+        let top = y - 10;
+        const below = n === you && (left < GUTTER || left + w > width - GUTTER);
+        if (below) {
+          left = x - w / 2;
+          top = y + diskR * 0.62 + 6;
+        }
+        elx.classList.toggle('is-below', below);
+        left = Math.min(Math.max(left, GUTTER), width - GUTTER - w);
+        elx.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
       });
     };
 
