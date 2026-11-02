@@ -15,16 +15,16 @@ const DIM = new THREE.Color('#8f8f8a');
 type Orbit = { r: number; rx: number; rz: number };
 const HORIZON = 4.6;
 const ORBITS: Orbit[] = [
-  { r: 1.55, rx: 0.22, rz: -0.1 },
-  { r: 2.2, rx: -0.18, rz: 0.16 },
-  { r: 2.85, rx: 0.13, rz: 0.24 },
-  { r: 3.5, rx: -0.24, rz: -0.08 },
-  { r: 4.1, rx: 0.28, rz: 0.1 },
+  { r: 1.55, rx: 0.18, rz: -0.1 },
+  { r: 2.2, rx: -0.14, rz: 0.14 },
+  { r: 2.85, rx: 0.11, rz: 0.2 },
+  { r: 3.5, rx: -0.17, rz: -0.07 },
+  { r: 4.1, rx: 0.2, rz: 0.08 },
 ];
 const NAMED: Record<string, [number, number]> = {
-  'Kestrel GPU Co-op': [2, 2.35],
-  'Ironbridge Compute': [4, 5.7],
-  'Vault Nine': [3, 0.9],
+  'Kestrel GPU Co-op': [2, 2.6],
+  'Ironbridge Compute': [3, 0.55],
+  'Vault Nine': [4, 4.6],
 };
 const ROUTE_AT: [string, number][] = [
   ['price', 3.6],
@@ -40,7 +40,7 @@ varying float vAlpha;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float front = clamp(0.5 + (mv.z - uCenter) / uDepth, 0.0, 1.0);
-  vAlpha = aAlpha * mix(0.16, 1.0, front * front) * clamp((uDraw - aT) * 14.0, 0.0, 1.0);
+  vAlpha = aAlpha * mix(0.1, 1.15, front * front) * clamp((uDraw - aT) * 14.0, 0.0, 1.0);
   gl_Position = projectionMatrix * mv;
 }`;
 const LINE_FS = `
@@ -117,7 +117,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
     const root = new THREE.Group();
     scene.add(root);
-    const shared = { uDraw: { value: reduce || !hero ? 3 : 0 }, uCenter: { value: -20 }, uDepth: { value: 10 }, uBoost: { value: 1.2 } };
+    const shared = { uDraw: { value: reduce || !hero ? 3 : 0 }, uCenter: { value: -20 }, uDepth: { value: 8.5 }, uBoost: { value: 1.2 } };
     const rand = rng(hero ? 0x51d : 0x77a1);
     const gauss = () => (rand() + rand() + rand() - 1.5) / 1.5;
 
@@ -146,14 +146,14 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
       seg(ringPoint(HORIZON - 0.06, 0, 0, th), ringPoint(HORIZON - 0.2, 0, 0, th), 0.4 + (deg / 360) * 0.8, 0.5);
     }
     ORBITS.forEach((o, i) => {
-      ring(o.r, o.rx, o.rz, 0.75, 300, 0.15 + i * 0.06);
-      const strands = 40;
+      ring(o.r, o.rx, o.rz, 0.8, 300, 0.15 + i * 0.06);
+      const strands = 56;
       for (let s = 0; s < strands; s++) {
-        const dr = gauss() * 0.07 * o.r;
-        const sx = 1 + gauss() * 0.012, sz = 1 + gauss() * 0.012;
+        const dr = gauss() * 0.085 * o.r;
+        const sx = 1 + gauss() * 0.014, sz = 1 + gauss() * 0.014;
         const from = rand() * Math.PI * 2;
-        const span = Math.PI * (1.1 + rand() * 0.9);
-        ring(o.r + dr, o.rx + gauss() * 0.02, o.rz + gauss() * 0.02, 0.07 + rand() * 0.13, 160, 0.2 + i * 0.06 + rand() * 0.2, sx, sz, from, span);
+        const span = Math.PI * (1.3 + rand() * 0.7);
+        ring(o.r + dr, o.rx + gauss() * 0.025, o.rz + gauss() * 0.025, 0.12 + rand() * 0.2, 180, 0.2 + i * 0.06 + rand() * 0.2, sx, sz, from, span);
       }
     });
     ring(0.72, 0.3, 0.5, 0.6, 120, 0.05);
@@ -176,7 +176,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         const ctrl = at.clone().multiplyScalar(0.5 + gauss() * 0.06).add(new THREE.Vector3(gauss() * 0.25, lift, gauss() * 0.25));
         const c = new THREE.QuadraticBezierCurve3(new THREE.Vector3(), ctrl, at);
         const pts = c.getPoints(60);
-        const alpha = (hero ? 0.03 : 0.06) + rand() * (hero ? 0.04 : 0.06);
+        const alpha = (hero ? 0.05 : 0.1) + rand() * (hero ? 0.06 : 0.1);
         for (let i = 0; i < pts.length - 1; i++) {
           traffic.push(pts[i].x, pts[i].y, pts[i].z, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
           trafficT.push(0.9 + i / 120, 0.9 + i / 120);
@@ -277,7 +277,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     const pointUniforms = { uScale: { value: 40 }, uIntro: { value: reduce || !hero ? 3 : 0 }, uCenter: shared.uCenter, uDepth: shared.uDepth };
     root.add(new THREE.Points(pGeo, new THREE.ShaderMaterial({ vertexShader: POINT_VS, fragmentShader: POINT_FS, uniforms: pointUniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
 
-    const TRAIL = 24, MAXP = 6;
+    const TRAIL = 24, MAXP = 10;
     const qPos = new Float32Array(MAXP * TRAIL * 3), qSize = new Float32Array(MAXP * TRAIL), qAlpha = new Float32Array(MAXP * TRAIL);
     const qColor = new Float32Array(MAXP * TRAIL * 3), qKind = new Float32Array(MAXP * TRAIL);
     const qGeo = new THREE.BufferGeometry();
@@ -321,6 +321,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
           }
           send('yard:served', { trip });
           fly(trip.provider, true, false, 1.15, `$${trip.cost} paid`, () => {
+            linger = { label: `$${trip.cost} paid`, until: performance.now() + 1200 };
             core.flare = 1;
             core.flareColor.copy(GREEN);
             if (n) {
@@ -343,6 +344,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     };
 
     let cursor = 0, lastAuto = 0, holdUntil = 0;
+    let linger: { label: string; until: number } | null = null;
     const offFire = hero
       ? on('yard:fire', ({ route }) => {
           const trip = rehearsal.trips.find((t) => t.route === route && !t.fellThrough);
@@ -377,14 +379,14 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
       mobile = W < 760;
       renderer.setSize(W, H, false);
       camera.aspect = W / H;
-      root.rotation.x = mobile ? 0.5 : 0.32;
+      root.rotation.x = mobile ? 0.5 : 0.3;
       const halfV = Math.tan((camera.fov / 2) * (Math.PI / 180));
-      const target = hero ? (mobile ? W * 0.47 : Math.min(W * 0.42, H * 0.62)) : mobile ? W * 0.5 : Math.min(W * 0.4, H * 0.6);
+      const target = hero ? (mobile ? W * 0.47 : Math.min(W * 0.42, H * 0.6)) : mobile ? W * 0.5 : Math.min(W * 0.4, H * 0.6);
       shared.uBoost.value = Math.min(1.9, 0.95 + (window.devicePixelRatio || 1) * 0.28);
       const dist = (HORIZON * (H / 2)) / (target * halfV);
       camera.position.set(0, 0, dist);
       camera.lookAt(0, 0, 0);
-      camera.setViewOffset(W, H, 0, hero ? H * (mobile ? 0.19 : 0.17) : H * 0.06, W, H);
+      camera.setViewOffset(W, H, 0, hero ? H * (mobile ? 0.19 : 0.185) : H * (mobile ? 0.1 : 0.06), W, H);
       camera.updateProjectionMatrix();
       shared.uCenter.value = -dist;
       corePx = (0.85 / (dist * halfV)) * (H / 2);
@@ -440,7 +442,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
       taken.push(coreBox);
       const top = 72;
       const hit = (b: [number, number, number, number]) => taken.some((t) => !(b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]));
-      const ready = pointUniforms.uIntro.value > 1.25;
+      const ready = shared.uDraw.value > 2.1;
       for (const c of chips) {
         const route = c.key.startsWith('r:');
         if (!c.anchor || (mobile && route)) {
@@ -465,20 +467,39 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
           c.el.classList.toggle('is-left', c.side === -1);
         }
         c.el.style.visibility = shown ? 'visible' : 'hidden';
-        c.el.style.opacity = shown ? (route ? '1' : String(0.7 + p.front * 0.3)) : '0';
+        c.el.style.opacity = shown ? '1' : '0';
       }
+      const nowMs = performance.now();
       for (const [k, elx] of Object.entries(follow)) {
         if (!elx) continue;
         const back = k === 'back';
         const q = [...pulses].reverse().find((x) => x.back === back && !x.fade);
-        if (!q || q.t < 0.06 || q.t > 0.97) {
+        let at: { x: number; y: number } | null = null;
+        let label = '';
+        if (q && q.t > 0.06) {
+          const ease = q.t < 0.5 ? 2 * q.t * q.t : 1 - Math.pow(-2 * q.t + 2, 2) / 2;
+          at = project(q.curve.getPoint(back ? 1 - ease : ease));
+          label = q.label;
+        } else if (back && linger && nowMs < linger.until) {
+          at = { x: c0.x, y: c0.y };
+          label = linger.label;
+        }
+        if (!at || at.y < 150) {
           elx.style.opacity = '0';
           continue;
         }
-        const ease = q.t < 0.5 ? 2 * q.t * q.t : 1 - Math.pow(-2 * q.t + 2, 2) / 2;
-        const h = project(q.curve.getPoint(back ? 1 - ease : ease));
-        if (elx.textContent !== q.label) elx.textContent = q.label;
-        elx.style.transform = `translate3d(${(h.x + 12).toFixed(1)}px, ${(h.y - 26).toFixed(1)}px, 0)`;
+        if (elx.textContent !== label) elx.textContent = label;
+        const fw = elx.offsetWidth, fh = elx.offsetHeight;
+        let fx = at.x + 14, fy = at.y - 34;
+        const box = (x: number, y: number): [number, number, number, number] => [x, y, x + fw, y + fh];
+        if (hit(box(fx, fy))) fy = at.y + 14;
+        if (hit(box(fx, fy))) fx = at.x - 14 - fw;
+        if (hit(box(fx, fy)) || fx < 16 || fx + fw > W - 16) {
+          elx.style.opacity = '0';
+          continue;
+        }
+        taken.push(box(fx, fy));
+        elx.style.transform = `translate3d(${fx.toFixed(1)}px, ${fy.toFixed(1)}px, 0)`;
         elx.style.opacity = '1';
       }
     };
@@ -506,7 +527,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         }
       }
       root.rotation.y = spin;
-      if (!reduce && age > (hero ? 2.4 : 0.6) && now > holdUntil && now - lastAuto > (hero ? 2700 : 1500)) {
+      if (!reduce && age > (hero ? 2.4 : 0.6) && now > holdUntil && now - lastAuto > (hero ? 1150 : 1100)) {
         lastAuto = now;
         run(rehearsal.trips[cursor % rehearsal.trips.length]);
         cursor += 1;

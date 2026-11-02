@@ -352,15 +352,26 @@ export function CutCalc() {
   );
 }
 
-function Enclave() {
+/** A cut-away enclave: three walls, each open where the sealed bytes pass, and the plain text readable only in the middle. */
+function Enclave({ text, cipher }: { text: string; cipher: string }) {
+  const walls = [
+    { w: 210, h: 150 },
+    { w: 168, h: 116 },
+    { w: 126, h: 82 },
+  ];
+  const cx = 196, cy = 86;
+  const plain = text.length > 19 ? `${text.slice(0, 18).trimEnd()}…` : text;
   return (
-    <svg viewBox="0 0 160 160" className="enc" aria-hidden="true">
-      {Array.from({ length: 7 }, (_, i) => (
-        <rect key={i} x={20 + i * 6} y={20 + i * 6} width={120 - i * 12} height={120 - i * 12} rx={14 - i * 1.6} className={i === 6 ? 'enc__in' : 'enc__wall'} />
+    <svg viewBox="0 0 300 172" className="enc" aria-hidden="true">
+      {walls.map((r, i) => (
+        <g key={i}>
+          <rect x={cx - r.w / 2} y={cy - r.h / 2} width={r.w} height={r.h} rx={16 - i * 4} className={i === 2 ? 'enc__in' : 'enc__wall'} />
+          <rect x={cx - r.w / 2 - 3} y={cy - 9} width="6" height="18" className="enc__gap" />
+        </g>
       ))}
-      {Array.from({ length: 49 }, (_, i) => (
-        <circle key={i} cx={62 + (i % 7) * 6} cy={62 + Math.floor(i / 7) * 6} r="1.05" className="enc__dot" />
-      ))}
+      <path d={`M0 ${cy} H${cx - 64}`} className="enc__path" />
+      <text x="2" y={cy - 10} className="enc__cipher">{cipher.slice(0, 18)}</text>
+      <text x={cx} y={cy + 4} textAnchor="middle" className="enc__in-text">{plain}</text>
     </svg>
   );
 }
@@ -402,9 +413,9 @@ export function SealFlow() {
       </div>
       <span className="flow__wire" aria-hidden="true" />
       <div className="flow__step flow__step--enc">
-        <Enclave />
+        <Enclave text={text} cipher={box} />
         <span className="flow__k">Inside {vault?.name ?? 'the enclave'}</span>
-        <span className="flow__note">Opened only by the code the router checked against the provider&apos;s claim on chain</span>
+        <span className="flow__note">Readable only in here, by the code the router checked against the provider&apos;s claim on chain</span>
       </div>
     </div>
   );
