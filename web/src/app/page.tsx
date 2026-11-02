@@ -204,7 +204,7 @@ export default async function Home() {
 
           <section className="zero" id="zero">
             <h2 className="zero__head">
-              <span className="dim">The program in the middle takes</span>
+              <span>The program in the middle takes</span>
               <span className="zero__num green num">0%</span>
             </h2>
             <p className="zero__sub">It has no fee field and no third account to send one to. Every unit a provider redeems lands in the provider&apos;s account. Every unit it doesn&apos;t comes back to you.</p>
