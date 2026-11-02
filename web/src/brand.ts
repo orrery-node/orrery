@@ -1,7 +1,7 @@
 // Working title lives here and in node/src/brand.ts only. Renaming the project means editing these two files.
-export const NAME = 'Switchyard';
-export const TICKER = 'YARD';
-export const WORKING_TITLE = true;
+export const NAME = 'Orrery';
+export const TICKER = 'OREY';
+export const WORKING_TITLE = false;
 
 // Set once the token exists (launched on Meteora DBC). null renders "not launched yet".
 export const CA: string | null = null;

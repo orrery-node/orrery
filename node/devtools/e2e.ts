@@ -12,7 +12,7 @@ const ROOT = new URL('../../', import.meta.url).pathname;
 const WORK = join(ROOT, '.local/e2e');
 rmSync(WORK, { recursive: true, force: true });
 mkdirSync(WORK, { recursive: true });
-process.env.SWITCHYARD_HOME = join(WORK, 'home');
+process.env.ORRERY_HOME = join(WORK, 'home');
 
 const { PROGRAM_ID } = await import('../src/brand.ts');
 const { decodeChannel, decodeConfig, decodeProvider, ins, pda } = await import('../src/chain/program.ts');

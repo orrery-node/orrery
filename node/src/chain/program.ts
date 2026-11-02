@@ -1,4 +1,4 @@
-// Hand-written client for the Switchyard program: PDAs, account layouts and instruction encodings. It mirrors
+// Hand-written client for the Orrery program (crate `switchyard`): PDAs, account layouts and instruction encodings. It mirrors
 // program/programs/switchyard/src/lib.rs field for field; test/program.test.ts checks it against the built IDL.
 import { createHash } from 'node:crypto';
 import { PublicKey, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, TransactionInstruction } from '@solana/web3.js';

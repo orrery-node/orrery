@@ -4,13 +4,13 @@ import { Arrow, ChannelCard, CopyButton, CutCalc, Ledger, NavGround, ProviderCar
 import { Mark } from '@/components/Mark';
 import ScrollFX from '@/components/ScrollFX';
 import Wire from '@/components/Wire';
-import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, X_URL } from '@/brand';
+import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
 import { programStatus } from '@/lib/chain';
 import { perM, rehearsal, ranAtLabel, ROUTE_WORD, short, usd } from '@/lib/rehearsal';
 
 export const revalidate = 300;
 
-const PROVIDE_CMDS = 'yard provider register --config provider.json --wallet wallet.json\nyard provider start --config provider.json';
+const PROVIDE_CMDS = 'orrery provider register --config provider.json --wallet wallet.json\norrery provider start --config provider.json';
 const BUY_URL = CA ? `https://jup.ag/?sell=So11111111111111111111111111111111111111112&buy=${CA}` : null;
 
 function Check() {
@@ -202,9 +202,9 @@ export default async function Home() {
                   <CopyButton text={PROVIDE_CMDS} />
                 </div>
                 <pre className="num">
-                  <span className="term__p">$</span> yard provider register \{'\n'}
+                  <span className="term__p">$</span> orrery provider register \{'\n'}
                   {'    '}--config provider.json --wallet wallet.json{'\n'}
-                  <span className="term__p">$</span> yard provider start --config provider.json
+                  <span className="term__p">$</span> orrery provider start --config provider.json
                 </pre>
               </div>
               <p className="aside">Registering puts your endpoint and the hash of your price list on chain. Your wallet stays cold; the node runs on its own key and can never touch what you have earned.</p>
@@ -298,7 +298,8 @@ export default async function Home() {
 
       <footer className="foot">
         <span className="foot__brand">
-          <Mark /> {NAME} <em>working title</em>
+          <Mark /> {NAME}
+          {WORKING_TITLE && <em>working title</em>}
         </span>
         <nav aria-label="Elsewhere">
           <Link href="/docs">Docs</Link>

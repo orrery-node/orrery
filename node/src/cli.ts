@@ -18,8 +18,8 @@ const flag = (name: string, fallback?: string): string | undefined => {
 };
 const has = (name: string) => argv.includes(`--${name}`);
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
-const rpc = () => flag('rpc', process.env.SWITCHYARD_RPC_URL ?? 'https://api.mainnet-beta.solana.com')!;
-const mint = () => new PublicKey(flag('mint', process.env.SWITCHYARD_SETTLE_MINT ?? USDC_MAINNET)!);
+const rpc = () => flag('rpc', process.env.ORRERY_RPC_URL ?? 'https://api.mainnet-beta.solana.com')!;
+const mint = () => new PublicKey(flag('mint', process.env.ORRERY_SETTLE_MINT ?? USDC_MAINNET)!);
 const dollars = (s: string) => BigInt(Math.round(Number(s) * 1e6));
 
 const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
@@ -38,12 +38,12 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
 
-  --rpc <url>   Solana RPC (or SWITCHYARD_RPC_URL)   --mint <address>  settlement mint (default USDC)
+  --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
 `;
 
 async function router() {
   const conn = new Connection(rpc(), 'confirmed');
-  const walletPath = flag('wallet', process.env.SWITCHYARD_WALLET);
+  const walletPath = flag('wallet', process.env.ORRERY_WALLET);
   const wallet = walletPath ? loadKeypair(expand(walletPath)) : null;
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const route = (flag('route', 'auto') as Route);

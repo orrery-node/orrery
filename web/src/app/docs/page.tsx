@@ -8,8 +8,8 @@ import './docs.css';
 export const metadata: Metadata = { title: `Docs — ${NAME}` };
 
 const INSTALL = `${REPO_URL ? `git clone ${REPO_URL}.git` : '# the public repository opens at launch'}
-cd switchyard/node && pnpm install
-pnpm yard router --wallet ~/.config/solana/id.json --rpc <your RPC URL>`;
+cd orrery/node && pnpm install
+pnpm orrery router --wallet ~/.config/solana/id.json --rpc <your RPC URL>`;
 
 const PY = `from openai import OpenAI
 
@@ -30,7 +30,7 @@ const PROVIDER_JSON = `{
   "publicUrl": "https://gpu.example.org",
   "rpcUrl": "<your RPC URL>",
   "settleMint": "EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY",
-  "wallet": "~/.switchyard/provider/wallet.json",
+  "wallet": "~/.orrery/provider/wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [
     { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/Llama-3.3-70B-Instruct",
@@ -125,7 +125,7 @@ export default function Docs() {
           <h2 id="provide">Run a provider</h2>
           <p>Put a provider node in front of any OpenAI-compatible server: vLLM, SGLang, Ollama, llama.cpp, or API capacity you hold. Prices are USDC base units per million tokens, so <code>120000</code> is $0.12.</p>
           <Code>{PROVIDER_JSON}</Code>
-          <Code copy>{`yard provider register --config provider.json --wallet wallet.json\nyard provider start --config provider.json`}</Code>
+          <Code copy>{`orrery provider register --config provider.json --wallet wallet.json\norrery provider start --config provider.json`}</Code>
           <p>Registering lists you on chain with your endpoint and the sha-256 of your price list; routers ignore a price list that does not match it. Your wallet stays cold: the node runs on its own key, which can redeem and post enclave claims but never touches what you have earned. Redemptions go straight to your wallet&apos;s USDC account.</p>
 
           <h2 id="private">The private route</h2>
@@ -133,7 +133,7 @@ export default function Docs() {
           <p>Before sealing anything, the router fetches the report and checks that it hashes to the on-chain claim, names the same key, has not expired, and booted an image on your allow list (<code>--enclave-images</code>). Checking the hardware vendor&apos;s signature needs an external verifier; without one the router does not treat an enclave as verified. Development reports are labeled and refused unless you pass <code>--allow-dev-enclaves</code>.</p>
 
           <h2 id="token">${TICKER}</h2>
-          <p>The token launches on Meteora. In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it. {NAME} and ${TICKER} are working titles.</p>
+          <p>The token launches on Meteora. In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
 
           <h2 id="program">What the program can and cannot do</h2>
           <p>Program <code>{PROGRAM_ID}</code>.</p>

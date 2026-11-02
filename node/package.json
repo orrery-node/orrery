@@ -1,17 +1,17 @@
 {
-  "name": "switchyard-node",
+  "name": "orrery-node",
   "version": "0.1.0",
   "private": true,
-  "description": "Switchyard (working title) router and provider node: point your AI tools at localhost, pay providers directly on Solana",
+  "description": "Orrery router and provider node: point your AI tools at localhost, pay providers directly on Solana",
   "type": "module",
   "bin": {
-    "yard": "./src/cli.ts"
+    "orrery": "./src/cli.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "yard": "tsx src/cli.ts",
+    "orrery": "tsx src/cli.ts",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "e2e": "bash devtools/e2e.sh"

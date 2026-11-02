@@ -1,0 +1,21 @@
+# Render Blueprint for Orrery. The web service was created with `render services create` (docs/DEPLOY.md); this file
+# records its settings. Secrets marked sync: false are set through the Render API, never committed.
+services:
+  - type: web
+    name: orrery-web
+    runtime: node
+    rootDir: web
+    plan: starter
+    region: oregon
+    buildCommand: npx --yes pnpm@10.29.2 install --frozen-lockfile && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    buildFilter:
+      paths: ["web/**"]
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false

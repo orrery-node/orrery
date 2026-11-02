@@ -9,7 +9,7 @@ const PKCS8_ED25519 = Buffer.from('302e020100300506032b657004220420', 'hex');
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
 
 export function home(...parts: string[]): string {
-  return join(process.env.SWITCHYARD_HOME ?? join(homedir(), HOME_DIR), ...parts);
+  return join(process.env.ORRERY_HOME ?? join(homedir(), HOME_DIR), ...parts);
 }
 
 export function writePrivate(path: string, body: string): void {

@@ -102,7 +102,7 @@ export class Channels {
   }
 
   private async open(provider: string, deposit: bigint): Promise<ChannelState> {
-    if (!this.wallet) throw new Error('no wallet configured: the router needs one to open a channel (yard router --wallet <keypair.json>)');
+    if (!this.wallet) throw new Error('no wallet configured: the router needs one to open a channel (orrery router --wallet <keypair.json>)');
     const id = randomBytes(8).readBigUInt64LE();
     const providerKey = new PublicKey(provider);
     const tx = new Transaction().add(ins.openChannel(this.wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey));

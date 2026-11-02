@@ -137,7 +137,7 @@ export class Router {
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
     const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation);
     if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : `every provider for ${model} is cooling down`, 503, 'no_provider');
-    if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (yard router --daily-cap)', 429, 'budget');
+    if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
     const tried: string[] = [];
     for (const cand of ranked.slice(0, 3)) {
