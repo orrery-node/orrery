@@ -8,6 +8,7 @@ export type BusEvents = {
   'yard:sent': { trip: RTrip; at: number };
   'yard:served': { trip: RTrip };
   'yard:paid': { trip: RTrip };
+  'yard:arrive': { at: number };
 };
 
 export function emit<K extends keyof BusEvents>(name: K, detail: BusEvents[K]) {

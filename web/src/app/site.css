@@ -189,7 +189,8 @@
   background: rgba(8, 8, 10, 0.86);
   border: 1px solid var(--line);
   border-radius: 9px;
-  will-change: transform;
+  will-change: transform, opacity;
+  transition: opacity 0.24s ease;
 }
 .ochip::before {
   content: '';
@@ -255,12 +256,144 @@
   padding: 6px 9px;
   white-space: nowrap;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.26s ease;
   pointer-events: none;
+  z-index: 1;
+  will-change: transform, opacity;
 }
 .ofollow--paid {
   color: var(--green);
   border-color: rgba(20, 241, 149, 0.35);
+}
+
+/* the wire: one request drawn by the scroll */
+.wire {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.wire__svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  overflow: visible;
+}
+.wire__ghost {
+  fill: none;
+  stroke: rgba(242, 242, 239, 0.07);
+  stroke-width: 1;
+}
+.wire__line {
+  fill: none;
+  stroke: rgba(242, 242, 239, 0.62);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+}
+.wire__ticks {
+  fill: none;
+  stroke: rgba(242, 242, 239, 0.24);
+  stroke-width: 1;
+}
+.wire__head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  will-change: transform;
+}
+.wire__head i {
+  position: absolute;
+  left: -4.5px;
+  top: -4.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 0 0 4px rgba(242, 242, 239, 0.08), 0 0 18px 5px rgba(242, 242, 239, 0.32);
+  transition: background 0.5s ease, box-shadow 0.5s ease;
+}
+.wire__head.is-paid i {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(20, 241, 149, 0.1), 0 0 18px 5px rgba(20, 241, 149, 0.34);
+}
+.wire__stops {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.wire__stop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  opacity: 0.38;
+  transition: opacity 0.4s ease;
+}
+.wire__stop.is-lit {
+  opacity: 1;
+}
+.wire__stop i {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(242, 242, 239, 0.45);
+  background: var(--ground);
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+.wire__stop.is-lit i {
+  background: var(--fg);
+  border-color: var(--fg);
+}
+.wire__k {
+  margin-left: 16px;
+  font: 400 12.5px/1 var(--sans);
+  color: var(--fg-3);
+}
+.wire__v {
+  font: 400 12px/1 var(--mono);
+  color: var(--fg-2);
+}
+.wire__stop.is-lit .wire__v:not(.green) {
+  color: var(--fg);
+}
+.wire__v.green {
+  color: var(--green);
+}
+
+/* scroll-drawn rules, words, loop */
+.fx-live [data-rule] > * {
+  position: relative;
+  border-top-color: transparent;
+}
+.fx-live [data-rule] > *::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 1px;
+  background: var(--line-2);
+  transform: scaleX(var(--rule, 1));
+  transform-origin: left center;
+}
+.zero__num {
+  transition: color 0.7s ease;
+}
+.fx-live:not(.fx-reduce) .zero:not(.wire-passed) .zero__num {
+  color: var(--fg-3);
 }
 
 .hero__foot {
@@ -1176,6 +1309,18 @@
 .loop__nodec {
   fill: var(--fg);
 }
+.loop__run {
+  fill: var(--fg);
+  opacity: 0;
+  filter: drop-shadow(0 0 6px rgba(242, 242, 239, 0.65));
+}
+.fx-live:not(.fx-reduce) .loop__st {
+  opacity: 0.3;
+  transition: opacity 0.45s ease;
+}
+.fx-live .loop__st.is-on {
+  opacity: 1;
+}
 .loop__k {
   font: 500 15px var(--sans);
   fill: var(--fg);
@@ -1652,5 +1797,18 @@
   }
   .foot__note {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .wire__stop {
+    gap: 8px;
+  }
+  .wire__k {
+    margin-left: 12px;
+    font-size: 11.5px;
+  }
+  .wire__v {
+    font-size: 11px;
   }
 }

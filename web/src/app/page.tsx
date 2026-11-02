@@ -2,9 +2,11 @@ import Link from 'next/link';
 import Orrery from '@/components/Orrery';
 import { Arrow, ChannelCard, CopyButton, CutCalc, Ledger, NavGround, ProviderCard, RequestLine, RouteCard, SealFlow } from '@/components/parts';
 import { Mark } from '@/components/Mark';
+import ScrollFX from '@/components/ScrollFX';
+import Wire from '@/components/Wire';
 import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, X_URL } from '@/brand';
 import { programStatus } from '@/lib/chain';
-import { rehearsal, ranAtLabel, short, usd } from '@/lib/rehearsal';
+import { perM, rehearsal, ranAtLabel, ROUTE_WORD, short, usd } from '@/lib/rehearsal';
 
 export const revalidate = 300;
 
@@ -33,7 +35,7 @@ function TokenLoop() {
   };
   return (
     <svg className="loop" viewBox="0 0 480 480" role="img" aria-label={`Bonded ${TICKER} raises a provider's reputation, which gets it picked more often on the trusted route, where it is paid in USDC.`}>
-      <circle cx={C} cy={C} r={R} className="loop__orbit" />
+      <circle cx={C} cy={C} r={R} className="loop__orbit" transform={`rotate(-90 ${C} ${C})`} />
       {Array.from({ length: 120 }, (_, i) => {
         const d = i * 3;
         const [x1, y1] = at(d, R + 26);
@@ -47,13 +49,14 @@ function TokenLoop() {
         return <circle key={i} cx={(C + r * Math.cos(a)).toFixed(2)} cy={(C + r * Math.sin(a)).toFixed(2)} r="1.15" className="loop__dot" />;
       })}
       <text x={C} y={C + 5} textAnchor="middle" className="loop__core">${TICKER}</text>
+      <circle cx={C} cy={C - R} r="5" className="loop__run" />
       {stations.map((s) => {
         const [x, y] = at(s.deg);
         const top = s.deg === -90;
         const anchor = 'middle';
         const dx = 0;
         return (
-          <g key={s.k}>
+          <g key={s.k} data-deg={s.deg} className="loop__st">
             <circle cx={x.toFixed(2)} cy={y.toFixed(2)} r="7" className="loop__node" />
             <circle cx={x.toFixed(2)} cy={y.toFixed(2)} r="2.4" className="loop__nodec" />
             <text x={(x + dx).toFixed(2)} y={(top ? y - 34 : y + 30).toFixed(2)} textAnchor={anchor} className="loop__k">{s.k}</text>
@@ -69,17 +72,25 @@ function TokenLoop() {
 export default async function Home() {
   const chain = await programStatus();
   const passed = rehearsal.checks.filter((c) => c.ok).length;
-  const stats: { k: string; v: string; green?: boolean }[] = [
-    { k: 'requests', v: String(rehearsal.requests) },
-    { k: 'providers', v: String(rehearsal.providers.length) },
-    { k: 'settled on chain', v: `$${usd(BigInt(rehearsal.settledUnits))}`, green: true },
+  const cheap = rehearsal.trips.find((t) => t.route === 'price' && !t.fellThrough)!;
+  const cheapP = rehearsal.providers.find((p) => p.name === cheap.provider)!;
+  const cheapIn = cheapP.models.find((m) => m.id === cheap.model)?.input ?? 0;
+  const sealed = rehearsal.trips.find((t) => t.route === 'privacy' && !t.fellThrough)!;
+  const iron = rehearsal.providers.find((p) => p.name === 'Ironbridge Compute')!;
+  const ironAnswers = rehearsal.trips.filter((t) => t.provider === iron.name).length;
+  const settled = BigInt(rehearsal.settledUnits);
+  const stats: { k: string; v: string; green?: boolean; count?: { to: number; fmt?: string; of?: number } }[] = [
+    { k: 'requests', v: String(rehearsal.requests), count: { to: rehearsal.requests } },
+    { k: 'providers', v: String(rehearsal.providers.length), count: { to: rehearsal.providers.length } },
+    { k: 'settled on chain', v: `$${usd(settled)}`, green: true, count: { to: Number(settled), fmt: 'usd6' } },
     { k: 'to the program', v: '$0' },
-    { k: 'checks passed', v: `${passed}/${rehearsal.checks.length}` },
+    { k: 'checks passed', v: `${passed}/${rehearsal.checks.length}`, count: { to: passed, of: rehearsal.checks.length } },
     { k: 'on mainnet', v: chain.checked ? (chain.deployed ? 'live' : 'not yet') : 'unchecked' },
   ];
   return (
     <>
       <NavGround />
+      <ScrollFX />
       <header className="nav">
         <Link href="/" className="nav__brand" aria-label={`${NAME} home`}>
           <Mark />
@@ -103,6 +114,7 @@ export default async function Home() {
       </header>
 
       <main className="page">
+        <Wire />
         <section className="hero">
           <Orrery />
           <div className="hero__foot" data-orrery-clear>
@@ -113,7 +125,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="facts" aria-label="At a glance">
+        <section className="facts" aria-label="At a glance" data-rule>
           <div>
             <span className="label">Router</span>
             <p>On your computer, OpenAI-compatible</p>
@@ -133,7 +145,7 @@ export default async function Home() {
         </section>
 
         <div className="body">
-          <section className="split" id="how">
+          <section className="split" id="how" data-wire-k={`Route ${ROUTE_WORD[cheap.route]}`} data-wire-v={`${cheap.provider} · ${perM(cheapIn)}/M in`}>
             <div className="split__text">
               <h2>One word decides the trip.</h2>
               <p className="sub">Point anything that takes a base URL at the router: Cursor, Aider, Continue, Open WebUI, the OpenAI SDK. Then add one word after the model name.</p>
@@ -154,13 +166,13 @@ export default async function Home() {
             </div>
           </section>
 
-          <section className="stage" id="pay">
+          <section className="stage" id="pay" data-wire-k="Signed" data-wire-v={`${ironAnswers} running totals, one per answer`}>
             <div className="stage__head">
               <h2>Sign once. Pay per answer.</h2>
               <p className="sub">Your wallet opens a channel with a provider. After every answer the router on your computer signs the new running total, and the provider cashes the latest one on Solana whenever it likes.</p>
             </div>
             <ChannelCard />
-            <ol className="steps4">
+            <ol className="steps4" data-rule>
               <li><span className="num">01</span><b>Open</b><p>One wallet signature puts two dollars in a channel.</p></li>
               <li><span className="num">02</span><b>Answer</b><p>A signed total after each. A provider is never owed more than one answer.</p></li>
               <li><span className="num">03</span><b>Redeem</b><p>Many channels in one transaction, for a fraction of a cent.</p></li>
@@ -169,7 +181,7 @@ export default async function Home() {
           </section>
         </div>
 
-        <section className="film">
+        <section className="film" data-wire-k="First token" data-wire-v={`${cheap.ttftMs} ms · ${cheapP.region}`}>
           <video className="film__media" src="/media/rig.mp4" poster="/media/rig.jpg" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" />
           <div className="film__shade" />
           <div className="film__text">
@@ -180,7 +192,7 @@ export default async function Home() {
         </section>
 
         <div className="body">
-          <section className="split" id="provide">
+          <section className="split" id="provide" data-wire-k="Redeemed" data-wire-v={`$${usd(BigInt(iron.cumulative ?? '0'))} to ${iron.name}`} data-wire-money="1">
             <div className="split__text">
               <h2>Light a node. Set your price.</h2>
               <p className="sub">Put a provider node in front of any OpenAI-compatible server. It checks each voucher before it answers and redeems the totals to your wallet.</p>
@@ -202,19 +214,19 @@ export default async function Home() {
             </div>
           </section>
 
-          <section className="zero" id="zero">
+          <section className="zero" id="zero" data-wire-k="Taken in between" data-wire-v="$0">
             <h2 className="zero__head">
               <span>The program in the middle takes</span>
               <span className="zero__num green num">0%</span>
             </h2>
-            <p className="zero__sub">It has no fee field and no third account to send one to. Every unit a provider redeems lands in the provider&apos;s account. Every unit it doesn&apos;t comes back to you.</p>
+            <p className="zero__sub" data-words>It has no fee field and no third account to send one to. Every unit a provider redeems lands in the provider&apos;s account. Every unit it doesn&apos;t comes back to you.</p>
             <div className="zero__cards">
               <Ledger />
               <CutCalc />
             </div>
           </section>
 
-          <section className="band" id="private">
+          <section className="band" id="private" data-wire-k="Sealed" data-wire-v={`${sealed.model}${ROUTE_WORD.privacy} → ${sealed.provider}`}>
             <div className="band__head">
               <h2>Private, when you ask for it.</h2>
               <p className="sub">Add <code>:private</code> and the router only picks providers running inside a hardware enclave. It checks the enclave&apos;s live report against the claim the provider posted on chain, then encrypts your prompt to a key that never leaves it. The operator hosts the machine and still can&apos;t read the request.</p>
@@ -222,11 +234,11 @@ export default async function Home() {
             <SealFlow />
           </section>
 
-          <section className="token" id="token">
+          <section className="token" id="token" data-wire-k={`Bonded $${TICKER}`} data-wire-v="10% of the :trusted score">
             <h2>${TICKER} backs the providers you trust.</h2>
             <p className="sub">Launching on Meteora. In the program it has one job: providers bond it behind their listing, and routers count the bond toward reputation.</p>
             <TokenLoop />
-            <dl className="token__dl">
+            <dl className="token__dl" data-rule>
               <div><dt>Bond</dt><dd>Posted on chain behind a provider&apos;s listing</dd></div>
               <div><dt>Reputation</dt><dd>Bonded {TICKER} is 10% of the <code>:trusted</code> score</dd></div>
               <div><dt>Never slashed</dt><dd>Unbonding returns it after seven days</dd></div>
@@ -242,11 +254,13 @@ export default async function Home() {
             </div>
           </section>
 
-          <section className="ledgerline" aria-label="Rehearsal numbers">
+          <section className="ledgerline" aria-label="Rehearsal numbers" data-wire-k="Settled on chain" data-wire-v={`$${usd(settled)} over ${rehearsal.requests} requests`} data-wire-money="1" data-wire-at="30">
             <dl>
               {stats.map((s) => (
                 <div key={s.k}>
-                  <dd className={`num${s.green ? ' green' : ''}`}>{s.v}</dd>
+                  <dd className={`num${s.green ? ' green' : ''}`} data-count={s.count?.to} data-fmt={s.count?.fmt} data-of={s.count?.of}>
+                    {s.v}
+                  </dd>
                   <dt>{s.k}</dt>
                 </div>
               ))}
