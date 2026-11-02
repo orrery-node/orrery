@@ -314,14 +314,15 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
       core.flareColor.copy(WHITE);
       const n = named.get(trip.provider);
       const go = () =>
-        fly(trip.provider, false, trip.sealed, 1.15, `${trip.model}${trip.route === 'auto' ? '' : ROUTE_WORD[trip.route]}`, () => {
+        fly(trip.provider, false, trip.sealed, 2.4, `${trip.model}${trip.route === 'auto' ? '' : ROUTE_WORD[trip.route]}`, () => {
+          if (n) outLinger = { label: `${trip.model}${trip.route === 'auto' ? '' : ROUTE_WORD[trip.route]}`, until: performance.now() + 1100, at: n.pos };
           if (n) {
             n.flare = 1;
             n.flareColor.copy(WHITE);
           }
           send('yard:served', { trip });
-          fly(trip.provider, true, false, 1.15, `$${trip.cost} paid`, () => {
-            linger = { label: `$${trip.cost} paid`, until: performance.now() + 1200 };
+          fly(trip.provider, true, false, 2.2, `$${trip.cost} paid`, () => {
+            linger = { label: `$${trip.cost} paid`, until: performance.now() + 2200 };
             core.flare = 1;
             core.flareColor.copy(GREEN);
             if (n) {
@@ -335,7 +336,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         });
       if (trip.fellThrough) {
         const first = 'Kestrel GPU Co-op';
-        fly(first, false, false, 0.9, 'no answer', () => {
+        fly(first, false, false, 1.8, 'no answer', () => {
           const k = named.get(first);
           if (k) k.down = 1;
           go();
@@ -345,11 +346,13 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
 
     let cursor = 0, lastAuto = 0, holdUntil = 0;
     let linger: { label: string; until: number } | null = null;
+    let outLinger: { label: string; until: number; at: THREE.Vector3 } | null = null;
+    const followAt = new Map<HTMLElement, { x: number; y: number; on: boolean }>();
     const offFire = hero
       ? on('yard:fire', ({ route }) => {
           const trip = rehearsal.trips.find((t) => t.route === route && !t.fellThrough);
           if (!trip) return;
-          holdUntil = performance.now() + 5200;
+          holdUntil = performance.now() + 7000;
           run(trip);
         })
       : () => {};
@@ -476,30 +479,52 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         const q = [...pulses].reverse().find((x) => x.back === back && !x.fade);
         let at: { x: number; y: number } | null = null;
         let label = '';
-        if (q && q.t > 0.06) {
+        let atCore = false;
+        if (q && q.t > 0.04) {
           const ease = q.t < 0.5 ? 2 * q.t * q.t : 1 - Math.pow(-2 * q.t + 2, 2) / 2;
-          at = project(q.curve.getPoint(back ? 1 - ease : ease));
-          label = q.label;
-        } else if (back && linger && nowMs < linger.until) {
+          const h = project(q.curve.getPoint(back ? 1 - ease : ease));
+          if (Math.hypot(h.x - c0.x, h.y - c0.y) > corePx + 26) {
+            at = h;
+            label = q.label;
+          } else if (back) {
+            at = { x: c0.x, y: c0.y };
+            label = q.label;
+            atCore = true;
+          }
+        }
+        if (!at && back && linger && nowMs < linger.until) {
           at = { x: c0.x, y: c0.y };
           label = linger.label;
+          atCore = true;
+        } else if (!at && !back && outLinger && nowMs < outLinger.until) {
+          at = project(outLinger.at);
+          label = outLinger.label;
         }
+        const prevAt = followAt.get(elx);
         if (!at || at.y < 150) {
           elx.style.opacity = '0';
+          if (prevAt) prevAt.on = false;
           continue;
         }
         if (elx.textContent !== label) elx.textContent = label;
         const fw = elx.offsetWidth, fh = elx.offsetHeight;
-        let fx = at.x + 14, fy = at.y - 34;
         const box = (x: number, y: number): [number, number, number, number] => [x, y, x + fw, y + fh];
-        if (hit(box(fx, fy))) fy = at.y + 14;
-        if (hit(box(fx, fy))) fx = at.x - 14 - fw;
+        let fx = atCore ? at.x - fw / 2 : at.x + 14;
+        let fy = atCore ? at.y - corePx - fh - 8 : at.y - 34;
+        if (hit(box(fx, fy))) fy = atCore ? at.y + corePx + 8 : at.y + 14;
+        if (!atCore && hit(box(fx, fy))) fx = at.x - 14 - fw;
         if (hit(box(fx, fy)) || fx < 16 || fx + fw > W - 16) {
           elx.style.opacity = '0';
+          if (prevAt) prevAt.on = false;
           continue;
         }
         taken.push(box(fx, fy));
-        elx.style.transform = `translate3d(${fx.toFixed(1)}px, ${fy.toFixed(1)}px, 0)`;
+        const cur = prevAt && prevAt.on ? prevAt : { x: fx, y: fy, on: true };
+        cur.x += (fx - cur.x) * 0.18;
+        cur.y += (fy - cur.y) * 0.18;
+        cur.on = true;
+        followAt.set(elx, cur);
+        elx.style.transform = `translate3d(${cur.x.toFixed(1)}px, ${cur.y.toFixed(1)}px, 0)`;
         elx.style.opacity = '1';
       }
     };
@@ -523,11 +548,11 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         if (!dragging) {
           vel *= 0.94;
           spin += vel;
-          if (now - lastDrag > 2400) spin += dt * (hero ? 0.05 : 0.035);
+          if (now - lastDrag > 2400) spin += dt * (hero ? 0.035 : 0.03);
         }
       }
       root.rotation.y = spin;
-      if (!reduce && age > (hero ? 2.4 : 0.6) && now > holdUntil && now - lastAuto > (hero ? 1150 : 1100)) {
+      if (!reduce && age > (hero ? 2.4 : 0.6) && now > holdUntil && now - lastAuto > (hero ? 5200 : 3000)) {
         lastAuto = now;
         run(rehearsal.trips[cursor % rehearsal.trips.length]);
         cursor += 1;
