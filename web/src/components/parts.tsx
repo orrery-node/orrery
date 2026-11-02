@@ -39,14 +39,17 @@ export function NavGround() {
   return null;
 }
 
-/** The hero's input: pick a route, send, and the orrery replays the rehearsal's real request for that route. */
-export function HeroConsole() {
+/** The hero's request line: the router's real interface, one model name and a route word. Sending replays that route's request from the rehearsal on the orrery. */
+export function RequestLine() {
   const [route, setRoute] = useState<string>('price');
-  const [text, setText] = useState('');
-  const [last, setLast] = useState<{ trip: RTrip; paid: boolean } | null>(null);
+  const [last, setLast] = useState<{ trip: RTrip; paid: boolean; n: number } | null>(null);
+  const count = useRef(0);
   useEffect(() => {
-    const a = on('yard:served', ({ trip }) => setLast({ trip, paid: false }));
-    const b = on('yard:paid', ({ trip }) => setLast((l) => (l && l.trip === trip ? { trip, paid: true } : l)));
+    const a = on('yard:served', ({ trip }) => {
+      count.current += 1;
+      setLast({ trip, paid: false, n: count.current });
+    });
+    const b = on('yard:paid', ({ trip }) => setLast((l) => (l && l.trip === trip ? { ...l, paid: true } : l)));
     return () => {
       a();
       b();
@@ -54,45 +57,44 @@ export function HeroConsole() {
   }, []);
   const trip = rehearsal.trips.find((t) => t.route === route && !t.fellThrough)!;
   return (
-    <div className="console">
-      <p className="console__status num" aria-live="polite">
-        {last ? (
-          <>
-            <span className="console__dot" data-paid={last.paid || undefined} />
-            <span>{ROUTE_WORD[last.trip.route]}</span>
-            <span className="console__to">→ {last.trip.provider}</span>
-            <span>{last.trip.ttftMs} ms</span>
-            <span>${last.trip.cost}</span>
-            <span className={last.paid ? 'green' : ''}>{last.trip.fellThrough ? 'fell through · ' : ''}{last.trip.sealed ? 'sealed · ' : ''}{last.paid ? 'paid' : 'streaming'}</span>
-          </>
-        ) : (
-          <span>Replaying the local rehearsal</span>
-        )}
-      </p>
+    <div className="req">
       <form
-        className="console__box"
+        className="req__bar"
         onSubmit={(e) => {
           e.preventDefault();
           emit('yard:fire', { route });
         }}
       >
-        <label className="sr" htmlFor="ask">Your question</label>
-        <input id="ask" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask any model. Pay whoever answers." autoComplete="off" />
-        <div className="console__row">
-          <div className="seg" role="radiogroup" aria-label="Route">
-            {HERO_ROUTES.map((r) => (
-              <button type="button" key={r} role="radio" aria-checked={route === r} className={route === r ? 'is-on' : ''} onClick={() => setRoute(r)}>
-                {ROUTE_WORD[r]}
-              </button>
-            ))}
-          </div>
-          <span className="console__model num">{trip.model}</span>
-          <button type="submit" className="console__send" aria-label="Send through the router">
-            <Arrow up />
-          </button>
-        </div>
+        <span className="req__line num">
+          <span className="req__url">
+            <span className="req__verb">POST</span> 127.0.0.1:7171/v1
+          </span>
+          <span className="req__k">model</span> &quot;{trip.model}
+          <span className="req__suffix" key={route}>{route === 'auto' ? '' : ROUTE_WORD[route]}</span>&quot;
+        </span>
+        <span className="req__routes" role="radiogroup" aria-label="Route word">
+          {HERO_ROUTES.map((r) => (
+            <button type="button" key={r} role="radio" aria-checked={route === r} className={route === r ? 'is-on' : ''} onClick={() => setRoute(r)}>
+              {ROUTE_WORD[r]}
+            </button>
+          ))}
+        </span>
+        <button type="submit" className="pill req__send">
+          Send <Arrow />
+        </button>
       </form>
-      <p className="console__note">A replay of the rehearsal&apos;s real routing. What you type stays on this page.</p>
+      <p className="req__log" aria-live="polite">
+        {last ? (
+          <span className="num">
+            <span className="req__n">#{String(((last.n - 1) % 99) + 1).padStart(2, '0')}</span> {ROUTE_WORD[last.trip.route]} → {last.trip.provider} · {last.trip.ttftMs} ms · ${last.trip.cost}
+            {last.trip.fellThrough ? ' · fell through' : ''}
+            {last.trip.sealed ? ' · sealed' : ''} · <span className={last.paid ? 'green' : ''}>{last.paid ? 'paid' : 'streaming'}</span>
+          </span>
+        ) : (
+          <span className="num">waiting for the first request</span>
+        )}
+        <span className="req__note">Replay of the local rehearsal. Nothing leaves this page.</span>
+      </p>
     </div>
   );
 }
@@ -174,7 +176,7 @@ export function RouteCard() {
               <small>{r.region}</small>
             </span>
             <span className="cand__metric num">{r.metric || r.note}</span>
-            <span className="cand__state">{r.state === 'picked' ? 'picked' : r.state === 'next' ? 'next in line' : r.note || 'skipped'}</span>
+            <span className="cand__state">{r.state === 'picked' ? 'Picked' : r.state === 'next' ? 'next in line' : 'skipped'}</span>
           </li>
         ))}
       </ol>
@@ -243,6 +245,7 @@ export function ChannelCard() {
         <span className="label">Channel · {p.name}</span>
         <span className="label num">{short(p.channel!, 4, 4)}</span>
       </div>
+      <div className="chan__l">
       <div className="chan__total">
         <span className="chan__k">Signed running total</span>
         <span className="chan__v num">
@@ -261,6 +264,9 @@ export function ChannelCard() {
           </li>
         ))}
       </ol>
+      </div>
+      <div className="chan__r">
+      <span className="label chan__bytes">The last voucher, all 88 bytes</span>
       <div className="vgrid" aria-label="The final voucher, 88 bytes">
         {bytes.map(([k, b], i) => (
           <span key={i} className={`vb vb--${k}`}>
@@ -278,6 +284,7 @@ export function ChannelCard() {
         <span>redeemed in one transaction {short(p.redeemTx ?? '', 4, 6)}</span>
         <span className="green">${usd(final)} → {p.name}</span>
       </p>
+      </div>
     </div>
   );
 }
@@ -321,8 +328,8 @@ export function CutCalc() {
       <div className="card__head">
         <span className="label">What a 4% cut would cost you</span>
       </div>
-      <label className="calc__in">
-        <span>Monthly spend on inference</span>
+      <label className="calc__row">
+        <span>Your monthly spend on inference</span>
         <span className="calc__field num">
           $
           <input
@@ -333,22 +340,33 @@ export function CutCalc() {
           />
         </span>
       </label>
-      <div className="calc__out">
-        <div>
-          <span className="label">4% cut, per year</span>
-          <span className="num calc__big">${cut.toLocaleString('en-US')}</span>
-        </div>
-        <div>
-          <span className="label">Here</span>
-          <span className="num calc__big green">$0</span>
-        </div>
+      <div className="calc__row">
+        <span>A 4% cut in the middle, per year</span>
+        <span className="num calc__v">${cut.toLocaleString('en-US')}</span>
+      </div>
+      <div className="calc__row calc__row--here">
+        <span>Here</span>
+        <span className="num calc__v green">$0</span>
       </div>
     </div>
   );
 }
 
-/** Seals whatever the visitor types, in this tab, with the cipher the router uses. */
-export function SealCard() {
+function Enclave() {
+  return (
+    <svg viewBox="0 0 160 160" className="enc" aria-hidden="true">
+      {Array.from({ length: 7 }, (_, i) => (
+        <rect key={i} x={20 + i * 6} y={20 + i * 6} width={120 - i * 12} height={120 - i * 12} rx={14 - i * 1.6} className={i === 6 ? 'enc__in' : 'enc__wall'} />
+      ))}
+      {Array.from({ length: 49 }, (_, i) => (
+        <circle key={i} cx={62 + (i % 7) * 6} cy={62 + Math.floor(i / 7) * 6} r="1.05" className="enc__dot" />
+      ))}
+    </svg>
+  );
+}
+
+/** Seals whatever the visitor types, in this tab, with the cipher the router uses, and follows it into the enclave. */
+export function SealFlow() {
   const vault = rehearsal.providers.find((p) => p.enclave);
   const [text, setText] = useState('Summarize this contract before I sign it.');
   const [box, setBox] = useState('');
@@ -370,42 +388,23 @@ export function SealCard() {
     };
   }, [text]);
   return (
-    <div className="card seal">
-      <div className="seal__stage">
-        <span className="label">On your computer</span>
-        <label className="sr" htmlFor="sealin">Text to seal</label>
-        <textarea id="sealin" value={text} onChange={(e) => setText(e.target.value.slice(0, 400))} rows={2} spellCheck={false} />
+    <div className="flow">
+      <label className="flow__step">
+        <span className="flow__k">On your computer</span>
+        <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 300))} rows={3} spellCheck={false} aria-label="Text to seal" />
+        <span className="flow__note">Type anything. It is sealed in this tab.</span>
+      </label>
+      <span className="flow__wire" aria-hidden="true" />
+      <div className="flow__step">
+        <span className="flow__k">On the wire and on the operator&apos;s disk</span>
+        <p className="flow__cipher num" aria-live="polite">{box}</p>
+        <span className="flow__note">AES-256-GCM, key agreed with the enclave over X25519</span>
       </div>
-      <svg className="seal__wire" viewBox="0 0 10 40" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M5 0V40" />
-      </svg>
-      <div className="seal__stage">
-        <span className="label">On the wire and on the operator&apos;s machine</span>
-        <p className="seal__box num" aria-live="polite">{box}</p>
-      </div>
-      <svg className="seal__wire" viewBox="0 0 10 40" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M5 0V40" />
-      </svg>
-      <div className="seal__chip">
-        <svg viewBox="0 0 120 120" aria-hidden="true" className="chipart">
-          <rect x="22" y="22" width="76" height="76" rx="9" />
-          <rect x="36" y="36" width="48" height="48" rx="4" className="chipart__die" />
-          {Array.from({ length: 6 }, (_, i) => (
-            <g key={i}>
-              <path d={`M${34 + i * 10.4} 22V10`} />
-              <path d={`M${34 + i * 10.4} 98v12`} />
-              <path d={`M22 ${34 + i * 10.4}H10`} />
-              <path d={`M98 ${34 + i * 10.4}h12`} />
-            </g>
-          ))}
-          {Array.from({ length: 36 }, (_, i) => (
-            <circle key={i} cx={42 + (i % 6) * 7.2} cy={42 + Math.floor(i / 6) * 7.2} r="1.1" className="chipart__dot" />
-          ))}
-        </svg>
-        <div>
-          <span className="label">Inside {vault?.name ?? 'the enclave'}</span>
-          <p>Opened only by code the router checked against the provider&apos;s claim on chain.</p>
-        </div>
+      <span className="flow__wire" aria-hidden="true" />
+      <div className="flow__step flow__step--enc">
+        <Enclave />
+        <span className="flow__k">Inside {vault?.name ?? 'the enclave'}</span>
+        <span className="flow__note">Opened only by the code the router checked against the provider&apos;s claim on chain</span>
       </div>
     </div>
   );
@@ -443,20 +442,20 @@ export function ProviderCard() {
           <i /> serving
         </span>
       </div>
-      <div className="prov__stats">
+      <dl className="prov__sum">
         <div>
-          <span className="label">Redeemed</span>
-          <b className="num green">${usd(BigInt(p.cumulative ?? '0'))}</b>
+          <dt>Redeemed to its wallet</dt>
+          <dd className="num green">${usd(BigInt(p.cumulative ?? '0'))}</dd>
         </div>
         <div>
-          <span className="label">Answers</span>
-          <b className="num">{answers}</b>
+          <dt>Answers served</dt>
+          <dd className="num">{answers}</dd>
         </div>
         <div>
-          <span className="label">To the program</span>
-          <b className="num">$0</b>
+          <dt>Taken by the program</dt>
+          <dd className="num">$0</dd>
         </div>
-      </div>
+      </dl>
       <table className="prov__t">
         <thead>
           <tr>

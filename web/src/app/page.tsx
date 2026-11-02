@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import Orrery from '@/components/Orrery';
-import Thread from '@/components/Thread';
-import { Arrow, ChannelCard, CopyButton, CutCalc, HeroConsole, Ledger, NavGround, ProviderCard, RouteCard, SealCard } from '@/components/parts';
+import { Arrow, ChannelCard, CopyButton, CutCalc, Ledger, NavGround, ProviderCard, RequestLine, RouteCard, SealFlow } from '@/components/parts';
 import { Mark } from '@/components/Mark';
 import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, X_URL } from '@/brand';
 import { programStatus } from '@/lib/chain';
@@ -57,7 +56,7 @@ function TokenLoop() {
           <g key={s.k}>
             <circle cx={x.toFixed(2)} cy={y.toFixed(2)} r="7" className="loop__node" />
             <circle cx={x.toFixed(2)} cy={y.toFixed(2)} r="2.4" className="loop__nodec" />
-            <text x={(x + dx).toFixed(2)} y={(top ? y - 34 : y + 30).toFixed(2)} textAnchor={anchor} className="loop__k">{s.k.toUpperCase()}</text>
+            <text x={(x + dx).toFixed(2)} y={(top ? y - 34 : y + 30).toFixed(2)} textAnchor={anchor} className="loop__k">{s.k}</text>
             <text x={(x + dx).toFixed(2)} y={(top ? y - 16 : y + 48).toFixed(2)} textAnchor={anchor} className="loop__v">{s.v}</text>
             {s.g && <text x={(x + dx).toFixed(2)} y={(y + 66).toFixed(2)} textAnchor={anchor} className="loop__paidt">{s.g}</text>}
           </g>
@@ -70,13 +69,13 @@ function TokenLoop() {
 export default async function Home() {
   const chain = await programStatus();
   const passed = rehearsal.checks.filter((c) => c.ok).length;
-  const stats: { k: string; v: string; u?: string; green?: boolean }[] = [
-    { k: 'Requests', v: String(rehearsal.requests) },
-    { k: 'Providers', v: String(rehearsal.providers.length) },
-    { k: 'Settled on chain', v: `$${usd(BigInt(rehearsal.settledUnits))}`, green: true },
-    { k: 'To the program', v: '0', u: 'USDC' },
-    { k: 'Checks passed', v: `${passed}/${rehearsal.checks.length}` },
-    { k: 'Mainnet', v: chain.checked ? (chain.deployed ? 'live' : 'not live') : 'unchecked' },
+  const stats: { k: string; v: string; green?: boolean }[] = [
+    { k: 'requests', v: String(rehearsal.requests) },
+    { k: 'providers', v: String(rehearsal.providers.length) },
+    { k: 'settled on chain', v: `$${usd(BigInt(rehearsal.settledUnits))}`, green: true },
+    { k: 'to the program', v: '$0' },
+    { k: 'checks passed', v: `${passed}/${rehearsal.checks.length}` },
+    { k: 'on mainnet', v: chain.checked ? (chain.deployed ? 'live' : 'not yet') : 'unchecked' },
   ];
   return (
     <>
@@ -110,7 +109,7 @@ export default async function Home() {
             <h1>
               <span className="dim">AI inference, peer to peer.</span> Zero cut in between.
             </h1>
-            <HeroConsole />
+            <RequestLine />
           </div>
         </section>
 
@@ -134,20 +133,16 @@ export default async function Home() {
         </section>
 
         <div className="body">
-          <Thread />
-
-          <section className="split" id="how" data-dock>
+          <section className="split" id="how">
             <div className="split__text">
-              <h2>
-                <span className="dim">Routes.</span> One word decides the trip
-              </h2>
+              <h2>One word decides the trip.</h2>
               <p className="sub">Point anything that takes a base URL at the router: Cursor, Aider, Continue, Open WebUI, the OpenAI SDK. Then add one word after the model name.</p>
-              <ol className="steps">
-                <li><span className="num">01</span><b className="num">:cheap</b><span>lowest price for the model</span></li>
-                <li><span className="num">02</span><b className="num">:fast</b><span>quickest first token this router has seen</span></li>
-                <li><span className="num">03</span><b className="num">:trusted</b><span>most USDC settled on chain, bonded ${TICKER}</span></li>
-                <li><span className="num">04</span><b className="num">:private</b><span>verified enclaves only, request sealed</span></li>
-              </ol>
+              <dl className="words">
+                <div><dt className="num">:cheap</dt><dd>lowest price for the model</dd></div>
+                <div><dt className="num">:fast</dt><dd>quickest first token this router has seen</dd></div>
+                <div><dt className="num">:trusted</dt><dd>most USDC settled on chain, bonded ${TICKER}</dd></div>
+                <div><dt className="num">:private</dt><dd>verified enclaves only, the request sealed</dd></div>
+              </dl>
               <div className="cta">
                 <Link href="/docs#install" className="pill">Install the router</Link>
                 <Link href="/docs#routes" className="ghost">How routes rank <Arrow /></Link>
@@ -159,23 +154,18 @@ export default async function Home() {
             </div>
           </section>
 
-          <section className="split split--flip" id="pay" data-dock>
-            <div className="split__text">
-              <h2>
-                <span className="dim">Payments.</span> Sign once, pay per answer
-              </h2>
+          <section className="stage" id="pay">
+            <div className="stage__head">
+              <h2>Sign once. Pay per answer.</h2>
               <p className="sub">Your wallet opens a channel with a provider. After every answer the router on your computer signs the new running total, and the provider cashes the latest one on Solana whenever it likes.</p>
-              <ol className="steps">
-                <li><span className="num">01</span><b>Open</b><span>one wallet signature puts two dollars in a channel</span></li>
-                <li><span className="num">02</span><b>Answer</b><span>a signed total after each, never more than one answer owed</span></li>
-                <li><span className="num">03</span><b>Redeem</b><span>many channels in one transaction, a fraction of a cent</span></li>
-                <li><span className="num">04</span><b>Close</b><span>what is left comes straight back to you</span></li>
-              </ol>
-              <p className="aside">A lost session key can spend at most what is left in your open channels, under a daily cap you set.</p>
             </div>
-            <div className="split__card">
-              <ChannelCard />
-            </div>
+            <ChannelCard />
+            <ol className="steps4">
+              <li><span className="num">01</span><b>Open</b><p>One wallet signature puts two dollars in a channel.</p></li>
+              <li><span className="num">02</span><b>Answer</b><p>A signed total after each. A provider is never owed more than one answer.</p></li>
+              <li><span className="num">03</span><b>Redeem</b><p>Many channels in one transaction, for a fraction of a cent.</p></li>
+              <li><span className="num">04</span><b>Close</b><p>What is left comes straight back. A lost key spends at most that, under your daily cap.</p></li>
+            </ol>
           </section>
         </div>
 
@@ -190,12 +180,9 @@ export default async function Home() {
         </section>
 
         <div className="body">
-          <Thread />
-          <section className="split" id="provide" data-dock>
+          <section className="split" id="provide">
             <div className="split__text">
-              <h2>
-                <span className="dim">Providers.</span> Light a node, set your price
-              </h2>
+              <h2>Light a node. Set your price.</h2>
               <p className="sub">Put a provider node in front of any OpenAI-compatible server. It checks each voucher before it answers and redeems the totals to your wallet.</p>
               <div className="term">
                 <div className="term__bar">
@@ -208,18 +195,14 @@ export default async function Home() {
                   <span className="term__p">$</span> yard provider start --config provider.json
                 </pre>
               </div>
-              <ol className="steps steps--tight">
-                <li><span className="num">01</span><b>Register</b><span>endpoint and price list hash, on chain</span></li>
-                <li><span className="num">02</span><b>Serve</b><span>vouchers checked before every answer</span></li>
-                <li><span className="num">03</span><b>Keep it</b><span>redemptions go to your wallet, the program takes nothing</span></li>
-              </ol>
+              <p className="aside">Registering puts your endpoint and the hash of your price list on chain. Your wallet stays cold; the node runs on its own key and can never touch what you have earned.</p>
             </div>
             <div className="split__card">
               <ProviderCard />
             </div>
           </section>
 
-          <section className="zero" id="zero" data-dock="edge">
+          <section className="zero" id="zero">
             <h2 className="zero__head">
               <span className="dim">The program in the middle takes</span>
               <span className="zero__num green num">0%</span>
@@ -231,64 +214,45 @@ export default async function Home() {
             </div>
           </section>
 
-          <section className="split split--flip" id="private" data-dock>
-            <div className="split__text">
-              <h2>
-                <span className="dim">Private.</span> Sealed before it leaves
-              </h2>
-              <p className="sub">Add <code>:private</code> and the router only picks providers running inside a hardware enclave, then encrypts your prompt to a key that never leaves it. The operator hosts the machine and still can&apos;t read the request.</p>
-              <ol className="steps">
-                <li><span className="num">01</span><b>Claimed</b><span>the enclave&apos;s measurement and key, posted on chain</span></li>
-                <li><span className="num">02</span><b>Checked</b><span>the router matches the live report to that claim</span></li>
-                <li><span className="num">03</span><b>Sealed</b><span>X25519 and AES-256-GCM, opened only inside</span></li>
-              </ol>
-              <p className="aside">The card is live: what you type is sealed in this tab with the router&apos;s cipher.</p>
+          <section className="band" id="private">
+            <div className="band__head">
+              <h2>Private, when you ask for it.</h2>
+              <p className="sub">Add <code>:private</code> and the router only picks providers running inside a hardware enclave. It checks the enclave&apos;s live report against the claim the provider posted on chain, then encrypts your prompt to a key that never leaves it. The operator hosts the machine and still can&apos;t read the request.</p>
             </div>
-            <div className="split__card">
-              <SealCard />
+            <SealFlow />
+          </section>
+
+          <section className="token" id="token">
+            <h2>${TICKER} backs the providers you trust.</h2>
+            <p className="sub">Launching on Meteora. In the program it has one job: providers bond it behind their listing, and routers count the bond toward reputation.</p>
+            <TokenLoop />
+            <dl className="token__dl">
+              <div><dt>Bond</dt><dd>Posted on chain behind a provider&apos;s listing</dd></div>
+              <div><dt>Reputation</dt><dd>Bonded {TICKER} is 10% of the <code>:trusted</code> score</dd></div>
+              <div><dt>Never slashed</dt><dd>Unbonding returns it after seven days</dd></div>
+              <div><dt>Contract</dt><dd className="num">{CA ? short(CA, 6, 6) : 'not launched yet'}</dd></div>
+            </dl>
+            <div className="cta cta--center">
+              {BUY_URL ? (
+                <a href={BUY_URL} className="pill" rel="noopener noreferrer" target="_blank">Buy ${TICKER}</a>
+              ) : (
+                <span className="pill is-off">${TICKER} at launch</span>
+              )}
+              <Link href="/docs#token" className="ghost">Token in the docs <Arrow /></Link>
             </div>
           </section>
 
-          <section className="split" id="token" data-dock>
-            <div className="split__art">
-              <TokenLoop />
-            </div>
-            <div className="split__text">
-              <h2>
-                <span className="dim">${TICKER}.</span> Backs the providers you trust
-              </h2>
-              <p className="sub">Launching on Meteora. In the program it has one job: providers bond it behind their listing, and routers count the bond toward reputation.</p>
-              <div className="tiles">
-                <div className="tile"><span className="num">01</span><b>Bond</b><p>Posted on chain behind a provider&apos;s listing</p></div>
-                <div className="tile"><span className="num">02</span><b>Reputation</b><p>Bonded {TICKER} is 10% of the <code>:trusted</code> score</p></div>
-                <div className="tile"><span className="num">03</span><b>Never slashed</b><p>Unbonding returns it after seven days</p></div>
-                <div className="tile"><span className="num">04</span><b>Contract</b><p className="num">{CA ? short(CA, 6, 6) : 'not launched yet'}</p></div>
-              </div>
-              <div className="cta">
-                {BUY_URL ? (
-                  <a href={BUY_URL} className="pill" rel="noopener noreferrer" target="_blank">Buy ${TICKER}</a>
-                ) : (
-                  <span className="pill is-off">${TICKER} at launch</span>
-                )}
-                <Link href="/docs#token" className="ghost">Token in the docs <Arrow /></Link>
-              </div>
-            </div>
-          </section>
-
-          <section className="network" aria-label="Rehearsal numbers">
-            <div className="network__row">
+          <section className="ledgerline" aria-label="Rehearsal numbers">
+            <dl>
               {stats.map((s) => (
-                <div key={s.k} className="stat">
-                  <span className="label">{s.k}</span>
-                  <b className={`num${s.green ? ' green' : ''}`}>
-                    {s.v}
-                    {s.u && <small>{s.u}</small>}
-                  </b>
+                <div key={s.k}>
+                  <dd className={`num${s.green ? ' green' : ''}`}>{s.v}</dd>
+                  <dt>{s.k}</dt>
                 </div>
               ))}
-            </div>
-            <p className="network__note">
-              The program, a router and three provider nodes on a Solana test validator, {ranAtLabel}. Mainnet status is read from the chain{chain.checked ? '' : ' once the site has an RPC'}.
+            </dl>
+            <p className="ledgerline__note">
+              The program, a router and three provider nodes on a Solana test validator, {ranAtLabel}. Mainnet is read from the chain{chain.checked ? '' : ' once the site has an RPC'}.
             </p>
             <details className="proof">
               <summary>All {rehearsal.checks.length} rehearsal checks</summary>
@@ -307,12 +271,9 @@ export default async function Home() {
         </div>
 
         <section className="close">
-          <img className="close__media" src="/media/city.jpg" alt="" aria-hidden="true" />
-          <div className="close__shade" />
+          <Orrery variant="close" />
           <div className="close__text">
-            <h2>
-              <span className="dim">Point your AI</span> at the network.
-            </h2>
+            <h2>Point your AI at the network.</h2>
             <div className="cta cta--center">
               <Link href="/docs#install" className="pill">Install the router</Link>
               <Link href="/docs" className="ghost">Read the docs <Arrow /></Link>
