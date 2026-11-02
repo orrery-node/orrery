@@ -274,7 +274,7 @@
       "detail": "refund $0.999864"
     },
     {
-      "name": "no fee anywhere: user + providers + open deposits = 100 USDC",
+      "name": "no fee in the program: user + providers + open deposits = 100 USDC",
       "ok": true,
       "detail": "user $97.9998 · providers $0.0001 · deposits $1.9999"
     },

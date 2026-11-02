@@ -185,7 +185,7 @@ for (const c of channels.list()) {
   decodeChannel(info.data);
 }
 const userNow = await balance(user.publicKey);
-check('no fee anywhere: user + providers + open deposits = 100 USDC', userNow + paidTotal + inVaults === 100n * USD, `user $${usd(userNow, 4)} · providers $${usd(paidTotal, 4)} · deposits $${usd(inVaults, 4)}`);
+check('no fee in the program: user + providers + open deposits = 100 USDC', userNow + paidTotal + inVaults === 100n * USD, `user $${usd(userNow, 4)} · providers $${usd(paidTotal, 4)} · deposits $${usd(inVaults, 4)}`);
 const cfg = decodeConfig((await conn.getAccountInfo(pda.config()))!.data);
 check('program totals agree', cfg.settled === paidTotal && cfg.providers === 3n, `settled $${usd(cfg.settled)} · ${cfg.channels} channels`);
 

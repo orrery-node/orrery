@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Mark } from '@/components/Mark';
-import { CopyButton } from '@/components/live';
+import { CopyButton } from '@/components/parts';
 import { NAME, PROGRAM_ID, REPO_URL, ROUTER_URL, TICKER } from '@/brand';
 import './docs.css';
 
