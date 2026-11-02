@@ -5,7 +5,7 @@ A peer-to-peer AI inference network on Solana. A router on your computer serves 
 ```
 program/   Anchor program: provider registry, payment channels, ed25519 vouchers, enclave claims, bonds
 node/      the router (yard router) and the provider node (yard provider), TypeScript, Node 22
-web/       the site (Next.js): landing with a live constellation, and docs
+web/       the site (Next.js): landing with a live 3D orrery hero and product cards, and docs
 docs/      concept, decisions, mechanism, site direction, launch checklist
 ```
 
