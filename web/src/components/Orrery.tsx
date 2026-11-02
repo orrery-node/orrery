@@ -11,6 +11,7 @@ import { emit, on, reducedMotion } from '@/lib/bus';
 import { perM, rehearsal, ROUTE_WORD, type RTrip } from '@/lib/rehearsal';
 
 const WHITE = new THREE.Color('#f4f4f1');
+const PURPLE = new THREE.Color('#a66bff');
 const GREEN = new THREE.Color('#14f195');
 const DIM = new THREE.Color('#8f8f8a');
 
@@ -367,7 +368,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     const run = (trip: RTrip) => {
       send('yard:sent', { trip, at: performance.now() });
       core.flare = 1;
-      core.flareColor.copy(WHITE);
+      core.flareColor.copy(PURPLE);
       const pv = provs.get(trip.provider);
       const word = `${trip.model}${trip.route === 'auto' ? '' : ROUTE_WORD[trip.route]}`;
       const go = () => {
@@ -375,7 +376,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
           if (pv) {
             outRest = { prov: pv, until: performance.now() + 1150, alt: lastOut?.alt ?? false };
             pv.node.flare = 1;
-            pv.node.flareColor.copy(WHITE);
+            pv.node.flareColor.copy(PURPLE);
           }
           send('yard:served', { trip });
           fly(trip.provider, true, false, 2.2, `$${trip.cost} paid`, () => {
@@ -720,7 +721,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
         if (q.wait > 0) return;
         const ease = easeInOut(q.t);
         const fadeOut = q.fade ? Math.max(0, 1 - Math.max(0, q.t - 0.55) * 2.2) : 1;
-        const col = q.back ? GREEN : WHITE;
+        const col = q.back ? GREEN : PURPLE;
         for (let k = 0; k < TRAIL; k++) {
           const pt = along(q, Math.max(0, ease - k * STEP), tmp);
           const idx = p * TRAIL + k;

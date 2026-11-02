@@ -17,6 +17,7 @@ export default function Wire() {
   const line = useRef<SVGPathElement>(null);
   const ticks = useRef<SVGPathElement>(null);
   const tickClip = useRef<SVGRectElement>(null);
+  const grad = useRef<SVGLinearGradientElement>(null);
   const head = useRef<HTMLDivElement>(null);
   const stopsLayer = useRef<HTMLDivElement>(null);
 
@@ -74,9 +75,10 @@ export default function Wire() {
       let d = `M${sx} ${sy} H${railX + r1}`;
       if (r1 >= 0.5) d += ` A${r1} ${r1} 0 0 0 ${railX} ${sy + r1}`;
       d += ` V${ey - r2} A${r2} ${r2} 0 0 0 ${railX + r2} ${ey} H${ex}`;
-      const H = main.scrollHeight;
+      const H = main.clientHeight;
       svg.current!.setAttribute('viewBox', `0 0 ${W} ${H}`);
-      svg.current!.style.height = `${H}px`;
+      grad.current!.setAttribute('y1', String(sy));
+      grad.current!.setAttribute('y2', String(ey));
       ghost.current!.setAttribute('d', d);
       line.current!.setAttribute('d', d);
       line.current!.style.strokeDasharray = `${total} ${total}`;
@@ -178,6 +180,11 @@ export default function Wire() {
     <div className="wire" ref={root} aria-hidden="true">
       <svg ref={svg} className="wire__svg" preserveAspectRatio="none">
         <defs>
+          <linearGradient id="wire-sol" ref={grad} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#9945ff" />
+            <stop offset="0.5" stopColor="#5f8ff2" />
+            <stop offset="1" stopColor="#14f195" />
+          </linearGradient>
           <clipPath id="wire-drawn">
             <rect ref={tickClip} x="0" y="0" width="0" height="0" />
           </clipPath>

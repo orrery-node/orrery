@@ -93,8 +93,8 @@ export default async function Home() {
       <ScrollFX />
       <header className="nav">
         <Link href="/" className="nav__brand" aria-label={`${NAME} home`}>
-          <Mark />
-          <span>{NAME}</span>
+          <Mark id="nav" />
+          <span className="grad">{NAME}</span>
         </Link>
         <nav className="nav__links" aria-label="Sections">
           <a href="#how">How it works</a>
@@ -119,7 +119,7 @@ export default async function Home() {
           <Orrery />
           <div className="hero__foot" data-orrery-clear>
             <h1>
-              <span className="dim">AI inference, peer to peer.</span> Zero cut in between.
+              <span className="dim">AI inference, peer to peer.</span> <span className="grad">Zero cut in between.</span>
             </h1>
             <RequestLine />
           </div>
@@ -217,7 +217,7 @@ export default async function Home() {
           <section className="zero" id="zero" data-wire-k="Taken in between" data-wire-v="$0">
             <h2 className="zero__head">
               <span>The program in the middle takes</span>
-              <span className="zero__num green num">0%</span>
+              <span className="zero__num grad num">0%</span>
             </h2>
             <p className="zero__sub" data-words>It has no fee field and no third account to send one to. Every unit a provider redeems lands in the provider&apos;s account. Every unit it doesn&apos;t comes back to you.</p>
             <div className="zero__cards">
@@ -287,7 +287,9 @@ export default async function Home() {
         <section className="close">
           <Orrery variant="close" />
           <div className="close__text">
-            <h2>Point your AI at the network.</h2>
+            <h2>
+              Point your AI at <span className="grad">the network.</span>
+            </h2>
             <div className="cta cta--center">
               <Link href="/docs#install" className="pill">Install the router</Link>
               <Link href="/docs" className="ghost">Read the docs <Arrow /></Link>
@@ -298,7 +300,7 @@ export default async function Home() {
 
       <footer className="foot">
         <span className="foot__brand">
-          <Mark /> {NAME}
+          <Mark id="foot" /> <span className="grad">{NAME}</span>
           {WORKING_TITLE && <em>working title</em>}
         </span>
         <nav aria-label="Elsewhere">

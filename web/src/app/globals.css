@@ -10,6 +10,7 @@
   --fg-3: #7d7d78;
   --dim: #82827d;
   --green: #14f195;
+  --purple: #9945ff;
   --green-ink: #03140b;
   --violet: #b9b4ff;
   --sans: var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
@@ -99,6 +100,16 @@ p {
 
 .green {
   color: var(--green);
+}
+
+.grad {
+  background-image: linear-gradient(90deg, var(--purple) 0%, #5f8ff2 50%, var(--green) 100%);
+  background-image: linear-gradient(90deg in oklch, var(--purple), var(--green));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .dim {

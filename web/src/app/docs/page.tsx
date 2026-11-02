@@ -66,8 +66,8 @@ export default function Docs() {
     <div className="docs">
       <header className="d-nav">
         <Link href="/" className="nav__brand">
-          <Mark />
-          <span>{NAME}</span>
+          <Mark id="docs" />
+          <span className="grad">{NAME}</span>
         </Link>
         <span className="d-nav__here">Docs</span>
         <Link href="/" className="d-nav__back">Back to the network</Link>
