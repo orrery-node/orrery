@@ -13,7 +13,7 @@ docs/      concept, decisions, mechanism, site direction, launch checklist
 
 ```bash
 # program
-cd program && anchor build --arch v2 && cargo test -p switchyard        # 2 unit + 13 LiteSVM
+cd program && anchor build --arch v2 && cargo test -p orrery            # 2 unit + 13 LiteSVM
 
 # router + provider
 cd node && pnpm install && pnpm test                                     # 12 tests

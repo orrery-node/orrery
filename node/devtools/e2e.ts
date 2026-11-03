@@ -1,7 +1,7 @@
 // End to end on a local validator: the real program, three provider nodes in front of mock models, the router, a
 // dozen requests on every route, a provider going dark mid-run, on-chain redemption, a provider releasing its
 // channel, and a final check that every unit of USDC is where it should be.
-//   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/switchyard.so: anchor build --arch v2)
+//   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/orrery.so: anchor build --arch v2)
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +27,7 @@ const RPC_PORT = 18899;
 const RPC = `http://127.0.0.1:${RPC_PORT}`;
 const ROUTER = 'http://127.0.0.1:17171';
 const USD = 1_000_000n;
-const so = join(ROOT, 'program/target/deploy/switchyard.so');
+const so = join(ROOT, 'program/target/deploy/orrery.so');
 if (!existsSync(so)) throw new Error('build the program first: cd program && anchor build --arch v2');
 
 const procs: ChildProcess[] = [];
@@ -117,10 +117,10 @@ const ask = async (model: string, opts: { stream?: boolean; header?: Record<stri
   if (opts.stream) {
     const text = await r.text();
     const content = text.split('\n').filter((l) => l.startsWith('data: {')).map((l) => JSON.parse(l.slice(6)).choices?.[0]?.delta?.content ?? '').join('');
-    return { status: r.status, provider: r.headers.get('x-yard-provider'), content, raw: text };
+    return { status: r.status, provider: r.headers.get('x-orrery-provider'), content, raw: text };
   }
   const j = await r.json();
-  return { status: r.status, provider: r.headers.get('x-yard-provider'), content: j.choices?.[0]?.message?.content ?? '', cost: r.headers.get('x-yard-cost'), body: j };
+  return { status: r.status, provider: r.headers.get('x-orrery-provider'), content: j.choices?.[0]?.message?.content ?? '', cost: r.headers.get('x-orrery-cost'), body: j };
 };
 const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name ?? addr;
 
@@ -134,7 +134,7 @@ r = await ask('deepseek-v3', { stream: true });
 check('streaming works and only Ironbridge has deepseek', nameOf(r.provider) === 'Ironbridge Compute' && r.content.includes('Solana'), `${r.content.slice(0, 40)}…`);
 r = await ask('qwen3-32b:private');
 check('privacy route seals the request to the only enclave', nameOf(r.provider) === 'Vault Nine' && r.content.length > 20);
-r = await ask('llama-3.3-70b', { header: { 'x-yard-route': 'privacy' } });
+r = await ask('llama-3.3-70b', { header: { 'x-orrery-route': 'privacy' } });
 check('route header works too', nameOf(r.provider) === 'Vault Nine');
 for (let i = 0; i < 3; i++) await ask('llama-3.3-70b:fast');
 r = await ask('llama-3.3-70b:fast');

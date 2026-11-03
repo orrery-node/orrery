@@ -366,7 +366,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     };
     const send = hero ? emit : () => {};
     const run = (trip: RTrip) => {
-      send('yard:sent', { trip, at: performance.now() });
+      send('orrery:sent', { trip, at: performance.now() });
       core.flare = 1;
       core.flareColor.copy(PURPLE);
       const pv = provs.get(trip.provider);
@@ -378,7 +378,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
             pv.node.flare = 1;
             pv.node.flareColor.copy(PURPLE);
           }
-          send('yard:served', { trip });
+          send('orrery:served', { trip });
           fly(trip.provider, true, false, 2.2, `$${trip.cost} paid`, () => {
             const now = performance.now();
             paidRest = { start: now, until: now + 2400, alt: lastBack?.alt ?? false };
@@ -389,7 +389,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
               pv.node.flareColor.copy(GREEN);
               pv.tint = 1;
             }
-            send('yard:paid', { trip });
+            send('orrery:paid', { trip });
           }, false, 0.95);
         });
       };
@@ -407,7 +407,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     let lastOut: Pulse | null = null, lastBack: Pulse | null = null, outHold = 0, backHold = 0;
     const shownAt = new Map<HTMLElement, number>();
     const offFire = hero
-      ? on('yard:fire', ({ route }) => {
+      ? on('orrery:fire', ({ route }) => {
           const trip = rehearsal.trips.find((t) => t.route === route && !t.fellThrough);
           if (!trip) return;
           holdUntil = performance.now() + 7000;
@@ -416,7 +416,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
       : () => {};
     const offArrive = hero
       ? () => {}
-      : on('yard:arrive', () => {
+      : on('orrery:arrive', () => {
           core.flare = 1;
           core.flareColor.copy(GREEN);
         });
@@ -780,7 +780,7 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
               </div>
             ))}
             {ROUTE_AT.map(([r]) => (
-              <button key={r} className="ochip ochip--route" data-anchor={`r:${r}`} onClick={() => emit('yard:fire', { route: r })}>
+              <button key={r} className="ochip ochip--route" data-anchor={`r:${r}`} onClick={() => emit('orrery:fire', { route: r })}>
                 {ROUTE_WORD[r]}
               </button>
             ))}

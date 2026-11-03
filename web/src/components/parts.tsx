@@ -45,11 +45,11 @@ export function RequestLine() {
   const [last, setLast] = useState<{ trip: RTrip; paid: boolean; n: number } | null>(null);
   const count = useRef(0);
   useEffect(() => {
-    const a = on('yard:served', ({ trip }) => {
+    const a = on('orrery:served', ({ trip }) => {
       count.current += 1;
       setLast({ trip, paid: false, n: count.current });
     });
-    const b = on('yard:paid', ({ trip }) => setLast((l) => (l && l.trip === trip ? { ...l, paid: true } : l)));
+    const b = on('orrery:paid', ({ trip }) => setLast((l) => (l && l.trip === trip ? { ...l, paid: true } : l)));
     return () => {
       a();
       b();
@@ -62,7 +62,7 @@ export function RequestLine() {
         className="req__bar"
         onSubmit={(e) => {
           e.preventDefault();
-          emit('yard:fire', { route });
+          emit('orrery:fire', { route });
         }}
       >
         <span className="req__line num">
@@ -234,7 +234,7 @@ export function ChannelCard() {
   const total = n ? rows[n - 1].total : 0n;
   const final = BigInt(p.cumulative ?? '0');
   const sig = p.voucher?.split('.')[2] ?? '';
-  const prefix = Array.from(new TextEncoder().encode('switchyard/vch/1'));
+  const prefix = Array.from(new TextEncoder().encode('orrery/voucher/1'));
   const channel = Array.from(b58decode(p.channel!).slice(-32));
   const totalBytes = Array.from({ length: 8 }, (_, i) => Number((final >> BigInt(8 * i)) & 0xffn));
   const usage = (p.usageHash ?? '').match(/../g)?.map((h) => parseInt(h, 16)) ?? [];

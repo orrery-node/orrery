@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-11-01T16:28:50.313Z",
+  "ranAt": "2026-11-03T04:41:19.868Z",
   "program": "7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS",
   "requests": 13,
   "settledUnits": "199",
@@ -10,7 +10,7 @@
       "provider": "Kestrel GPU Co-op",
       "tokens": "21+23",
       "cost": "0.000010",
-      "ttftMs": 231,
+      "ttftMs": 229,
       "sealed": false,
       "fellThrough": 0
     },
@@ -20,7 +20,7 @@
       "provider": "Ironbridge Compute",
       "tokens": "21+23",
       "cost": "0.000031",
-      "ttftMs": 47,
+      "ttftMs": 48,
       "sealed": false,
       "fellThrough": 0
     },
@@ -40,7 +40,7 @@
       "provider": "Vault Nine",
       "tokens": "21+23",
       "cost": "0.000020",
-      "ttftMs": 94,
+      "ttftMs": 93,
       "sealed": true,
       "fellThrough": 0
     },
@@ -60,6 +60,16 @@
       "provider": "Ironbridge Compute",
       "tokens": "21+23",
       "cost": "0.000015",
+      "ttftMs": 41,
+      "sealed": false,
+      "fellThrough": 0
+    },
+    {
+      "route": "speed",
+      "model": "llama-3.3-70b",
+      "provider": "Ironbridge Compute",
+      "tokens": "21+23",
+      "cost": "0.000015",
       "ttftMs": 42,
       "sealed": false,
       "fellThrough": 0
@@ -75,22 +85,12 @@
       "fellThrough": 0
     },
     {
-      "route": "speed",
-      "model": "llama-3.3-70b",
-      "provider": "Ironbridge Compute",
-      "tokens": "21+23",
-      "cost": "0.000015",
-      "ttftMs": 44,
-      "sealed": false,
-      "fellThrough": 0
-    },
-    {
       "route": "auto",
       "model": "llama-3.3-70b",
       "provider": "Ironbridge Compute",
       "tokens": "21+23",
       "cost": "0.000015",
-      "ttftMs": 44,
+      "ttftMs": 43,
       "sealed": false,
       "fellThrough": 0
     },
@@ -110,7 +110,7 @@
       "provider": "Ironbridge Compute",
       "tokens": "21+23",
       "cost": "0.000015",
-      "ttftMs": 43,
+      "ttftMs": 42,
       "sealed": false,
       "fellThrough": 0
     },
@@ -130,7 +130,7 @@
       "provider": "Ironbridge Compute",
       "tokens": "21+23",
       "cost": "0.000015",
-      "ttftMs": 42,
+      "ttftMs": 43,
       "sealed": false,
       "fellThrough": 1
     }
@@ -140,7 +140,7 @@
       "name": "Kestrel GPU Co-op",
       "region": "eu-north",
       "enclave": false,
-      "address": "Ev2BgrYH5QwwibH4V3z6vu9UCxwasXTypTEmwPrx3R78",
+      "address": "39xrSNU366wtE338oeMrPTEuH8SPggxaXnzFTbYpwHee",
       "models": [
         {
           "id": "llama-3.3-70b",
@@ -153,17 +153,17 @@
           "output": 200000
         }
       ],
-      "channel": "6nTxx1uFRk5TuXxiLNu8dStQVys16f5dqcvQWsRv4mpD",
+      "channel": "6gNSYf66Mpe4KGnAaM2tvXcHLj6JjinLGcqeN89k5hjj",
       "cumulative": "10",
-      "usageHash": "fc54cf73b4007ff6ee9c307bf060e0bddc87e00f38decbf0e25d3b0441db248d",
-      "voucher": "10.fc54cf73b4007ff6ee9c307bf060e0bddc87e00f38decbf0e25d3b0441db248d.3rCRkqkjhN316iLPMcw2XKXLg41mD33hGzTL937BKGBHtvyrentGgCey3NaS9XhzZo5wtEi518BsYC8JyXcWWSHd",
-      "redeemTx": "4bERsBWCUHFLTQ3jDKocFJtFqcNLFqTQ22dfRZVivSJ58MCusxxUwZgtmrFTymtWu5UT61A8mCdQBzUgCcStfHyV"
+      "usageHash": "45919270acd2cfcfd5da2781e3279ddad18d3fba0e879a4d4cc097aa743264ba",
+      "voucher": "10.45919270acd2cfcfd5da2781e3279ddad18d3fba0e879a4d4cc097aa743264ba.5NNhzsTQnnzpenqcRfm9eyXDxChE7MUAnaKe2doPazKd6fExYLNGWqfY7rWSaQ3yWbWyRe5GiHcQppJKvfap3yhz",
+      "redeemTx": "5ovHdVSRXvB8g3bo1Hf2CJXYMTRQvjPuP6mPPP4huC9fKyMBPzAQurpgC9MEnETQq97vnwcLQiZBoFTbh3q9N3Bq"
     },
     {
       "name": "Ironbridge Compute",
       "region": "us-east",
       "enclave": false,
-      "address": "7zgesjpXAg9Dw1LUc5vYCN5dJAAKNFxCyjYpF8zyLtyr",
+      "address": "713bVHiqsb9SPNswqEjzPNvEJLbuP9frC2iXh97ftTc1",
       "models": [
         {
           "id": "llama-3.3-70b",
@@ -176,17 +176,17 @@
           "output": 1100000
         }
       ],
-      "channel": "CmCggJSJPAo2PYn4o2gjbWL7Z72C8TRRDEn9S1DbSfg2",
+      "channel": "CakCo4FxtBcrfvWSd4KS5H4qmAdxtXuBGhoGqqmBWAuP",
       "cumulative": "136",
-      "usageHash": "8101fa4e764e2be22c8e8f2c99638cdd8f51f609cb91e6ac4e9b81837ec34523",
-      "voucher": "136.8101fa4e764e2be22c8e8f2c99638cdd8f51f609cb91e6ac4e9b81837ec34523.pyGeagX1ps66oAkRuJBH3u6g2gFH5YviNrMRgbZdYYE6McYsKNFSzEvJSPyWEPsUDWSDyzP7e6VAu8xgRW51Btz",
-      "redeemTx": "NCigovFLonLhUqmdXinwRzgFRWzZuLK4rMaY5sH9UHTePYEKvzZBJ9L8SqFTQF1td85uxUwnydVVL28fwoeFBSr"
+      "usageHash": "143cb121ccaa805b3b8146534fc4d700acb2b7e9696f24083180d779c8c1a256",
+      "voucher": "136.143cb121ccaa805b3b8146534fc4d700acb2b7e9696f24083180d779c8c1a256.2tUj6tUPx1Z5abqoJeUwBi8Q2jMi3sYHeyvmuXqEepuJcQK2d8KchsGzTAK8QCPR4uCVdidwDRFRVr9Zxom9DbBN",
+      "redeemTx": "5HURJiis8RysoApF7eYU3yfuWXM4tUxT5DeGMcCgUvmbTcq6ssarPJwD1E6TiwqAqFetGukER6EGjECXHKjztKUM"
     },
     {
       "name": "Vault Nine",
       "region": "eu-west",
       "enclave": true,
-      "address": "BvwdiTqoKnTe8JkAuyeNzSpovidCkbM8xCjB4kD7wmVd",
+      "address": "FPZuAuphY458Ty2VdbGSuEgSZa75jL48mUNemmpR9atc",
       "models": [
         {
           "id": "llama-3.3-70b",
@@ -199,11 +199,11 @@
           "output": 300000
         }
       ],
-      "channel": "553wwFVUvXaQgrW8nrmAZiTSPf5xZnTyqBpYvm4wwHUU",
+      "channel": "7GPCBrSL5SWGfCPEbA7FPyKdEF9C1EuLWDtKyURnP31Y",
       "cumulative": "53",
-      "usageHash": "3e4f3ab9e9fcea23df2e2017050cb0be1ea0347ce6b2d3f63f0c0f478fc25b62",
-      "voucher": "53.3e4f3ab9e9fcea23df2e2017050cb0be1ea0347ce6b2d3f63f0c0f478fc25b62.33qaaUptcP6ZYZBML4odktcbj5KDJNvD46kkYXticFDP2rYUbWRrdKCGfZUs3rL2VQ2ZqT6MaeeMiRuvA5ymcznV",
-      "redeemTx": "64QSRQweezEuEnmfgQCoB2SVtjDwdoo9snzJZFaf7K5qcTNTkd93CoqVPYSbNkkWdP5J9qmvWznGGXBeHV6HYhVM"
+      "usageHash": "9e1ff4a0b929e0e14991aee0c2bd0c563b46d604ca6edeabc8449a67aaceb5df",
+      "voucher": "53.9e1ff4a0b929e0e14991aee0c2bd0c563b46d604ca6edeabc8449a67aaceb5df.2i8Ey3yrPpDAUX5yx54CqEWtqJZBXpsMwpqdv4rXCkpPZwTAm3YmJmxq1d1c9PQDRc7LbrLnAR52TN94c3KZVZuc",
+      "redeemTx": "4Jhge3pLAtxTA7HocE8A4kHw46SEkq3JyGkmr3s9zheEn1QwLwyx3qmsTb5QyNyWgEESo1CDgpMcdETXyUg4byVw"
     }
   ],
   "balances": {
@@ -211,7 +211,7 @@
     "providers": "199",
     "deposits": "1999937"
   },
-  "session": "CZCbA7bWqkWyTJ6RfSyr5EbxSsX9LjENBbWEP5NaQGAx",
+  "session": "8z8rbBYXNwadpeCmN4L2nZurH9DhekPNvykzodfn6LTH",
   "checks": [
     {
       "name": "/v1/models lists the network catalog",

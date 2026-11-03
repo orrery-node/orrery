@@ -1,4 +1,4 @@
-//! Switchyard (working title): the on-chain half of a peer-to-peer AI inference network.
+//! Orrery: the on-chain half of a peer-to-peer AI inference network.
 //!
 //! Providers list themselves: an endpoint, the key their node signs with, and the hash of a price manifest the
 //! node serves. A user's router opens a payment channel to a provider. USDC moves from the user's wallet into an
@@ -39,7 +39,7 @@ pub const TEE_AMD_SEV_SNP: u8 = 2;
 pub const TEE_TDX_NVIDIA_CC: u8 = 3;
 
 #[program]
-pub mod switchyard {
+pub mod orrery {
     use super::*;
 
     /// Only the program's upgrade authority may initialize, so no one can race the deploy and claim the config.
@@ -74,7 +74,7 @@ pub mod switchyard {
     /// The bond mint is the network token, which does not exist when the program is deployed. It can be set once.
     pub fn set_bond_mint(ctx: Context<SetBondMint>) -> Result<()> {
         let c = &mut ctx.accounts.config;
-        require_keys_eq!(c.bond_mint, Pubkey::default(), SwitchyardError::BondMintSet);
+        require_keys_eq!(c.bond_mint, Pubkey::default(), OrreryError::BondMintSet);
         c.bond_mint = ctx.accounts.bond_mint.key();
         emit!(BondMintSet { bond_mint: c.bond_mint });
         Ok(())
@@ -152,7 +152,7 @@ pub mod switchyard {
         let now = Clock::get()?.unix_timestamp;
         let p = &mut ctx.accounts.provider;
         let signer = ctx.accounts.signer.key();
-        require!(signer == p.authority || signer == p.node_key, SwitchyardError::NotProvider);
+        require!(signer == p.authority || signer == p.node_key, OrreryError::NotProvider);
         if args.kind == TEE_NONE {
             p.tee_kind = TEE_NONE;
             p.tee_measurement = [0u8; 48];
@@ -160,9 +160,9 @@ pub mod switchyard {
             p.tee_key = [0u8; 32];
             p.tee_expires_at = 0;
         } else {
-            require!(args.kind <= TEE_TDX_NVIDIA_CC, SwitchyardError::BadAttestation);
-            require!(args.expires_at > now && args.expires_at <= now + MAX_ATTESTATION_SECS, SwitchyardError::BadAttestation);
-            require!(args.report_hash != [0u8; 32] && args.tee_key != [0u8; 32], SwitchyardError::BadAttestation);
+            require!(args.kind <= TEE_TDX_NVIDIA_CC, OrreryError::BadAttestation);
+            require!(args.expires_at > now && args.expires_at <= now + MAX_ATTESTATION_SECS, OrreryError::BadAttestation);
+            require!(args.report_hash != [0u8; 32] && args.tee_key != [0u8; 32], OrreryError::BadAttestation);
             p.tee_kind = args.kind;
             p.tee_measurement = args.measurement;
             p.tee_report_hash = args.report_hash;
@@ -175,7 +175,7 @@ pub mod switchyard {
 
     /// Post the network token as a bond. Routers read it as one input to reputation; it is never slashed.
     pub fn bond(ctx: Context<Bond>, amount: u64) -> Result<()> {
-        require!(amount > 0, SwitchyardError::ZeroAmount);
+        require!(amount > 0, OrreryError::ZeroAmount);
         let a = &ctx.accounts;
         token_interface::transfer_checked(
             CpiContext::new(
@@ -186,7 +186,7 @@ pub mod switchyard {
             a.bond_mint.decimals,
         )?;
         let p = &mut ctx.accounts.provider;
-        p.bonded = p.bonded.checked_add(amount).ok_or(SwitchyardError::Overflow)?;
+        p.bonded = p.bonded.checked_add(amount).ok_or(OrreryError::Overflow)?;
         emit!(Bonded { provider: p.key(), amount, bonded: p.bonded });
         Ok(())
     }
@@ -194,13 +194,13 @@ pub mod switchyard {
     /// Start taking a bond back. It stops counting at once and can be withdrawn after the unbonding delay;
     /// unbonding more resets the clock on the whole unbonding amount.
     pub fn unbond(ctx: Context<UnbondCtx>, amount: u64) -> Result<()> {
-        require!(amount > 0, SwitchyardError::ZeroAmount);
+        require!(amount > 0, OrreryError::ZeroAmount);
         let now = Clock::get()?.unix_timestamp;
         let delay = ctx.accounts.config.unbond_secs;
         let p = &mut ctx.accounts.provider;
-        require!(amount <= p.bonded, SwitchyardError::InsufficientBond);
+        require!(amount <= p.bonded, OrreryError::InsufficientBond);
         p.bonded -= amount;
-        p.unbonding = p.unbonding.checked_add(amount).ok_or(SwitchyardError::Overflow)?;
+        p.unbonding = p.unbonding.checked_add(amount).ok_or(OrreryError::Overflow)?;
         p.unbond_at = now + delay;
         emit!(Unbonding { provider: p.key(), amount, bonded: p.bonded, unbonding: p.unbonding, unbond_at: p.unbond_at });
         Ok(())
@@ -212,8 +212,8 @@ pub mod switchyard {
             let p = &ctx.accounts.provider;
             (p.unbonding, p.unbond_at, p.authority, p.bump)
         };
-        require!(amount > 0, SwitchyardError::ZeroAmount);
-        require!(now >= ready, SwitchyardError::TooEarly);
+        require!(amount > 0, OrreryError::ZeroAmount);
+        require!(now >= ready, OrreryError::TooEarly);
         let seeds: &[&[u8]] = &[PROVIDER_SEED, authority.as_ref(), &[bump]];
         let a = &ctx.accounts;
         token_interface::transfer_checked(
@@ -236,9 +236,9 @@ pub mod switchyard {
     /// signs once per channel instead of once per request. `id` is chosen by the router (random) so channels to the
     /// same provider never collide.
     pub fn open_channel(ctx: Context<OpenChannel>, id: u64, deposit: u64, session_key: Pubkey) -> Result<()> {
-        require!(ctx.accounts.provider.active, SwitchyardError::ProviderInactive);
-        require!(deposit >= ctx.accounts.config.min_deposit && deposit > 0, SwitchyardError::DepositTooSmall);
-        require!(session_key != Pubkey::default(), SwitchyardError::BadVoucher);
+        require!(ctx.accounts.provider.active, OrreryError::ProviderInactive);
+        require!(deposit >= ctx.accounts.config.min_deposit && deposit > 0, OrreryError::DepositTooSmall);
+        require!(session_key != Pubkey::default(), OrreryError::BadVoucher);
         let a = &ctx.accounts;
         token_interface::transfer_checked(
             CpiContext::new(
@@ -268,8 +268,8 @@ pub mod switchyard {
     }
 
     pub fn top_up(ctx: Context<TopUp>, amount: u64) -> Result<()> {
-        require!(amount > 0, SwitchyardError::ZeroAmount);
-        require!(ctx.accounts.channel.closing_at == 0, SwitchyardError::ChannelClosing);
+        require!(amount > 0, OrreryError::ZeroAmount);
+        require!(ctx.accounts.channel.closing_at == 0, OrreryError::ChannelClosing);
         let a = &ctx.accounts;
         token_interface::transfer_checked(
             CpiContext::new(
@@ -280,7 +280,7 @@ pub mod switchyard {
             a.mint.decimals,
         )?;
         let ch = &mut ctx.accounts.channel;
-        ch.deposit = ch.deposit.checked_add(amount).ok_or(SwitchyardError::Overflow)?;
+        ch.deposit = ch.deposit.checked_add(amount).ok_or(OrreryError::Overflow)?;
         emit!(ToppedUp { channel: ch.key(), amount, deposit: ch.deposit });
         Ok(())
     }
@@ -292,11 +292,11 @@ pub mod switchyard {
             let ch = &ctx.accounts.channel;
             (ch.key(), ch.session_key, ch.deposit, ch.redeemed, ch.payer, ch.provider, ch.id, ch.bump)
         };
-        require!(cumulative > redeemed, SwitchyardError::NothingToRedeem);
+        require!(cumulative > redeemed, OrreryError::NothingToRedeem);
         let message = voucher::voucher_message(&channel_key, cumulative, &usage_hash);
         voucher::require_voucher(&ctx.accounts.instructions, &session_key, &message)?;
-        let pay = cumulative.min(deposit).checked_sub(redeemed).ok_or(SwitchyardError::NothingToRedeem)?;
-        require!(pay > 0, SwitchyardError::NothingToRedeem);
+        let pay = cumulative.min(deposit).checked_sub(redeemed).ok_or(OrreryError::NothingToRedeem)?;
+        require!(pay > 0, OrreryError::NothingToRedeem);
         let idb = id.to_le_bytes();
         let seeds: &[&[u8]] = &[CHANNEL_SEED, payer.as_ref(), provider.as_ref(), &idb, &[bump]];
         let a = &ctx.accounts;
@@ -314,11 +314,11 @@ pub mod switchyard {
         ch.redeemed += pay;
         ch.usage_hash = usage_hash;
         let p = &mut ctx.accounts.provider;
-        p.settled = p.settled.checked_add(pay).ok_or(SwitchyardError::Overflow)?;
+        p.settled = p.settled.checked_add(pay).ok_or(OrreryError::Overflow)?;
         p.redeems += 1;
         p.last_settled_at = now;
         let c = &mut ctx.accounts.config;
-        c.settled = c.settled.checked_add(pay).ok_or(SwitchyardError::Overflow)?;
+        c.settled = c.settled.checked_add(pay).ok_or(OrreryError::Overflow)?;
         emit!(Redeemed { channel: channel_key, provider, payer, cumulative, paid: pay, redeemed: ch.redeemed, usage_hash });
         Ok(())
     }
@@ -327,7 +327,7 @@ pub mod switchyard {
     pub fn request_close(ctx: Context<PayerChannel>) -> Result<()> {
         let grace = ctx.accounts.config.close_grace_secs;
         let ch = &mut ctx.accounts.channel;
-        require!(ch.closing_at == 0, SwitchyardError::ChannelClosing);
+        require!(ch.closing_at == 0, OrreryError::ChannelClosing);
         ch.closing_at = Clock::get()?.unix_timestamp + grace;
         emit!(CloseRequested { channel: ch.key(), closing_at: ch.closing_at });
         Ok(())
@@ -344,8 +344,8 @@ pub mod switchyard {
         };
         let by_provider = closer == ctx.accounts.provider.authority || closer == ctx.accounts.provider.node_key;
         if !by_provider {
-            require_keys_eq!(closer, payer, SwitchyardError::NotPayer);
-            require!(closing_at != 0 && now >= closing_at, SwitchyardError::TooEarly);
+            require_keys_eq!(closer, payer, OrreryError::NotPayer);
+            require!(closing_at != 0 && now >= closing_at, OrreryError::TooEarly);
         }
         let refund = ctx.accounts.vault.amount;
         let idb = id.to_le_bytes();
@@ -373,16 +373,16 @@ pub mod switchyard {
 }
 
 fn check_params(a: &ParamsArgs) -> Result<()> {
-    require!((MIN_GRACE_SECS..=MAX_GRACE_SECS).contains(&a.close_grace_secs), SwitchyardError::BadParams);
-    require!((MIN_UNBOND_SECS..=MAX_UNBOND_SECS).contains(&a.unbond_secs), SwitchyardError::BadParams);
-    require!(a.min_deposit > 0, SwitchyardError::BadParams);
+    require!((MIN_GRACE_SECS..=MAX_GRACE_SECS).contains(&a.close_grace_secs), OrreryError::BadParams);
+    require!((MIN_UNBOND_SECS..=MAX_UNBOND_SECS).contains(&a.unbond_secs), OrreryError::BadParams);
+    require!(a.min_deposit > 0, OrreryError::BadParams);
     Ok(())
 }
 
 fn check_endpoint(e: &str) -> Result<()> {
-    require!(!e.is_empty() && e.len() <= MAX_ENDPOINT, SwitchyardError::BadEndpoint);
-    require!(e.bytes().all(|b| b.is_ascii_graphic()), SwitchyardError::BadEndpoint);
-    require!(e.starts_with("https://") || e.starts_with("http://"), SwitchyardError::BadEndpoint);
+    require!(!e.is_empty() && e.len() <= MAX_ENDPOINT, OrreryError::BadEndpoint);
+    require!(e.bytes().all(|b| b.is_ascii_graphic()), OrreryError::BadEndpoint);
+    require!(e.starts_with("https://") || e.starts_with("http://"), OrreryError::BadEndpoint);
     Ok(())
 }
 
@@ -472,9 +472,9 @@ pub struct AttestArgs {
 pub struct Initialize<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ SwitchyardError::NotUpgradeAuthority)]
-    pub program: Program<'info, crate::program::Switchyard>,
-    #[account(constraint = program_data.upgrade_authority_address == Some(admin.key()) @ SwitchyardError::NotUpgradeAuthority)]
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ OrreryError::NotUpgradeAuthority)]
+    pub program: Program<'info, crate::program::Orrery>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(admin.key()) @ OrreryError::NotUpgradeAuthority)]
     pub program_data: Account<'info, ProgramData>,
     #[account(init, payer = admin, space = 8 + Config::INIT_SPACE, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, Config>,
@@ -485,14 +485,14 @@ pub struct Initialize<'info> {
 #[derive(Accounts)]
 pub struct AdminOnly<'info> {
     pub admin: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ SwitchyardError::NotAdmin)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ OrreryError::NotAdmin)]
     pub config: Account<'info, Config>,
 }
 
 #[derive(Accounts)]
 pub struct SetBondMint<'info> {
     pub admin: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ SwitchyardError::NotAdmin)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = admin @ OrreryError::NotAdmin)]
     pub config: Account<'info, Config>,
     pub bond_mint: InterfaceAccount<'info, Mint>,
 }
@@ -500,7 +500,7 @@ pub struct SetBondMint<'info> {
 #[derive(Accounts)]
 pub struct AcceptAdmin<'info> {
     pub pending_admin: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = pending_admin @ SwitchyardError::NotAdmin)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = pending_admin @ OrreryError::NotAdmin)]
     pub config: Account<'info, Config>,
 }
 
@@ -518,7 +518,7 @@ pub struct RegisterProvider<'info> {
 #[derive(Accounts)]
 pub struct UpdateProvider<'info> {
     pub authority: Signer<'info>,
-    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ SwitchyardError::NotProvider)]
+    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ OrreryError::NotProvider)]
     pub provider: Account<'info, Provider>,
 }
 
@@ -535,7 +535,7 @@ pub struct Bond<'info> {
     pub authority: Signer<'info>,
     #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = bond_mint)]
     pub config: Box<Account<'info, Config>>,
-    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ SwitchyardError::NotProvider)]
+    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ OrreryError::NotProvider)]
     pub provider: Box<Account<'info, Provider>>,
     #[account(mint::token_program = token_program)]
     pub bond_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -553,7 +553,7 @@ pub struct UnbondCtx<'info> {
     pub authority: Signer<'info>,
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
-    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ SwitchyardError::NotProvider)]
+    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ OrreryError::NotProvider)]
     pub provider: Account<'info, Provider>,
 }
 
@@ -563,7 +563,7 @@ pub struct WithdrawBond<'info> {
     pub authority: Signer<'info>,
     #[account(seeds = [CONFIG_SEED], bump = config.bump, has_one = bond_mint)]
     pub config: Box<Account<'info, Config>>,
-    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ SwitchyardError::NotProvider)]
+    #[account(mut, seeds = [PROVIDER_SEED, authority.key().as_ref()], bump = provider.bump, has_one = authority @ OrreryError::NotProvider)]
     pub provider: Box<Account<'info, Provider>>,
     #[account(mint::token_program = token_program)]
     pub bond_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -581,7 +581,7 @@ pub struct WithdrawBond<'info> {
 pub struct OpenChannel<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, constraint = config.settle_mint == mint.key() @ SwitchyardError::WrongMint)]
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, constraint = config.settle_mint == mint.key() @ OrreryError::WrongMint)]
     pub config: Box<Account<'info, Config>>,
     #[account(mut, seeds = [PROVIDER_SEED, provider.authority.as_ref()], bump = provider.bump)]
     pub provider: Box<Account<'info, Provider>>,
@@ -601,7 +601,7 @@ pub struct OpenChannel<'info> {
 #[derive(Accounts)]
 pub struct TopUp<'info> {
     pub payer: Signer<'info>,
-    #[account(mut, seeds = [CHANNEL_SEED, payer.key().as_ref(), channel.provider.as_ref(), &channel.id.to_le_bytes()], bump = channel.bump, has_one = payer @ SwitchyardError::NotPayer, has_one = mint)]
+    #[account(mut, seeds = [CHANNEL_SEED, payer.key().as_ref(), channel.provider.as_ref(), &channel.id.to_le_bytes()], bump = channel.bump, has_one = payer @ OrreryError::NotPayer, has_one = mint)]
     pub channel: Box<Account<'info, Channel>>,
     #[account(mint::token_program = token_program)]
     pub mint: Box<InterfaceAccount<'info, Mint>>,
@@ -644,7 +644,7 @@ pub struct PayerChannel<'info> {
     pub payer: Signer<'info>,
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, Config>,
-    #[account(mut, seeds = [CHANNEL_SEED, payer.key().as_ref(), channel.provider.as_ref(), &channel.id.to_le_bytes()], bump = channel.bump, has_one = payer @ SwitchyardError::NotPayer)]
+    #[account(mut, seeds = [CHANNEL_SEED, payer.key().as_ref(), channel.provider.as_ref(), &channel.id.to_le_bytes()], bump = channel.bump, has_one = payer @ OrreryError::NotPayer)]
     pub channel: Account<'info, Channel>,
 }
 
@@ -777,7 +777,7 @@ pub struct ChannelClosed {
 }
 
 #[error_code]
-pub enum SwitchyardError {
+pub enum OrreryError {
     #[msg("only the program's upgrade authority can initialize")]
     NotUpgradeAuthority,
     #[msg("only the admin can do this")]

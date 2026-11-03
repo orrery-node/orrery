@@ -5,12 +5,12 @@
 
 use anchor_lang::prelude::*;
 
-use crate::SwitchyardError;
+use crate::OrreryError;
 
 pub const ED25519_PROGRAM_ID: Pubkey = solana_sdk_ids::ed25519_program::ID;
 pub const INSTRUCTIONS_SYSVAR_ID: Pubkey = solana_sdk_ids::sysvar::instructions::ID;
 
-pub const VOUCHER_PREFIX: &[u8; 16] = b"switchyard/vch/1";
+pub const VOUCHER_PREFIX: &[u8; 16] = b"orrery/voucher/1";
 pub const VOUCHER_LEN: usize = 16 + 32 + 8 + 32;
 
 const SAME_INSTRUCTION: u16 = u16::MAX;
@@ -38,7 +38,7 @@ fn instruction_count(data: &[u8]) -> Result<usize> {
 }
 
 fn instruction_at(data: &[u8], index: usize) -> Result<(&[u8], &[u8])> {
-    let bad = || error!(SwitchyardError::BadVoucher);
+    let bad = || error!(OrreryError::BadVoucher);
     if index >= instruction_count(data)? {
         return Err(ProgramError::InvalidArgument.into());
     }
@@ -83,7 +83,7 @@ pub fn ed25519_instruction_matches(data: &[u8], signer: &Pubkey, message: &[u8])
 /// Accepts when any top-level instruction of this transaction is a matching ed25519 check, so one transaction
 /// can redeem many channels, each with its own check.
 pub fn require_voucher(instructions: &AccountInfo, signer: &Pubkey, message: &[u8]) -> Result<()> {
-    require_keys_eq!(*instructions.key, INSTRUCTIONS_SYSVAR_ID, SwitchyardError::BadVoucher);
+    require_keys_eq!(*instructions.key, INSTRUCTIONS_SYSVAR_ID, OrreryError::BadVoucher);
     let data = instructions.try_borrow_data()?;
     for index in 0..instruction_count(&data)? {
         let (program, ix_data) = instruction_at(&data, index)?;
@@ -91,7 +91,7 @@ pub fn require_voucher(instructions: &AccountInfo, signer: &Pubkey, message: &[u
             return Ok(());
         }
     }
-    err!(SwitchyardError::BadVoucher)
+    err!(OrreryError::BadVoucher)
 }
 
 #[cfg(test)]
@@ -116,7 +116,7 @@ mod tests {
     fn message_layout_is_fixed() {
         let ch = Pubkey::new_from_array([3u8; 32]);
         let m = voucher_message(&ch, 1_234_567, &[9u8; 32]);
-        assert_eq!(&m[..16], b"switchyard/vch/1");
+        assert_eq!(&m[..16], b"orrery/voucher/1");
         assert_eq!(&m[16..48], ch.as_ref());
         assert_eq!(u64::from_le_bytes(m[48..56].try_into().unwrap()), 1_234_567);
         assert_eq!(&m[56..], &[9u8; 32]);

@@ -1,13 +1,13 @@
 [package]
-name = "switchyard"
+name = "orrery"
 version = "0.1.0"
-description = "Switchyard (working title): payment channels and a provider registry for a peer-to-peer AI inference network on Solana"
+description = "Orrery: payment channels and a provider registry for a peer-to-peer AI inference network on Solana"
 edition.workspace = true
 rust-version.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "switchyard"
+name = "orrery"
 
 [features]
 default = []

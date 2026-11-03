@@ -92,7 +92,7 @@ export class Router {
     try {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);
-      if (req.method === 'GET' && url.pathname === '/yard/status') return this.status(res);
+      if (req.method === 'GET' && url.pathname === '/orrery/status') return this.status(res);
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return void res.end(consolePage());
@@ -126,9 +126,9 @@ export class Router {
   private async chat(req: IncomingMessage, res: ServerResponse) {
     const body = await readJson(req);
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
-    const header = String(req.headers['x-yard-route'] ?? '');
+    const header = String(req.headers['x-orrery-route'] ?? '');
     const { model, route } = parseModel(body.model, (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
-    const pin = req.headers['x-yard-provider'] ? String(req.headers['x-yard-provider']) : null;
+    const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
     const estIn = estimateInputTokens(body.messages);
     const estOut = Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
@@ -170,8 +170,8 @@ export class Router {
       wire = s.body;
       key = s.key;
     }
-    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-yard-channel': ch.channel };
-    if (ch.voucher) headers['x-yard-voucher'] = ch.voucher;
+    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-channel': ch.channel };
+    if (ch.voucher) headers['x-orrery-voucher'] = ch.voucher;
     const t0 = Date.now();
     this.inflight.set(address, maxCost);
     const r = await fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/chat/completions`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
@@ -201,7 +201,7 @@ export class Router {
       let data = ev.data;
       if (data === '[DONE]') break;
       if (key) data = decrypt(key, Buffer.from(data, 'base64')).toString('utf8');
-      if (ev.event === 'yard') {
+      if (ev.event === 'orrery') {
         const y = JSON.parse(data);
         record = { requestId: y.requestId, model: y.model, inputTokens: y.inputTokens, outputTokens: y.outputTokens, cost: BigInt(y.cost), owed: y.owed };
         continue;
@@ -209,7 +209,7 @@ export class Router {
       if (!ttft) ttft = Date.now() - t0;
       if (wantsStream) {
         if (!started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-yard-provider': address, 'x-yard-route': route, ...(key ? { 'x-yard-sealed': '1' } : {}) });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? { 'x-orrery-sealed': '1' } : {}) });
           started = true;
         }
         res.write(sseFrame(data));
@@ -223,7 +223,7 @@ export class Router {
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
     const voucher = this.o.channels.settle(address, { ...record, cost: fair });
     this.inflight.delete(address);
-    void fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/yard/voucher`, {
+    void fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
     }).catch(() => undefined);
     this.stats.ok(address, ttft);
@@ -235,13 +235,13 @@ export class Router {
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
     this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${key ? '  sealed' : ''}`);
 
-    const yardHeaders = { 'x-yard-provider': address, 'x-yard-route': route, 'x-yard-cost': trip.cost };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
     if (wantsStream) {
       res.write(sseFrame('[DONE]'));
       res.end();
       return;
     }
-    send(res, 200, assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), yardHeaders);
+    send(res, 200, assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
   }
 }
 

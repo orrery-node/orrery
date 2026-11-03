@@ -1,5 +1,6 @@
 // The project name lives here and nowhere else in the node software. Renaming the project means editing this file
-// (and the web's brand file); on-chain and wire names (program crate, seeds, voucher prefix, x-yard-* headers) stay as they are.
+// (and the web's brand file). On-chain and wire names (crate `orrery`, voucher prefix `orrery/voucher/1`, x-orrery-*
+// headers) are protocol: changing them after the mainnet deploy breaks every deployed node.
 export const NAME = 'Orrery';
 export const CLI = 'orrery';
 export const TICKER = 'OREY';

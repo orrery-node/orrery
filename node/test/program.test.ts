@@ -6,7 +6,7 @@ import { ACCOUNT, IX, pda, programId } from '../src/chain/program.ts';
 import { decodeVoucher, encodeVoucher, signVoucher, verifyVoucher, voucherMessage } from '../src/chain/voucher.ts';
 import { signerOf } from '../src/keys.ts';
 
-const IDL = new URL('../../program/target/idl/switchyard.json', import.meta.url);
+const IDL = new URL('../../program/target/idl/orrery.json', import.meta.url);
 
 describe('client matches the program', () => {
   it('instruction and account discriminators equal the built IDL', { skip: !existsSync(IDL) && 'build the program first' }, () => {
@@ -22,7 +22,7 @@ describe('client matches the program', () => {
     const ch = new PublicKey(Buffer.alloc(32, 3));
     const m = voucherMessage(ch, 1_234_567n, Buffer.alloc(32, 9));
     assert.equal(m.length, 88);
-    assert.equal(m.subarray(0, 16).toString(), 'switchyard/vch/1');
+    assert.equal(m.subarray(0, 16).toString(), 'orrery/voucher/1');
     assert.deepEqual(m.subarray(16, 48), ch.toBuffer());
     assert.equal(m.readBigUInt64LE(48), 1_234_567n);
     assert.deepEqual(m.subarray(56), Buffer.alloc(32, 9));

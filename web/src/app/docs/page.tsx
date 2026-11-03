@@ -97,7 +97,7 @@ export default function Docs() {
           <p className="d-note">The Anthropic Messages API (<code>/v1/messages</code>) is not served yet. Tools that only speak it cannot use the router today.</p>
 
           <h2 id="routes">Routes</h2>
-          <p>Add one word after the model name, or send the header <code>x-yard-route</code>. The router tries the top three providers in order, so a slow or failing one is skipped.</p>
+          <p>Add one word after the model name, or send the header <code>x-orrery-route</code>. The router tries the top three providers in order, so a slow or failing one is skipped.</p>
           <table className="d-table">
             <thead>
               <tr><th>Suffix</th><th>Route</th><th>Picks</th></tr>
@@ -110,10 +110,10 @@ export default function Docs() {
               <tr><td><code>:private</code></td><td>privacy</td><td>only providers whose enclave this router verified; the request is sealed</td></tr>
             </tbody>
           </table>
-          <p>Pin one provider with the header <code>x-yard-provider: &lt;first characters of its address&gt;</code>.</p>
+          <p>Pin one provider with the header <code>x-orrery-provider: &lt;first characters of its address&gt;</code>.</p>
 
           <h2 id="pay">How you pay</h2>
-          <p>The first request to a provider opens a payment channel: your wallet moves a deposit (two USDC by default, <code>--deposit</code>) into an account only the channel controls. From then on a session key on your computer signs a running total after every answer, an 88-byte voucher: <code>switchyard/vch/1</code>, the channel, the total, and a hash chain over every answer&apos;s usage.</p>
+          <p>The first request to a provider opens a payment channel: your wallet moves a deposit (two USDC by default, <code>--deposit</code>) into an account only the channel controls. From then on a session key on your computer signs a running total after every answer, an 88-byte voucher: <code>orrery/voucher/1</code>, the channel, the total, and a hash chain over every answer&apos;s usage.</p>
           <ul>
             <li>The provider redeems the highest total whenever it likes. The program pays the difference to the provider&apos;s own token account and nowhere else.</li>
             <li>The router prices every answer itself from the provider&apos;s published price list and pays the smaller of its number and the provider&apos;s.</li>

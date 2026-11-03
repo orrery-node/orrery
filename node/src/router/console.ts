@@ -1,4 +1,4 @@
-// The page at http://127.0.0.1:7171/ — what the router did, read from /yard/status. Plain HTML, no build step.
+// The page at http://127.0.0.1:7171/ — what the router did, read from /orrery/status. Plain HTML, no build step.
 import { NAME } from '../brand.ts';
 
 export function consolePage(): string {
@@ -20,7 +20,7 @@ th{color:var(--dim);font-weight:500;font-size:12px;text-transform:uppercase;lett
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>provider</th><th>channel</th><th>deposit</th><th>spent</th><th>left</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function tick(){try{const s=await (await fetch('/yard/status')).json();
+async function tick(){try{const s=await (await fetch('/orrery/status')).json();
 document.getElementById('sum').innerHTML='<span>route <b>'+esc(s.route)+'</b></span><span>spent today <b>$'+esc(s.spentToday)+'</b></span><span>providers <b>'+s.providers.length+'</b></span><span>channels <b>'+s.channels.length+'</b></span>';
 document.getElementById('trips').innerHTML=s.trips.map(t=>'<tr><td>'+new Date(t.at).toLocaleTimeString()+'</td><td>'+esc(t.route)+(t.sealed?' <span class=go>sealed</span>':'')+'</td><td>'+esc(t.model)+'</td><td>'+esc(t.providerName)+(t.fellThrough?' <span class=sig>after '+t.fellThrough+' failed</span>':'')+'</td><td>'+t.inputTokens+'+'+t.outputTokens+'</td><td>$'+esc(t.cost)+'</td><td>'+t.ttftMs+' ms</td></tr>').join('')||'<tr><td colspan=7>No requests yet. Point a tool at http://127.0.0.1:'+location.port+'/v1</td></tr>';
 document.getElementById('prov').innerHTML=s.providers.map(p=>'<tr><td>'+esc(p.name||p.address.slice(0,8))+'</td><td>'+p.models+'</td><td>$'+esc(p.settled)+' · '+p.redeems+' redeems</td><td>'+(p.tee?(p.tee.verified?'<span class=go>verified</span>':'<span class=stop>'+esc(p.tee.reason)+'</span>'):'—')+'</td><td>'+p.observed.ok+' ok / '+p.observed.fail+' failed</td><td>'+(p.problem?'<span class=stop>'+esc(p.problem)+'</span>':p.active?'<span class=go>open</span>':'closed')+'</td></tr>').join('');

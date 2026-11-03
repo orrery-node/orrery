@@ -3,12 +3,12 @@ import type { RTrip } from './rehearsal';
 export type Stage = 'hero' | 'routes' | 'voucher' | 'zero' | 'sealed' | 'provide' | 'quiet';
 
 export type BusEvents = {
-  'yard:stage': { stage: Stage; progress: number; provide: number };
-  'yard:fire': { route: string };
-  'yard:sent': { trip: RTrip; at: number };
-  'yard:served': { trip: RTrip };
-  'yard:paid': { trip: RTrip };
-  'yard:arrive': { at: number };
+  'orrery:stage': { stage: Stage; progress: number; provide: number };
+  'orrery:fire': { route: string };
+  'orrery:sent': { trip: RTrip; at: number };
+  'orrery:served': { trip: RTrip };
+  'orrery:paid': { trip: RTrip };
+  'orrery:arrive': { at: number };
 };
 
 export function emit<K extends keyof BusEvents>(name: K, detail: BusEvents[K]) {

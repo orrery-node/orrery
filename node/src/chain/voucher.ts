@@ -1,11 +1,11 @@
 // The voucher is the only thing that moves money out of a channel: 88 bytes the router's session key signs, the
-// same bytes program/programs/switchyard/src/voucher.rs rebuilds and checks against the runtime's ed25519 check.
+// same bytes program/programs/orrery/src/voucher.rs rebuilds and checks against the runtime's ed25519 check.
 import { Ed25519Program, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { ed25519Verify, type Sign } from '../keys.ts';
 import { ins } from './program.ts';
 
-export const VOUCHER_PREFIX = Buffer.from('switchyard/vch/1');
+export const VOUCHER_PREFIX = Buffer.from('orrery/voucher/1');
 
 export type Voucher = { cumulative: bigint; usageHash: Buffer; signature: Buffer };
 

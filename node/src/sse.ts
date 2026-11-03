@@ -1,4 +1,4 @@
-// Minimal server-sent events reader for fetch() bodies, enough for OpenAI-style streams plus our own `yard` event.
+// Minimal server-sent events reader for fetch() bodies, enough for OpenAI-style streams plus our own `orrery` event.
 export type SseEvent = { event: string | null; data: string };
 
 export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {

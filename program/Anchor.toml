@@ -7,11 +7,11 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-switchyard = "7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS"
+orrery = "7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS"
 
 [provider]
 cluster = "localnet"
 wallet = "../.local/keys/local-wallet.json"
 
 [scripts]
-test = "cargo test -p switchyard --test litesvm"
+test = "cargo test -p orrery --test litesvm"

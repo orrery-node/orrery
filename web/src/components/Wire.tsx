@@ -149,7 +149,7 @@ export default function Wire() {
       }
       h.classList.toggle('is-paid', paid);
       const done = L >= total - 1;
-      if (done && !arrived) emit('yard:arrive', { at: performance.now() });
+      if (done && !arrived) emit('orrery:arrive', { at: performance.now() });
       if (py < endY - 200) arrived = false;
       else if (done) arrived = true;
     };
@@ -164,14 +164,14 @@ export default function Wire() {
     const late = window.setTimeout(build, 1200);
     window.addEventListener('scroll', queue, { passive: true });
     window.addEventListener('resize', queue);
-    window.addEventListener('yard:layout', build);
+    window.addEventListener('orrery:layout', build);
     host.classList.add('is-on');
     return () => {
       ro.disconnect();
       window.clearTimeout(late);
       window.removeEventListener('scroll', queue);
       window.removeEventListener('resize', queue);
-      window.removeEventListener('yard:layout', build);
+      window.removeEventListener('orrery:layout', build);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);

@@ -93,7 +93,7 @@ export class ProviderNode {
       this.enclave = existsSync(keyPath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'hex')) : newEnclaveKey();
       if (!existsSync(keyPath)) writePrivate(keyPath, this.enclave.secret.toString('hex'));
       const kind = cfg.tee.kind ?? 1;
-      const measurement = createHash('sha384').update(`switchyard-dev-image:${this.node.publicKey.toBase58()}`).digest();
+      const measurement = createHash('sha384').update(`orrery-dev-image:${this.node.publicKey.toBase58()}`).digest();
       const report = Buffer.from(JSON.stringify({ dev: true, note: 'software stand-in for a hardware quote; routers must not treat it as verified', kind, measurement: measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), node: this.node.publicKey.toBase58() }));
       this.attestation = { kind, measurement, report, reportHash: createHash('sha256').update(report).digest() };
     } else {
@@ -182,7 +182,7 @@ export class ProviderNode {
     const url = new URL(req.url ?? '/', 'http://x');
     try {
       if (req.method === 'GET' && url.pathname === '/v1/manifest') {
-        res.writeHead(200, { 'content-type': 'application/json', 'x-yard-manifest-sha256': this.manifestHash.toString('hex') });
+        res.writeHead(200, { 'content-type': 'application/json', 'x-orrery-manifest-sha256': this.manifestHash.toString('hex') });
         return void res.end(this.manifestBytes);
       }
       if (req.method === 'GET' && url.pathname === '/v1/attestation') {
@@ -192,7 +192,7 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/health') {
         return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
-      if (req.method === 'POST' && url.pathname === '/yard/voucher') {
+      if (req.method === 'POST' && url.pathname === '/orrery/voucher') {
         const b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string };
         const e = await this.entry(b.channel);
         this.accept(b.channel, e, decodeVoucher(b.voucher));
@@ -209,8 +209,8 @@ export class ProviderNode {
   }
 
   private async complete(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const address = String(req.headers['x-yard-channel'] ?? '');
-    if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-yard-channel');
+    const address = String(req.headers['x-orrery-channel'] ?? '');
+    if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-orrery-channel');
     let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
     let sealKey: Buffer | null = null;
     if (body.sealed) {
@@ -224,7 +224,7 @@ export class ProviderNode {
     const e = await this.entry(address);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (e.channel.closingAt !== 0n && now > e.channel.closingAt - 120n) return fail(res, 409, 'channel_closing', 'channel is closing; open a new one');
-    const vh = req.headers['x-yard-voucher'];
+    const vh = req.headers['x-orrery-voucher'];
     if (vh) {
       const v = decodeVoucher(String(vh));
       if (v.cumulative > e.channel.deposit) await this.entry(address, true);
@@ -248,7 +248,7 @@ export class ProviderNode {
     });
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
 
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-yard-sealed': sealKey ? '1' : '0' });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0' });
     const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
     type Usage = { prompt_tokens?: number; completion_tokens?: number };
     let usage: Usage | null = null;
@@ -274,7 +274,7 @@ export class ProviderNode {
     e.usageHash = nextUsageHash(e.usageHash, record);
     e.unpaid.push({ ...record, owedAfter: e.owed });
     this.save();
-    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex') }), 'yard');
+    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex') }), 'orrery');
     res.write(sseFrame('[DONE]'));
     res.end();
     this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${sealKey ? '  sealed' : ''}`);

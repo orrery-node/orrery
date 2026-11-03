@@ -120,7 +120,7 @@ export default function ScrollFX() {
     });
     const refresh = () => {
       ScrollTrigger.refresh();
-      window.dispatchEvent(new Event('yard:layout'));
+      window.dispatchEvent(new Event('orrery:layout'));
     };
     document.fonts?.ready.then(refresh);
     const late = window.setTimeout(refresh, 1300);

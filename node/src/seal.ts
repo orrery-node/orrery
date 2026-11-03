@@ -5,7 +5,7 @@ import { createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, di
 
 const SPKI_X25519 = Buffer.from('302a300506032b656e032100', 'hex');
 const PKCS8_X25519 = Buffer.from('302e020100300506032b656e04220420', 'hex');
-const INFO = Buffer.from('switchyard/seal/1');
+const INFO = Buffer.from('orrery/seal/1');
 
 export type EnclaveKey = { publicKey: Buffer; privateKey: KeyObject; secret: Buffer };
 

@@ -2185,6 +2185,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "orrery"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "litesvm",
+ "solana-account",
+ "solana-ed25519-program",
+ "solana-keypair",
+ "solana-message",
+ "solana-program-runtime",
+ "solana-sdk-ids",
+ "solana-signer",
+ "solana-transaction",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4525,23 +4542,6 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
-
-[[package]]
-name = "switchyard"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "litesvm",
- "solana-account",
- "solana-ed25519-program",
- "solana-keypair",
- "solana-message",
- "solana-program-runtime",
- "solana-sdk-ids",
- "solana-signer",
- "solana-transaction",
-]
 
 [[package]]
 name = "syn"

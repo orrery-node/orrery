@@ -1,4 +1,4 @@
-//! The Switchyard program on LiteSVM with the real SPL Token and Associated Token programs.
+//! The Orrery program on LiteSVM with the real SPL Token and Associated Token programs.
 //! Build first: `anchor build --arch v2`.
 
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use solana_keypair::Keypair;
 use solana_message::{Message, VersionedMessage};
 use solana_signer::Signer;
 use solana_transaction::versioned::VersionedTransaction;
-use switchyard::{AttestArgs, Channel, Config, ParamsArgs, Provider, UpdateProviderArgs};
+use orrery::{AttestArgs, Channel, Config, ParamsArgs, Provider, UpdateProviderArgs};
 
 const SPL: Pubkey = anchor_lang::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const ATA: Pubkey = anchor_lang::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
@@ -25,22 +25,22 @@ const HOUR: i64 = 3_600;
 const DAY: i64 = 86_400;
 
 fn pda(seeds: &[&[u8]]) -> Pubkey {
-    Pubkey::find_program_address(seeds, &switchyard::ID).0
+    Pubkey::find_program_address(seeds, &orrery::ID).0
 }
 fn programdata() -> Pubkey {
-    Pubkey::find_program_address(&[switchyard::ID.as_ref()], &UPGRADEABLE).0
+    Pubkey::find_program_address(&[orrery::ID.as_ref()], &UPGRADEABLE).0
 }
 fn ata(owner: &Pubkey, mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[owner.as_ref(), SPL.as_ref(), mint.as_ref()], &ATA).0
 }
 fn config_pda() -> Pubkey {
-    pda(&[switchyard::CONFIG_SEED])
+    pda(&[orrery::CONFIG_SEED])
 }
 fn provider_pda(authority: &Pubkey) -> Pubkey {
-    pda(&[switchyard::PROVIDER_SEED, authority.as_ref()])
+    pda(&[orrery::PROVIDER_SEED, authority.as_ref()])
 }
 fn channel_pda(payer: &Pubkey, provider: &Pubkey, id: u64) -> Pubkey {
-    pda(&[switchyard::CHANNEL_SEED, payer.as_ref(), provider.as_ref(), &id.to_le_bytes()])
+    pda(&[orrery::CHANNEL_SEED, payer.as_ref(), provider.as_ref(), &id.to_le_bytes()])
 }
 fn mint_data(decimals: u8) -> Vec<u8> {
     let mut d = vec![0u8; 82];
@@ -74,8 +74,8 @@ struct User {
 impl Env {
     fn new() -> Self {
         let mut svm = LiteSVM::new();
-        let so = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/deploy/switchyard.so");
-        svm.add_program(switchyard::ID, &std::fs::read(so).expect("anchor build --arch v2 first")).unwrap();
+        let so = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/deploy/orrery.so");
+        svm.add_program(orrery::ID, &std::fs::read(so).expect("anchor build --arch v2 first")).unwrap();
         let admin = Keypair::new();
         svm.airdrop(&admin.pubkey(), 100_000_000_000).unwrap();
         let mut acc = svm.get_account(&programdata()).unwrap();
@@ -153,17 +153,17 @@ impl Env {
 
     fn init(&mut self) {
         let ix = Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::Initialize {
+            program_id: orrery::ID,
+            accounts: orrery::accounts::Initialize {
                 admin: self.admin.pubkey(),
-                program: switchyard::ID,
+                program: orrery::ID,
                 program_data: programdata(),
                 config: config_pda(),
                 settle_mint: self.usdc,
                 system_program: SYSTEM,
             }
             .to_account_metas(None),
-            data: switchyard::instruction::Initialize { args: params() }.data(),
+            data: orrery::instruction::Initialize { args: params() }.data(),
         };
         let admin = self.admin.insecure_clone();
         self.send(vec![ix], &[&admin]).unwrap();
@@ -174,9 +174,9 @@ impl Env {
         let node = self.wallet();
         let p = provider_pda(&wallet.pubkey());
         let ix = Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::RegisterProvider { authority: wallet.pubkey(), config: config_pda(), provider: p, system_program: SYSTEM }.to_account_metas(None),
-            data: switchyard::instruction::RegisterProvider { node_key: node.pubkey(), endpoint: endpoint.to_string(), manifest_hash: [1u8; 32] }.data(),
+            program_id: orrery::ID,
+            accounts: orrery::accounts::RegisterProvider { authority: wallet.pubkey(), config: config_pda(), provider: p, system_program: SYSTEM }.to_account_metas(None),
+            data: orrery::instruction::RegisterProvider { node_key: node.pubkey(), endpoint: endpoint.to_string(), manifest_hash: [1u8; 32] }.data(),
         };
         self.send(vec![ix], &[&wallet]).unwrap();
         Prov { wallet, node, pda: p }
@@ -192,8 +192,8 @@ impl Env {
     fn open_ix(&self, u: &User, p: &Prov, id: u64, deposit: u64) -> Instruction {
         let ch = channel_pda(&u.wallet.pubkey(), &p.pda, id);
         Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::OpenChannel {
+            program_id: orrery::ID,
+            accounts: orrery::accounts::OpenChannel {
                 payer: u.wallet.pubkey(),
                 config: config_pda(),
                 provider: p.pda,
@@ -206,7 +206,7 @@ impl Env {
                 system_program: SYSTEM,
             }
             .to_account_metas(None),
-            data: switchyard::instruction::OpenChannel { id, deposit, session_key: u.session.pubkey() }.data(),
+            data: orrery::instruction::OpenChannel { id, deposit, session_key: u.session.pubkey() }.data(),
         }
     }
 
@@ -218,7 +218,7 @@ impl Env {
     }
 
     fn voucher(&self, signer: &Keypair, channel: &Pubkey, cumulative: u64, usage: [u8; 32]) -> Instruction {
-        let msg = switchyard::voucher::voucher_message(channel, cumulative, &usage);
+        let msg = orrery::voucher::voucher_message(channel, cumulative, &usage);
         let sig = signer.sign_message(&msg);
         let sig: [u8; 64] = sig.into();
         solana_ed25519_program::new_ed25519_instruction_with_signature(&msg, &sig, &signer.pubkey().to_bytes())
@@ -226,8 +226,8 @@ impl Env {
 
     fn redeem_ix(&self, caller: &Pubkey, p: &Prov, channel: &Pubkey, cumulative: u64, usage: [u8; 32]) -> Instruction {
         Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::Redeem {
+            program_id: orrery::ID,
+            accounts: orrery::accounts::Redeem {
                 caller: *caller,
                 config: config_pda(),
                 provider: p.pda,
@@ -242,7 +242,7 @@ impl Env {
                 system_program: SYSTEM,
             }
             .to_account_metas(None),
-            data: switchyard::instruction::Redeem { cumulative, usage_hash: usage }.data(),
+            data: orrery::instruction::Redeem { cumulative, usage_hash: usage }.data(),
         }
     }
 
@@ -255,8 +255,8 @@ impl Env {
 
     fn close_ix(&self, closer: &Pubkey, p: &Prov, payer: &Pubkey, channel: &Pubkey) -> Instruction {
         Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::CloseChannel {
+            program_id: orrery::ID,
+            accounts: orrery::accounts::CloseChannel {
                 closer: *closer,
                 provider: p.pda,
                 channel: *channel,
@@ -269,15 +269,15 @@ impl Env {
                 system_program: SYSTEM,
             }
             .to_account_metas(None),
-            data: switchyard::instruction::CloseChannel {}.data(),
+            data: orrery::instruction::CloseChannel {}.data(),
         }
     }
 
     fn request_close(&mut self, u: &User, channel: &Pubkey) -> Result<Vec<String>, String> {
         let ix = Instruction {
-            program_id: switchyard::ID,
-            accounts: switchyard::accounts::PayerChannel { payer: u.wallet.pubkey(), config: config_pda(), channel: *channel }.to_account_metas(None),
-            data: switchyard::instruction::RequestClose {}.data(),
+            program_id: orrery::ID,
+            accounts: orrery::accounts::PayerChannel { payer: u.wallet.pubkey(), config: config_pda(), channel: *channel }.to_account_metas(None),
+            data: orrery::instruction::RequestClose {}.data(),
         };
         let w = u.wallet.insecure_clone();
         self.send(vec![ix], &[&w])
@@ -297,17 +297,17 @@ fn only_the_upgrade_authority_can_initialize() {
     let mut e = Env::new();
     let stranger = e.wallet();
     let ix = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::Initialize {
+        program_id: orrery::ID,
+        accounts: orrery::accounts::Initialize {
             admin: stranger.pubkey(),
-            program: switchyard::ID,
+            program: orrery::ID,
             program_data: programdata(),
             config: config_pda(),
             settle_mint: e.usdc,
             system_program: SYSTEM,
         }
         .to_account_metas(None),
-        data: switchyard::instruction::Initialize { args: params() }.data(),
+        data: orrery::instruction::Initialize { args: params() }.data(),
     };
     assert!(e.send(vec![ix], &[&stranger]).is_err());
     e.init();
@@ -328,9 +328,9 @@ fn anyone_can_list_and_edit_only_their_own_listing() {
     assert_eq!(prov.manifest_seq, 1);
 
     let upd = |authority: Pubkey, provider: Pubkey, args: UpdateProviderArgs| Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::UpdateProvider { authority, provider }.to_account_metas(None),
-        data: switchyard::instruction::UpdateProvider { args }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::UpdateProvider { authority, provider }.to_account_metas(None),
+        data: orrery::instruction::UpdateProvider { args }.data(),
     };
     let args = UpdateProviderArgs { node_key: None, endpoint: Some("https://gpu.example.org/v1".into()), manifest_hash: Some([2u8; 32]), active: None };
     let w = p.wallet.insecure_clone();
@@ -479,9 +479,9 @@ fn the_user_waits_out_the_grace_period_and_the_provider_can_still_redeem_in_it()
     assert_eq!(c.closing_at, e.now() + HOUR);
 
     let up = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::TopUp { payer: w.pubkey(), channel: ch, mint: e.usdc, payer_tokens: u.tokens, vault: ata(&ch, &e.usdc), token_program: SPL }.to_account_metas(None),
-        data: switchyard::instruction::TopUp { amount: USD }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::TopUp { payer: w.pubkey(), channel: ch, mint: e.usdc, payer_tokens: u.tokens, vault: ata(&ch, &e.usdc), token_program: SPL }.to_account_metas(None),
+        data: orrery::instruction::TopUp { amount: USD }.data(),
     };
     assert!(e.send(vec![up], &[&w]).is_err(), "no top-ups while closing");
 
@@ -520,9 +520,9 @@ fn top_ups_and_deposits_respect_the_rules() {
     assert!(e.open(&u, &p, 20, USD).is_err(), "same id twice");
     let w = u.wallet.insecure_clone();
     let up = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::TopUp { payer: w.pubkey(), channel: ch, mint: e.usdc, payer_tokens: u.tokens, vault: ata(&ch, &e.usdc), token_program: SPL }.to_account_metas(None),
-        data: switchyard::instruction::TopUp { amount: 2 * USD }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::TopUp { payer: w.pubkey(), channel: ch, mint: e.usdc, payer_tokens: u.tokens, vault: ata(&ch, &e.usdc), token_program: SPL }.to_account_metas(None),
+        data: orrery::instruction::TopUp { amount: 2 * USD }.data(),
     };
     e.send(vec![up], &[&w]).unwrap();
     let c: Channel = e.read(&ch);
@@ -531,9 +531,9 @@ fn top_ups_and_deposits_respect_the_rules() {
     assert_eq!(e.amount(&ata(&p.wallet.pubkey(), &e.usdc)), 3 * USD);
 
     let off = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::UpdateProvider { authority: p.wallet.pubkey(), provider: p.pda }.to_account_metas(None),
-        data: switchyard::instruction::UpdateProvider { args: UpdateProviderArgs { node_key: None, endpoint: None, manifest_hash: None, active: Some(false) } }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::UpdateProvider { authority: p.wallet.pubkey(), provider: p.pda }.to_account_metas(None),
+        data: orrery::instruction::UpdateProvider { args: UpdateProviderArgs { node_key: None, endpoint: None, manifest_hash: None, active: Some(false) } }.data(),
     };
     let pw = p.wallet.insecure_clone();
     e.send(vec![off], &[&pw]).unwrap();
@@ -545,12 +545,12 @@ fn top_ups_and_deposits_respect_the_rules() {
 fn enclave_claims_are_bounded_and_clearable() {
     let (mut e, p, _) = ready();
     let attest = |signer: Pubkey, args: AttestArgs| Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::Attest { signer, provider: p.pda }.to_account_metas(None),
-        data: switchyard::instruction::Attest { args }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::Attest { signer, provider: p.pda }.to_account_metas(None),
+        data: orrery::instruction::Attest { args }.data(),
     };
     let now = e.now();
-    let good = AttestArgs { kind: switchyard::TEE_TDX_NVIDIA_CC, measurement: [4u8; 48], report_hash: [5u8; 32], tee_key: [6u8; 32], expires_at: now + DAY };
+    let good = AttestArgs { kind: orrery::TEE_TDX_NVIDIA_CC, measurement: [4u8; 48], report_hash: [5u8; 32], tee_key: [6u8; 32], expires_at: now + DAY };
     let node = p.node.insecure_clone();
     e.send(vec![attest(node.pubkey(), good)], &[&node]).unwrap();
     let prov: Provider = e.read(&p.pda);
@@ -576,29 +576,29 @@ fn enclave_claims_are_bounded_and_clearable() {
 #[test]
 fn bonds_wait_out_the_delay_and_only_go_back_to_the_provider() {
     let (mut e, p, _) = ready();
-    let yard = Pubkey::new_unique();
-    e.put(yard, mint_data(6), SPL);
+    let orey = Pubkey::new_unique();
+    e.put(orey, mint_data(6), SPL);
     let admin = e.admin.insecure_clone();
     let set = |mint: Pubkey| Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::SetBondMint { admin: admin.pubkey(), config: config_pda(), bond_mint: mint }.to_account_metas(None),
-        data: switchyard::instruction::SetBondMint {}.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::SetBondMint { admin: admin.pubkey(), config: config_pda(), bond_mint: mint }.to_account_metas(None),
+        data: orrery::instruction::SetBondMint {}.data(),
     };
-    e.send(vec![set(yard)], &[&admin]).unwrap();
+    e.send(vec![set(orey)], &[&admin]).unwrap();
     let other = Pubkey::new_unique();
     e.put(other, mint_data(6), SPL);
     assert!(e.send(vec![set(other)], &[&admin]).is_err(), "set once");
 
     let w = p.wallet.insecure_clone();
-    let mine = e.token(&w.pubkey(), &yard, 1_000 * USD);
-    let vault = ata(&p.pda, &yard);
+    let mine = e.token(&w.pubkey(), &orey, 1_000 * USD);
+    let vault = ata(&p.pda, &orey);
     let bond = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::Bond {
+        program_id: orrery::ID,
+        accounts: orrery::accounts::Bond {
             authority: w.pubkey(),
             config: config_pda(),
             provider: p.pda,
-            bond_mint: yard,
+            bond_mint: orey,
             authority_tokens: mine,
             bond_vault: vault,
             token_program: SPL,
@@ -606,27 +606,27 @@ fn bonds_wait_out_the_delay_and_only_go_back_to_the_provider() {
             system_program: SYSTEM,
         }
         .to_account_metas(None),
-        data: switchyard::instruction::Bond { amount: 400 * USD }.data(),
+        data: orrery::instruction::Bond { amount: 400 * USD }.data(),
     };
     e.send(vec![bond], &[&w]).unwrap();
     assert_eq!(e.amount(&vault), 400 * USD);
 
     let unbond = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::UnbondCtx { authority: w.pubkey(), config: config_pda(), provider: p.pda }.to_account_metas(None),
-        data: switchyard::instruction::Unbond { amount: 150 * USD }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::UnbondCtx { authority: w.pubkey(), config: config_pda(), provider: p.pda }.to_account_metas(None),
+        data: orrery::instruction::Unbond { amount: 150 * USD }.data(),
     };
     e.send(vec![unbond], &[&w]).unwrap();
     let prov: Provider = e.read(&p.pda);
     assert_eq!((prov.bonded, prov.unbonding), (250 * USD, 150 * USD));
 
     let withdraw = Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::WithdrawBond {
+        program_id: orrery::ID,
+        accounts: orrery::accounts::WithdrawBond {
             authority: w.pubkey(),
             config: config_pda(),
             provider: p.pda,
-            bond_mint: yard,
+            bond_mint: orey,
             authority_tokens: mine,
             bond_vault: vault,
             token_program: SPL,
@@ -634,7 +634,7 @@ fn bonds_wait_out_the_delay_and_only_go_back_to_the_provider() {
             system_program: SYSTEM,
         }
         .to_account_metas(None),
-        data: switchyard::instruction::WithdrawBond {}.data(),
+        data: orrery::instruction::WithdrawBond {}.data(),
     };
     assert!(e.send(vec![withdraw.clone()], &[&w]).is_err(), "unbonding delay");
     e.advance(7 * DAY);
@@ -649,9 +649,9 @@ fn admin_params_stay_inside_their_bounds() {
     let (mut e, _, _) = ready();
     let admin = e.admin.insecure_clone();
     let set = |args: ParamsArgs| Instruction {
-        program_id: switchyard::ID,
-        accounts: switchyard::accounts::AdminOnly { admin: admin.pubkey(), config: config_pda() }.to_account_metas(None),
-        data: switchyard::instruction::SetParams { args }.data(),
+        program_id: orrery::ID,
+        accounts: orrery::accounts::AdminOnly { admin: admin.pubkey(), config: config_pda() }.to_account_metas(None),
+        data: orrery::instruction::SetParams { args }.data(),
     };
     assert!(e.send(vec![set(ParamsArgs { close_grace_secs: 60, ..params() })], &[&admin]).is_err());
     assert!(e.send(vec![set(ParamsArgs { unbond_secs: 60 * DAY, ..params() })], &[&admin]).is_err());
