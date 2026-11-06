@@ -5,7 +5,7 @@
   "publicUrl": "https://orrery-seed.onrender.com",
   "rpcUrl": "https://api.mainnet-beta.solana.com",
   "settleMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "authority": "DEV_WALLET_PUBKEY",
+  "authority": "G5akrEj8WsEyL3WjWHqVvzSrW2cv7iDUtSabds9BMLCC",
   "nodeKeyEnv": "ORRERY_NODE_KEY",
   "dataDir": "/var/data/orrery",
   "upstream": {
