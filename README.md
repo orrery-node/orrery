@@ -282,7 +282,7 @@ There is no fee field in the program and no third account to send a fee to. In t
 
 ## Holder pricing
 
-A provider can publish holder prices next to its list prices: hold a share of the network token's supply, and that provider charges you less. The token is the mint the program's admin sets once as its bond mint ($OREY), so a tier means the same thing at every provider. Holder prices switch on once the token exists and that mint is set.
+A provider can publish holder prices next to its list prices: hold a share of the network token's supply, and that provider charges you less. The token is the mint the program's admin sets once as its bond mint ($OREY), so a tier means the same thing at every provider. That mint is set to `2nB8hRZcSGKbxpfazRd749nXbWRgG27q6yQcasWcThse` ([tx](https://solscan.io/tx/2pDwnjaSZCoZZuGYEYQP6tKr6QhCJdRhcU4urxEMybaQ6CtcDkNwnajwsSJCq1JeKYAd4gWhMtPEmA53rfyQMFir)), so holder prices are on.
 
 | You hold | You pay at a provider with these tiers (the seed provider's) |
 |---|---|

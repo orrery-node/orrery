@@ -6,7 +6,7 @@ import Elsewhere from '@/components/Elsewhere';
 import DocsToc from '@/components/DocsToc';
 import P2PDiagram from '@/components/P2PDiagram';
 import { CopyButton } from '@/components/parts';
-import { NAME, PROGRAM_ID, REPO_URL, ROUTER_URL, TICKER } from '@/brand';
+import { CA, NAME, PROGRAM_ID, REPO_URL, ROUTER_URL, TICKER } from '@/brand';
 import './docs.css';
 
 export const metadata: Metadata = {
@@ -353,10 +353,10 @@ export default function Docs() {
           <p>Before sealing anything, the router fetches the report and checks that it hashes to the on-chain claim, names the same key, has not expired, and booted an image on your allow list (<code>--enclave-images</code>). Checking the hardware vendor&apos;s signature needs an external verifier; without one the router does not treat an enclave as verified. Development reports are labeled and refused unless you pass <code>--allow-dev-enclaves</code>.</p>
 
           <H2 id="token" n={n('token')}>${TICKER}</H2>
-          <p>The token launches on Meteora. Holding it lowers your price at every provider that publishes holder prices (next section). In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
+          <p>The token is live on Meteora{CA ? <>, contract <code>{CA}</code></> : null}. Holding it lowers your price at every provider that publishes holder prices (next section). In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
 
           <H2 id="holders" n={n('holders')}>Holder pricing</H2>
-          <p>A provider can publish holder prices next to its list prices: hold a share of ${TICKER}&apos;s supply and that provider charges you less. The token is the mint the program&apos;s admin sets once as its bond mint, so a tier means the same at every provider. Holder prices switch on once the token exists and that mint is set.</p>
+          <p>A provider can publish holder prices next to its list prices: hold a share of ${TICKER}&apos;s supply and that provider charges you less. The token is the mint the program&apos;s admin sets once as its bond mint, so a tier means the same at every provider. {CA ? 'That mint is set, so holder prices are on.' : 'Holder prices switch on once the token exists and that mint is set.'}</p>
           <table className="d-table">
             <thead>
               <tr><th>You hold</th><th>At the seed provider</th></tr>
