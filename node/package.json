@@ -13,7 +13,7 @@
     "llm",
     "payment-channel"
   ],
-  "homepage": "https://orrery-web.onrender.com",
+  "homepage": "https://orrerynode.com",
   "type": "module",
   "bin": {
     "orrery": "./dist/cli.js"
