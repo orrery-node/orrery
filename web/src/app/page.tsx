@@ -5,6 +5,7 @@ import { Mark } from '@/components/Mark';
 import FilmReel from '@/components/FilmReel';
 import ScrollFX from '@/components/ScrollFX';
 import Wire from '@/components/Wire';
+import Elsewhere from '@/components/Elsewhere';
 import { CA, NAME, NPM_PACKAGE, NPM_URL, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
 import { mainnet, programStatus } from '@/lib/chain';
 import { perM, rehearsal, ranAtLabel, ROUTE_WORD, short, usd } from '@/lib/rehearsal';
@@ -146,6 +147,7 @@ export default async function Home() {
           <Link href="/try">Try it</Link>
           <Link href="/docs">Docs</Link>
         </nav>
+        <Elsewhere />
         <div className="nav__cta">
           {BUY_URL ? (
             <a href={BUY_URL} className="pill pill--gray" rel="noopener noreferrer" target="_blank">Buy ${TICKER}</a>

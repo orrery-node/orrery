@@ -149,6 +149,7 @@
 }
 .d-body code {
   color: var(--violet);
+  overflow-wrap: anywhere;
 }
 .d-body ul {
   padding-left: 1.1em;
@@ -420,7 +421,7 @@
   .d-nav__back {
     display: none;
   }
-  .d-nav__cta {
+  .d-nav .elsewhere {
     margin-left: auto;
   }
   .d-parts {

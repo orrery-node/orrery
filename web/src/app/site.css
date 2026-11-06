@@ -39,6 +39,7 @@
 }
 .nav__links a {
   color: var(--fg-2);
+  white-space: nowrap;
   text-decoration: none;
   transition: color 0.2s ease;
 }
@@ -48,6 +49,30 @@
 .nav__cta {
   display: flex;
   gap: 8px;
+}
+/* npm · GitHub · X, in every header */
+.elsewhere {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: -6px;
+}
+.elsewhere a {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--fg-2);
+  transition: color 0.2s ease, background 0.2s ease;
+}
+.elsewhere a:hover {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+}
+.elsewhere a:focus-visible {
+  outline: 1px solid var(--fg-2);
+  outline-offset: 1px;
 }
 
 /* buttons */
@@ -1703,6 +1728,21 @@
   }
 }
 
+@media (max-width: 1120px) {
+  .nav,
+  .nav__links {
+    gap: 20px;
+  }
+}
+@media (max-width: 940px) {
+  .nav__links {
+    display: none;
+  }
+  .nav .elsewhere {
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 760px) {
   .nav {
     gap: 14px;
@@ -1711,8 +1751,9 @@
   .nav__links {
     display: none;
   }
-  .nav__cta {
+  .nav .elsewhere {
     margin-left: auto;
+    margin-right: -4px;
   }
   .nav__cta .pill--gray {
     display: none;
