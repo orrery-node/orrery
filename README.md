@@ -2,20 +2,27 @@
   <a href="https://orrerynode.com"><img src="assets/brand/social-preview.png" alt="Orrery — AI inference, peer to peer. Zero cut in between." width="100%"></a>
 </p>
 
+<h1 align="center">Orrery</h1>
+
 <h3 align="center">AI inference, peer to peer. Zero cut in between.</h3>
 
 <p align="center">
   Your computer sends each request straight to someone else's machine and pays it directly on Solana.<br>
-  No server in the middle, and the program takes nothing.
+  No server in the middle. No account. No API key to buy. The program takes nothing.
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/orrery-node"><img src="https://img.shields.io/npm/v/orrery-node?style=flat-square&color=9945ff&label=npm" alt="npm version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14f195?style=flat-square" alt="MIT license"></a>
-  <a href="docs/PROTOCOL.md"><img src="https://img.shields.io/badge/Solana-Anchor%20program-5f8ff2?style=flat-square&logo=solana&logoColor=white" alt="Solana program"></a>
-  <img src="https://img.shields.io/badge/program%20fee-0%25-14f195?style=flat-square" alt="0% program fee">
-  <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node 22+">
-  <img src="https://img.shields.io/badge/OpenAI-compatible-111?style=flat-square&logo=openai&logoColor=white" alt="OpenAI-compatible">
+  <a href="https://www.npmjs.com/package/orrery-node"><img src="https://img.shields.io/npm/v/orrery-node?style=for-the-badge&color=9945ff&labelColor=0c0c0c&label=npm" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-14f195?style=for-the-badge&labelColor=0c0c0c" alt="MIT license"></a>
+  <a href="docs/PROTOCOL.md"><img src="https://img.shields.io/badge/Solana-Anchor-5f8ff2?style=for-the-badge&logo=solana&logoColor=white&labelColor=0c0c0c" alt="Solana program"></a>
+  <img src="https://img.shields.io/badge/program%20fee-0%25-14f195?style=for-the-badge&labelColor=0c0c0c" alt="0% program fee">
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
+  <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
+  <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
+  <img src="https://img.shields.io/badge/rehearsal-14%2F14%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="14 of 14 rehearsal checks">
+  <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
 <p align="center">
@@ -23,12 +30,51 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/hero.gif" width="800" alt="The orrery assembling from a field of stars: your router at the core, providers on its orbits, other routers in the sky, requests and payments crossing directly between them.">
+  <img src="assets/readme/hero.gif" width="840" alt="The orrery assembling from a field of stars: your router at the core, providers on its orbits, other routers in the sky, requests and payments crossing directly between them.">
 </p>
+
+<p align="center"><sub>The landing page hero, live at <a href="https://orrerynode.com">orrerynode.com</a>: every point falls into place from the inside out, then requests leave the core as purple light and come back green as payment.</sub></p>
 
 ---
 
-## Why
+## Contents
+
+- [What it is](#what-it-is)
+- [Why peer to peer](#why-peer-to-peer)
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Routes](#routes)
+- [How payment works](#how-payment-works)
+- [The program takes 0%](#the-program-takes-0)
+- [Run a provider](#run-a-provider)
+- [Architecture](#architecture)
+- [Security model](#security-model)
+- [CLI](#cli)
+- [Router console](#router-console)
+- [Build from source](#build-from-source)
+- [FAQ](#faq)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+
+---
+
+## What it is
+
+Orrery has three parts, and none of them is a server we run.
+
+| | Runs on | Does |
+|---|---|---|
+| **Router** | your computer, `127.0.0.1:7171` | serves the OpenAI API to your tools, picks a provider for every request, signs what you owe |
+| **Provider node** | anyone's machine | sits in front of any OpenAI-compatible model server, checks each signature, answers, cashes the totals |
+| **Program** | Solana | holds the payment channels. No fee field, no third account, nobody can delist a provider |
+
+<p align="center">
+  <img src="assets/readme/p2p.png" width="760" alt="Your router talks to each provider's machine directly; the Solana program only holds channel deposits underneath; the place a server would sit is empty.">
+</p>
+
+Requests and answers go straight between your router and the provider's machine. The program only holds each channel's deposit: a provider redeems what you signed, and the rest comes back to you.
+
+## Why peer to peer
 
 |  | A hosted AI gateway | **Orrery** |
 |---|---|---|
@@ -37,30 +83,152 @@
 | How you pay | an account and prepaid credits | **your own wallet, a signed running total per answer** |
 | Who can sell inference | whoever the gateway approves | **anyone with a model and a URL; nobody can delist them** |
 | What a provider risks | chargebacks, unpaid usage | **at most one answer: the next one is served only once the last is paid** |
+| What a user risks | the whole prepaid balance | **what is left in open channels, under a daily cap you set** |
 | Private prompts | readable by whoever runs the box | **`:private` seals them to a verified hardware enclave** |
+| If the company goes away | your tools stop working | **the program and every node keep running** |
+
+## Features
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <b>OpenAI-compatible router</b><br>
+      <sub>Chat Completions, streaming or not, and <code>/v1/models</code> on localhost. Cursor, Continue, Aider, Open WebUI, LangChain and the OpenAI SDKs work unchanged.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>Pay per answer</b><br>
+      <sub>One wallet signature opens a channel. After that a session key signs an 88-byte running total per answer. No credits, no invoices.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>0% in the middle</b><br>
+      <sub>The settlement program has no fee field and no third recipient. The rehearsal checks that user + providers + open deposits equal the starting balance.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <b>Anyone can provide</b><br>
+      <sub>vLLM, SGLang, Ollama, llama.cpp or API capacity you hold. List with one command, set your own prices. No application, no stake.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>Routes in one word</b><br>
+      <sub>Add <code>:cheap</code>, <code>:fast</code>, <code>:trusted</code> or <code>:private</code> to a model name. The router falls through to the next provider if one fails.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>Sealed when you ask</b><br>
+      <sub>The private route encrypts the prompt (X25519, HKDF, AES-256-GCM) to a key inside a hardware enclave whose claim the router verified.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Quick start
 
+**1. Install** (Node.js 22 or newer)
+
 ```bash
 npm install -g orrery-node
-orrery router --wallet ~/.config/solana/id.json --rpc <your RPC URL>
+orrery help
 ```
 
-Then point anything that speaks the OpenAI API at the router. The API key can be any string.
+**2. Fund a wallet** with a few USDC (each channel locks a $2 deposit by default; unspent USDC comes back when it closes) and about 0.05 SOL for fees and channel rent.
+
+```bash
+solana-keygen new -o ~/.config/solana/orrery.json
+solana address -k ~/.config/solana/orrery.json
+```
+
+**3. Run the router**
+
+```bash
+orrery router --wallet ~/.config/solana/orrery.json --rpc <your RPC URL> --daily-cap 5
+```
+
+```
+Orrery router on http://127.0.0.1:7171/v1  ·  3 providers  ·  route auto  ·  wallet 7xKXtg…
+session key 9WzDXw…AWWM signs vouchers; console at http://127.0.0.1:7171/
+```
+
+**4. Point your tools at it** — any API key works.
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(base_url="http://127.0.0.1:7171/v1", api_key="unused")
 reply = client.chat.completions.create(
-    model="llama-3.3-70b:cheap",          # add :cheap, :fast, :trusted or :private
+    model="llama-3.3-70b:cheap",
     messages=[{"role": "user", "content": "Hello from the network"}],
 )
+print(reply.choices[0].message.content)
 ```
 
-Works unchanged with Cursor, Continue, Aider, Open WebUI, LangChain and the OpenAI SDKs. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost` headers. Full guide: **[orrerynode.com/docs](https://orrerynode.com/docs)**.
+<details>
+<summary><b>TypeScript, streaming</b></summary>
 
-## How it works
+```ts
+import OpenAI from 'openai';
+
+const client = new OpenAI({ baseURL: 'http://127.0.0.1:7171/v1', apiKey: 'unused' });
+const stream = await client.chat.completions.create({
+  model: 'deepseek-v3:fast',
+  stream: true,
+  messages: [{ role: 'user', content: 'Explain payment channels in two lines' }],
+});
+for await (const chunk of stream) process.stdout.write(chunk.choices[0]?.delta?.content ?? '');
+```
+</details>
+
+<details>
+<summary><b>curl</b></summary>
+
+```bash
+curl http://127.0.0.1:7171/v1/chat/completions -i \
+  -H 'content-type: application/json' \
+  -d '{"model":"gpt-oss-120b:cheap","messages":[{"role":"user","content":"hi"}]}'
+```
+
+Every answer carries who served it and what you paid:
+
+```
+x-orrery-provider: 5Tq7…
+x-orrery-route: price
+x-orrery-cost: 0.000009
+```
+</details>
+
+<details>
+<summary><b>Cursor, Continue, Aider, Open WebUI, LangChain</b></summary>
+
+| Tool | Setting |
+|---|---|
+| Cursor | Settings → Models → OpenAI API key: any string · Override OpenAI Base URL: `http://127.0.0.1:7171/v1` · add a model such as `llama-3.3-70b:cheap` |
+| Continue | a model with `provider: openai`, `apiBase: http://127.0.0.1:7171/v1`, `model: deepseek-v3` |
+| Aider | `OPENAI_API_BASE=http://127.0.0.1:7171/v1 aider --model openai/llama-3.3-70b:cheap` |
+| Open WebUI | Admin → Connections → OpenAI API: URL `http://127.0.0.1:7171/v1`, any key |
+| LangChain | `ChatOpenAI(base_url="http://127.0.0.1:7171/v1", api_key="unused", model="qwen3-235b")` |
+</details>
+
+The full guide, with every flag and a troubleshooting table, is at **[orrerynode.com/docs](https://orrerynode.com/docs)**.
+
+## Routes
+
+<p align="center">
+  <img src="assets/readme/routes.jpg" width="840" alt="One word after the model name decides the route; the router ranks candidate providers and picks one.">
+</p>
+
+| Suffix | Route | Picks |
+|---|---|---|
+| *(none)* | auto | `0.6 × relative cost + 0.25 × relative first-token time + 0.45 × (1 − reputation)`, among providers above your reputation floor |
+| `:cheap` | price | lowest expected cost for this request |
+| `:fast` | speed | fastest first token this router has measured (EWMA) |
+| `:trusted` | reputation | settled volume 35% · redemptions 15% · age 15% · bonded $OREY 10% · this router's own success rate 25% |
+| `:private` | privacy | only providers whose enclave this router verified; the request is sealed |
+
+The router tries the top three providers in order and cools a failing one down for 15 seconds up to 5 minutes, so a slow or dead provider is skipped without your tool noticing. Pin one with `x-orrery-provider: <address prefix>`, or set the route with `x-orrery-route`.
+
+## How payment works
+
+<p align="center">
+  <img src="assets/readme/payments.jpg" width="840" alt="A payment channel: a running total signed after every answer, and the 88 bytes of the latest voucher.">
+</p>
 
 ```mermaid
 sequenceDiagram
@@ -78,64 +246,165 @@ sequenceDiagram
     S-->>P: USDC to the provider's wallet · nothing to anyone else
 ```
 
-1. **Providers list themselves on chain**: an endpoint, the key their node signs with, and the sha-256 of the price list it serves. No approval, no stake, no delisting.
-2. **The router opens a channel** the first time it uses a provider: a small USDC deposit in an account only the channel controls, and a session key that never leaves your computer.
-3. **After every answer** the router prices it from the provider's published list, takes the smaller of its number and the provider's, and signs a new running total: an 88-byte ed25519 voucher.
-4. **The provider redeems** the highest total whenever it likes. The program pays exactly that difference to the provider's own token account. Whatever is not redeemed goes back to you when the channel closes.
+**The voucher** is 88 bytes, signed with ed25519 by a session key that never leaves your computer:
 
-Byte layouts, the routing formula and the threat table: **[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
+| Bytes | Field |
+|---|---|
+| 0–15 | `orrery/voucher/1` (domain separator) |
+| 16–47 | channel address |
+| 48–55 | cumulative amount, u64 little-endian, USDC base units |
+| 56–87 | usage hash: `sha256(previous ‖ "requestId\|model\|in\|out\|cost")`, a chain over every answer |
 
-## Routes
+The router prices each answer itself from the provider's published list and pays **the smaller** of its number and the provider's. A provider serves the next request only once the previous one is paid, so it is never owed more than one answer, and you never pay for one you did not get. To redeem, anyone submits `[Ed25519Program check, redeem]` in one transaction; the program reads the instructions sysvar to confirm the check covers exactly this key and these bytes.
 
-| Suffix | Route | Picks |
-|---|---|---|
-| *(none)* | auto | blend of expected cost, first-token time and reputation |
-| `:cheap` | price | lowest expected cost for this request |
-| `:fast` | speed | fastest first token this router has measured |
-| `:trusted` | reputation | most USDC settled on chain, redemptions, age, bonded $OREY, local success rate |
-| `:private` | privacy | only providers whose enclave the router verified; the request is sealed (X25519 → HKDF → AES-256-GCM) |
+## The program takes 0%
 
-The router tries the top three providers in order, so a slow or failing one is skipped without your tool noticing.
+<p align="center">
+  <img src="assets/readme/zero.jpg" width="760" alt="The program in the middle takes 0%. Where the rehearsal's 100 USDC went: 97.999864 back with the user, 0.000199 paid to providers, 1.999937 still in open channels.">
+</p>
+
+There is no fee field in the program and no third account to send a fee to. In the local rehearsal, 100 USDC went in and 100 USDC is accounted for: back with the user, paid to the providers, or still in open channels. There is no fourth line.
 
 ## Run a provider
 
-Put a node in front of any OpenAI-compatible server — vLLM, SGLang, Ollama, llama.cpp, or API capacity you hold — set your prices, and list it. Routers anywhere can pay you per answer.
+<p align="center">
+  <img src="assets/readme/providers.jpg" width="840" alt="Providers: every one is someone's own machine.">
+</p>
+
+Every provider is someone's own machine. Put a node in front of any OpenAI-compatible server, set your prices, and list it; routers anywhere can then pay you per answer.
 
 ```bash
-orrery provider register --config provider.json --wallet wallet.json   # list on chain (your wallet stays cold)
+orrery provider register --config provider.json --wallet wallet.json   # list on chain; your wallet stays cold
+orrery provider show     --config provider.json                         # what the chain says, including your node key
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
 ```jsonc
 {
-  "name": "My GPU", "region": "eu-west", "publicUrl": "https://gpu.example.org",
+  "name": "My GPU",
+  "region": "eu-west",
+  "publicUrl": "https://gpu.example.org",
+  "rpcUrl": "https://your-rpc.example.com",
+  "settleMint": "EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY",
+  "wallet": "~/.config/solana/provider-wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
-  "models": [{ "id": "llama-3.3-70b", "context": 131072, "maxOutput": 8192,
-               "price": { "input": 120000, "output": 300000 } }]   // USDC base units per million tokens
+  "models": [
+    { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/Llama-3.3-70B-Instruct",
+      "context": 131072, "maxOutput": 8192,
+      "price": { "input": 120000, "output": 300000 } }      // USDC base units per million tokens: $0.12 / $0.30
+  ],
+  "redeem": { "everySecs": 300, "minUnits": 50000 }
 }
 ```
 
-Only standard chat fields reach your upstream, so a caller can never spend your key on models or tools your price list does not cover. The node runs on its own key, which can redeem but never touch what you have earned. Every field: [provider.json reference](https://orrerynode.com/docs#provider-config).
+<details>
+<summary><b>Upstreams</b></summary>
+
+| Server | `upstream` |
+|---|---|
+| vLLM | `"baseUrl": "http://127.0.0.1:8000/v1"` |
+| SGLang | `"baseUrl": "http://127.0.0.1:30000/v1"` |
+| Ollama | `"baseUrl": "http://127.0.0.1:11434/v1"` |
+| llama.cpp | `"baseUrl": "http://127.0.0.1:8080/v1"` |
+| OpenRouter or any API | `"baseUrl": "https://openrouter.ai/api/v1", "apiKeyEnv": "OPENROUTER_API_KEY"` |
+</details>
+
+<details>
+<summary><b>Keep it running with systemd</b></summary>
+
+```ini
+[Unit]
+Description=Orrery provider node
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/env orrery provider start --config /etc/orrery/provider.json
+Environment=OPENROUTER_API_KEY=...
+Restart=always
+User=orrery
+
+[Install]
+WantedBy=multi-user.target
+```
+</details>
+
+- **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
+- **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.
+- **Change anything** by editing the file and running `register` again: it updates the listing, and routers check the new price list against the hash on chain.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph users[Users]
+      A[Router A<br/>laptop]:::r
+      B[Router B<br/>workstation]:::r
+      C[Router C<br/>CI runner]:::r
+    end
+    subgraph providers[Providers]
+      K[Kestrel<br/>GPU co-op]:::p
+      I[Ironbridge<br/>rack]:::p
+      V[Vault Nine<br/>enclave]:::p
+    end
+    A -- request · voucher --> K
+    A -- request · voucher --> I
+    B -- request · voucher --> I
+    B -- sealed request --> V
+    C -- request · voucher --> K
+    S[(Solana program<br/>channels · 0% fee)]:::s
+    A & B & C -. open · top up · close .-> S
+    K & I & V -. redeem .-> S
+    classDef r fill:#1a1030,stroke:#9945ff,color:#f7f7f7
+    classDef p fill:#0b1a14,stroke:#14f195,color:#f7f7f7
+    classDef s fill:#0c0c0c,stroke:#5f8ff2,color:#f7f7f7
+```
+
+Every router talks to every provider directly. The program never sees a prompt or an answer; it only holds deposits and pays out signed totals. Byte layouts, every instruction and the threat table: **[docs/PROTOCOL.md](docs/PROTOCOL.md)**.
+
+## Security model
+
+| If | The most you lose |
+|---|---|
+| a provider stops answering | nothing: the router moves on, and it signs only after an answer arrives |
+| a provider overstates token counts | at most the reservation for that one answer (its listed price for `maxOutput` tokens) |
+| your session key leaks | what is left in your open channels, redeemable only by their providers; close them |
+| your router misbehaves | at most `--daily-cap` per day |
+| a provider's node key leaks | nothing of the provider's: redemptions only go to the listing wallet |
+| the admin turns hostile | nothing: the admin cannot move deposits or bonds, list or delist, or add a fee |
+
+The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for what each key can do and how to report a vulnerability privately.
+
+## CLI
+
+| Command | Does |
+|---|---|
+| `orrery router --wallet <keypair> --rpc <url>` | run the router on `127.0.0.1:7171` |
+| `orrery models` | every model on the network, cheapest price, provider count |
+| `orrery providers` | every listing and what the chain says about it |
+| `orrery channels` | your channels: deposit, what you signed, what was redeemed |
+| `orrery close <channel> --wallet <keypair>` | start closing (the provider gets a grace period to redeem) |
+| `orrery close <channel> --wallet <keypair> --finish` | after the grace period, the rest comes back to you |
+| `orrery provider register \| show \| start \| attest \| redeem --config provider.json` | run a provider |
+
+Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`. Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`).
 
 ## Router console
 
-The router serves a live console at `http://127.0.0.1:7171/`: every request, the provider that answered, tokens, what it cost, your providers and your channels.
+The router serves a live console at `http://127.0.0.1:7171/`: every request, the provider that answered, tokens and cost, your providers and your channels.
 
 <p align="center">
   <img src="assets/readme/console.png" width="880" alt="The router console: default route, spent today, providers, open channels, and tables of recent requests, providers and channels.">
 </p>
 
-## Repository
+## Build from source
 
 ```
 program/   Anchor program (Rust) · provider registry, payment channels, ed25519 vouchers, enclave claims, bonds
 node/      router + provider node (TypeScript, Node 22) · published to npm as orrery-node
-web/       site and docs (Next.js, three.js)
+web/       orrerynode.com and its docs (Next.js, three.js)
 docs/      protocol specification
 assets/    brand and README media
 ```
-
-## Build and test
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
@@ -144,23 +413,90 @@ pnpm e2e                                                        # full local reh
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
-The rehearsal deploys the program to a local validator, lists three providers in front of mock models, sends thirteen requests across every route, switches the cheapest provider off mid-run, redeems on chain, and checks that user + providers + open deposits equal the starting balance. The program takes nothing.
+**The rehearsal** (`node/devtools/e2e.ts`) starts a local validator with the program, lists three providers in front of mock models (one of them behind a development enclave), runs a router through thirteen requests on every route, switches the cheapest provider off mid-run, redeems on chain, has one provider release its channel, and checks every unit of USDC:
 
-## Status
+```
+  ✓ /v1/models lists the network catalog
+  ✓ price route picks the cheapest llama
+  ✓ streaming works and only Ironbridge has deepseek
+  ✓ privacy route seals the request to the only enclave
+  ✓ route header works too
+  ✓ speed route settles on the provider with the fastest first token
+  ✓ when the cheapest provider goes dark the request falls through
+  ✓ router logged every answered request
+  ✓ Kestrel GPU Co-op redeemed exactly what the router signed
+  ✓ Ironbridge Compute redeemed exactly what the router signed
+  ✓ Vault Nine redeemed exactly what the router signed
+  ✓ a provider releasing its channel sends the rest straight back to the user
+  ✓ no fee in the program: user + providers + open deposits = 100 USDC
+  ✓ program totals agree
+14/14 checks passed
+```
 
-- [x] Settlement program: registry, channels, vouchers, enclave claims, bonds
-- [x] Router and provider node, OpenAI-compatible, streaming
+## FAQ
+
+<details>
+<summary><b>Do I need an account or an API key?</b></summary>
+
+No. Your Solana wallet is the account. The router accepts any API key string from your tools and pays from your channels.
+</details>
+
+<details>
+<summary><b>What does a request cost?</b></summary>
+
+Whatever the provider lists, per million input and output tokens, in USDC. `orrery models` shows the cheapest price per model across the network. Nothing is added on top: the program has no fee.
+</details>
+
+<details>
+<summary><b>What stops a provider from overcharging?</b></summary>
+
+The router recomputes every cost from the provider's published price list (whose hash is on chain) and signs the smaller number, never more than it reserved for that request. Providers that misbehave lose reputation, and the router stops picking them.
+</details>
+
+<details>
+<summary><b>What stops a user from not paying?</b></summary>
+
+A provider serves the next request only after the previous one is paid by a signed voucher, and the deposit is already locked in the channel. The most a provider can be owed is one answer.
+</details>
+
+<details>
+<summary><b>Can someone shut a provider down?</b></summary>
+
+No. Anyone can list, and no instruction in the program lets anyone, including the admin, delist a provider.
+</details>
+
+<details>
+<summary><b>What is $OREY for?</b></summary>
+
+Providers can bond it behind their listing, and routers count the bond as 10% of reputation on the `:trusted` route. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it. It launches on Meteora.
+</details>
+
+<details>
+<summary><b>Which API does the router speak?</b></summary>
+
+OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/models`. The Anthropic Messages API is on the roadmap.
+</details>
+
+## Roadmap
+
+- [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
+- [x] Router and provider node, OpenAI-compatible, streaming, fall-through
 - [x] Local end-to-end rehearsal, 14 of 14 checks
-- [x] npm package `orrery-node`
+- [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
+- [x] Site and docs at [orrerynode.com](https://orrerynode.com)
 - [ ] Mainnet deployment and seed providers
 - [ ] Verified build of the program
+- [ ] Independent audit
 - [ ] Anthropic Messages API (`/v1/messages`)
 - [ ] Built-in hardware attestation verifier
+- [ ] $OREY bonds live on mainnet
 
-## Security
+## Contributing
 
-What each key can and cannot do, and how to report a vulnerability: **[SECURITY.md](SECURITY.md)**.
+Issues and pull requests are welcome. Before opening a pull request, run the program tests, `pnpm test` and `pnpm e2e` in `node/`, and keep the protocol document in step with any change to the program or the wire format. Security issues go through private reporting, not public issues: see [SECURITY.md](SECURITY.md).
 
 ## License
 
 [MIT](LICENSE)
+
+<p align="center"><br><img src="assets/brand/mark.svg" width="56" alt="Orrery"><br><sub>Peer to peer. Zero cut in between.</sub></p>
