@@ -1,17 +1,28 @@
 {
   "name": "orrery-node",
-  "version": "0.1.0",
-  "description": "Orrery router and provider node: point your AI tools at localhost, pay providers directly on Solana. Peer to peer, zero cut in between.",
+  "version": "0.1.1",
+  "description": "Peer-to-peer AI inference on Solana. An OpenAI-compatible router on localhost that sends every request straight to a provider's machine and pays it per answer through a payment channel. Zero cut in between.",
   "license": "MIT",
   "keywords": [
     "solana",
     "ai",
+    "llm",
     "inference",
     "p2p",
+    "peer-to-peer",
+    "openai",
     "openai-compatible",
     "router",
-    "llm",
-    "payment-channel"
+    "gateway",
+    "payment-channel",
+    "micropayments",
+    "usdc",
+    "decentralized",
+    "vllm",
+    "ollama",
+    "gpu",
+    "cursor",
+    "langchain"
   ],
   "homepage": "https://orrerynode.com",
   "repository": {
@@ -51,5 +62,6 @@
     "@types/node": "22.19.1",
     "tsx": "4.23.13",
     "typescript": "5.9.3"
-  }
+  },
+  "author": "Orrery (https://orrerynode.com)"
 }
