@@ -11,6 +11,7 @@ import { Channels } from './channels.ts';
 import { parseModel, rank, Stats, type Candidate, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
+import { AnthropicStream, anthropicError, toMessage, toOpenAI } from './anthropic.ts';
 
 export type RouterOptions = {
   port: number;
@@ -112,6 +113,8 @@ export class Router {
     try {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);
+      if (req.method === 'POST' && url.pathname === '/v1/messages') return await this.messages(req, res);
+      if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -120,6 +123,7 @@ export class Router {
       return send(res, 404, { error: { code: 'not_found', message: 'no such route' } });
     } catch (err) {
       const e = err as Unserved;
+      if (!res.headersSent && url.pathname.startsWith('/v1/messages')) return send(res, e.status ?? 500, anthropicError(e.status ?? 500, e.message));
       if (!res.headersSent) return send(res, e.status ?? 500, { error: { code: e.code ?? 'internal', message: e.message } });
       res.end();
     }
@@ -146,7 +150,18 @@ export class Router {
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
-    const body = await readJson(req);
+    return this.serve(await readJson(req), req, res, null);
+  }
+
+  /** The Anthropic Messages API: translated to a chat request, served the same way, answered in Anthropic's shape. */
+  private async messages(req: IncomingMessage, res: ServerResponse) {
+    const a = await readJson(req);
+    if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
+    if (!Array.isArray(a.messages) || !a.messages.length) throw new Unserved('messages is required', 400, 'bad_request');
+    return this.serve(toOpenAI(a), req, res, { id: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
+  }
+
+  private async serve(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: { id: string } | null) {
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     const header = String(req.headers['x-orrery-route'] ?? '');
     const { model, route } = parseModel(body.model, (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
@@ -164,7 +179,7 @@ export class Router {
     const tried: string[] = [];
     for (const cand of ranked.slice(0, 3)) {
       try {
-        await this.forward(cand, body, wantsStream, res, route, tried.length);
+        await this.forward(cand, body, wantsStream, res, route, tried.length, false, anth);
         return;
       } catch (err) {
         tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
@@ -178,7 +193,7 @@ export class Router {
     throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed');
   }
 
-  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false): Promise<void> {
+  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: { id: string } | null = null): Promise<void> {
     const address = cand.entry.address;
     const maxOut = Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
@@ -204,12 +219,12 @@ export class Router {
         const allowed = this.inflight.get(address) ?? 0n;
         if (BigInt(u.cost) <= allowed && u.model === cand.offer.id) {
           this.o.channels.settle(address, { ...u, cost: BigInt(u.cost) });
-          return this.forward(cand, body, wantsStream, res, route, fellThrough, true);
+          return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth);
         }
       }
       if (j.error.code === 'channel_exhausted') {
         await this.o.channels.topUp(address, BigInt(j.error.need ?? '0'));
-        return this.forward(cand, body, wantsStream, res, route, fellThrough, true);
+        return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth);
       }
       throw new Error(`payment refused: ${j.error.code}`);
     }
@@ -220,6 +235,7 @@ export class Router {
     let claimedOff = 0;
     const chunks: Record<string, unknown>[] = [];
     let started = false;
+    let stream: AnthropicStream | null = null;
     for await (const ev of readSse(r.body)) {
       let data = ev.data;
       if (data === '[DONE]') break;
@@ -235,8 +251,13 @@ export class Router {
         if (!started) {
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? { 'x-orrery-sealed': '1' } : {}) });
           started = true;
+          if (anth) {
+            stream = new AnthropicStream((event, d) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`), anth.id, cand.offer.id, estimateInputTokens(body));
+            stream.start();
+          }
         }
-        res.write(sseFrame(data));
+        if (stream) stream.chunk(JSON.parse(data));
+        else res.write(sseFrame(data));
       } else {
         chunks.push(JSON.parse(data));
       }
@@ -265,10 +286,12 @@ export class Router {
 
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
     if (wantsStream) {
-      res.write(sseFrame('[DONE]'));
+      if (stream) stream.finish(record.inputTokens, record.outputTokens);
+      else res.write(sseFrame('[DONE]'));
       res.end();
       return;
     }
+    if (anth) return send(res, 200, toMessage(chunks, anth.id, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
     send(res, 200, assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
   }
 }
@@ -281,7 +304,15 @@ function assemble(chunks: Record<string, unknown>[], model: string, prompt: numb
       const i = ch.index ?? 0;
       const cur = choices.get(i) ?? { index: i, message: { role: 'assistant', content: '' }, finish_reason: null };
       if (ch.delta?.content) cur.message.content += ch.delta.content;
-      if (ch.delta?.tool_calls) cur.message.tool_calls = [...(cur.message.tool_calls ?? []), ...ch.delta.tool_calls];
+      for (const t of (ch.delta?.tool_calls ?? []) as { index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } }[]) {
+        const calls = (cur.message.tool_calls ??= []) as { index: number; id?: string; type: string; function: { name: string; arguments: string } }[];
+        const k = t.index ?? 0;
+        let c = calls.find((x) => x.index === k);
+        if (!c) calls.push((c = { index: k, id: t.id, type: t.type ?? 'function', function: { name: '', arguments: '' } }));
+        if (t.id) c.id = t.id;
+        if (t.function?.name) c.function.name += t.function.name;
+        if (t.function?.arguments) c.function.arguments += t.function.arguments;
+      }
       if (ch.finish_reason) cur.finish_reason = ch.finish_reason;
       choices.set(i, cur);
     }
@@ -292,7 +323,7 @@ function assemble(chunks: Record<string, unknown>[], model: string, prompt: numb
     object: 'chat.completion',
     created: (first.created as number) ?? Math.floor(Date.now() / 1000),
     model,
-    choices: [...choices.values()].sort((a, b) => a.index - b.index),
+    choices: [...choices.values()].sort((a, b) => a.index - b.index).map((c) => (c.message.tool_calls ? { ...c, message: { ...c.message, tool_calls: (c.message.tool_calls as { index: number }[]).map(({ index: _i, ...t }) => t) } } : c)),
     usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion },
   };
 }
