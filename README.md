@@ -528,6 +528,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 - [x] Program deployed on Solana mainnet and initialized (USDC settlement, 1 h close grace, 7 day unbonding, $0.10 minimum deposit)
 - [x] Reproducible build: the program on chain hashes to `0880750c…5451`, the same as `solana-verify build` of this repo
 - [x] Seed provider live on mainnet (Orrery Seed: llama-3.3-70b, deepseek-v3, qwen3-235b, gpt-oss-120b; holder tiers published), first paid requests settled on chain
+- [x] $OREY live on Meteora (`2nB8hRZcSGKbxpfazRd749nXbWRgG27q6yQcasWcThse`), set as the program's bond mint, holder prices on
+- [ ] Buyback and burn: a share of what Orrery earns buys $OREY on the market and burns it. It runs outside the settlement program, which keeps no fee; a smaller supply moves every holder toward the next tier
 - [ ] Independent audit
 - [ ] Anthropic Messages API (`/v1/messages`)
 - [ ] Built-in hardware attestation verifier
