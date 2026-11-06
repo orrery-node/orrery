@@ -5,10 +5,10 @@
   --well: #070707;
   --line: #1c1c1c;
   --line-2: #2e2e2e;
-  --fg: #f5f5f5;
-  --fg-2: #a3a3a3;
-  --fg-3: #7a7a7a;
-  --dim: #6f6f6f;
+  --fg: #f7f7f7;
+  --fg-2: #c6c6c6;
+  --fg-3: #9c9c9c;
+  --dim: #858585;
   --green: #14f195;
   --purple: #9945ff;
   --sol-blue: #5f8ff2;
@@ -132,7 +132,7 @@ p {
 }
 
 .lead {
-  color: var(--fg-3);
+  color: #a9a9a9;
 }
 
 .sr {

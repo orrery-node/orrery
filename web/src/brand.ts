@@ -10,5 +10,7 @@ export const X_URL: string | null = null;
 export const REPO_URL: string | null = null;
 
 export const ROUTER_URL = 'http://127.0.0.1:7171/v1';
+export const NPM_PACKAGE = 'orrery-node';
+export const NPM_URL = `https://www.npmjs.com/package/${NPM_PACKAGE}`;
 export const PROGRAM_ID = '7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS';
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3870';

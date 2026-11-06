@@ -203,6 +203,34 @@
   line-height: 1.8;
   color: var(--fg);
 }
+.d-steps {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 10px;
+}
+.d-steps li {
+  position: relative;
+  padding: 12px 16px 12px 52px;
+  background: var(--ground-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  counter-increment: step;
+}
+.d-steps li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 18px;
+  top: 13px;
+  font: 500 12px/1.6 var(--mono);
+  color: var(--fg-3);
+}
+.d-steps b {
+  color: var(--fg);
+  font-weight: 500;
+}
 .d-parts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

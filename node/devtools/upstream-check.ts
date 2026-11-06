@@ -12,13 +12,14 @@ const keyFile = process.env.ORRERY_UPSTREAM_KEY_FILE;
 const key = keyFile ? readFileSync(keyFile, 'utf8').trim() : cfg.upstream.apiKeyEnv ? process.env[cfg.upstream.apiKeyEnv] : cfg.upstream.apiKey;
 if (!key) throw new Error('no upstream key: set ORRERY_UPSTREAM_KEY_FILE or the config env var');
 
+type Usage = { prompt_tokens?: number; completion_tokens?: number; cost?: number };
 let failed = 0;
 for (const m of cfg.models) {
   const body = { ...(cfg.upstream.body ?? {}), ...upstreamBody({ messages: [{ role: 'user', content: 'In one sentence: what is a payment channel?' }], models: ['ignored/should-not-pass'], n: 3 }, m.upstreamModel ?? m.id, 120) };
   const t0 = Date.now();
   let ttft = 0;
   let text = '';
-  let usage: { prompt_tokens?: number; completion_tokens?: number; cost?: number } | null = null;
+  let usage: Usage | null = null;
   let served = '';
   try {
     const r = await fetch(`${cfg.upstream.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -36,7 +37,7 @@ for (const m of cfg.models) {
         continue;
       }
       if (c.model) served = String(c.model);
-      if (c.usage) usage = c.usage as typeof usage;
+      if (c.usage) usage = c.usage as Usage;
       for (const ch of (c.choices as { delta?: { content?: string } }[] | undefined) ?? []) {
         if (ch.delta?.content) {
           if (!ttft) ttft = Date.now() - t0;

@@ -7,7 +7,7 @@ export function consolePage(): string {
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
 <style>
-:root{--bg:#000;--card:#0c0c0c;--well:#070707;--line:#1c1c1c;--line2:#2e2e2e;--fg:#f5f5f5;--fg2:#a3a3a3;--fg3:#7a7a7a;--green:#14f195;--purple:#b98aff;--warn:#f0a868;
+:root{--bg:#000;--card:#0c0c0c;--well:#070707;--line:#1c1c1c;--line2:#2e2e2e;--fg:#f7f7f7;--fg2:#c6c6c6;--fg3:#9c9c9c;--green:#14f195;--purple:#b98aff;--warn:#f0a868;
 --sans:'Instrument Sans','Helvetica Neue',Arial,sans-serif;--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;padding:0 clamp(16px,4vw,48px) 64px}
 header{display:flex;align-items:center;gap:12px;height:64px;border-bottom:1px solid var(--line);margin:0 calc(-1*clamp(16px,4vw,48px)) 32px;padding:0 clamp(16px,4vw,48px)}

@@ -5,7 +5,7 @@ import { Mark } from '@/components/Mark';
 import FilmReel from '@/components/FilmReel';
 import ScrollFX from '@/components/ScrollFX';
 import Wire from '@/components/Wire';
-import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
+import { CA, NAME, NPM_PACKAGE, NPM_URL, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
 import { programStatus } from '@/lib/chain';
 import { perM, rehearsal, ranAtLabel, ROUTE_WORD, short, usd } from '@/lib/rehearsal';
 
@@ -310,6 +310,12 @@ export default async function Home() {
             <h2>
               Point your AI at <span className="grad">the network.</span>
             </h2>
+            <div className="installbar">
+              <code className="num">
+                <span>$</span> npm i -g {NPM_PACKAGE}
+              </code>
+              <CopyButton text={`npm i -g ${NPM_PACKAGE}`} />
+            </div>
             <div className="cta cta--center">
               <Link href="/docs#install" className="pill">Install the router</Link>
               <Link href="/docs" className="ghost">Read the docs <Arrow /></Link>
@@ -325,6 +331,7 @@ export default async function Home() {
         </span>
         <nav aria-label="Elsewhere">
           <Link href="/docs">Docs</Link>
+          <a href={NPM_URL} rel="noopener noreferrer" target="_blank">npm</a>
           {REPO_URL ? <a href={REPO_URL}>GitHub</a> : <span className="foot__off">GitHub at launch</span>}
           {X_URL ? <a href={X_URL}>X</a> : <span className="foot__off">X soon</span>}
         </nav>

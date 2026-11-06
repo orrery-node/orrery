@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
-import { decodeProvider, ins, pda } from './chain/program.ts';
+import { decodeChannel, decodeConfig, decodeProvider, ins, pda } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { perMillion, usd } from './pricing.ts';
 import { ProviderNode, type ProviderConfig } from './provider/node.ts';
@@ -33,6 +33,9 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --allow-dev-enclaves      accept software attestation (local testing only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
+  ${CLI} channels                your router's channels and what the chain says about each
+  ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
+  ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
   ${CLI} provider start   --config provider.json
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
@@ -74,6 +77,23 @@ async function listProviders() {
   for (const e of registry.entries.values()) {
     const a = e.account;
     console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
+  }
+}
+
+async function listChannels() {
+  const conn = new Connection(rpc(), 'confirmed');
+  const session = loadOrCreateKeypair(home('router', 'session.json'));
+  const local = new Channels(conn, null, session, mint(), home('router', 'channels.json'), { deposit: 0n, topUpBelow: 0n, dailyCap: 0n }).list();
+  if (!local.length) return console.log('No channels yet. The first request to a provider opens one.');
+  for (const c of local) {
+    const info = await conn.getAccountInfo(new PublicKey(c.channel));
+    if (!info) {
+      console.log(`${c.channel}  closed`);
+      continue;
+    }
+    const a = decodeChannel(info.data);
+    const state = a.closingAt === 0n ? 'open' : `closing, ready after ${new Date(Number(a.closingAt) * 1000).toISOString()}`;
+    console.log(`${c.channel}  provider ${c.provider.slice(0, 8)}…  deposit $${usd(a.deposit, 2)}  you signed $${usd(c.cumulative)}  redeemed $${usd(a.redeemed)}  ${state}`);
   }
 }
 
@@ -125,12 +145,29 @@ async function main() {
   if (cmd === 'models') return listModels();
   if (cmd === 'providers') return listProviders();
   if (cmd === 'provider') return provider(sub ?? 'start');
+  if (cmd === 'channels') return listChannels();
   if (cmd === 'close') {
-    const w = loadKeypair(expand(flag('wallet')!));
+    const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+    if (!sub || !walletPath) throw new Error(`usage: ${CLI} close <channel> --wallet <keypair.json> [--finish]`);
+    const w = loadKeypair(expand(walletPath));
     const ch = new PublicKey(sub);
     const conn = new Connection(rpc(), 'confirmed');
-    await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(w.publicKey, ch)), [w]);
-    return console.log(`closing ${ch.toBase58()}; after the grace period run the close again with --finish`);
+    const info = await conn.getAccountInfo(ch);
+    if (!info) return console.log(`${ch.toBase58()} is already closed`);
+    const c = decodeChannel(info.data);
+    if (!c.payer.equals(w.publicKey)) throw new Error('this wallet did not open that channel');
+    if (!has('finish')) {
+      if (c.closingAt !== 0n) return console.log(`already closing; the rest can come back after ${new Date(Number(c.closingAt) * 1000).toISOString()} with --finish`);
+      await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(w.publicKey, ch)), [w]);
+      const cfg = decodeConfig((await conn.getAccountInfo(pda.config()))!.data);
+      return console.log(`closing ${ch.toBase58()}; the provider has ${cfg.closeGraceSecs}s to redeem, then run: ${CLI} close ${ch.toBase58()} --wallet ${walletPath} --finish`);
+    }
+    if (c.closingAt === 0n) throw new Error(`start the close first: ${CLI} close ${ch.toBase58()} --wallet ${walletPath}`);
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (now < c.closingAt) throw new Error(`the grace period ends at ${new Date(Number(c.closingAt) * 1000).toISOString()}`);
+    const prov = decodeProvider((await conn.getAccountInfo(c.provider))!.data);
+    const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(w.publicKey, prov.authority, ch, w.publicKey, c.mint)), [w]);
+    return console.log(`closed ${ch.toBase58()}; $${usd(c.deposit - c.redeemed)} and the account rent are back in your wallet  tx ${sig}`);
   }
   console.log(HELP);
   process.exitCode = 1;

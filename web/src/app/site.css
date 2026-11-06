@@ -413,11 +413,11 @@
   letter-spacing: -0.03em;
 }
 .hero__lede {
-  margin: 12px auto 0;
+  margin: 14px auto 0;
   max-width: 40em;
-  font-size: 15.5px;
+  font-size: 17px;
   line-height: 1.5;
-  color: var(--fg-2);
+  color: #d4d4d4;
 }
 .hero__foot {
   position: absolute;
@@ -1940,6 +1940,30 @@
   .wire__v {
     font-size: 11px;
   }
+}
+
+.installbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px auto 0;
+  padding: 7px 8px 7px 18px;
+  background: rgba(12, 12, 12, 0.86);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+}
+.installbar code {
+  font-size: 14px;
+  color: var(--fg);
+}
+.installbar code span {
+  color: var(--fg-3);
+  margin-right: 6px;
+}
+.close .cta {
+  margin-top: 22px;
 }
 
 /* 404 */
