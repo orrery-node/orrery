@@ -1,37 +1,40 @@
 'use client';
 
-// The hero object: an orrery in daylight. Your router is the white core inside a cage of fine rings; polished
-// chrome orbits and two orbits of flowing Solana light turn around it at their own pace, the inner ones faster, and the
-// rehearsal's three providers ride them as coloured glass. Requests leave the core as purple light carrying their
-// model and come back green carrying what they cost; each label rides its light and settles where it lands. A fine
-// engraved horizon with degree ticks frames the instrument. The close variant assembles as it scrolls into view and
-// flares when the page's wire reaches its core.
+// The hero object: an orrery made of light on true black, inside a sky of other people's routers. On load the page is a sky of loose stars; they fall into
+// place from the inside out (the router's dotted core first, then each orbit, then the engraved horizon) and every
+// point flares as it lands. Orbits are dense streams of points with fine filaments around them, and light runs
+// along them; two orbits carry the Solana gradient. The rehearsal's three providers ride the orbits. A column of
+// light falls from the core into the request line below: a request climbs it, leaves the core as purple light
+// carrying its model and comes back green carrying what it cost. Labels ride the light and settle where it lands.
+// Around it, other routers float as small orreries of their own, and requests cross between them and the providers
+// directly, with no server anywhere in the middle: the providers flare for them too. The close variant assembles as it
+// scrolls into view and flares when the page's wire reaches its core.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { emit, on, reducedMotion } from '@/lib/bus';
 import { perM, rehearsal, ROUTE_WORD, type RTrip } from '@/lib/rehearsal';
 
-const ENGRAVE = new THREE.Color('#6d6690');
-const FILAMENT = new THREE.Color('#8c84b4');
-const ARC = new THREE.Color('#7350e0');
-const HALO = new THREE.Color('#b7a6ff');
-const PURPLE = new THREE.Color('#8b3dff');
-const GREEN = new THREE.Color('#0fc47f');
+const WHITE = new THREE.Color('#ffffff');
+const PURPLE = new THREE.Color('#a463ff');
+const GREEN = new THREE.Color('#14f195');
 const SOL = [new THREE.Color('#9945ff'), new THREE.Color('#5f8ff2'), new THREE.Color('#14f195')];
-const TINTS: Record<string, THREE.Color> = {
-  'Kestrel GPU Co-op': new THREE.Color('#9b52ff'),
-  'Ironbridge Compute': new THREE.Color('#4f7bff'),
-  'Vault Nine': new THREE.Color('#12d68a'),
+const solAt = (u: number, out = new THREE.Color()) => {
+  const y = Math.abs((((u % 1) + 1) % 1) * 2 - 1);
+  return y < 0.5 ? out.copy(SOL[0]).lerp(SOL[1], y * 2) : out.copy(SOL[1]).lerp(SOL[2], y * 2 - 1);
 };
 
-type Orbit = { r: number; rx: number; rz: number; kind: 'chrome' | 'light'; tube: number };
+type Orbit = { r: number; rx: number; rz: number; sol: boolean };
 const HORIZON = 4.6;
 const ORBITS: Orbit[] = [
-  { r: 1.5, rx: 0.46, rz: -0.3, kind: 'chrome', tube: 0.042 },
-  { r: 2.15, rx: -0.32, rz: 0.38, kind: 'light', tube: 0.058 },
-  { r: 2.8, rx: 0.17, rz: 0.24, kind: 'chrome', tube: 0.056 },
-  { r: 3.5, rx: -0.21, rz: -0.11, kind: 'light', tube: 0.072 },
-  { r: 4.1, rx: 0.24, rz: 0.1, kind: 'chrome', tube: 0.038 },
+  { r: 1.5, rx: 0.42, rz: -0.26, sol: false },
+  { r: 2.15, rx: -0.3, rz: 0.34, sol: true },
+  { r: 2.8, rx: 0.16, rz: 0.22, sol: false },
+  { r: 3.5, rx: -0.2, rz: -0.1, sol: true },
+  { r: 4.1, rx: 0.22, rz: 0.09, sol: false },
 ];
 const ORBIT_SPEED = ORBITS.map((o) => 0.11 * Math.pow(1.5 / o.r, 1.5));
 const NAMED: Record<string, [number, number]> = {
@@ -46,6 +49,36 @@ const ROUTE_AT: [string, number][] = [
   ['auto', 1.75],
 ];
 
+const STAR_VS = `
+attribute vec3 aFrom; attribute float aDelay; attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
+attribute float aU; attribute float aGlint; attribute float aTwinkle;
+uniform float uIntro; uniform float uTime; uniform float uScale; uniform float uCenter; uniform float uDepth; uniform float uFlow;
+varying vec3 vColor; varying float vAlpha;
+void main() {
+  float raw = (uIntro - aDelay) / 0.95;
+  float k = clamp(raw, 0.0, 1.0);
+  float e = 1.0 - pow(1.0 - k, 3.0);
+  vec3 p = mix(aFrom, position, e);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  float front = clamp(0.5 + (mv.z - uCenter) / uDepth, 0.0, 1.0);
+  float wave = pow(0.5 + 0.5 * sin(6.2831853 * aU * 3.0 - uTime * uFlow), 14.0);
+  float flash = smoothstep(0.55, 1.0, raw) * (1.0 - smoothstep(1.0, 1.7, raw));
+  float tw = 0.75 + 0.25 * sin(uTime * aTwinkle + aU * 40.0);
+  float travel = mix(0.45, 1.0, e);
+  gl_PointSize = aSize * uScale / -mv.z * (1.0 + flash * 0.7 + aGlint * wave * 0.6);
+  gl_Position = projectionMatrix * mv;
+  vColor = mix(aColor, vec3(1.0), flash * 0.6 + aGlint * wave * 0.5);
+  vAlpha = aAlpha * mix(0.2, 1.0, front * front) * travel * tw + flash * 0.9 * aAlpha + aGlint * wave * 0.85 * front;
+}`;
+const STAR_FS = `
+varying vec3 vColor; varying float vAlpha;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+  float a = 1.0 - d; a *= a;
+  gl_FragColor = vec4(vColor * vAlpha * a, 1.0);
+}`;
+
 const LINE_VS = `
 attribute float aT; attribute float aAlpha;
 uniform float uDraw; uniform float uCenter; uniform float uDepth;
@@ -55,48 +88,62 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float front = clamp(0.5 + (mv.z - uCenter) / uDepth, 0.0, 1.0);
   float wave = pow(0.5 + 0.5 * sin(aT * uFreq - uTime * uSpeed), 4.0);
-  float glint = 1.0 + uFlow * (wave * 1.25 - 0.28);
-  vAlpha = aAlpha * glint * mix(0.18, 1.0, front * front) * clamp((uDraw - aT) * 14.0, 0.0, 1.0);
+  float glint = 1.0 + uFlow * (wave * 1.6 - 0.3);
+  vAlpha = aAlpha * glint * mix(0.12, 1.1, front * front) * clamp((uDraw - aT) * 10.0, 0.0, 1.0);
   gl_Position = projectionMatrix * mv;
 }`;
 const LINE_FS = `
 uniform vec3 uColor; varying float vAlpha;
-void main() {
-  gl_FragColor = vec4(uColor, min(1.0, vAlpha));
-  #include <colorspace_fragment>
-}`;
+void main() { gl_FragColor = vec4(uColor * vAlpha, 1.0); }`;
 
-const POINT_VS = `
-attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute vec3 aFrom; attribute float aDelay; attribute float aKind; attribute float aSwirl;
-uniform float uScale; uniform float uIntro; uniform float uCenter; uniform float uDepth; uniform float uTime;
+const NODE_VS = `
+attribute float aSize; attribute float aAlpha; attribute vec3 aColor; attribute float aKind;
+uniform float uScale; uniform float uCenter; uniform float uDepth;
 varying vec3 vColor; varying float vAlpha; varying float vKind;
 void main() {
-  float k = clamp((uIntro - aDelay) / 0.55, 0.0, 1.0);
-  k = 1.0 - pow(1.0 - k, 3.0);
-  vec3 p = mix(aFrom, position, k);
-  float ang = uTime * aSwirl;
-  float cs = cos(ang); float sn = sin(ang);
-  p = vec3(cs * p.x + sn * p.z, p.y, -sn * p.x + cs * p.z);
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float front = clamp(0.5 + (mv.z - uCenter) / uDepth, 0.0, 1.0);
   gl_PointSize = aSize * uScale / -mv.z;
   gl_Position = projectionMatrix * mv;
   vColor = aColor; vKind = aKind;
-  vAlpha = aAlpha * mix(0.3, 1.0, front) * k;
+  vAlpha = aAlpha * mix(0.3, 1.0, front);
 }`;
-const POINT_FS = `
+const NODE_FS = `
 varying vec3 vColor; varying float vAlpha; varying float vKind;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
   float a;
-  vec3 c = vColor;
-  if (vKind > 3.5) { a = exp(-d * d * 3.2) * 0.62; }
+  if (vKind > 3.5) { a = exp(-d * d * 4.0) * 0.5; }
   else if (vKind > 2.5) { a = smoothstep(0.97, 0.9, d) * smoothstep(0.8, 0.87, d); }
-  else if (vKind > 0.5) { float core = exp(-d * d * 18.0); a = smoothstep(1.0, 0.15, d) * 0.55 + core * 0.6; c = mix(vColor, vec3(1.0), core * 0.75); }
+  else if (vKind > 0.5) { a = smoothstep(0.55, 0.0, d) * 0.7 + exp(-d * d * 9.0) * 0.8; }
   else { a = smoothstep(0.9, 0.2, d); }
-  gl_FragColor = vec4(c, a * vAlpha);
-  #include <colorspace_fragment>
+  gl_FragColor = vec4(vColor * a * vAlpha, 1.0);
+}`;
+
+const BEAM_VS = `
+attribute float aSeed; attribute vec2 aJit; attribute float aBright;
+uniform float uTime; uniform float uLen; uniform float uIntro; uniform float uPulse; uniform float uScale;
+varying float vAlpha; varying float vHot;
+void main() {
+  float s = fract(aSeed + uTime * 0.16);
+  float w = 0.018 + s * s * s * 0.9;
+  vec3 p = vec3(aJit.x * w, -s * uLen, aJit.y * w * 0.4);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  float hot = uPulse >= 0.0 ? exp(-pow((s - uPulse) * 9.0, 2.0)) : 0.0;
+  gl_PointSize = (1.6 + aBright * 1.4 + hot * 3.0) * uScale / -mv.z;
+  gl_Position = projectionMatrix * mv;
+  float grow = clamp((uIntro - 1.6 - (1.0 - s) * 0.6) * 1.5, 0.0, 1.0);
+  vAlpha = grow * (0.25 + aBright * 0.5) * smoothstep(0.0, 0.06, s) * (0.55 + 0.45 * (1.0 - s)) + hot * 1.6 * grow;
+  vHot = hot;
+}`;
+const BEAM_FS = `
+uniform vec3 uColor; varying float vAlpha; varying float vHot;
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+  float a = 1.0 - d; a *= a;
+  gl_FragColor = vec4(mix(vec3(1.0), uColor, vHot * 0.8) * vAlpha * a, 1.0);
 }`;
 
 function rng(seed: number) {
@@ -117,38 +164,10 @@ const smooth = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-const easeOut = (t: number) => 1 - Math.pow(1 - clamp01(t), 3);
 
-class Circle extends THREE.Curve<THREE.Vector3> {
-  constructor(private r: number) {
-    super();
-  }
-  getPoint(t: number, out = new THREE.Vector3()) {
-    const a = t * Math.PI * 2;
-    return out.set(this.r * Math.cos(a), 0, this.r * Math.sin(a));
-  }
-}
-
-function haloTexture(): THREE.Texture {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.16, 'rgba(255,255,255,0.95)');
-  grad.addColorStop(0.32, 'rgba(214,204,255,0.55)');
-  grad.addColorStop(0.62, 'rgba(160,190,255,0.16)');
-  grad.addColorStop(1, 'rgba(160,190,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 256);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-type Node = { pos: THREE.Vector3; size: number; alpha: number; kind: number; flare: number; flareColor: THREE.Color; down: number; base: THREE.Color };
+type Node = { pos: THREE.Vector3; size: number; alpha: number; kind: number; flare: number; flareColor: THREE.Color; down: number };
 type Rig = { tilt: THREE.Group; spin: THREE.Group; speed: number; m: THREE.Matrix4 };
-type Prov = { node: Node; local: THREE.Vector3; rig: Rig; curve: THREE.QuadraticBezierCurve3; mat: THREE.ShaderMaterial; tint: number; planet: THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhysicalMaterial>; color: THREE.Color };
+type Prov = { node: Node; local: THREE.Vector3; rig: Rig; curve: THREE.QuadraticBezierCurve3; mat: THREE.ShaderMaterial; tint: number };
 type Pulse = {
   prov: Prov;
   t: number;
@@ -164,7 +183,8 @@ type Pulse = {
   side: number;
 };
 type Buf = { pos: number[]; ts: number[]; as: number[] };
-type Tube = { mesh: THREE.Mesh; t0: number; step: number; segs: number };
+type Mesh = { from: () => THREE.Vector3; to: () => THREE.Vector3; t: number; dur: number; back: boolean; lift: number; prov: Prov | null; done: boolean };
+type Star = { p: number[]; from: number[]; delay: number[]; size: number[]; alpha: number[]; color: number[]; u: number[]; glint: number[]; tw: number[] };
 
 export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close' }) {
   const host = useRef<HTMLDivElement>(null);
@@ -177,77 +197,77 @@ export default function Orrery({ variant = 'hero' }: { variant?: 'hero' | 'close
     const reduce = reducedMotion();
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' });
     } catch {
       el.classList.add('orrery--off');
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x000000, 0);
-    renderer.toneMapping = THREE.NeutralToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    const lite = window.innerWidth < 760 || (navigator.hardwareConcurrency || 8) <= 4;
+    const dpr = Math.min(window.devicePixelRatio || 1, lite ? 1.5 : 1.75);
+    renderer.setPixelRatio(dpr);
+    renderer.setClearColor(0x000000, 1);
     el.prepend(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const room = new THREE.Scene();
-    room.add(
-      new THREE.Mesh(
-        new THREE.SphereGeometry(30, 64, 32),
-        new THREE.ShaderMaterial({
-          side: THREE.BackSide,
-          vertexShader: 'varying vec3 vP; void main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-          fragmentShader: `varying vec3 vP;
-void main() {
-  float y = vP.y;
-  vec3 top = vec3(1.0, 1.0, 1.02);
-  vec3 mid = vec3(0.7, 0.69, 0.76);
-  vec3 low = vec3(0.035, 0.03, 0.07);
-  vec3 c = y > 0.0 ? mix(mid, top, smoothstep(0.02, 0.55, y)) : mix(mid, low, smoothstep(-0.02, -0.3, y));
-  gl_FragColor = vec4(c, 1.0);
-}`,
-        }),
-      ),
-    );
-    const panel = (color: THREE.Color, x: number, y: number, z: number, sx: number, sy: number, sz: number, k: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(k) }));
-      m.position.set(x, y, z);
-      m.scale.set(sx, sy, sz);
-      m.lookAt(0, 0, 0);
-      room.add(m);
-    };
-    panel(SOL[0], -14, 2, 4, 6, 10, 0.4, 2.6);
-    panel(SOL[2], 14, -1, 2, 6, 9, 0.4, 2.4);
-    panel(SOL[1], 2, 6, -14, 9, 4, 0.4, 1.8);
-    panel(new THREE.Color('#ffffff'), -3, 14, 6, 10, 2, 0.4, 4);
-    panel(new THREE.Color('#ffffff'), 8, 9, 10, 2, 7, 0.4, 3);
-    panel(new THREE.Color('#14131c'), 0, -6, 14, 22, 5, 0.4, 1);
-    const envRT = pmrem.fromScene(room, 0.02);
-    scene.environment = envRT.texture;
-    room.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) {
-        m.geometry.dispose();
-        (m.material as THREE.Material).dispose();
-      }
-    });
-
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(-4, 8, 6);
-    scene.add(key);
-
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), lite ? 0.5 : 0.62, 0.32, 0.3);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
     const root = new THREE.Group();
     scene.add(root);
+    const disposables: { dispose(): void }[] = [composer];
     const shared = {
       uDraw: { value: reduce ? 3 : 0 },
       uCenter: { value: -20 },
       uDepth: { value: 8.5 },
       uTime: { value: 0 },
     };
+    const starUniforms = { uIntro: { value: reduce ? 9 : 0 }, uTime: shared.uTime, uScale: { value: 40 }, uCenter: shared.uCenter, uDepth: shared.uDepth, uFlow: { value: reduce ? 0 : 0.9 } };
+    const starMat = new THREE.ShaderMaterial({
+      vertexShader: STAR_VS, fragmentShader: STAR_FS, uniforms: starUniforms, transparent: true, depthWrite: false,
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+    });
+    disposables.push(starMat);
     const rand = rng(hero ? 0x51d : 0x77a1);
     const gauss = () => (rand() + rand() + rand() - 1.5) / 1.5;
-    const disposables: { dispose(): void }[] = [envRT, pmrem];
+    const density = lite ? 0.55 : 1;
+
+    const stars = (): Star => ({ p: [], from: [], delay: [], size: [], alpha: [], color: [], u: [], glint: [], tw: [] });
+    const scatter = () => {
+      const v = new THREE.Vector3(gauss(), gauss() * 0.7, gauss()).normalize().multiplyScalar(5.5 + rand() * 9);
+      return [v.x, v.y, v.z];
+    };
+    const put = (s: Star, x: number, y: number, z: number, o: { delay: number; size: number; alpha: number; color: THREE.Color; u?: number; glint?: number; tw?: number; from?: number[] }) => {
+      s.p.push(x, y, z);
+      s.from.push(...(o.from ?? scatter()));
+      s.delay.push(o.delay);
+      s.size.push(o.size);
+      s.alpha.push(o.alpha);
+      s.color.push(o.color.r, o.color.g, o.color.b);
+      s.u.push(o.u ?? rand());
+      s.glint.push(o.glint ?? 0);
+      s.tw.push(o.tw ?? 0);
+    };
+    const pointsOf = (s: Star, parent: THREE.Object3D) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(s.p, 3));
+      g.setAttribute('aFrom', new THREE.Float32BufferAttribute(reduce ? s.p : s.from, 3));
+      g.setAttribute('aDelay', new THREE.Float32BufferAttribute(s.delay, 1));
+      g.setAttribute('aSize', new THREE.Float32BufferAttribute(s.size, 1));
+      g.setAttribute('aAlpha', new THREE.Float32BufferAttribute(s.alpha, 1));
+      g.setAttribute('aColor', new THREE.Float32BufferAttribute(s.color, 3));
+      g.setAttribute('aU', new THREE.Float32BufferAttribute(s.u, 1));
+      g.setAttribute('aGlint', new THREE.Float32BufferAttribute(s.glint, 1));
+      g.setAttribute('aTwinkle', new THREE.Float32BufferAttribute(s.tw, 1));
+      disposables.push(g);
+      const pts = new THREE.Points(g, starMat);
+      pts.frustumCulled = false;
+      parent.add(pts);
+      return pts;
+    };
 
     const buf = (): Buf => ({ pos: [], ts: [], as: [] });
     const seg = (b: Buf, a: THREE.Vector3, c: THREE.Vector3, t: number, alpha: number) => {
@@ -261,13 +281,11 @@ void main() {
         seg(b, ringPoint(r, rx, rz, a0, sx, sz), ringPoint(r, rx, rz, a1, sx, sz), t0 + (k / n) * 0.9, alpha);
       }
     };
-    const lineMat = (color: THREE.Color, flow = 0, freq = 60, speed = 0.6) => {
+    const lineMat = (color = WHITE, flow = 0, freq = 60, speed = 0.6) => {
       const m = new THREE.ShaderMaterial({
-        vertexShader: LINE_VS,
-        fragmentShader: LINE_FS,
+        vertexShader: LINE_VS, fragmentShader: LINE_FS,
         uniforms: { ...shared, uColor: { value: color.clone() }, uFlow: { value: reduce ? 0 : flow }, uFreq: { value: freq }, uSpeed: { value: speed } },
-        transparent: true,
-        depthWrite: false,
+        transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
       });
       disposables.push(m);
       return m;
@@ -278,62 +296,47 @@ void main() {
       g.setAttribute('aT', new THREE.Float32BufferAttribute(b.ts, 1));
       g.setAttribute('aAlpha', new THREE.Float32BufferAttribute(b.as, 1));
       disposables.push(g);
-      const l = new THREE.LineSegments(g, mat);
-      l.renderOrder = 2;
-      parent.add(l);
+      parent.add(new THREE.LineSegments(g, mat));
     };
 
-    const chrome = (tone = '#ffffff', rough = 0.1) => {
-      const m = new THREE.MeshPhysicalMaterial({ color: tone, metalness: 1, roughness: rough, envMapIntensity: 1.15 });
-      disposables.push(m);
-      return m;
-    };
-    const solUniforms = { uShift: { value: 0 }, uP: { value: SOL[0].clone() }, uB: { value: SOL[1].clone() }, uG: { value: SOL[2].clone() } };
-    const lightMat = (() => {
-      const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.16, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.85 });
-      m.onBeforeCompile = (s) => {
-        Object.assign(s.uniforms, solUniforms);
-        s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vU;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvU = uv.x;');
-        s.fragmentShader = s.fragmentShader
-          .replace(
-            '#include <common>',
-            `#include <common>
-varying float vU; uniform float uShift; uniform vec3 uP; uniform vec3 uB; uniform vec3 uG;
-vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP, uB, y * 2.0) : mix(uB, uG, y * 2.0 - 1.0); }`,
-          )
-          .replace('#include <color_fragment>', '#include <color_fragment>\nvec3 solC = sol(vU + uShift);\ndiffuseColor.rgb *= solC;')
-          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += solC * 0.62;');
-      };
-      m.customProgramCacheKey = () => 'orrery-sol';
-      disposables.push(m);
-      return m;
-    })();
-
-    const tubes: Tube[] = [];
-    const tube = (parent: THREE.Object3D, r: number, radius: number, mat: THREE.Material, t0: number) => {
-      const segs = Math.round(120 + r * 70);
-      const radial = 14;
-      const g = new THREE.TubeGeometry(new Circle(r), segs, radius, radial, true);
-      disposables.push(g);
-      const mesh = new THREE.Mesh(g, mat);
-      parent.add(mesh);
-      tubes.push({ mesh, t0, step: radial * 6, segs });
-      return mesh;
-    };
-
-    const frameBuf = buf();
-    ring(frameBuf, HORIZON, 0, 0, 0.55, 420, 0.05);
-    ring(frameBuf, HORIZON + 0.1, 0, 0, 0.28, 420, 0.1);
-    for (let deg = 0; deg < 360; deg += 2) {
-      const th = (deg / 180) * Math.PI;
-      const big = deg % 10 === 0;
-      seg(frameBuf, ringPoint(HORIZON + 0.1, 0, 0, th), ringPoint(HORIZON + 0.1 + (big ? 0.24 : 0.09), 0, 0, th), 0.3 + (deg / 360) * 0.8, big ? 0.55 : 0.3);
+    const sky = stars();
+    const SKY = Math.round(5200 * density);
+    for (let i = 0; i < SKY; i++) {
+      const v = new THREE.Vector3(gauss(), gauss() * 0.6, gauss()).normalize().multiplyScalar(7 + Math.pow(rand(), 0.6) * 16);
+      put(sky, v.x, v.y, v.z, { delay: -9, size: 1.0 + rand() * 1.4, alpha: 0.08 + rand() * 0.36, color: WHITE, tw: 0.6 + rand() * 2.4, from: [v.x, v.y, v.z] });
     }
-    for (let deg = 0; deg < 360; deg += 15) {
-      const th = (deg / 180) * Math.PI;
-      seg(frameBuf, ringPoint(HORIZON - 0.06, 0, 0, th), ringPoint(HORIZON - 0.2, 0, 0, th), 0.4 + (deg / 360) * 0.8, 0.35);
+    const skyGroup = new THREE.Group();
+    scene.add(skyGroup);
+    pointsOf(sky, skyGroup);
+
+    const coreG = new THREE.Group();
+    root.add(coreG);
+    const core = stars();
+    const LAT = 22;
+    for (let i = 1; i < LAT; i++) {
+      const phi = (i / LAT) * Math.PI;
+      const n = Math.max(6, Math.round(Math.sin(phi) * 58 * density));
+      for (let j = 0; j < n; j++) {
+        const th = (j / n) * Math.PI * 2;
+        const r = 0.56;
+        put(core, r * Math.sin(phi) * Math.cos(th), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(th), { delay: 0.25 + rand() * 0.35, size: 1.5, alpha: 0.34, color: WHITE, u: j / n, glint: 0.25 });
+      }
     }
-    lines(frameBuf, root, lineMat(ENGRAVE));
+    for (let i = 0; i < Math.round(650 * density); i++) {
+      const v = new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(0.16);
+      put(core, v.x, v.y, v.z, { delay: 0.15 + rand() * 0.3, size: 1.5 + rand() * 1.1, alpha: Math.max(0.1, 0.5 - v.length() * 1.6), color: WHITE });
+    }
+    for (let k = 0; k < 6; k++) {
+      const e = new THREE.Euler(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
+      const r = 0.72 + k * 0.05;
+      const n = Math.round(260 * density);
+      for (let j = 0; j < n; j++) {
+        const th = (j / n) * Math.PI * 2;
+        const v = new THREE.Vector3(r * Math.cos(th), 0, r * Math.sin(th)).applyEuler(e);
+        put(core, v.x, v.y, v.z, { delay: 0.35 + k * 0.06 + (j / n) * 0.3, size: 1.15, alpha: 0.2, color: WHITE, u: j / n, glint: 0.6 });
+      }
+    }
+    pointsOf(core, coreG);
 
     const rigs: Rig[] = ORBITS.map((o, i) => {
       const tilt = new THREE.Group();
@@ -341,26 +344,36 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
       root.add(tilt);
       const spin = new THREE.Group();
       tilt.add(spin);
-      const t0 = 0.15 + i * 0.07;
-      tube(spin, o.r, o.tube, o.kind === 'light' ? lightMat : chrome(i === 4 ? '#e4e6f0' : '#ffffff', i === 4 ? 0.2 : 0.08), t0);
+      const s = stars();
+      const base = 0.55 + i * 0.32;
+      const n = Math.round((1300 + o.r * 430) * density);
+      const c = new THREE.Color();
+      for (let j = 0; j < n; j++) {
+        const u = j / n;
+        const th = u * Math.PI * 2;
+        const rr = o.r + gauss() * 0.006 * o.r;
+        if (o.sol) solAt(u, c).lerp(WHITE, 0.18);
+        else c.copy(WHITE);
+        put(s, rr * Math.cos(th), gauss() * 0.006, rr * Math.sin(th), { delay: base + u * 0.55 + rand() * 0.12, size: o.sol ? 1.65 : 1.4, alpha: o.sol ? 0.5 : 0.34, color: c, u, glint: o.sol ? 1 : 0.55 });
+      }
+      for (let j = 0; j < Math.round(900 * density); j++) {
+        const u = rand();
+        const th = u * Math.PI * 2;
+        const rr = o.r + gauss() * 0.055 * o.r;
+        if (o.sol) solAt(u, c).lerp(WHITE, 0.4);
+        else c.copy(WHITE);
+        put(s, rr * Math.cos(th), gauss() * 0.03 * o.r, rr * Math.sin(th), { delay: base + 0.2 + rand() * 0.7, size: 1.05 + rand() * 0.8, alpha: 0.05 + rand() * 0.09, color: c, u, glint: 0.15 });
+      }
+      pointsOf(s, spin);
       const b = buf();
-      for (let s = 0; s < 22; s++) {
-        const dr = gauss() * 0.075 * o.r;
+      for (let f = 0; f < 26; f++) {
+        const dr = gauss() * 0.08 * o.r;
         const sx = 1 + gauss() * 0.014, sz = 1 + gauss() * 0.014;
         const from = rand() * Math.PI * 2;
         const span = Math.PI * (1.2 + rand() * 0.8);
-        ring(b, o.r + dr, gauss() * 0.025, gauss() * 0.025, 0.08 + rand() * 0.16, 180, 0.2 + i * 0.06 + rand() * 0.2, sx, sz, from, span);
+        ring(b, o.r + dr, gauss() * 0.025, gauss() * 0.025, 0.035 + rand() * 0.09, 160, 0.4 + i * 0.12 + rand() * 0.25, sx, sz, from, span);
       }
-      lines(b, spin, lineMat(FILAMENT, 0.6, 52 + i * 9, 0.45 + i * 0.05));
-      if (o.kind === 'chrome') {
-        const beadGeo = new THREE.SphereGeometry(o.tube * 1.9, 24, 16);
-        disposables.push(beadGeo);
-        for (let k = 0; k < 2; k++) {
-          const bead = new THREE.Mesh(beadGeo, chrome('#ffffff', 0.06));
-          bead.position.copy(ringPoint(o.r, 0, 0, rand() * Math.PI * 2));
-          spin.add(bead);
-        }
-      }
+      lines(b, spin, lineMat(o.sol ? SOL[1].clone().lerp(WHITE, 0.55) : WHITE, 0.7, 52 + i * 9, 0.45 + i * 0.05));
       return { tilt, spin, speed: ORBIT_SPEED[i], m: new THREE.Matrix4() };
     });
     const syncRigs = (age: number) => {
@@ -373,136 +386,128 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
     };
     syncRigs(0);
 
-    const cage = new THREE.Group();
-    root.add(cage);
-    const cageMat = chrome('#f4f2ff', 0.14);
-    for (let k = 0; k < 7; k++) {
-      const holder = new THREE.Group();
-      holder.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-      cage.add(holder);
-      tube(holder, 0.5 + k * 0.04, 0.009, cageMat, 0.05 + k * 0.03);
+    const frame = stars();
+    const fr = Math.round(2600 * density);
+    for (let j = 0; j < fr; j++) {
+      const u = j / fr;
+      const th = u * Math.PI * 2;
+      put(frame, HORIZON * Math.cos(th), 0, HORIZON * Math.sin(th), { delay: 2.0 + u * 0.7, size: 1.3, alpha: 0.3, color: WHITE, u, glint: 0.35 });
     }
-    const coreMat = new THREE.MeshPhysicalMaterial({ color: '#ffffff', emissive: '#ffffff', emissiveIntensity: 0.85, roughness: 0.35 });
-    disposables.push(coreMat);
-    const coreGeo = new THREE.SphereGeometry(0.31, 48, 32);
-    disposables.push(coreGeo);
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    root.add(coreMesh);
-    const haloTex = haloTexture();
-    disposables.push(haloTex);
-    const haloMat = new THREE.SpriteMaterial({ map: haloTex, color: 0xffffff, transparent: true, depthWrite: false, opacity: 0.9 });
-    disposables.push(haloMat);
-    const halo = new THREE.Sprite(haloMat);
-    halo.scale.setScalar(3);
-    halo.renderOrder = 1;
-    root.add(halo);
+    for (let deg = 0; deg < 360; deg += 2) {
+      const th = (deg / 180) * Math.PI;
+      const big = deg % 10 === 0;
+      const len = big ? 0.26 : 0.1;
+      const steps = big ? 7 : 3;
+      for (let q = 0; q < steps; q++) {
+        const r = HORIZON + 0.12 + (q / (steps - 1)) * len;
+        put(frame, r * Math.cos(th), 0, r * Math.sin(th), { delay: 2.2 + (deg / 360) * 0.7, size: 1.2, alpha: big ? 0.42 : 0.22, color: WHITE, u: deg / 360 });
+      }
+    }
+    for (let j = 0; j < Math.round(2400 * density); j++) {
+      const a = rand() * Math.PI * 2, r = 4.95 + Math.pow(rand(), 0.7) * 3.4;
+      const c = solAt(a / (Math.PI * 2)).lerp(WHITE, 0.55);
+      put(frame, r * Math.cos(a), gauss() * 0.3, r * Math.sin(a), { delay: 2.3 + rand() * 0.9, size: 1.2 + rand() * 1.3, alpha: 0.06 + rand() * 0.2, color: c, tw: 0.5 + rand() * 1.5 });
+    }
+    pointsOf(frame, root);
 
-    const planetGeo = new THREE.SphereGeometry(0.17, 48, 32);
-    disposables.push(planetGeo);
     const provs = new Map<string, Prov>();
     for (const p of rehearsal.providers) {
       const [oi, th] = NAMED[p.name] ?? [3, rand() * 6.28];
       const rig = rigs[oi];
       const local = ringPoint(ORBITS[oi].r, 0, 0, th);
-      const color = (TINTS[p.name] ?? SOL[1]).clone();
-      const node: Node = { pos: local.clone().applyMatrix4(rig.m), size: 70, alpha: 0.32, kind: 4, flare: 0, flareColor: color.clone(), down: 0, base: color };
+      const node: Node = { pos: local.clone().applyMatrix4(rig.m), size: 13, alpha: 0.9, kind: 1, flare: 0, flareColor: WHITE.clone(), down: 0 };
+      const shell = stars();
+      for (let i = 1; i < 10; i++) {
+        const phi = (i / 10) * Math.PI;
+        const n = Math.max(5, Math.round(Math.sin(phi) * 22));
+        for (let j = 0; j < n; j++) {
+          const a = (j / n) * Math.PI * 2;
+          const r = 0.15;
+          put(shell, local.x + r * Math.sin(phi) * Math.cos(a), local.y + r * Math.cos(phi), local.z + r * Math.sin(phi) * Math.sin(a), { delay: 1.4 + oi * 0.18 + rand() * 0.3, size: 1.2, alpha: 0.42, color: WHITE });
+        }
+      }
+      pointsOf(shell, rig.spin);
       const trips = rehearsal.trips.filter((t) => t.provider === p.name).length;
       const traffic = buf();
-      const n = hero ? 6 + trips * 2 : 12 + trips * 3;
+      const n = hero ? 8 + trips * 2 : 14 + trips * 4;
       for (let s = 0; s < n; s++) {
         const lift = 0.7 + rand() * 0.9;
         const ctrl = local.clone().multiplyScalar(0.5 + gauss() * 0.06).add(new THREE.Vector3(gauss() * 0.25, lift, gauss() * 0.25));
         const pts = new THREE.QuadraticBezierCurve3(new THREE.Vector3(), ctrl, local).getPoints(60);
-        const alpha = (hero ? 0.06 : 0.1) + rand() * (hero ? 0.07 : 0.1);
-        for (let i = 0; i < pts.length - 1; i++) seg(traffic, pts[i], pts[i + 1], 0.9 + i / 120, alpha);
+        const alpha = (hero ? 0.04 : 0.08) + rand() * (hero ? 0.05 : 0.08);
+        for (let i = 0; i < pts.length - 1; i++) seg(traffic, pts[i], pts[i + 1], 1.6 + i / 120, alpha);
       }
-      lines(traffic, rig.spin, lineMat(hero ? FILAMENT : GREEN, 0.9, 46, 2.4 + rand()));
+      lines(traffic, rig.spin, lineMat(hero ? WHITE : GREEN.clone().lerp(WHITE, 0.35), 0.9, 46, 2.4 + rand()));
       const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(), local.clone().multiplyScalar(0.5).add(new THREE.Vector3(0, 1.15, 0)), local.clone());
       const arcBuf = buf();
       const pts = curve.getPoints(80);
-      for (let i = 0; i < pts.length - 1; i++) seg(arcBuf, pts[i], pts[i + 1], 0.9 + i / 160, 0.42);
-      const mat = lineMat(ARC, 0.5, 70, 3.2);
+      for (let i = 0; i < pts.length - 1; i++) seg(arcBuf, pts[i], pts[i + 1], 1.6 + i / 160, 0.26);
+      const mat = lineMat(WHITE, 0.5, 70, 3.2);
       lines(arcBuf, rig.spin, mat);
-      const pm = new THREE.MeshPhysicalMaterial({ color, roughness: 0.14, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, emissive: color, emissiveIntensity: 0.18, envMapIntensity: 1.1 });
-      disposables.push(pm);
-      const planet = new THREE.Mesh(planetGeo, pm);
-      root.add(planet);
-      provs.set(p.name, { node, local, rig, curve, mat, tint: 0, planet, color });
+      provs.set(p.name, { node, local, rig, curve, mat, tint: 0 });
     }
+
+    const peers: THREE.Vector3[] = [];
+    const peerStars = stars();
+    const threads = buf();
+    const PEERS = hero ? 18 : 22;
+    for (let i = 0; i < PEERS; i++) {
+      const a = (i / PEERS) * Math.PI * 2 + (rand() - 0.5) * 0.3;
+      const r = 5.5 + rand() * 4.4;
+      const p = new THREE.Vector3(r * Math.cos(a), (rand() - 0.42) * 2.8, r * Math.sin(a));
+      peers.push(p);
+      const d0 = 2.5 + rand() * 0.9;
+      for (let k = 0; k < 64; k++) {
+        const v = new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(0.085);
+        put(peerStars, p.x + v.x, p.y + v.y, p.z + v.z, { delay: d0, size: 1.25, alpha: 0.5, color: WHITE });
+      }
+      const e = new THREE.Euler((rand() - 0.5) * 0.9, 0, (rand() - 0.5) * 0.9);
+      for (let k = 0; k < 72; k++) {
+        const th = (k / 72) * Math.PI * 2;
+        const v = new THREE.Vector3(0.21 * Math.cos(th), 0, 0.21 * Math.sin(th)).applyEuler(e).add(p);
+        put(peerStars, v.x, v.y, v.z, { delay: d0 + 0.15 + (k / 72) * 0.35, size: 1, alpha: 0.26, color: WHITE, u: k / 72, glint: 0.5 });
+      }
+    }
+    pointsOf(peerStars, root);
+    for (let i = 0; i < PEERS; i++) {
+      const j = (i + 1 + Math.floor(rand() * 3)) % PEERS;
+      const A = peers[i], B = peers[j];
+      const ctrl = A.clone().add(B).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.5 + A.distanceTo(B) * 0.08, 0));
+      const pts = new THREE.QuadraticBezierCurve3(A, ctrl, B).getPoints(48);
+      for (let k = 0; k < pts.length - 1; k++) seg(threads, pts[k], pts[k + 1], 2.6 + k / 96, 0.045);
+    }
+    lines(threads, root, lineMat(WHITE, 0.8, 40, 1.4));
 
     const nodes: Node[] = [];
-    const core: Node = { pos: new THREE.Vector3(), size: 0, alpha: 0, kind: 1, flare: 0, flareColor: PURPLE.clone(), down: 0, base: HALO.clone() };
-    nodes.push(core);
-    nodes.push({ pos: core.pos, size: 260, alpha: 0.5, kind: 4, flare: 0, flareColor: PURPLE.clone(), down: 0, base: HALO.clone() });
+    const coreNode: Node = { pos: new THREE.Vector3(), size: 24, alpha: 0.85, kind: 1, flare: 0, flareColor: WHITE.clone(), down: 0 };
+    nodes.push(coreNode);
+    nodes.push({ pos: coreNode.pos, size: 220, alpha: 0.7, kind: 4, flare: 0, flareColor: WHITE.clone(), down: 0 });
     for (const pv of provs.values()) {
       nodes.push(pv.node);
-      nodes.push({ pos: pv.node.pos, size: 30, alpha: 0.42, kind: 3, flare: 0, flareColor: pv.color.clone(), down: 0, base: ENGRAVE.clone() });
+      nodes.push({ pos: pv.node.pos, size: 24, alpha: 0.7, kind: 3, flare: 0, flareColor: WHITE.clone(), down: 0 });
     }
-    const CLOUD = 520, DUST = 700;
-    const total = nodes.length + CLOUD + DUST;
-    const pPos = new Float32Array(total * 3), pFrom = new Float32Array(total * 3);
-    const pSize = new Float32Array(total), pAlpha = new Float32Array(total), pColor = new Float32Array(total * 3);
-    const pDelay = new Float32Array(total), pKind = new Float32Array(total), pSwirl = new Float32Array(total);
-    const scatter = (i: number, spread: number) => {
-      const v = new THREE.Vector3(rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1).normalize().multiplyScalar(spread * (0.6 + rand() * 0.8));
-      pFrom.set([v.x, v.y, v.z], i * 3);
-    };
-    nodes.forEach((n, i) => {
-      pPos.set([n.pos.x, n.pos.y, n.pos.z], i * 3);
-      scatter(i, 9);
-      pDelay[i] = 0.6 + rand() * 0.3;
-      pKind[i] = n.kind;
+    const nPos = new Float32Array(nodes.length * 3), nSize = new Float32Array(nodes.length), nAlpha = new Float32Array(nodes.length);
+    const nColor = new Float32Array(nodes.length * 3), nKind = new Float32Array(nodes.length);
+    nodes.forEach((n, i) => (nKind[i] = n.kind));
+    const nGeo = new THREE.BufferGeometry();
+    const nPosA = new THREE.BufferAttribute(nPos, 3), nSizeA = new THREE.BufferAttribute(nSize, 1), nAlphaA = new THREE.BufferAttribute(nAlpha, 1), nColorA = new THREE.BufferAttribute(nColor, 3);
+    nGeo.setAttribute('position', nPosA);
+    nGeo.setAttribute('aSize', nSizeA);
+    nGeo.setAttribute('aAlpha', nAlphaA);
+    nGeo.setAttribute('aColor', nColorA);
+    nGeo.setAttribute('aKind', new THREE.BufferAttribute(nKind, 1));
+    disposables.push(nGeo);
+    const nodeUniforms = { uScale: starUniforms.uScale, uCenter: shared.uCenter, uDepth: shared.uDepth };
+    const nodeMat = new THREE.ShaderMaterial({
+      vertexShader: NODE_VS, fragmentShader: NODE_FS, uniforms: nodeUniforms, transparent: true, depthWrite: false,
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
     });
-    const speck = new THREE.Color('#7b6cd8');
-    for (let k = 0; k < CLOUD; k++) {
-      const i = nodes.length + k;
-      const v = new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(0.34);
-      if (v.length() < 0.3) v.setLength(0.3 + rand() * 0.2);
-      pPos.set([v.x, v.y, v.z], i * 3);
-      scatter(i, 7);
-      pSize[i] = 1.4 + rand() * 1.2;
-      pAlpha[i] = Math.max(0.1, 0.62 - v.length() * 0.8);
-      pColor.set([speck.r, speck.g, speck.b], i * 3);
-      pDelay[i] = rand() * 0.5;
-      pSwirl[i] = 0.12 + 0.6 * Math.exp(-Math.hypot(v.x, v.z) * 4) + (rand() - 0.5) * 0.08;
-    }
-    for (let k = 0; k < DUST; k++) {
-      const i = nodes.length + CLOUD + k;
-      const a = rand() * Math.PI * 2, r = 4.9 + Math.pow(rand(), 0.7) * 3.2;
-      pPos.set([r * Math.cos(a), gauss() * 0.35, r * Math.sin(a)], i * 3);
-      scatter(i, 12);
-      pSize[i] = 1.5 + rand() * 1.8;
-      pAlpha[i] = 0.1 + rand() * 0.28;
-      const c = SOL[0].clone().lerp(SOL[2], (Math.cos(a - 0.6) + 1) / 2).lerp(new THREE.Color('#b8b2d6'), 0.45);
-      pColor.set([c.r, c.g, c.b], i * 3);
-      pDelay[i] = rand() * 0.9;
-      pSwirl[i] = 0.006 + rand() * 0.014;
-    }
-    if (reduce) {
-      pFrom.set(pPos);
-      pSwirl.fill(0);
-    }
-    const pGeo = new THREE.BufferGeometry();
-    const posAttr = new THREE.BufferAttribute(pPos, 3);
-    pGeo.setAttribute('position', posAttr);
-    pGeo.setAttribute('aFrom', new THREE.BufferAttribute(pFrom, 3));
-    const sizeAttr = new THREE.BufferAttribute(pSize, 1), alphaAttr = new THREE.BufferAttribute(pAlpha, 1), colorAttr = new THREE.BufferAttribute(pColor, 3);
-    pGeo.setAttribute('aSize', sizeAttr);
-    pGeo.setAttribute('aAlpha', alphaAttr);
-    pGeo.setAttribute('aColor', colorAttr);
-    pGeo.setAttribute('aDelay', new THREE.BufferAttribute(pDelay, 1));
-    pGeo.setAttribute('aKind', new THREE.BufferAttribute(pKind, 1));
-    pGeo.setAttribute('aSwirl', new THREE.BufferAttribute(pSwirl, 1));
-    disposables.push(pGeo);
-    const pointUniforms = { uScale: { value: 40 }, uIntro: { value: reduce ? 3 : 0 }, uCenter: shared.uCenter, uDepth: shared.uDepth, uTime: shared.uTime };
-    const pMat = new THREE.ShaderMaterial({ vertexShader: POINT_VS, fragmentShader: POINT_FS, uniforms: pointUniforms, transparent: true, depthWrite: false });
-    disposables.push(pMat);
-    const pts = new THREE.Points(pGeo, pMat);
-    pts.frustumCulled = false;
-    pts.renderOrder = 3;
-    root.add(pts);
+    disposables.push(nodeMat);
+    const nodePts = new THREE.Points(nGeo, nodeMat);
+    nodePts.frustumCulled = false;
+    root.add(nodePts);
 
-    const TRAIL = 44, MAXP = 10, STEP = 0.0085;
+    const TRAIL = 46, MAXP = 10, STEP = 0.0085;
     const qPos = new Float32Array(MAXP * TRAIL * 3), qSize = new Float32Array(MAXP * TRAIL), qAlpha = new Float32Array(MAXP * TRAIL);
     const qColor = new Float32Array(MAXP * TRAIL * 3), qKind = new Float32Array(MAXP * TRAIL);
     const qGeo = new THREE.BufferGeometry();
@@ -514,20 +519,84 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
       kind: new THREE.BufferAttribute(qKind, 1),
     };
     qGeo.setAttribute('position', qa.pos);
-    qGeo.setAttribute('aFrom', qa.pos);
     qGeo.setAttribute('aSize', qa.size);
     qGeo.setAttribute('aAlpha', qa.alpha);
     qGeo.setAttribute('aColor', qa.color);
     qGeo.setAttribute('aKind', qa.kind);
-    qGeo.setAttribute('aDelay', new THREE.BufferAttribute(new Float32Array(MAXP * TRAIL), 1));
-    qGeo.setAttribute('aSwirl', new THREE.BufferAttribute(new Float32Array(MAXP * TRAIL), 1));
     disposables.push(qGeo);
-    const qMat = new THREE.ShaderMaterial({ vertexShader: POINT_VS, fragmentShader: POINT_FS, uniforms: { ...pointUniforms, uIntro: { value: 3 } }, transparent: true, depthWrite: false, depthTest: false });
-    disposables.push(qMat);
-    const qPoints = new THREE.Points(qGeo, qMat);
+    const qPoints = new THREE.Points(qGeo, nodeMat);
     qPoints.frustumCulled = false;
-    qPoints.renderOrder = 4;
     root.add(qPoints);
+
+    const MT = 30, MAXM = 14;
+    const mPos = new Float32Array(MAXM * MT * 3), mSize = new Float32Array(MAXM * MT), mAlpha = new Float32Array(MAXM * MT);
+    const mColor = new Float32Array(MAXM * MT * 3), mKind = new Float32Array(MAXM * MT);
+    const mGeo = new THREE.BufferGeometry();
+    const ma = {
+      pos: new THREE.BufferAttribute(mPos, 3),
+      size: new THREE.BufferAttribute(mSize, 1),
+      alpha: new THREE.BufferAttribute(mAlpha, 1),
+      color: new THREE.BufferAttribute(mColor, 3),
+      kind: new THREE.BufferAttribute(mKind, 1),
+    };
+    mGeo.setAttribute('position', ma.pos);
+    mGeo.setAttribute('aSize', ma.size);
+    mGeo.setAttribute('aAlpha', ma.alpha);
+    mGeo.setAttribute('aColor', ma.color);
+    mGeo.setAttribute('aKind', ma.kind);
+    disposables.push(mGeo);
+    const mPoints = new THREE.Points(mGeo, nodeMat);
+    mPoints.frustumCulled = false;
+    root.add(mPoints);
+    const mesh: Mesh[] = [];
+    const provList = [...provs.values()];
+    let nextMesh = 0;
+    const spawnMesh = () => {
+      if (mesh.length >= MAXM - 1) return;
+      const src = peers[Math.floor(rand() * peers.length)];
+      const toProv = rand() < 0.62;
+      const prov = toProv ? provList[Math.floor(rand() * provList.length)] : null;
+      const dst = prov ? null : peers[Math.floor(rand() * peers.length)];
+      if (dst === src) return;
+      const from = () => src;
+      const to = prov ? () => prov.node.pos : () => dst!;
+      mesh.push({ from, to, t: 0, dur: 1.6 + rand() * 1.1, back: false, lift: 0.4 + rand() * 0.9, prov, done: false });
+    };
+    const mA = new THREE.Vector3(), mB = new THREE.Vector3(), mC = new THREE.Vector3(), mP = new THREE.Vector3();
+    const meshAt = (m: Mesh, s: number, out: THREE.Vector3) => {
+      mA.copy(m.back ? m.to() : m.from());
+      mB.copy(m.back ? m.from() : m.to());
+      mC.copy(mA).add(mB).multiplyScalar(0.5);
+      mC.y += m.lift + mA.distanceTo(mB) * 0.1;
+      const u = 1 - s;
+      return out.set(u * u * mA.x + 2 * u * s * mC.x + s * s * mB.x, u * u * mA.y + 2 * u * s * mC.y + s * s * mB.y, u * u * mA.z + 2 * u * s * mC.z + s * s * mB.z);
+    };
+
+    const beamUniforms = { uTime: shared.uTime, uLen: { value: 3 }, uIntro: starUniforms.uIntro, uPulse: { value: -1 }, uScale: starUniforms.uScale, uColor: { value: PURPLE.clone() } };
+    const BEAM = hero ? Math.round(1400 * density) : 0;
+    const bSeed = new Float32Array(BEAM), bJit = new Float32Array(BEAM * 2), bBright = new Float32Array(BEAM);
+    for (let i = 0; i < BEAM; i++) {
+      bSeed[i] = rand();
+      bJit[i * 2] = gauss();
+      bJit[i * 2 + 1] = gauss();
+      bBright[i] = Math.pow(rand(), 3);
+    }
+    const bGeo = new THREE.BufferGeometry();
+    bGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BEAM * 3), 3));
+    bGeo.setAttribute('aSeed', new THREE.BufferAttribute(bSeed, 1));
+    bGeo.setAttribute('aJit', new THREE.BufferAttribute(bJit, 2));
+    bGeo.setAttribute('aBright', new THREE.BufferAttribute(bBright, 1));
+    disposables.push(bGeo);
+    const beamMat = new THREE.ShaderMaterial({
+      vertexShader: BEAM_VS, fragmentShader: BEAM_FS, uniforms: beamUniforms, transparent: true, depthWrite: false,
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+    });
+    disposables.push(beamMat);
+    const beam = new THREE.Points(bGeo, beamMat);
+    beam.frustumCulled = false;
+    if (hero) scene.add(beam);
+    let beamPulseAt = -1;
+
     const pulses: Pulse[] = [];
     const tmp = new THREE.Vector3();
     const along = (q: Pulse, s: number, out: THREE.Vector3) => q.prov.curve.getPoint(q.back ? 1 - s : s, out).applyMatrix4(q.prov.rig.m);
@@ -545,11 +614,12 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
     const send = hero ? emit : () => {};
     const run = (trip: RTrip) => {
       send('orrery:sent', { trip, at: performance.now() });
-      core.flare = 1;
-      core.flareColor.copy(PURPLE);
+      beamPulseAt = performance.now();
       const pv = provs.get(trip.provider);
       const word = `${trip.model}${trip.route === 'auto' ? '' : ROUTE_WORD[trip.route]}`;
       const go = () => {
+        coreNode.flare = 1;
+        coreNode.flareColor.copy(PURPLE);
         fly(trip.provider, false, trip.sealed, 2.4, word, () => {
           if (pv) {
             outRest = { prov: pv, until: performance.now() + 1150, alt: lastOut?.alt ?? false };
@@ -560,8 +630,8 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           fly(trip.provider, true, false, 2.2, `$${trip.cost} paid`, () => {
             const now = performance.now();
             paidRest = { start: now, until: now + 2400, alt: lastBack?.alt ?? false };
-            core.flare = 1;
-            core.flareColor.copy(GREEN);
+            coreNode.flare = 1;
+            coreNode.flareColor.copy(GREEN);
             if (pv) {
               pv.node.flare = 0.8;
               pv.node.flareColor.copy(GREEN);
@@ -569,7 +639,7 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
             }
             send('orrery:paid', { trip });
           }, false, 0.95);
-        });
+        }, false, hero ? 0.55 : 0);
       };
       if (trip.fellThrough) {
         const first = 'Kestrel GPU Co-op';
@@ -577,7 +647,7 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           const k = provs.get(first);
           if (k) k.node.down = 1;
           go();
-        }, true);
+        }, true, hero ? 0.55 : 0);
       } else go();
     };
 
@@ -595,14 +665,14 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
     const offArrive = hero
       ? () => {}
       : on('orrery:arrive', () => {
-          core.flare = 1;
-          core.flareColor.copy(GREEN);
+          coreNode.flare = 1;
+          coreNode.flareColor.copy(GREEN);
         });
 
     type Chip = { el: HTMLElement; anchor: THREE.Vector3 | null; key: string; w: number; h: number; side: 1 | -1; on: boolean; swapAt: number };
     const chips: Chip[] = [];
     const anchorFor = (key: string): THREE.Vector3 | null => {
-      if (key === 'you') return core.pos;
+      if (key === 'you') return coreNode.pos;
       if (key.startsWith('p:')) return provs.get(key.slice(2))?.node.pos ?? null;
       if (key.startsWith('r:')) {
         const at = ROUTE_AT.find(([r]) => r === key.slice(2));
@@ -618,34 +688,63 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
     const follow = { out: layer.querySelector<HTMLElement>('[data-follow="out"]'), back: layer.querySelector<HTMLElement>('[data-follow="back"]') };
     const measure = () => chips.forEach((c) => ((c.w = c.el.offsetWidth), (c.h = c.el.offsetHeight)));
 
-    let W = 1, H = 1, mobile = false, corePx = 30, baseTilt = 0.34;
+    let W = 1, H = 1, mobile = false, corePx = 30, baseTilt = 0.3;
+    const v3 = new THREE.Vector3(), mv = new THREE.Vector3();
+    const project = (p: THREE.Vector3, viaRoot = true) => {
+      v3.copy(p);
+      if (viaRoot) v3.applyMatrix4(root.matrixWorld);
+      mv.copy(v3).applyMatrix4(camera.matrixWorldInverse);
+      const front = clamp01(0.5 + (mv.z - shared.uCenter.value) / shared.uDepth.value);
+      v3.project(camera);
+      return { x: (v3.x * 0.5 + 0.5) * W, y: (-v3.y * 0.5 + 0.5) * H, front };
+    };
+    const fitBeam = () => {
+      if (!hero) return;
+      const bar = el.parentElement?.querySelector<HTMLElement>('.req__bar');
+      if (!bar) return;
+      const hr = el.getBoundingClientRect();
+      const target = bar.getBoundingClientRect().top - hr.top + 6;
+      camera.updateMatrixWorld();
+      let lo = 0, hi = 30;
+      for (let i = 0; i < 26; i++) {
+        const mid = (lo + hi) / 2;
+        const y = project(new THREE.Vector3(0, -mid, 0), false).y;
+        if (y < target) lo = mid;
+        else hi = mid;
+      }
+      beamUniforms.uLen.value = lo;
+    };
     const resize = () => {
       W = el.clientWidth;
       H = el.clientHeight;
-      mobile = W < 900;
+      mobile = W < 760;
       renderer.setSize(W, H, false);
+      composer.setSize(W, H);
+      bloom.resolution.set(W * (lite ? 0.5 : 0.75), H * (lite ? 0.5 : 0.75));
       camera.aspect = W / H;
-      baseTilt = mobile ? 0.5 : 0.36;
+      baseTilt = mobile ? 0.48 : 0.32;
       root.rotation.x = baseTilt;
       const halfV = Math.tan((camera.fov / 2) * (Math.PI / 180));
-      const target = hero ? (mobile ? W * 0.44 : Math.min(W * 0.255, H * 0.46)) : mobile ? W * 0.46 : Math.min(W * 0.36, H * 0.56);
+      const target = hero ? (mobile ? W * 0.47 : Math.min(W * 0.4, H * 0.43)) : mobile ? W * 0.5 : Math.min(W * 0.4, H * 0.6);
       const dist = (HORIZON * (H / 2)) / (target * halfV);
       camera.position.set(0, 0, dist);
       camera.lookAt(0, 0, 0);
-      const offX = hero && !mobile ? -W * 0.235 : 0;
-      const offY = hero ? (mobile ? H * 0.2 : H * 0.02) : H * (mobile ? 0.1 : 0.06);
-      camera.setViewOffset(W, H, offX, offY, W, H);
+      camera.setViewOffset(W, H, 0, hero ? H * (mobile ? 0.04 : 0.0) : H * (mobile ? 0.1 : 0.06), W, H);
       camera.updateProjectionMatrix();
       shared.uCenter.value = -dist;
       corePx = (0.85 / (dist * halfV)) * (H / 2);
-      pointUniforms.uScale.value = (H / 900) * 44 * (mobile ? 0.85 : 1);
+      starUniforms.uScale.value = (H / 900) * 44 * (mobile ? 0.9 : 1) * (dpr / 1.5);
       layer.classList.toggle('is-mobile', mobile);
       measure();
+      fitBeam();
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(el);
-    document.fonts?.ready.then(measure);
+    document.fonts?.ready.then(() => {
+      measure();
+      fitBeam();
+    });
 
     let spin = hero ? 0.4 : 1.6, vel = 0, dragging = false, lastX = 0, lastDrag = -1e9;
     const down = (e: PointerEvent) => {
@@ -670,30 +769,22 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
     const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting), { threshold: 0.02 });
     io.observe(el);
 
-    const v3 = new THREE.Vector3(), mv = new THREE.Vector3();
-    const project = (p: THREE.Vector3) => {
-      v3.copy(p).applyMatrix4(root.matrixWorld);
-      mv.copy(v3).applyMatrix4(camera.matrixWorldInverse);
-      const front = clamp01(0.5 + (mv.z - shared.uCenter.value) / shared.uDepth.value);
-      v3.project(camera);
-      return { x: (v3.x * 0.5 + 0.5) * W, y: (-v3.y * 0.5 + 0.5) * H, front };
-    };
-    const clear = () => el.parentElement?.querySelector<HTMLElement>('[data-orrery-clear]')?.getBoundingClientRect();
     type Box = [number, number, number, number];
-
     const placeChips = (nowMs: number) => {
       const hostRect = el.getBoundingClientRect();
       const taken: Box[] = [];
-      const ex = clear();
-      if (ex) taken.push([ex.left - hostRect.left - 10, ex.top - hostRect.top - 10, ex.right - hostRect.left + 10, ex.bottom - hostRect.top + 6]);
-      const c0 = project(core.pos);
+      el.parentElement?.querySelectorAll<HTMLElement>('[data-orrery-clear]').forEach((x) => {
+        const ex = x.getBoundingClientRect();
+        taken.push([ex.left - hostRect.left - 10, ex.top - hostRect.top - 10, ex.right - hostRect.left + 10, ex.bottom - hostRect.top + 8]);
+      });
+      const c0 = project(coreNode.pos);
       const coreBox: Box = [c0.x - corePx, c0.y - corePx, c0.x + corePx, c0.y + corePx];
       taken.push(coreBox);
-      const top = 80;
+      const top = 72;
       const overlaps = (b: Box, t: Box) => !(b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]);
       const hit = (b: Box) => taken.some((t) => overlaps(b, t));
       const hitChips = (b: Box) => taken.some((t) => t !== coreBox && overlaps(b, t));
-      const ready = shared.uDraw.value > 2.1;
+      const ready = starUniforms.uIntro.value > 3.2;
       for (const c of chips) {
         const route = c.key.startsWith('r:');
         if (!c.anchor || (mobile && route)) {
@@ -703,7 +794,7 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           continue;
         }
         const p = project(c.anchor);
-        const gap = route ? 0 : c.key === 'you' ? corePx + 10 : 22;
+        const gap = route ? 0 : c.key === 'you' ? corePx + 10 : 18;
         const at = (side: 1 | -1): Box | null => {
           const left = route ? p.x - c.w / 2 : side === 1 ? p.x + gap : p.x - gap - c.w;
           const tp = p.y - c.h / 2;
@@ -775,9 +866,9 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           const pp = project(q.prov.node.pos);
           if (q.t > 0.7 && !q.chose) {
             q.chose = true;
-            q.alt = hit([pp.x - fw / 2, pp.y + 26, pp.x + fw / 2, pp.y + 26 + fh]);
+            q.alt = hit([pp.x - fw / 2, pp.y + 22, pp.x + fw / 2, pp.y + 22 + fh]);
           }
-          const rx = pp.x - fw / 2, ry = q.alt ? pp.y - 26 - fh : pp.y + 26;
+          const rx = pp.x - fw / 2, ry = q.alt ? pp.y - 22 - fh : pp.y + 22;
           const b = smooth(0.7, 1, q.t);
           const tr = travel(q, h, fw, fh);
           const x = tr.x + (rx - tr.x) * b, y = tr.y + (ry - tr.y) * b;
@@ -786,7 +877,7 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
         } else if (outRest && nowMs < outRest.until) {
           const fw = outEl.offsetWidth, fh = outEl.offsetHeight;
           const pp = project(outRest.prov.node.pos);
-          show(outEl, pp.x - fw / 2, outRest.alt ? pp.y - 26 - fh : pp.y + 26, fw);
+          show(outEl, pp.x - fw / 2, outRest.alt ? pp.y - 22 - fh : pp.y + 22, fw);
         } else hide(outEl);
       }
 
@@ -798,7 +889,7 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           lastBack = q;
           paidRest = null;
         }
-        const restAt = (alt: boolean, fw: number, fh: number) => ({ x: c0.x - fw / 2, y: alt ? c0.y + corePx * 0.48 + 6 : c0.y - corePx * 0.48 - fh - 6 });
+        const restAt = (alt: boolean, fw: number, fh: number) => ({ x: c0.x - fw / 2, y: alt ? c0.y + corePx * 0.6 + 6 : c0.y - corePx * 0.6 - fh - 6 });
         if (nowMs < backHold) hide(backEl);
         else if (q) {
           if (backEl.textContent !== q.label) backEl.textContent = q.label;
@@ -824,21 +915,11 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
       }
     };
 
-    const drawTubes = (draw: number) => {
-      for (const t of tubes) {
-        const k = clamp01((draw - t.t0) / 0.9);
-        const g = t.mesh.geometry as THREE.BufferGeometry;
-        const n = k >= 1 ? Infinity : Math.floor(k * t.segs) * t.step;
-        g.setDrawRange(0, n);
-        t.mesh.visible = k > 0;
-      }
-    };
-
-    const coreTint = new THREE.Color();
+    const tint = new THREE.Color();
     const t0 = performance.now();
     let prev = t0, raf = 0;
-    const frame = (now: number) => {
-      raf = requestAnimationFrame(frame);
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
       if (!visible || document.hidden) {
         prev = now;
         return;
@@ -848,71 +929,63 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
       const age = (now - t0) / 1000;
       if (!reduce) {
         shared.uTime.value = age;
-        solUniforms.uShift.value = age * 0.035;
         if (hero) {
-          shared.uDraw.value = Math.min(3, age * 0.7);
-          pointUniforms.uIntro.value = Math.min(3, age * 0.8);
+          starUniforms.uIntro.value = Math.min(9, 0.2 + age * 0.95);
+          shared.uDraw.value = Math.min(3, Math.max(0, age * 0.95 - 0.6));
           const sp = clamp01(window.scrollY / Math.max(1, H));
-          root.rotation.x = baseTilt + sp * sp * 0.38;
+          root.rotation.x = baseTilt + sp * sp * 0.36;
         } else {
           const r = el.getBoundingClientRect();
           const k = clamp01((window.innerHeight - r.top) / (window.innerHeight * 0.85));
           const e = 1 - Math.pow(1 - k, 2);
+          starUniforms.uIntro.value = 4.2 * e;
           shared.uDraw.value = 3 * e;
-          pointUniforms.uIntro.value = 3 * e;
         }
         if (!dragging) {
           vel *= 0.94;
           spin += vel;
           if (now - lastDrag > 2400) spin += dt * 0.012;
         }
-        cage.rotation.y = age * 0.16;
-        cage.rotation.x = Math.sin(age * 0.11) * 0.3;
+        coreG.rotation.y = age * 0.12;
+        skyGroup.rotation.y = age * 0.004;
       }
       root.rotation.y = spin;
       syncRigs(age);
-      drawTubes(shared.uDraw.value);
       for (const pv of provs.values()) pv.node.pos.copy(pv.local).applyMatrix4(pv.rig.m);
 
-      const intro = easeOut((pointUniforms.uIntro.value - 0.5) / 1.2);
-      coreMesh.scale.setScalar(Math.max(0.001, intro * (1 + core.flare * 0.22)));
-      halo.scale.setScalar(3 * Math.max(0.001, intro) * (1 + core.flare * 0.35));
-      coreTint.set('#ffffff').lerp(core.flareColor, Math.min(1, core.flare) * 0.55);
-      coreMat.emissive.copy(coreTint);
-      haloMat.color.copy(coreTint);
+      if (beamPulseAt > 0) {
+        const k = (now - beamPulseAt) / 600;
+        beamUniforms.uPulse.value = k >= 1 ? -1 : 1 - k;
+        if (k >= 1) beamPulseAt = -1;
+      }
 
-      const drawn = shared.uDraw.value > (hero ? 2.4 : 2.6);
-      if (!reduce && drawn && now > holdUntil && now > nextAuto) {
+      const ready = starUniforms.uIntro.value > (hero ? 3.4 : 3.8);
+      if (!reduce && ready && now > holdUntil && now > nextAuto) {
         if (nextAuto) {
           run(rehearsal.trips[cursor++ % rehearsal.trips.length]);
-          nextAuto = now + (hero ? 4600 + Math.random() * 2000 : 2600 + Math.random() * 1200);
-        } else nextAuto = now + 500;
+          nextAuto = now + (hero ? 4800 + Math.random() * 2000 : 2600 + Math.random() * 1200);
+        } else nextAuto = now + 400;
       }
-      for (const pv of provs.values()) {
-        const n = pv.node;
-        const breath = reduce ? 1 : 1 + 0.05 * Math.sin(age * 1.15 + pv.local.x);
-        pv.planet.position.copy(n.pos);
-        pv.planet.scale.setScalar(Math.max(0.001, easeOut((pointUniforms.uIntro.value - 1) / 1.2)) * breath * (1 + n.flare * 0.35));
-        const m = pv.planet.material;
-        m.color.copy(pv.color).lerp(new THREE.Color('#b9b6c6'), n.down * 0.85);
-        m.emissive.copy(pv.color).lerp(n.flareColor, Math.min(1, n.flare));
-        m.emissiveIntensity = 0.18 + n.flare * 0.7;
-      }
+      const shown = clamp01((starUniforms.uIntro.value - 1.0) / 1.2);
       nodes.forEach((n, i) => {
         n.flare = Math.max(0, n.flare - dt * 1.4);
         n.down = Math.max(0, n.down - dt * 0.45);
-        const c = n.base.clone().lerp(n.flareColor, Math.min(1, n.flare * 1.2));
-        pColor.set([c.r, c.g, c.b], i * 3);
-        pSize[i] = n.size * (1 + n.flare * (n.kind === 4 ? 0.3 : 0.8));
-        pAlpha[i] = n.alpha * (1 - n.down * 0.8) * (n.kind === 4 && i > 1 ? 1 + n.flare * 1.4 : 1);
-        pPos[i * 3] = n.pos.x;
-        pPos[i * 3 + 1] = n.pos.y;
-        pPos[i * 3 + 2] = n.pos.z;
+        tint.copy(WHITE).lerp(n.flareColor, Math.min(1, n.flare * 1.2));
+        const boost = i === 1 ? 0.32 : 1;
+        nColor[i * 3] = tint.r * boost;
+        nColor[i * 3 + 1] = tint.g * boost;
+        nColor[i * 3 + 2] = tint.b * boost;
+        const breath = n.kind === 1 && i > 0 && !reduce ? 1 + 0.08 * Math.sin(age * 1.15 + i * 1.7) : 1;
+        nSize[i] = n.size * breath * (1 + n.flare * (n.kind === 4 ? 0.3 : 0.9));
+        nAlpha[i] = n.alpha * (1 - n.down * 0.8) * shown * (1 + n.flare * 0.8);
+        nPos[i * 3] = n.pos.x;
+        nPos[i * 3 + 1] = n.pos.y;
+        nPos[i * 3 + 2] = n.pos.z;
       });
-      posAttr.needsUpdate = colorAttr.needsUpdate = sizeAttr.needsUpdate = alphaAttr.needsUpdate = true;
+      nPosA.needsUpdate = nColorA.needsUpdate = nSizeA.needsUpdate = nAlphaA.needsUpdate = true;
       for (const pv of provs.values()) {
         pv.tint = Math.max(0, pv.tint - dt * 0.35);
-        (pv.mat.uniforms.uColor.value as THREE.Color).copy(ARC).lerp(GREEN, pv.tint);
+        (pv.mat.uniforms.uColor.value as THREE.Color).copy(WHITE).lerp(GREEN, pv.tint);
       }
       qAlpha.fill(0);
       for (let p = pulses.length - 1; p >= 0; p--) {
@@ -936,19 +1009,57 @@ vec3 sol(float x) { float y = abs(fract(x) * 2.0 - 1.0); return y < 0.5 ? mix(uP
           const pt = along(q, Math.max(0, ease - k * STEP), tmp);
           const idx = p * TRAIL + k;
           qPos.set([pt.x, pt.y, pt.z], idx * 3);
-          qColor.set([col.r, col.g, col.b], idx * 3);
+          qColor.set([col.r * 1.6, col.g * 1.6, col.b * 1.6], idx * 3);
           const head = k === 0;
           const f = 1 - k / TRAIL;
-          qSize[idx] = head ? (q.sealed ? 30 : 24) : 7 * f + 1.5;
+          qSize[idx] = head ? (q.sealed ? 26 : 20) : 8 * f + 1.5;
           qKind[idx] = head && q.sealed ? 2 : head ? 1 : 0;
-          qAlpha[idx] = (head ? 1 : 0.62 * Math.pow(f, 1.4)) * fadeOut;
+          qAlpha[idx] = (head ? 1.2 : 0.6 * Math.pow(f, 1.5)) * fadeOut;
         }
       });
       qa.pos.needsUpdate = qa.size.needsUpdate = qa.alpha.needsUpdate = qa.color.needsUpdate = qa.kind.needsUpdate = true;
-      renderer.render(scene, camera);
+      if (!reduce && starUniforms.uIntro.value > 3.6 && now > nextMesh) {
+        spawnMesh();
+        nextMesh = now + 380 + Math.random() * 520;
+      }
+      mAlpha.fill(0);
+      for (let i = mesh.length - 1; i >= 0; i--) {
+        const m = mesh[i];
+        m.t += dt / m.dur;
+        if (m.t >= 1) {
+          if (!m.back) {
+            if (m.prov) {
+              m.prov.node.flare = Math.max(m.prov.node.flare, 0.55);
+              m.prov.node.flareColor.copy(PURPLE);
+            }
+            mesh.push({ ...m, t: 0, back: true, dur: m.dur * 0.85 });
+          }
+          mesh.splice(i, 1);
+        }
+      }
+      mesh.slice(0, MAXM).forEach((m, p) => {
+        const ease = easeInOut(Math.min(1, m.t));
+        const col = m.back ? GREEN : PURPLE;
+        for (let k = 0; k < MT; k++) {
+          meshAt(m, Math.max(0, ease - k * 0.011), mP);
+          const idx = p * MT + k;
+          mPos[idx * 3] = mP.x;
+          mPos[idx * 3 + 1] = mP.y;
+          mPos[idx * 3 + 2] = mP.z;
+          mColor[idx * 3] = col.r * 1.3;
+          mColor[idx * 3 + 1] = col.g * 1.3;
+          mColor[idx * 3 + 2] = col.b * 1.3;
+          const f = 1 - k / MT;
+          mSize[idx] = k === 0 ? 13 : 5 * f + 1;
+          mKind[idx] = k === 0 ? 1 : 0;
+          mAlpha[idx] = k === 0 ? 0.75 : 0.34 * Math.pow(f, 1.6);
+        }
+      });
+      ma.pos.needsUpdate = ma.size.needsUpdate = ma.alpha.needsUpdate = ma.color.needsUpdate = ma.kind.needsUpdate = true;
+      composer.render();
       if (hero) placeChips(now);
     };
-    raf = requestAnimationFrame(frame);
+    raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);

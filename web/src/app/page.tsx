@@ -124,30 +124,32 @@ export default async function Home() {
         <Wire />
         <section className="hero">
           <Orrery />
-          <div className="hero__foot" data-orrery-clear>
+          <div className="hero__head" data-orrery-clear>
             <h1>
-              <span>AI inference, peer to peer.</span> <span className="grad">Zero cut in between.</span>
+              <span className="lead">AI inference,</span> peer to peer. <span className="lead">Zero cut in between.</span>
             </h1>
-            <p className="hero__lede">A router on your computer picks a provider for every request and pays it directly on Solana. The program in the middle takes nothing.</p>
+            <p className="hero__lede">Your computer sends each request straight to someone else&apos;s machine and pays it directly on Solana. No server in the middle, and the program takes nothing.</p>
+          </div>
+          <div className="hero__foot" data-orrery-clear>
             <RequestLine />
           </div>
         </section>
 
         <section className="facts" aria-label="At a glance" data-rule>
           <div>
-            <span className="label">Router</span>
+            <span className="cap">Router</span>
             <p>On your computer, OpenAI-compatible</p>
           </div>
           <div>
-            <span className="label">Payment</span>
+            <span className="cap">Payment</span>
             <p>One signature per answer, on Solana</p>
           </div>
           <div>
-            <span className="label">Program fee</span>
+            <span className="cap">Program fee</span>
             <p className="green num">0%</p>
           </div>
           <div>
-            <span className="label">Providers</span>
+            <span className="cap">Providers</span>
             <p>Anyone. No approval, no delisting</p>
           </div>
         </section>
@@ -155,7 +157,7 @@ export default async function Home() {
         <div className="body">
           <section className="split" id="how" data-wire-k={`Route ${ROUTE_WORD[cheap.route]}`} data-wire-v={`${cheap.provider} · ${perM(cheapIn)}/M in`}>
             <div className="split__text">
-              <h2>One word decides the trip.</h2>
+              <h2><span className="lead">Routing.</span> One word decides the trip.</h2>
               <p className="sub">Point anything that takes a base URL at the router: Cursor, Aider, Continue, Open WebUI, the OpenAI SDK. Then add one word after the model name.</p>
               <dl className="words">
                 <div><dt className="num">:cheap</dt><dd>lowest price for the model</dd></div>
@@ -176,7 +178,7 @@ export default async function Home() {
 
           <section className="stage" id="pay" data-wire-k="Signed" data-wire-v={`${ironAnswers} running totals, one per answer`}>
             <div className="stage__head">
-              <h2>Sign once. Pay per answer.</h2>
+              <h2><span className="lead">Payments.</span> Sign once, pay per answer.</h2>
               <p className="sub">Your wallet opens a channel with a provider. After every answer the router on your computer signs the new running total, and the provider cashes the latest one on Solana whenever it likes.</p>
             </div>
             <ChannelCard />
@@ -190,10 +192,10 @@ export default async function Home() {
         </div>
 
         <section className="film" data-wire-k="First token" data-wire-v={`${cheap.ttftMs} ms · ${cheapP.region}`}>
-          <img className="film__media" src="/media/rig-day.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
+          <video className="film__media" src="/media/rig.mp4" poster="/media/rig.jpg" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" />
           <div className="film__shade" />
           <div className="film__text">
-            <h2>Every provider is someone&apos;s own machine.</h2>
+            <h2><span className="lead">Providers.</span> Every one is someone&apos;s own machine.</h2>
             <p>A GPU running vLLM or Ollama, a llama.cpp box, API capacity you already pay for. List it with one command. No application, no stake required, and nothing in the program can delist you.</p>
             <a href="#provide" className="pill">Run a provider</a>
           </div>
@@ -202,7 +204,7 @@ export default async function Home() {
         <div className="body">
           <section className="split" id="provide" data-wire-k="Redeemed" data-wire-v={`$${usd(BigInt(iron.cumulative ?? '0'))} to ${iron.name}`} data-wire-money="1">
             <div className="split__text">
-              <h2>Light a node. Set your price.</h2>
+              <h2><span className="lead">Light a node.</span> Set your price.</h2>
               <p className="sub">Put a provider node in front of any OpenAI-compatible server. It checks each voucher before it answers and redeems the totals to your wallet.</p>
               <div className="term">
                 <div className="term__bar">
@@ -236,14 +238,14 @@ export default async function Home() {
 
           <section className="band" id="private" data-wire-k="Sealed" data-wire-v={`${sealed.model}${ROUTE_WORD.privacy} → ${sealed.provider}`}>
             <div className="band__head">
-              <h2>Private, when you ask for it.</h2>
+              <h2><span className="lead">Privacy.</span> Sealed when you ask for it.</h2>
               <p className="sub">Add <code>:private</code> and the router only picks providers running inside a hardware enclave. It checks the enclave&apos;s live report against the claim the provider posted on chain, then encrypts your prompt to a key that never leaves it. The operator hosts the machine and still can&apos;t read the request.</p>
             </div>
             <SealFlow />
           </section>
 
           <section className="token" id="token" data-wire-k={`Bonded $${TICKER}`} data-wire-v="10% of the :trusted score">
-            <h2>${TICKER} backs the providers you trust.</h2>
+            <h2><span className="lead">${TICKER}.</span> Backs the providers you trust.</h2>
             <p className="sub">Launching on Meteora. In the program it has one job: providers bond it behind their listing, and routers count the bond toward reputation.</p>
             <TokenLoop />
             <dl className="token__dl" data-rule>

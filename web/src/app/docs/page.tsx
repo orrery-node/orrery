@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Mark } from '@/components/Mark';
+import DocsToc from '@/components/DocsToc';
+import P2PDiagram from '@/components/P2PDiagram';
 import { CopyButton } from '@/components/parts';
 import { NAME, PROGRAM_ID, REPO_URL, ROUTER_URL, TICKER } from '@/brand';
 import './docs.css';
@@ -52,14 +55,32 @@ const TOC = [
   ['status', 'Status'],
 ] as const;
 
-function Code({ children, copy }: { children: string; copy?: boolean }) {
+function Code({ children, lang, copy }: { children: string; lang: string; copy?: boolean }) {
   return (
     <div className="d-code">
+      <div className="d-code__bar">
+        <span className="cap">{lang}</span>
+        {copy && <CopyButton text={children} />}
+      </div>
       <pre>{children}</pre>
-      {copy && <CopyButton text={children} />}
     </div>
   );
 }
+
+function H2({ id, n, children }: { id: string; n: number; children: ReactNode }) {
+  return (
+    <h2 id={id}>
+      <span className="d-n num">{String(n).padStart(2, '0')}</span>
+      {children}
+    </h2>
+  );
+}
+
+const PARTS = [
+  { k: 'Router', at: 'install', v: 'Runs on your computer at 127.0.0.1:7171. Picks a provider for every request and signs what you owe.' },
+  { k: 'Provider node', at: 'provide', v: 'Runs in front of any OpenAI-compatible server. Checks each signature, answers, cashes the totals.' },
+  { k: 'Program', at: 'program', v: 'Holds the channels on Solana. No fee field, no third account, nobody can delist a provider.' },
+] as const;
 
 export default function Docs() {
   return (
@@ -70,33 +91,47 @@ export default function Docs() {
           <span className="grad">{NAME}</span>
         </Link>
         <span className="d-nav__here">Docs</span>
+        <nav className="d-nav__links" aria-label="Docs sections">
+          <a href="#install">Router</a>
+          <a href="#provide">Providers</a>
+          <a href="#program">Program</a>
+        </nav>
         <Link href="/" className="d-nav__back">Back to the network</Link>
+        <a href="#install" className="pill d-nav__cta">Install</a>
       </header>
       <div className="d-grid">
-        <nav className="d-toc" aria-label="On this page">
-          {TOC.map(([id, label]) => (
-            <a key={id} href={`#${id}`}>{label}</a>
-          ))}
-        </nav>
+        <DocsToc items={TOC} />
         <article className="d-body">
-          <h1>{NAME} docs</h1>
+          <span className="cap">Docs · Overview</span>
+          <h1>
+            <span className="lead">{NAME} docs.</span> Run a router, or run a node.
+          </h1>
           <p className="d-lead">
-            {NAME} has three parts: a router you run on your own computer, provider nodes anyone can run, and a Solana program that holds payment channels between them. The program takes no fee.
+            {NAME} is a peer-to-peer AI inference network. A router on your computer sends each request straight to a provider&apos;s machine and pays it through a Solana payment channel. Nothing sits in between, and the program takes no fee.
           </p>
+          <P2PDiagram />
+          <div className="d-parts">
+            {PARTS.map((p) => (
+              <a key={p.k} href={`#${p.at}`} className="d-part">
+                <span className="cap">{p.k}</span>
+                <span className="d-part__v">{p.v}</span>
+              </a>
+            ))}
+          </div>
 
-          <h2 id="install">Install the router</h2>
+          <H2 id="install" n={1}>Install the router</H2>
           <p>You need Node 22, a Solana wallet file with some USDC and a little SOL for fees, and an RPC URL that allows <code>getProgramAccounts</code> (most paid RPCs do; the public endpoint often does not).</p>
-          <Code copy>{INSTALL}</Code>
+          <Code lang="bash" copy>{INSTALL}</Code>
           <p>The router listens on <code>{ROUTER_URL}</code>, only on this computer. Its console at <code>http://127.0.0.1:7171/</code> shows each request, the provider it went to and what it cost.</p>
           <p className="d-note">The program is not on mainnet yet. Until it is, run the whole network on a local validator: <code>pnpm e2e</code> starts the program, three providers and a router, and checks every payment.</p>
 
-          <h2 id="tools">Point your tools at it</h2>
+          <H2 id="tools" n={2}>Point your tools at it</H2>
           <p>Anything that speaks the OpenAI API and lets you set a base URL works unchanged: Cursor, Aider, Continue, Open WebUI, LangChain, the OpenAI SDKs. The API key can be any string; the router pays with your channels, not a key.</p>
-          <Code>{PY}</Code>
-          <Code>{CURL}</Code>
+          <Code lang="python" copy>{PY}</Code>
+          <Code lang="curl" copy>{CURL}</Code>
           <p className="d-note">The Anthropic Messages API (<code>/v1/messages</code>) is not served yet. Tools that only speak it cannot use the router today.</p>
 
-          <h2 id="routes">Routes</h2>
+          <H2 id="routes" n={3}>Routes</H2>
           <p>Add one word after the model name, or send the header <code>x-orrery-route</code>. The router tries the top three providers in order, so a slow or failing one is skipped.</p>
           <table className="d-table">
             <thead>
@@ -112,7 +147,7 @@ export default function Docs() {
           </table>
           <p>Pin one provider with the header <code>x-orrery-provider: &lt;first characters of its address&gt;</code>.</p>
 
-          <h2 id="pay">How you pay</h2>
+          <H2 id="pay" n={4}>How you pay</H2>
           <p>The first request to a provider opens a payment channel: your wallet moves a deposit (two USDC by default, <code>--deposit</code>) into an account only the channel controls. From then on a session key on your computer signs a running total after every answer, an 88-byte voucher: <code>orrery/voucher/1</code>, the channel, the total, and a hash chain over every answer&apos;s usage.</p>
           <ul>
             <li>The provider redeems the highest total whenever it likes. The program pays the difference to the provider&apos;s own token account and nowhere else.</li>
@@ -122,20 +157,20 @@ export default function Docs() {
             <li><code>--daily-cap</code> (five dollars by default) stops the router spending more in a day.</li>
           </ul>
 
-          <h2 id="provide">Run a provider</h2>
+          <H2 id="provide" n={5}>Run a provider</H2>
           <p>Put a provider node in front of any OpenAI-compatible server: vLLM, SGLang, Ollama, llama.cpp, or API capacity you hold. Prices are USDC base units per million tokens, so <code>120000</code> is $0.12.</p>
-          <Code>{PROVIDER_JSON}</Code>
-          <Code copy>{`orrery provider register --config provider.json --wallet wallet.json\norrery provider start --config provider.json`}</Code>
+          <Code lang="provider.json" copy>{PROVIDER_JSON}</Code>
+          <Code lang="bash" copy>{`orrery provider register --config provider.json --wallet wallet.json\norrery provider start --config provider.json`}</Code>
           <p>Registering lists you on chain with your endpoint and the sha-256 of your price list; routers ignore a price list that does not match it. Your wallet stays cold: the node runs on its own key, which can redeem and post enclave claims but never touches what you have earned. Redemptions go straight to your wallet&apos;s USDC account.</p>
 
-          <h2 id="private">The private route</h2>
+          <H2 id="private" n={6}>The private route</H2>
           <p>A provider running inside a hardware enclave (Intel TDX, AMD SEV-SNP, or TDX with NVIDIA confidential computing) posts a claim on chain: the enclave type, the measured image, the hash of its attestation report, and the key prompts are encrypted to. Claims expire within 30 days.</p>
           <p>Before sealing anything, the router fetches the report and checks that it hashes to the on-chain claim, names the same key, has not expired, and booted an image on your allow list (<code>--enclave-images</code>). Checking the hardware vendor&apos;s signature needs an external verifier; without one the router does not treat an enclave as verified. Development reports are labeled and refused unless you pass <code>--allow-dev-enclaves</code>.</p>
 
-          <h2 id="token">${TICKER}</h2>
+          <H2 id="token" n={7}>${TICKER}</H2>
           <p>The token launches on Meteora. In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
 
-          <h2 id="program">What the program can and cannot do</h2>
+          <H2 id="program" n={8}>What the program can and cannot do</H2>
           <p>Program <code>{PROGRAM_ID}</code>.</p>
           <ul>
             <li>Anyone can list a provider. Nobody, including the admin, can delist one.</li>
@@ -144,7 +179,7 @@ export default function Docs() {
             <li>The admin can tune the close grace period (10 minutes to 7 days), the unbonding delay (1 hour to 30 days) and the minimum deposit, and set the bond mint once.</li>
           </ul>
 
-          <h2 id="status">Status</h2>
+          <H2 id="status" n={9}>Status</H2>
           <ul>
             <li>Built and tested: the program (13 tests), the router and provider node (12 tests), and a full local rehearsal (14 of 14 checks).</li>
             <li>Not yet: mainnet deployment, the Anthropic Messages API, a built-in hardware attestation verifier.</li>

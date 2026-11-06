@@ -1,28 +1,24 @@
 :root {
-  --ground: #fbfaf7;
-  --ground-2: #ffffff;
-  --ground-3: #f3f1f8;
-  --well: #f6f4fb;
-  --line: #e8e5ef;
-  --line-2: #d8d3e4;
-  --fg: #0e0c16;
-  --fg-2: #4a4658;
-  --fg-3: #67627a;
-  --dim: #8a8599;
-  --green: #057a4c;
-  --green-hi: #14f195;
-  --purple: #8b3dff;
-  --sol-purple: #9945ff;
-  --sol-blue: #4f7bff;
-  --sol-green: #12c98a;
+  --ground: #000000;
+  --ground-2: #0c0c0c;
+  --ground-3: #161616;
+  --well: #070707;
+  --line: #1c1c1c;
+  --line-2: #2e2e2e;
+  --fg: #f5f5f5;
+  --fg-2: #a3a3a3;
+  --fg-3: #7a7a7a;
+  --dim: #6f6f6f;
+  --green: #14f195;
+  --purple: #9945ff;
+  --sol-blue: #5f8ff2;
   --green-ink: #03140b;
-  --violet: #6b4cf0;
-  --shadow-card: 0 1px 2px rgba(30, 20, 70, 0.05), 0 2px 6px -2px rgba(30, 20, 70, 0.04), 0 36px 80px -40px rgba(60, 36, 150, 0.26);
+  --violet: #b9b4ff;
   --sans: var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
   --mono: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --gutter: clamp(16px, 4.4vw, 64px);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -51,8 +47,8 @@ body {
 }
 
 ::selection {
-  background: var(--purple);
-  color: #ffffff;
+  background: var(--fg);
+  color: var(--ground);
 }
 
 a {
@@ -108,8 +104,8 @@ p {
 }
 
 .grad {
-  background-image: linear-gradient(90deg, var(--sol-purple) 0%, var(--sol-blue) 52%, var(--sol-green) 100%);
-  background-image: linear-gradient(90deg in oklch, var(--sol-purple), var(--sol-blue) 52%, var(--sol-green));
+  background-image: linear-gradient(90deg, var(--purple) 0%, var(--sol-blue) 50%, var(--green) 100%);
+  background-image: linear-gradient(90deg in oklch, var(--purple), var(--sol-blue) 50%, var(--green));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -125,6 +121,17 @@ p {
   font-family: var(--sans);
   font-size: 13px;
   line-height: 1.4;
+  color: var(--fg-3);
+}
+
+.cap {
+  font: 500 11px/1.4 var(--mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.lead {
   color: var(--fg-3);
 }
 
