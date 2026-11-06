@@ -27,8 +27,9 @@ export type ProviderConfig = {
   authority?: string;
   wallet?: string;
   nodeKey?: string;
+  nodeKeyEnv?: string;
   dataDir?: string;
-  upstream: { baseUrl: string; apiKey?: string; headers?: Record<string, string> };
+  upstream: { baseUrl: string; apiKey?: string; apiKeyEnv?: string; headers?: Record<string, string> };
   models: ProviderOffer[];
   tee?: { mode: 'dev'; kind?: number };
   redeem?: { everySecs?: number; minUnits?: number };
@@ -65,6 +66,26 @@ async function readBody(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<
 
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
 
+// Only standard chat fields reach the upstream. A gateway upstream (OpenRouter and the like) reads extra fields such
+// as fallback model lists, plugins or provider routing, any of which would let a caller spend the operator's key on
+// something the price list does not cover. `n` is dropped for the same reason: it multiplies the output.
+const UPSTREAM_FIELDS = [
+  'messages', 'temperature', 'top_p', 'stop', 'seed', 'presence_penalty', 'frequency_penalty', 'response_format',
+  'tools', 'tool_choice', 'parallel_tool_calls', 'logit_bias', 'logprobs', 'top_logprobs', 'user',
+] as const;
+
+export function upstreamBody(body: Record<string, unknown>, model: string, maxOut: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of UPSTREAM_FIELDS) if (body[k] !== undefined) out[k] = body[k];
+  return { ...out, model, stream: true, stream_options: { include_usage: true }, max_tokens: maxOut };
+}
+
+function secretFromEnv(name: string, what: string): string {
+  const v = process.env[name];
+  if (!v) throw new Error(`${what}: environment variable ${name} is not set`);
+  return v;
+}
+
 export class ProviderNode {
   readonly conn: Connection;
   readonly node: Keypair;
@@ -75,6 +96,7 @@ export class ProviderNode {
   readonly manifestBytes: Buffer;
   readonly enclave: EnclaveKey | null;
   readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
+  private readonly apiKey: string | undefined;
   private ledger = new Map<string, Entry>();
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -84,7 +106,10 @@ export class ProviderNode {
   constructor(readonly cfg: ProviderConfig) {
     this.conn = new Connection(cfg.rpcUrl, 'confirmed');
     this.dir = expand(cfg.dataDir ?? home('provider'));
-    this.node = loadOrCreateKeypair(expand(cfg.nodeKey ?? `${this.dir}/node.json`));
+    this.node = cfg.nodeKeyEnv
+      ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretFromEnv(cfg.nodeKeyEnv, 'node key'))))
+      : loadOrCreateKeypair(expand(cfg.nodeKey ?? `${this.dir}/node.json`));
+    this.apiKey = cfg.upstream.apiKey ?? (cfg.upstream.apiKeyEnv ? secretFromEnv(cfg.upstream.apiKeyEnv, 'upstream key') : undefined);
     this.authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${this.dir}/wallet.json`)).publicKey;
     this.pda = pda.provider(this.authority);
     this.mint = new PublicKey(cfg.settleMint);
@@ -234,7 +259,7 @@ export class ProviderNode {
     if (paid < e.owed) return fail(res, 402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
     const maxOut = Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
-    const maxCost = costOf(offer.price, estimateInputTokens(body.messages), maxOut);
+    const maxCost = costOf(offer.price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
       if (e.owed + maxCost > e.channel.deposit) return fail(res, 402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
@@ -243,8 +268,8 @@ export class ProviderNode {
     const upstream = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       timeoutMs: 30_000,
-      headers: { 'content-type': 'application/json', ...(this.cfg.upstream.apiKey ? { authorization: `Bearer ${this.cfg.upstream.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) },
-      body: JSON.stringify({ ...body, model: offer.upstreamModel ?? offer.id, stream: true, stream_options: { include_usage: true }, max_tokens: maxOut, max_completion_tokens: undefined }),
+      headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) },
+      body: JSON.stringify(upstreamBody(body, offer.upstreamModel ?? offer.id, maxOut)),
     });
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
 
@@ -266,7 +291,7 @@ export class ProviderNode {
       chunk.model = offer.id;
       send(JSON.stringify(chunk));
     }
-    const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body.messages);
+    const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body);
     const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
     const cost = costOf(offer.price, inputTokens, outputTokens);
     const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };

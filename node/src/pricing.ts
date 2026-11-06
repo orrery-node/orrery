@@ -9,9 +9,12 @@ export function costOf(p: Price, inputTokens: number, outputTokens: number): big
   return (raw + MILLION - 1n) / MILLION;
 }
 
-/** A rough upper bound for a request before it runs: 4 characters per token for the prompt, the output cap for the reply. */
+/** A rough upper bound for a request's prompt before it runs: 4 characters per token over everything the model
+ * reads (messages, tool definitions, response schema). Router and provider compute it the same way. */
 export function estimateInputTokens(body: unknown): number {
-  return Math.ceil(JSON.stringify(body ?? '').length / 4);
+  const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  const read = b && ('messages' in b || 'tools' in b) ? { m: b.messages, t: b.tools, r: b.response_format } : body;
+  return Math.ceil(JSON.stringify(read ?? '').length / 4);
 }
 
 export function usd(units: bigint, digits = 6): string {

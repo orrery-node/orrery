@@ -130,7 +130,7 @@ export class Router {
     const { model, route } = parseModel(body.model, (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
     const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
-    const estIn = estimateInputTokens(body.messages);
+    const estIn = estimateInputTokens(body);
     const estOut = Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
@@ -159,7 +159,7 @@ export class Router {
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false): Promise<void> {
     const address = cand.entry.address;
     const maxOut = Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
-    const maxCost = costOf(cand.offer.price, estimateInputTokens(body.messages), maxOut);
+    const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
     const ch = await this.o.channels.ensure(address, maxCost);
     const payload = JSON.stringify({ ...body, model: cand.offer.id, stream: true });
     let wire = payload;
