@@ -39,7 +39,7 @@ const check = (name: string, ok: boolean, detail = '') => {
 };
 
 const admin = loadOrCreateKeypair(join(ROOT, '.local/keys/local-wallet.json'));
-const validator = spawn('solana-test-validator', ['--reset', '--quiet', '--ledger', join(WORK, 'ledger'), '--rpc-port', String(RPC_PORT), '--faucet-port', '19900', '--upgradeable-program', PROGRAM_ID, so, admin.publicKey.toBase58()], { stdio: 'ignore' });
+const validator = spawn('solana-test-validator', ['--reset', '--quiet', '--ledger', join(WORK, 'ledger'), '--rpc-port', String(RPC_PORT), '--faucet-port', '19961', '--gossip-port', '18690', '--dynamic-port-range', '18700-18790', '--upgradeable-program', PROGRAM_ID, so, admin.publicKey.toBase58()], { stdio: 'ignore' });
 procs.push(validator);
 const conn = new Connection(RPC, 'confirmed');
 for (let i = 0; ; i++) {

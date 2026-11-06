@@ -937,6 +937,76 @@
   object-position: 62% 50%;
   z-index: -2;
 }
+.reel__v {
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.reel__v.is-on {
+  opacity: 1;
+}
+.reel__cap {
+  position: absolute;
+  z-index: 2;
+  right: max(var(--gutter), calc((100% - 1280px) / 2 + var(--gutter)));
+  bottom: 16%;
+  display: grid;
+  gap: 14px;
+  justify-items: end;
+}
+.reel__rows {
+  display: grid;
+}
+.reel__row {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+  padding: 9px 14px 9px 12px;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.6s ease, transform 0.6s var(--ease-out);
+}
+.reel__row.is-on {
+  opacity: 1;
+  transform: none;
+}
+.reel__row i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(20, 241, 149, 0.16), 0 0 10px rgba(20, 241, 149, 0.6);
+}
+.reel__name {
+  font-weight: 500;
+  font-size: 14.5px;
+}
+.reel__row .num {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.reel__ticks {
+  display: flex;
+  gap: 6px;
+}
+.reel__ticks b {
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.4s ease, width 0.4s var(--ease-out);
+}
+.reel__ticks b.is-on {
+  width: 34px;
+  background: var(--fg);
+}
 .film__shade {
   position: absolute;
   inset: 0;
@@ -1791,6 +1861,16 @@
     left: 16px;
     right: 16px;
     bottom: 7%;
+  }
+  .reel__cap {
+    right: 16px;
+    left: 16px;
+    top: 84px;
+    bottom: auto;
+    justify-items: start;
+  }
+  .reel__row {
+    justify-self: start;
   }
   .film p {
     font-size: 16px;

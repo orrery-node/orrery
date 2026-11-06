@@ -35,8 +35,8 @@ export default function ScrollFX() {
           { clipPath: 'inset(9% 6% 9% 6% round 26px)' },
           { clipPath: 'inset(0% 0% 0% 0% round 0px)', ease: 'none', scrollTrigger: { trigger: film, start: 'top 96%', end: 'top 18%', scrub: 0.6 } },
         );
-        const media = film.querySelector('.film__media');
-        if (media) {
+        const media = film.querySelectorAll('.film__media');
+        if (media.length) {
           gsap.fromTo(media, { scale: 1.16 }, { scale: 1, ease: 'none', scrollTrigger: { trigger: film, start: 'top bottom', end: 'bottom top', scrub: 0.6 } });
         }
       }

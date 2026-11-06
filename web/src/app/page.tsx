@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Orrery from '@/components/Orrery';
 import { Arrow, ChannelCard, CopyButton, CutCalc, Ledger, NavGround, ProviderCard, RequestLine, RouteCard, SealFlow } from '@/components/parts';
 import { Mark } from '@/components/Mark';
+import FilmReel from '@/components/FilmReel';
 import ScrollFX from '@/components/ScrollFX';
 import Wire from '@/components/Wire';
 import { CA, NAME, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
@@ -192,7 +193,16 @@ export default async function Home() {
         </div>
 
         <section className="film" data-wire-k="First token" data-wire-v={`${cheap.ttftMs} ms · ${cheapP.region}`}>
-          <video className="film__media" src="/media/rig.mp4" poster="/media/rig.jpg" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" />
+          <FilmReel
+            reels={[
+              ['Kestrel GPU Co-op', 'kestrel'],
+              ['Ironbridge Compute', 'ironbridge'],
+              ['Vault Nine', 'vault-nine'],
+            ].map(([name, slug]) => {
+              const p = rehearsal.providers.find((x) => x.name === name)!;
+              return { name, src: `/media/${slug}.mp4`, poster: `/media/${slug}.jpg`, region: p.region, from: perM(Math.min(...p.models.map((m) => m.input))) };
+            })}
+          />
           <div className="film__shade" />
           <div className="film__text">
             <h2><span className="lead">Providers.</span> Every one is someone&apos;s own machine.</h2>
