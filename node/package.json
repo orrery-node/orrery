@@ -1,12 +1,28 @@
 {
   "name": "orrery-node",
   "version": "0.1.0",
-  "private": true,
-  "description": "Orrery router and provider node: point your AI tools at localhost, pay providers directly on Solana",
+  "description": "Orrery router and provider node: point your AI tools at localhost, pay providers directly on Solana. Peer to peer, zero cut in between.",
+  "license": "MIT",
+  "keywords": [
+    "solana",
+    "ai",
+    "inference",
+    "p2p",
+    "openai-compatible",
+    "router",
+    "llm",
+    "payment-channel"
+  ],
+  "homepage": "https://orrery-web.onrender.com",
   "type": "module",
   "bin": {
-    "orrery": "./src/cli.ts"
+    "orrery": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -14,7 +30,9 @@
     "orrery": "tsx src/cli.ts",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "e2e": "bash devtools/e2e.sh"
+    "e2e": "bash devtools/e2e.sh",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli.js",
+    "prepublishOnly": "pnpm run build && pnpm test"
   },
   "dependencies": {
     "@solana/spl-token": "0.4.14",

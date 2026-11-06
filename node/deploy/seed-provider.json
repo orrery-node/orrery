@@ -17,7 +17,7 @@
   "models": [
     { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/llama-3.3-70b-instruct", "context": 131072, "maxOutput": 8192, "price": { "input": 708000, "output": 948000 } },
     { "id": "deepseek-v3", "upstreamModel": "deepseek/deepseek-v3.2", "context": 163840, "maxOutput": 8192, "price": { "input": 312000, "output": 456000 } },
-    { "id": "qwen3-32b", "upstreamModel": "qwen/qwen3-32b", "context": 131072, "maxOutput": 8192, "price": { "input": 96000, "output": 336000 } },
+    { "id": "qwen3-235b", "upstreamModel": "qwen/qwen3-235b-a22b-2507", "context": 262144, "maxOutput": 8192, "price": { "input": 168000, "output": 960000 } },
     { "id": "gpt-oss-120b", "upstreamModel": "openai/gpt-oss-120b", "context": 131072, "maxOutput": 8192, "price": { "input": 30000, "output": 112000 } }
   ],
   "redeem": { "everySecs": 120, "minUnits": 1 }
