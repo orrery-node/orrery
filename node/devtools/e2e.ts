@@ -211,6 +211,24 @@ check('no fee in the program: user + providers + open deposits = 100 USDC', user
 const cfg = decodeConfig((await conn.getAccountInfo(pda.config()))!.data);
 check('program totals agree', cfg.settled === paidTotal && cfg.providers === BigInt(providerSpecs.length) && cfg.bondMint.equals(orey), `settled $${usd(cfg.settled)} · ${cfg.channels} channels`);
 
+console.log('\nmany channels');
+const vaultNode = nodes[2];
+const extraChannels: string[] = [];
+for (let i = 0; i < 3; i++) {
+  const w = Keypair.generate();
+  await fund(w.publicKey, 2);
+  const ata = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, w.publicKey);
+  await mintTo(conn, admin, usdc, ata.address, admin, USD);
+  const c = new Channels(conn, w, Keypair.generate(), usdc, join(WORK, `home/extra-${i}.json`), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD });
+  const st = await c.ensure(vaultNode.pda.toBase58(), 1n);
+  const v = c.settle(vaultNode.pda.toBase58(), { requestId: `extra-${i}`, model: 'qwen3-32b', inputTokens: 1, outputTokens: 1, cost: 5n });
+  await fetch('http://127.0.0.1:17283/orrery/voucher', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: st.channel, voucher: v }) });
+  extraChannels.push(st.channel);
+}
+await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(vaultNode.node.publicKey, wallets[2].publicKey, new PublicKey(extraChannels[0]), (decodeChannel((await conn.getAccountInfo(new PublicKey(extraChannels[0])))!.data)).payer, usdc)), [vaultNode.node]);
+const extraRedeemed = await vaultNode.redeemDue(1n);
+check('a provider with many channels redeems them in transactions that fit, skipping one that closed', extraRedeemed.length === 2 && extraRedeemed.every((d) => d.amount === 5n) && new Set(extraRedeemed.map((d) => d.tx)).size === 1, `${extraRedeemed.length} channels in ${new Set(extraRedeemed.map((d) => d.tx)).size} tx`);
+
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),

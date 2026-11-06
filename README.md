@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-16%2F16%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="16 of 16 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-17%2F17%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="17 of 17 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -445,8 +445,8 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 17 tests
-pnpm e2e                                                        # full local rehearsal, 16 checks
+cd node && pnpm install && pnpm test                            # 18 tests
+pnpm e2e                                                        # full local rehearsal, 17 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
@@ -469,7 +469,8 @@ cd web && pnpm install && pnpm dev                              # http://localho
   ✓ a provider releasing its channel sends the rest straight back to the user
   ✓ no fee in the program: user + providers + open deposits = 100 USDC
   ✓ program totals agree
-16/16 checks passed
+  ✓ a provider with many channels redeems them in transactions that fit, skipping one that closed
+17/17 checks passed
 ```
 
 ## FAQ
@@ -520,7 +521,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal, 16 of 16 checks
+- [x] Local end-to-end rehearsal, 17 of 17 checks
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)

@@ -4,8 +4,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { decodeChannel, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
+import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, writePrivate } from '../keys.ts';
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
@@ -314,37 +315,71 @@ export class ProviderNode {
   }
 
   /** Redeem every channel whose best voucher is ahead of what is on chain, a few channels per transaction. */
+  /** Redeems every channel whose signed total is ahead of what is redeemed. Channels are re-read from chain first
+   * (a closed one leaves the ledger), packed into transactions that fit Solana's 1232-byte limit, and a batch that
+   * fails is retried one channel at a time so one bad channel never holds up the rest. */
   async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? 1)): Promise<{ channel: string; amount: bigint; tx: string }[]> {
     const due: [string, Entry][] = [];
-    for (const [k, e] of this.ledger) {
+    for (const [k, e] of [...this.ledger]) {
       if (!e.best || e.best.cumulative <= e.redeemed) continue;
+      try {
+        await this.entry(k, true);
+      } catch (err) {
+        if ((err as { code?: string }).code === 'unknown_channel') {
+          this.ledger.delete(k);
+          this.raw.delete(k);
+          this.save();
+          this.log(`channel ${k.slice(0, 6)} is closed; dropped from the ledger`);
+        }
+        continue;
+      }
       const pending = (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) - e.redeemed;
       const closing = e.channel.closingAt !== 0n;
-      if (pending >= minUnits || (closing && pending > 0n)) due.push([k, e]);
+      if (pending > 0n && (pending >= minUnits || closing)) due.push([k, e]);
     }
-    const done: { channel: string; amount: bigint; tx: string }[] = [];
-    for (let i = 0; i < due.length; i += 3) {
-      const batch = due.slice(i, i + 3);
-      const tx = new Transaction();
-      for (const [k, e] of batch) {
-        tx.add(...redeemInstructions({ caller: this.node.publicKey, providerAuthority: this.authority, channel: new PublicKey(k), mint: this.mint, sessionKey: e.channel.sessionKey, voucher: e.best! }));
-      }
+    const ixs = (batch: [string, Entry][]) => batch.flatMap(([k, e]) => redeemInstructions({ caller: this.node.publicKey, providerAuthority: this.authority, channel: new PublicKey(k), mint: this.mint, sessionKey: e.channel.sessionKey, voucher: e.best! }));
+    const fits = (batch: [string, Entry][]) => {
       try {
-        const sig = await sendAndConfirmTransaction(this.conn, tx, [this.node], { commitment: 'confirmed' });
-        for (const [k, e] of batch) {
-          const before = e.redeemed;
-          await this.entry(k, true).catch(() => undefined);
-          e.redeemed = e.channel.redeemed;
-          const amount = e.redeemed - before;
-          done.push({ channel: k, amount, tx: sig });
-          this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
-        }
-        this.save();
-      } catch (err) {
-        this.log(`redeem failed: ${(err as Error).message.split('\n')[0]}`);
+        const tx = new Transaction({ feePayer: this.node.publicKey, recentBlockhash: '11111111111111111111111111111111' }).add(...ixs(batch));
+        return tx.serializeMessage().length + 65 <= 1232;
+      } catch {
+        return false;
       }
+    };
+    const groups: [string, Entry][][] = [];
+    let cur: [string, Entry][] = [];
+    for (const d of due) {
+      if (cur.length && !fits([...cur, d])) {
+        groups.push(cur);
+        cur = [];
+      }
+      cur.push(d);
+    }
+    if (cur.length) groups.push(cur);
+    const done: { channel: string; amount: bigint; tx: string }[] = [];
+    for (const g of groups) {
+      if (!(await this.redeemBatch(g, ixs, done)) && g.length > 1) for (const one of g) await this.redeemBatch([one], ixs, done);
     }
     return done;
+  }
+
+  private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
+    try {
+      const sig = await sendFresh(this.conn, () => new Transaction().add(...ixs(batch)), [this.node]);
+      for (const [k, e] of batch) {
+        const before = e.redeemed;
+        await this.entry(k, true).catch(() => undefined);
+        e.redeemed = e.channel.redeemed;
+        const amount = e.redeemed - before;
+        done.push({ channel: k, amount, tx: sig });
+        this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
+      }
+      this.save();
+      return true;
+    } catch (err) {
+      this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${(err as Error).message.split('\n')[0]}`);
+      return false;
+    }
   }
 
   registerInstruction(wallet: PublicKey) {
