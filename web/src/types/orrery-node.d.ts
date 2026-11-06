@@ -27,3 +27,14 @@ declare module 'orrery-node/dist/brand.js' {
 declare module 'orrery-node/dist/keys.js' {
   export function loadOrCreateKeypair(path: string): import('@solana/web3.js').Keypair;
 }
+declare module 'orrery-node/dist/chain/program.js' {
+  import type { PublicKey, TransactionInstruction } from '@solana/web3.js';
+  export const ACCOUNT: { Channel: Uint8Array };
+  export const programId: () => PublicKey;
+  export function decodeChannel(data: Buffer): { payer: PublicKey; provider: PublicKey; mint: PublicKey; closingAt: bigint };
+  export function decodeProvider(data: Buffer): { authority: PublicKey };
+  export const ins: {
+    requestClose(payer: PublicKey, channel: PublicKey): TransactionInstruction;
+    closeChannel(closer: PublicKey, providerAuthority: PublicKey, channel: PublicKey, payer: PublicKey, mint: PublicKey): TransactionInstruction;
+  };
+}

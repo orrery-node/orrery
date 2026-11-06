@@ -111,9 +111,17 @@ export class Channels {
     const id = randomBytes(8).readBigUInt64LE();
     const providerKey = new PublicKey(provider);
     const wallet = this.wallet;
-    await sendFresh(this.conn, () => new Transaction().add(ins.openChannel(wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey)), [wallet]);
+    const channel = pda.channel(wallet.publicKey, providerKey, id);
+    try {
+      await sendFresh(this.conn, () => new Transaction().add(ins.openChannel(wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey)), [wallet]);
+    } catch (e) {
+      // A transaction can land while its confirmation times out. The channel id is ours alone, so if its account now
+      // exists with our session key, it is open; opening another would lock a second deposit.
+      const info = await this.conn.getAccountInfo(channel, 'confirmed').catch(() => null);
+      if (!info || !decodeChannel(info.data).sessionKey.equals(this.session.publicKey)) throw e;
+    }
     const state: ChannelState = {
-      provider, channel: pda.channel(this.wallet.publicKey, providerKey, id).toBase58(), id: id.toString(), deposit, cumulative: 0n,
+      provider, channel: channel.toBase58(), id: id.toString(), deposit, cumulative: 0n,
       usageHash: ZERO_HASH, voucher: null, openedAt: Date.now(), checkedAt: Date.now(),
     };
     this.map.set(provider, state);

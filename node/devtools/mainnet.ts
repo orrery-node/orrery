@@ -24,7 +24,7 @@ mkdirSync(HOME, { recursive: true });
 process.env.ORRERY_HOME = HOME;
 
 const { PROGRAM_ID, USDC_MAINNET } = await import('../src/brand.ts');
-const { decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } = await import('../src/chain/program.ts');
+const { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } = await import('../src/chain/program.ts');
 const { decodeVoucher, redeemInstructions } = await import('../src/chain/voucher.ts');
 const { loadKeypair, loadOrCreateKeypair } = await import('../src/keys.ts');
 const { Channels } = await import('../src/router/channels.ts');
@@ -264,9 +264,49 @@ async function bondMint() {
 }
 
 const cmd = argv[0];
-const run = { status, init, fund, smoke, settle, 'bond-mint': bondMint }[cmd as 'status'];
+/** Every open channel on mainnet: who pays, to which provider, deposit, redeemed and age. Our own wallets are named. */
+async function channels() {
+  const ours = new Map<string, string>();
+  for (const [name, file] of [['dev', 'dev-wallet.json'], ['demo', 'demo-wallet.json'], ['test', 'test-wallet.json'], ['local', 'local-wallet.json']] as const) {
+    const f = join(KEYS, file);
+    if (existsSync(f)) ours.set(loadKeypair(f).publicKey.toBase58(), name);
+  }
+  const accs = await conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: (await import('bs58')).default.encode(ACCOUNT.Channel) } }] });
+  const rows = accs.map(({ pubkey, account }) => ({ pubkey, c: decodeChannel(account.data as Buffer) })).sort((a, b) => Number(a.c.openedAt - b.c.openedAt));
+  const now = Math.floor(Date.now() / 1000);
+  for (const { pubkey, c } of rows) {
+    const who = ours.get(c.payer.toBase58()) ?? 'outside';
+    const age = ((now - Number(c.openedAt)) / 3600).toFixed(1);
+    console.log(`${pubkey.toBase58().slice(0, 6)}…  payer ${c.payer.toBase58().slice(0, 6)}… (${who})  deposit $${usd(c.deposit)}  redeemed $${usd(c.redeemed)}  opened ${age}h ago${c.closingAt > 0n ? '  closing' : ''}`);
+  }
+  const outside = rows.filter(({ c }) => !ours.has(c.payer.toBase58()));
+  console.log(`${rows.length} open channels, ${outside.length} from wallets that are not ours (${new Set(outside.map(({ c }) => c.payer.toBase58())).size} distinct payers)`);
+}
+
+/** The provider closes a payer's channels it no longer serves, refunding each deposit to the payer at once (a
+ * provider may close any time and gives up only what it has not redeemed). --keep names channels to leave open. */
+async function closeOrphans() {
+  const payer = new PublicKey(flag('payer')!);
+  const keep = (flag('keep') ?? '').split(',').filter(Boolean);
+  const node = loadKeypair(flag('node', join(KEYS, 'seed-node.json'))!);
+  const accs = await conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: (await import('bs58')).default.encode(ACCOUNT.Channel) } }, { memcmp: { offset: 8, bytes: payer.toBase58() } }] });
+  for (const { pubkey, account } of accs) {
+    const c = decodeChannel(account.data as Buffer);
+    const name = pubkey.toBase58();
+    if (keep.some((k) => name.startsWith(k))) { console.log(`keep   ${name}`); continue; }
+    const prov = decodeProvider((await conn.getAccountInfo(c.provider))!.data as Buffer);
+    if (!prov.nodeKey.equals(node.publicKey) && !prov.authority.equals(node.publicKey)) { console.log(`skip   ${name} (another provider)`); continue; }
+    console.log(`close  ${name}  deposit $${usd(c.deposit)}  redeemed $${usd(c.redeemed)}  → refund $${usd(c.deposit - c.redeemed)} to ${payer.toBase58().slice(0, 6)}…`);
+    if (!yes) continue;
+    const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(node.publicKey, prov.authority, pubkey, c.payer, c.mint)), [node]);
+    console.log(`       tx ${sig}`);
+  }
+  if (!yes) console.log('(dry run) add --yes to send');
+}
+
+const run = { status, channels, 'close-orphans': closeOrphans, init, fund, smoke, settle, 'bond-mint': bondMint }[cmd as 'status'];
 if (!run) {
-  console.log('usage: mainnet.ts status|init|fund|smoke|settle|bond-mint [--dev <keypair.json>] [--mint <CA>] [--yes]');
+  console.log('usage: mainnet.ts status|channels|close-orphans|init|fund|smoke|settle|bond-mint [--dev <keypair.json>] [--mint <CA>] [--yes]');
   process.exit(1);
 }
 run().then(() => process.exit(0)).catch((e) => {

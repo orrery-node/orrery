@@ -2,7 +2,7 @@
 // wallet (DEMO_WALLET_KEY) that pays providers on mainnet. Same code a user runs with `npx orrery-node router`;
 // the only differences are a lower deposit and a daily cap of $0.50.
 import { mkdirSync } from 'node:fs';
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 
 export const DEMO_PORT = 17171;
 export const DEMO_MODELS = ['gpt-oss-120b', 'llama-3.3-70b', 'deepseek-v3', 'qwen3-235b'] as const;
@@ -32,6 +32,39 @@ export async function warm(d: Demo): Promise<void> {
         console.log(`[demo] channel to ${e.address.slice(0, 6)} not ready (${(err as Error).message.split('\n')[0]}); retry ${i + 1}`);
         await pause(1500 * (i + 1));
       }
+    }
+  }
+}
+
+/** Each deploy starts the demo with fresh state, so channels it opened in earlier runs hold deposits it can no longer
+ * sign against. Ask to close those, then close them once the provider's hour to redeem has passed; the deposits and
+ * the account rent come back to the demo wallet. The live channels are left alone. */
+async function tidy(d: Demo, conn: Connection, wallet: Keypair): Promise<void> {
+  const { ACCOUNT, decodeChannel, decodeProvider, ins, programId } = await import('orrery-node/dist/chain/program.js');
+  const live = new Set(d.channels.list().map((c) => c.channel));
+  const accs = await conn.getProgramAccounts(programId(), {
+    filters: [
+      { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } },
+      { memcmp: { offset: 8, bytes: wallet.publicKey.toBase58() } },
+    ],
+  });
+  const now = Math.floor(Date.now() / 1000);
+  for (const { pubkey, account } of accs) {
+    if (live.has(pubkey.toBase58())) continue;
+    const c = decodeChannel(account.data);
+    try {
+      if (c.closingAt === 0n) {
+        await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(wallet.publicKey, pubkey)), [wallet], { commitment: 'confirmed' });
+        console.log(`[demo] asked to close ${pubkey.toBase58().slice(0, 6)} from an earlier run`);
+      } else if (now >= Number(c.closingAt)) {
+        const info = await conn.getAccountInfo(c.provider);
+        if (!info) continue;
+        const prov = decodeProvider(info.data);
+        await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(wallet.publicKey, prov.authority, pubkey, c.payer, c.mint)), [wallet], { commitment: 'confirmed' });
+        console.log(`[demo] closed ${pubkey.toBase58().slice(0, 6)}; its deposit is back in the demo wallet`);
+      }
+    } catch (e) {
+      console.log(`[demo] tidy ${pubkey.toBase58().slice(0, 6)}: ${(e as Error).message.split('\n')[0]}`);
     }
   }
 }
@@ -78,5 +111,10 @@ async function start(): Promise<Demo | null> {
   await router.start();
   const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
   await warm(d);
+  const sweep = () => void tidy(d, conn, wallet).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
+  setTimeout(() => {
+    sweep();
+    setInterval(sweep, 15 * 60_000).unref();
+  }, 10 * 60_000).unref();
   return d;
 }
