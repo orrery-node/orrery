@@ -2143,3 +2143,13 @@
     font-size: 11.5px;
   }
 }
+.token__ca {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin: 36px auto 0;
+}
+.token__ca code {
+  overflow-x: auto;
+  white-space: nowrap;
+}

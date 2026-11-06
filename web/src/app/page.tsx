@@ -295,7 +295,7 @@ export default async function Home() {
 
           <section className="token" id="token" data-wire-k={`Hold $${TICKER}`} data-wire-v="up to 35% off every answer">
             <h2><span className="lead">${TICKER}.</span> Hold it, and every answer costs less.</h2>
-            <p className="sub">Launching on Meteora. Providers can publish holder prices: hold 0.1% of the supply and the seed provider charges you 20% less, hold 1% and it&apos;s 35% less. Providers also bond it behind their listing, which routers count toward reputation.</p>
+            <p className="sub">{CA ? 'Live on Meteora.' : 'Launching on Meteora.'} Providers can publish holder prices: hold 0.1% of the supply and the seed provider charges you 20% less, hold 1% and it&apos;s 35% less. Providers also bond it behind their listing, which routers count toward reputation.</p>
             <HolderLadder />
             <TokenLoop />
             <dl className="token__dl" data-rule>
@@ -304,6 +304,14 @@ export default async function Home() {
               <div><dt>Reputation</dt><dd>Bonded {TICKER} is 10% of the <code>:trusted</code> score</dd></div>
               <div><dt>Contract</dt><dd className="num">{CA ? short(CA, 6, 6) : 'not launched yet'}</dd></div>
             </dl>
+            {CA && (
+              <div className="installbar token__ca">
+                <code className="num">
+                  <span>CA</span> {CA}
+                </code>
+                <CopyButton text={CA} />
+              </div>
+            )}
             <div className="cta cta--center">
               {BUY_URL ? (
                 <a href={BUY_URL} className="pill" rel="noopener noreferrer" target="_blank">Buy ${TICKER}</a>

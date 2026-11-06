@@ -4,6 +4,8 @@
 //   npx tsx devtools/mainnet.ts fund     --dev <keypair.json> [--sol 0.03] [--usdc 1] [--node-sol 0.02] [--yes]
 //   npx tsx devtools/mainnet.ts smoke    [--n 4] [--yes]                     (test wallet → live providers)
 //   npx tsx devtools/mainnet.ts settle   --dev <keypair.json> [--yes]       (redeem + close test channels, sweep back)
+//   npx tsx devtools/mainnet.ts bond-mint --dev <keypair.json> --mint <CA> [--symbol OREY] [--yes]
+//                                        (once, cannot be changed: the network token; holder prices switch on from it)
 // Keys live under .local/keys (git-ignored): test-wallet.json, seed-node.json. RPC: --rpc or ORRERY_RPC_URL, else the
 // public mainnet endpoint.
 import { existsSync, mkdirSync } from 'node:fs';
@@ -220,10 +222,51 @@ async function settle() {
   }
 }
 
+const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
+const METADATA_PROGRAM = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+/** Name and symbol from the mint's Metaplex metadata account, or null when it has none. */
+async function tokenNames(mint: PublicKey): Promise<{ name: string; symbol: string } | null> {
+  const md = PublicKey.findProgramAddressSync([Buffer.from('metadata'), METADATA_PROGRAM.toBuffer(), mint.toBuffer()], METADATA_PROGRAM)[0];
+  const info = await conn.getAccountInfo(md);
+  if (!info) return null;
+  let o = 1 + 32 + 32;
+  const str = () => {
+    const n = info.data.readUInt32LE(o);
+    const v = info.data.subarray(o + 4, o + 4 + n).toString('utf8').replace(/\0+$/, '').trim();
+    o += 4 + n;
+    return v;
+  };
+  return { name: str(), symbol: str() };
+}
+
+async function bondMint() {
+  const d = dev();
+  const m = flag('mint');
+  if (!m) throw new Error('--mint <CA> is required');
+  const mint = new PublicKey(m);
+  const info = await conn.getAccountInfo(mint);
+  if (!info) throw new Error(`nothing at ${mint.toBase58()}`);
+  if (!TOKEN_PROGRAMS.includes(info.owner.toBase58())) throw new Error(`${mint.toBase58()} is not a token mint (owner ${info.owner.toBase58()})`);
+  const supply = (await conn.getTokenSupply(mint)).value;
+  const names = await tokenNames(mint);
+  const want = flag('symbol', 'OREY')!;
+  console.log(`mint     ${mint.toBase58()}  (${info.owner.toBase58().startsWith('Tokenz') ? 'Token-2022' : 'SPL Token'})`);
+  console.log(`token    ${names ? `${names.name} (${names.symbol})` : 'no Metaplex metadata'}  ·  decimals ${supply.decimals}  ·  supply ${supply.uiAmountString}`);
+  if (names && names.symbol.replace(/^\$/, '').toUpperCase() !== want.toUpperCase()) throw new Error(`symbol is ${names.symbol}, expected ${want}; nothing sent`);
+  const cfgInfo = await conn.getAccountInfo(pda.config());
+  if (!cfgInfo) throw new Error('the program is not initialized');
+  const c = decodeConfig(cfgInfo.data);
+  if (!c.admin.equals(d.publicKey)) throw new Error(`the --dev wallet is not the program admin (${c.admin.toBase58()})`);
+  if (!c.bondMint.equals(PublicKey.default)) throw new Error(`the bond mint is already set to ${c.bondMint.toBase58()}; it can be set only once`);
+  console.log('set_bond_mint can be sent ONCE and never changed. From then on routers and providers apply holder prices by this token.');
+  await send('set_bond_mint', [ins.setBondMint(d.publicKey, mint)], [d]);
+}
+
 const cmd = argv[0];
-const run = { status, init, fund, smoke, settle }[cmd as 'status'];
+const run = { status, init, fund, smoke, settle, 'bond-mint': bondMint }[cmd as 'status'];
 if (!run) {
-  console.log('usage: mainnet.ts status|init|fund|smoke|settle [--dev <keypair.json>] [--yes]');
+  console.log('usage: mainnet.ts status|init|fund|smoke|settle|bond-mint [--dev <keypair.json>] [--mint <CA>] [--yes]');
   process.exit(1);
 }
 run().then(() => process.exit(0)).catch((e) => {
