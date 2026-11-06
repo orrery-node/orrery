@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     description: 'A router on your computer, providers anyone can run, payments straight to them on Solana. Zero cut in between.',
     images: [{ url: '/og.jpg', width: 1280, height: 640, alt: `${NAME}: AI inference, peer to peer. Zero cut in between.` }],
   },
-  twitter: { card: 'summary_large_image', images: ['/og.jpg'] },
+  twitter: { card: 'summary_large_image', site: '@OrreryNode', creator: '@OrreryNode', images: ['/og.jpg'] },
 };
 
 export const viewport: Viewport = { themeColor: '#000000', colorScheme: 'dark' };

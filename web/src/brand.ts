@@ -5,7 +5,7 @@ export const WORKING_TITLE = false;
 
 // Set once the token exists (launched on Meteora DBC). null renders "not launched yet".
 export const CA: string | null = null;
-export const X_URL: string | null = null;
+export const X_URL: string | null = 'https://x.com/OrreryNode';
 export const REPO_URL: string | null = 'https://github.com/orrery-node/orrery';
 
 export const ROUTER_URL = 'http://127.0.0.1:7171/v1';

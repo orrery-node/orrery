@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <a href="https://orrerynode.com"><b>Website</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://orrerynode.com/docs"><b>Docs</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="docs/PROTOCOL.md"><b>Protocol</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://www.npmjs.com/package/orrery-node"><b>npm</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="SECURITY.md"><b>Security</b></a>
+  <a href="https://orrerynode.com"><b>Website</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://orrerynode.com/docs"><b>Docs</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="docs/PROTOCOL.md"><b>Protocol</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://www.npmjs.com/package/orrery-node"><b>npm</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://x.com/OrreryNode"><b>X</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="SECURITY.md"><b>Security</b></a>
 </p>
 
 <p align="center">

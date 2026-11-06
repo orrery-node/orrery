@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Mark } from '@/components/Mark';
 import TryBox from '@/components/TryBox';
 import { CopyButton } from '@/components/parts';
-import { NAME, PROGRAM_ID, REPO_URL } from '@/brand';
+import { NAME, PROGRAM_ID, REPO_URL, X_URL } from '@/brand';
 import '../docs/docs.css';
 import './try.css';
 
@@ -31,6 +31,7 @@ export default function Try() {
         <nav className="d-nav__links" aria-label="Pages">
           <Link href="/docs">Docs</Link>
           {REPO_URL && <a href={REPO_URL} rel="noopener noreferrer" target="_blank">GitHub</a>}
+          {X_URL && <a href={X_URL} rel="noopener noreferrer" target="_blank">X</a>}
         </nav>
         <Link href="/" className="d-nav__back">Back to the network</Link>
         <Link href="/docs#install" className="pill d-nav__cta">Install</Link>

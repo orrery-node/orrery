@@ -141,6 +141,7 @@ The Solana program (`7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS`) only holds c
 - Website: https://orrerynode.com
 - Docs: https://orrerynode.com/docs
 - Source: https://github.com/orrery-node/orrery
+- X: https://x.com/OrreryNode
 - Security: https://github.com/orrery-node/orrery/blob/main/SECURITY.md
 
 MIT licensed.

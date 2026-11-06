@@ -360,7 +360,7 @@ export default async function Home() {
           <Link href="/docs">Docs</Link>
           <a href={NPM_URL} rel="noopener noreferrer" target="_blank">npm</a>
           {REPO_URL ? <a href={REPO_URL}>GitHub</a> : <span className="foot__off">GitHub at launch</span>}
-          {X_URL ? <a href={X_URL}>X</a> : <span className="foot__off">X soon</span>}
+          {X_URL ? <a href={X_URL} rel="noopener noreferrer" target="_blank">X</a> : <span className="foot__off">X soon</span>}
         </nav>
         <span className="foot__note">Settles on Solana. Numbers on this page come from the local rehearsal of {ranAtLabel}.</span>
       </footer>
