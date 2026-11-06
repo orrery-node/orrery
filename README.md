@@ -514,7 +514,7 @@ Two things. Holding it lowers your price at every provider that publishes holder
 <details>
 <summary><b>Which API does the router speak?</b></summary>
 
-OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/models`. The Anthropic Messages API is on the roadmap.
+OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), `/v1/models`, and the Anthropic Messages API (`/v1/messages`, streaming or not, tool use included, plus `/v1/messages/count_tokens`). For an Anthropic client, set `ANTHROPIC_BASE_URL=http://127.0.0.1:7171` and use a network model id such as `llama-3.3-70b`.
 </details>
 
 ## Roadmap
@@ -531,7 +531,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 - [x] $OREY live on Meteora (`2nB8hRZcSGKbxpfazRd749nXbWRgG27q6yQcasWcThse`), set as the program's bond mint, holder prices on
 - [ ] Buyback and burn: a share of what Orrery earns buys $OREY on the market and burns it. It runs outside the settlement program, which keeps no fee; a smaller supply moves every holder toward the next tier
 - [ ] Independent audit
-- [ ] Anthropic Messages API (`/v1/messages`)
+- [x] Anthropic Messages API (`/v1/messages`) on the router, tool use included (in main, ships in orrery-node 0.1.3)
 - [ ] Built-in hardware attestation verifier
 - [ ] $OREY bonds live on mainnet
 
