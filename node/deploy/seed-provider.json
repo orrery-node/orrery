@@ -15,10 +15,11 @@
     "body": { "provider": { "sort": "price" } }
   },
   "models": [
-    { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/llama-3.3-70b-instruct", "context": 131072, "maxOutput": 8192, "price": { "input": 708000, "output": 948000 } },
-    { "id": "deepseek-v3", "upstreamModel": "deepseek/deepseek-v3.2", "context": 163840, "maxOutput": 8192, "price": { "input": 312000, "output": 456000 } },
-    { "id": "qwen3-235b", "upstreamModel": "qwen/qwen3-235b-a22b-2507", "context": 262144, "maxOutput": 8192, "price": { "input": 168000, "output": 960000 } },
-    { "id": "gpt-oss-120b", "upstreamModel": "openai/gpt-oss-120b", "context": 131072, "maxOutput": 8192, "price": { "input": 30000, "output": 112000 } }
+    { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/llama-3.3-70b-instruct", "context": 131072, "maxOutput": 8192, "price": { "input": 885000, "output": 1185000 } },
+    { "id": "deepseek-v3", "upstreamModel": "deepseek/deepseek-v3.2", "context": 163840, "maxOutput": 8192, "price": { "input": 390000, "output": 570000 } },
+    { "id": "qwen3-235b", "upstreamModel": "qwen/qwen3-235b-a22b-2507", "context": 262144, "maxOutput": 8192, "price": { "input": 210000, "output": 1200000 } },
+    { "id": "gpt-oss-120b", "upstreamModel": "openai/gpt-oss-120b", "context": 131072, "maxOutput": 8192, "price": { "input": 37500, "output": 140000 } }
   ],
-  "redeem": { "everySecs": 120, "minUnits": 1 }
+  "redeem": { "everySecs": 120, "minUnits": 1 },
+  "holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }
 }

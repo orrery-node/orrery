@@ -9,6 +9,7 @@ import { decodeChannel, ins, pda, programId, type ChannelAccount } from '../chai
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, writePrivate } from '../keys.ts';
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
+import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
@@ -33,6 +34,8 @@ export type ProviderConfig = {
   models: ProviderOffer[];
   tee?: { mode: 'dev'; kind?: number };
   redeem?: { everySecs?: number; minUnits?: number };
+  /** Holder pricing: hold `share` basis points of the network token's supply, pay `off` basis points less. */
+  holder?: { tiers: HolderTier[] };
 };
 
 type Entry = {
@@ -97,6 +100,7 @@ export class ProviderNode {
   readonly enclave: EnclaveKey | null;
   readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
   private readonly apiKey: string | undefined;
+  private readonly holders: HolderBook | null;
   private ledger = new Map<string, Entry>();
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -133,7 +137,9 @@ export class ProviderNode {
       region: cfg.region,
       models: cfg.models.map(({ upstreamModel: _u, ...o }) => o),
       tee: this.enclave ? { kind: this.attestation!.kind, enclaveKey: this.enclave.publicKey.toString('hex') } : undefined,
+      holder: cfg.holder ? { tiers: checkTiers(cfg.holder.tiers) } : undefined,
     };
+    this.holders = cfg.holder ? new HolderBook(this.conn) : null;
     this.manifestBytes = canonical(this.manifest);
     this.load();
   }
@@ -247,6 +253,8 @@ export class ProviderNode {
     const offer = this.cfg.models.find((m) => m.id === body.model);
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
     const e = await this.entry(address);
+    const off = this.holders ? await this.holders.off(this.cfg.holder!.tiers, e.channel.payer) : 0;
+    const price = discounted(offer.price, off);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (e.channel.closingAt !== 0n && now > e.channel.closingAt - 120n) return fail(res, 409, 'channel_closing', 'channel is closing; open a new one');
     const vh = req.headers['x-orrery-voucher'];
@@ -259,7 +267,7 @@ export class ProviderNode {
     if (paid < e.owed) return fail(res, 402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
     const maxOut = Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
-    const maxCost = costOf(offer.price, estimateInputTokens(body), maxOut);
+    const maxCost = costOf(price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
       if (e.owed + maxCost > e.channel.deposit) return fail(res, 402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
@@ -293,16 +301,16 @@ export class ProviderNode {
     }
     const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body);
     const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
-    const cost = costOf(offer.price, inputTokens, outputTokens);
+    const cost = costOf(price, inputTokens, outputTokens);
     const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
     e.owed += record.cost;
     e.usageHash = nextUsageHash(e.usageHash, record);
     e.unpaid.push({ ...record, owedAfter: e.owed });
     this.save();
-    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex') }), 'orrery');
+    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex'), off }), 'orrery');
     res.write(sseFrame('[DONE]'));
     res.end();
-    this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${sealKey ? '  sealed' : ''}`);
+    this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
   }
 
   /** Redeem every channel whose best voucher is ahead of what is on chain, a few channels per transaction. */

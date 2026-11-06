@@ -1,6 +1,7 @@
-// End to end on a local validator: the real program, three provider nodes in front of mock models, the router, a
-// dozen requests on every route, a provider going dark mid-run, on-chain redemption, a provider releasing its
-// channel, and a final check that every unit of USDC is where it should be.
+// End to end on a local validator: the real program, four provider nodes in front of mock models, the router, a
+// dozen requests on every route, holder pricing for a wallet that holds the network token, a provider going dark
+// mid-run, on-chain redemption, a provider releasing its channel, and a final check that every unit of USDC is where
+// it should be.
 //   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/orrery.so: anchor build --arch v2)
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,7 +22,8 @@ const { ProviderNode } = await import('../src/provider/node.ts');
 const { Channels } = await import('../src/router/channels.ts');
 const { Registry } = await import('../src/router/registry.ts');
 const { Router } = await import('../src/router/server.ts');
-const { usd } = await import('../src/pricing.ts');
+const { costOf, usd } = await import('../src/pricing.ts');
+const { discounted, HolderBook, sharePct } = await import('../src/holder.ts');
 
 const RPC_PORT = 18899;
 const RPC = `http://127.0.0.1:${RPC_PORT}`;
@@ -61,8 +63,15 @@ await fund(admin.publicKey, 50);
 const usdc = await createMint(conn, admin, admin.publicKey, null, 6);
 await sendAndConfirmTransaction(conn, new Transaction().add(ins.initialize(admin.publicKey, usdc, { closeGraceSecs: 600n, unbondSecs: 3_600n, minDeposit: USD / 10n })), [admin]);
 console.log(`program initialized, settlement mint ${usdc.toBase58()}`);
+const TOKEN = 1_000_000n;
+const orey = await createMint(conn, admin, admin.publicKey, null, 6);
+await sendAndConfirmTransaction(conn, new Transaction().add(ins.setBondMint(admin.publicKey, orey)), [admin]);
+const adminOrey = await getOrCreateAssociatedTokenAccount(conn, admin, orey, admin.publicKey);
+await mintTo(conn, admin, orey, adminOrey.address, admin, 980_000_000n * TOKEN);
+console.log(`network token ${orey.toBase58()} set as the bond mint`);
+const HOLDER_TIERS = [{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
 
-const upstreams: [number, number, string][] = [[19101, 220, 'kestrel'], [19102, 40, 'ironbridge'], [19103, 90, 'vault-nine']];
+const upstreams: [number, number, string][] = [[19101, 220, 'kestrel'], [19102, 40, 'ironbridge'], [19103, 90, 'vault-nine'], [19104, 70, 'halo']];
 for (const [port, delay, label] of upstreams) {
   procs.push(spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), String(port), String(delay), label], { stdio: 'ignore' }));
 }
@@ -72,6 +81,7 @@ const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
   { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000]] },
+  { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
 
 const nodes: InstanceType<typeof ProviderNode>[] = [];
@@ -87,6 +97,7 @@ for (const s of providerSpecs) {
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
     models: s.models.map(([id, input, output]) => ({ id, context: 131_072, maxOutput: 4_096, price: { input, output } })),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 },
+    holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
   });
   node.log = (l) => console.log(`    [${s.name.split(' ')[0]}] ${l}`);
   await fund(wallet.publicKey);
@@ -96,16 +107,18 @@ for (const s of providerSpecs) {
   await node.listen();
   nodes.push(node);
 }
-console.log('three providers listed');
+console.log(`${providerSpecs.length} providers listed, one with holder prices`);
 
 const user = Keypair.generate();
 await fund(user.publicKey);
 const userTokens = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, user.publicKey);
 await mintTo(conn, admin, usdc, userTokens.address, admin, 100n * USD);
+const userOrey = await getOrCreateAssociatedTokenAccount(conn, admin, orey, user.publicKey);
+await mintTo(conn, admin, orey, userOrey.address, admin, 20_000_000n * TOKEN);
 const session = loadOrCreateKeypair(join(WORK, 'home/router/session.json'));
 const registry = new Registry(conn, { allowDev: true, measurements: [] });
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`) });
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn) });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
@@ -126,7 +139,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog', models.data.length === 3, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog', models.data.length === 4, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
@@ -141,11 +154,20 @@ r = await ask('llama-3.3-70b:fast');
 check('speed route settles on the provider with the fastest first token', nameOf(r.provider) === 'Ironbridge Compute', nameOf(r.provider) ?? '');
 for (let i = 0; i < 4; i++) await ask(i % 2 ? 'qwen3-32b' : 'llama-3.3-70b', { stream: i % 2 === 0 });
 
+const standing = await router.standing(true);
+r = await ask('gemma-3-27b');
+const haloTrip = router.trips[router.trips.length - 1];
+const haloPrice = { input: 200_000, output: 800_000 };
+const listCost = costOf(haloPrice, haloTrip.inputTokens, haloTrip.outputTokens);
+const holderCost = costOf(discounted(haloPrice, 3_500), haloTrip.inputTokens, haloTrip.outputTokens);
+check('a wallet holding 2% of the network token pays the 1% tier price', nameOf(r.provider) === 'Halo Compute' && haloTrip.off === 3_500 && r.cost === usd(holderCost) && holderCost < listCost,
+  `$${r.cost} instead of $${usd(listCost)} · holds ${standing ? sharePct(standing) : '?'} of supply`);
+
 await nodes[0].close();
 r = await ask('llama-3.3-70b:cheap');
 check('when the cheapest provider goes dark the request falls through', r.status === 200 && nameOf(r.provider) !== 'Kestrel GPU Co-op', `${nameOf(r.provider)} answered`);
 const trips = router.trips;
-check('router logged every answered request', trips.length === 13, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 14, `${trips.length} trips`);
 
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};
@@ -187,13 +209,14 @@ for (const c of channels.list()) {
 const userNow = await balance(user.publicKey);
 check('no fee in the program: user + providers + open deposits = 100 USDC', userNow + paidTotal + inVaults === 100n * USD, `user $${usd(userNow, 4)} · providers $${usd(paidTotal, 4)} · deposits $${usd(inVaults, 4)}`);
 const cfg = decodeConfig((await conn.getAccountInfo(pda.config()))!.data);
-check('program totals agree', cfg.settled === paidTotal && cfg.providers === 3n, `settled $${usd(cfg.settled)} · ${cfg.channels} channels`);
+check('program totals agree', cfg.settled === paidTotal && cfg.providers === BigInt(providerSpecs.length) && cfg.bondMint.equals(orey), `settled $${usd(cfg.settled)} · ${cfg.channels} channels`);
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
-  trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough })),
+  trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),
+  holder: { mint: orey.toBase58(), tiers: HOLDER_TIERS, userShare: standing ? sharePct(standing) : null, listCost: listCost.toString(), paidCost: holderCost.toString() },
   providers: providerSpecs.map((s, i) => ({
-    name: s.name, region: s.region, enclave: s.tee, address: nodes[i].pda.toBase58(),
+    name: s.name, region: s.region, enclave: s.tee, holderTiers: 'holder' in s, address: nodes[i].pda.toBase58(),
     models: s.models.map(([id, input, output]) => ({ id, input, output })),
     ...(signed[nodes[i].pda.toBase58()] ?? {}), redeemTx: redeemTx[nodes[i].pda.toBase58()] ?? null,
   })),

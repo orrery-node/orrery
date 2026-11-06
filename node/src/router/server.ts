@@ -2,13 +2,14 @@
 // provider per request, pays it through a channel, and falls back to the next provider if one fails.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Connection } from '@solana/web3.js';
+import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
 import { parseModel, rank, Stats, type Candidate, type Route } from './policy.ts';
-import { Registry } from './registry.ts';
+import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 
 export type RouterOptions = {
@@ -21,6 +22,7 @@ export type RouterOptions = {
   conn: Connection;
   refreshSecs?: number;
   log?: (line: string) => void;
+  holders?: HolderBook;
 };
 
 export type Trip = {
@@ -36,6 +38,7 @@ export type Trip = {
   totalMs: number;
   sealed: boolean;
   fellThrough: number;
+  off: number;
 };
 
 class Unserved extends Error {
@@ -80,6 +83,23 @@ export class Router {
     return this.server;
   }
 
+  /** This router's wallet's share of the network token, or null when there is no wallet, no token yet, or no RPC. */
+  async standing(force = false): Promise<Standing | null> {
+    const owner = this.o.channels.owner();
+    if (!owner || !this.o.holders) return null;
+    try {
+      return await this.o.holders.standing(owner, force);
+    } catch {
+      return null;
+    }
+  }
+
+  private async offOf(): Promise<(e: ProviderEntry) => number> {
+    const s = await this.standing();
+    if (!s) return () => 0;
+    return (e) => tierOff(e.manifest?.holder?.tiers, s.balance, s.supply);
+  }
+
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
@@ -92,7 +112,7 @@ export class Router {
     try {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);
-      if (req.method === 'GET' && url.pathname === '/orrery/status') return this.status(res);
+      if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return void res.end(consolePage());
@@ -113,14 +133,16 @@ export class Router {
     send(res, 200, { object: 'list', data });
   }
 
-  private status(res: ServerResponse) {
+  private async status(res: ServerResponse) {
     const providers = [...this.o.registry.entries.values()].map((e) => ({
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
       tee: e.tee ? { verified: e.tee.verified, dev: e.tee.dev, reason: e.tee.reason } : null, observed: this.stats.get(e.address),
     }));
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
-    send(res, 200, { route: this.o.route, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), providers, channels, trips: this.trips.slice(-50).reverse() });
+    const s = await this.standing();
+    const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s) } : null;
+    send(res, 200, { route: this.o.route, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
@@ -135,7 +157,7 @@ export class Router {
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
-    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation);
+    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, await this.offOf());
     if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
@@ -195,6 +217,7 @@ export class Router {
 
     let ttft = 0;
     let record: (UsageRecord & { owed: string }) | null = null;
+    let claimedOff = 0;
     const chunks: Record<string, unknown>[] = [];
     let started = false;
     for await (const ev of readSse(r.body)) {
@@ -204,6 +227,7 @@ export class Router {
       if (ev.event === 'orrery') {
         const y = JSON.parse(data);
         record = { requestId: y.requestId, model: y.model, inputTokens: y.inputTokens, outputTokens: y.outputTokens, cost: BigInt(y.cost), owed: y.owed };
+        claimedOff = knownOff(cand.entry.manifest?.holder?.tiers, y.off);
         continue;
       }
       if (!ttft) ttft = Date.now() - t0;
@@ -218,7 +242,11 @@ export class Router {
       }
     }
     if (!record) throw new Error('provider closed the stream without a usage record');
-    const ours = costOf(cand.offer.price, record.inputTokens, record.outputTokens);
+    if (claimedOff < cand.off) {
+      this.stats.penalize(address);
+      this.log(`provider ${address.slice(0, 6)} lists a ${cand.off / 100}% holder price but applied ${claimedOff / 100}%; paying its number, counting it against its success rate`);
+    }
+    const ours = costOf(discounted(cand.offer.price, claimedOff), record.inputTokens, record.outputTokens);
     const fair = record.cost <= ours && record.cost <= maxCost ? record.cost : ours < maxCost ? ours : maxCost;
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
     const voucher = this.o.channels.settle(address, { ...record, cost: fair });
@@ -229,11 +257,11 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough,
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff,
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
-    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${key ? '  sealed' : ''}`);
+    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}`);
 
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
     if (wantsStream) {

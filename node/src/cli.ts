@@ -4,6 +4,7 @@ import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
 import { decodeChannel, decodeConfig, decodeProvider, ins, pda } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
+import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { perMillion, usd } from './pricing.ts';
 import { ProviderNode, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
@@ -56,11 +57,16 @@ async function router() {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });
   const port = Number(flag('port', String(ROUTER_PORT)));
-  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')) });
+  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), holders: new HolderBook(conn) });
   await r.start();
   const usable = registry.usable().length;
   console.log(`${NAME} router on http://127.0.0.1:${port}/v1  ·  ${usable} providers  ·  route ${route}  ·  ${wallet ? `wallet ${wallet.publicKey.toBase58().slice(0, 6)}…` : 'no wallet (read-only)'}`);
   console.log(`session key ${session.publicKey.toBase58()} signs vouchers; console at http://127.0.0.1:${port}/`);
+  const s = await r.standing();
+  if (s && s.balance > 0n) {
+    const at = registry.usable().filter((e) => e.manifest?.holder?.tiers.some((t) => s.balance * 10_000n >= s.supply * BigInt(t.share))).length;
+    console.log(`holder: this wallet holds ${sharePct(s)} of the network token's supply · holder prices at ${at} provider${at === 1 ? '' : 's'}`);
+  }
 }
 
 async function listModels() {
@@ -71,12 +77,14 @@ async function listModels() {
   for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} providers  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.private ? `  · ${m.private} private` : ''}`);
 }
 
+const tiersText = (t?: HolderTier[]) => (t?.length ? `holders ${t.map((x) => `${x.share / 100}%→−${x.off / 100}%`).join(' ')}  ` : '');
+
 async function listProviders() {
   const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
   await registry.refresh();
   for (const e of registry.entries.values()) {
     const a = e.account;
-    console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
+    console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${tiersText(e.manifest?.holder?.tiers)}${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
   }
 }
 

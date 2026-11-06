@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PublicKey } from '@solana/web3.js';
+import { checkTiers, discounted, knownOff, sharePct, tierOff } from '../src/holder.ts';
 import { canonical, checkManifest, manifestHash, type Manifest } from '../src/manifest.ts';
 import { costOf, usd } from '../src/pricing.ts';
 import { decrypt, encrypt, newEnclaveKey, openRequest, sealRequest } from '../src/seal.ts';
@@ -33,6 +34,44 @@ describe('manifest', () => {
     assert.throws(() => checkManifest(manifest({ models: [{ id: 'Bad Id', context: 1, maxOutput: 1, price: { input: 1, output: 1 } }] })));
     assert.throws(() => checkManifest(manifest({ models: [{ id: 'ok', context: 1, maxOutput: 1, price: { input: -1, output: 1 } }] })));
     assert.ok(checkManifest(manifest()));
+  });
+});
+
+describe('holder pricing', () => {
+  const tiers = checkTiers([{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }]);
+  const supply = 1_000_000_000_000_000n;
+  it('gives the best tier the wallet holds, by share of supply', () => {
+    assert.equal(tierOff(tiers, 0n, supply), 0);
+    assert.equal(tierOff(tiers, supply / 1_000n - 1n, supply), 0);
+    assert.equal(tierOff(tiers, supply / 1_000n, supply), 2_000);
+    assert.equal(tierOff(tiers, supply / 100n - 1n, supply), 2_000);
+    assert.equal(tierOff(tiers, supply / 50n, supply), 3_500);
+    assert.equal(tierOff(undefined, supply, supply), 0);
+    assert.equal(tierOff(tiers, supply, 0n), 0);
+    assert.equal(sharePct({ mint: 'm', balance: supply / 50n, supply }), '2.00%');
+    assert.equal(sharePct({ mint: 'm', balance: supply / 1_000n, supply }), '0.1000%');
+  });
+  it('discounts both prices the same integer way on both sides', () => {
+    assert.deepEqual(discounted({ input: 708_000, output: 948_000 }, 3_500), { input: 460_200, output: 616_200 });
+    assert.deepEqual(discounted({ input: 7, output: 3 }, 2_000), { input: 5, output: 2 });
+    assert.deepEqual(discounted({ input: 7, output: 3 }, 0), { input: 7, output: 3 });
+    assert.ok(costOf(discounted({ input: 120_000, output: 300_000 }, 3_500), 21, 23) < costOf({ input: 120_000, output: 300_000 }, 21, 23));
+  });
+  it('only accepts tiers that rise together, and only discounts a manifest lists', () => {
+    assert.throws(() => checkTiers([]));
+    assert.throws(() => checkTiers([{ share: 100, off: 2_000 }, { share: 10, off: 3_500 }]));
+    assert.throws(() => checkTiers([{ share: 10, off: 3_500 }, { share: 100, off: 2_000 }]));
+    assert.throws(() => checkTiers([{ share: 10, off: 9_500 }]));
+    assert.equal(knownOff(tiers, 3_500), 3_500);
+    assert.equal(knownOff(tiers, 5_000), 0);
+    assert.equal(knownOff(undefined, 2_000), 0);
+  });
+  it('puts the tiers inside the manifest hash', () => {
+    const base: Manifest = { v: 1, name: 'n', authority: 'a', nodeKey: 'k', models: [{ id: 'm', context: 1, maxOutput: 1, price: { input: 1, output: 1 } }] };
+    const withTiers: Manifest = { ...base, holder: { tiers } };
+    assert.notDeepEqual(manifestHash(base), manifestHash(withTiers));
+    assert.doesNotThrow(() => checkManifest(withTiers));
+    assert.throws(() => checkManifest({ ...base, holder: { tiers: [{ share: 0, off: 1 }] } }));
   });
 });
 

@@ -1,6 +1,7 @@
 // How the router picks a provider. Every route returns an ordered list, so a slow or failing provider falls
 // through to the next one without the caller noticing.
 import type { ModelOffer } from '../manifest.ts';
+import { discounted } from '../holder.ts';
 import { costOf } from '../pricing.ts';
 import type { ProviderEntry } from './registry.ts';
 
@@ -33,6 +34,12 @@ export class Stats {
     o.ok += 1;
     this.m.set(address, o);
   }
+  /** Counts against this router's success rate without a cooldown: the provider answered, but not as it promised. */
+  penalize(address: string) {
+    const o = this.get(address);
+    o.fail += 1;
+    this.m.set(address, o);
+  }
   fail(address: string) {
     const o = this.get(address);
     o.fail += 1;
@@ -60,19 +67,22 @@ export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): numb
   return 0.35 * settled + 0.15 * redeems + 0.15 * age + 0.1 * bond + 0.25 * local;
 }
 
-export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean };
+export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number };
 
-export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0): Candidate[] {
+/** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. */
+export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0): Candidate[] {
   const now = Date.now();
   const maxBond = offers.reduce((m, o) => (o.entry.account.bonded > m ? o.entry.account.bonded : m), 0n);
   let c: Candidate[] = offers
     .filter((o) => stats.get(o.entry.address).cooldownUntil <= now)
     .map(({ entry, offer }) => {
       const o = stats.get(entry.address);
+      const off = offOf(entry);
       return {
         entry,
         offer,
-        expected: costOf(offer.price, estIn, Math.min(estOut, offer.maxOutput)),
+        off,
+        expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput)),
         ttftMs: o.ttftMs,
         reputation: reputation(entry, o, maxBond),
         sealed: route === 'privacy',

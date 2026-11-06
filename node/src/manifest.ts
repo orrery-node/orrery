@@ -1,6 +1,7 @@
 // A provider's price list. The node serves it at /v1/manifest; the sha256 of its canonical bytes is on chain, so a
 // router can tell whether the list it fetched is the one the provider's wallet signed for.
 import { createHash } from 'node:crypto';
+import { checkTiers, type HolderTier } from './holder.ts';
 import type { Price } from './pricing.ts';
 
 export type ModelOffer = {
@@ -19,6 +20,7 @@ export type Manifest = {
   region?: string;
   models: ModelOffer[];
   tee?: { kind: number; enclaveKey: string };
+  holder?: { tiers: HolderTier[] };
 };
 
 function sortKeys(v: unknown): unknown {
@@ -48,5 +50,6 @@ export function checkManifest(m: unknown): Manifest {
     if (!Number.isSafeInteger(o.price?.input) || !Number.isSafeInteger(o.price?.output) || o.price.input < 0 || o.price.output < 0) throw new Error(`manifest: bad price for ${o.id}`);
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
   }
+  if (x.holder !== undefined) checkTiers(x.holder?.tiers);
   return x;
 }

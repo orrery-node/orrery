@@ -54,6 +54,10 @@ export class Channels {
     writePrivate(this.path, JSON.stringify({ channels, spend: { day: this.spend.day, units: this.spend.units.toString() } }, null, 1));
   }
 
+  owner(): PublicKey | null {
+    return this.wallet?.publicKey ?? null;
+  }
+
   list(): ChannelState[] {
     return [...this.map.values()];
   }

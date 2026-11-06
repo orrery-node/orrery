@@ -3,6 +3,7 @@
 // reported, what our price list charges for it, and what the upstream says it cost (OpenRouter reports usage.cost).
 //   ORRERY_UPSTREAM_KEY_FILE=../.local/openrouter.key npx tsx devtools/upstream-check.ts deploy/seed-provider.json
 import { readFileSync } from 'node:fs';
+import { discounted } from '../src/holder.ts';
 import { costOf, usd } from '../src/pricing.ts';
 import { upstreamBody, type ProviderConfig } from '../src/provider/node.ts';
 import { readSse } from '../src/sse.ts';
@@ -48,10 +49,12 @@ for (const m of cfg.models) {
     const inT = usage?.prompt_tokens ?? 0, outT = usage?.completion_tokens ?? 0;
     const ours = costOf(m.price, inT, outT);
     const theirs = usage?.cost !== undefined ? BigInt(Math.ceil(usage.cost * 1e6)) : null;
-    const margin = theirs !== null ? (theirs > 0n ? `${(Number(ours - theirs) / Number(theirs) * 100).toFixed(0)}%` : 'n/a') : 'no cost reported';
+    const pct = (x: bigint) => (theirs !== null ? (theirs > 0n ? `${(Number(x - theirs) / Number(theirs) * 100).toFixed(0)}%` : 'n/a') : 'no cost reported');
+    const margin = pct(ours);
+    const holder = (cfg.holder?.tiers ?? []).map((t) => `−${t.off / 100}% → ${pct(costOf(discounted(m.price, t.off), inT, outT))}`).join(' · ');
     const ok = !!usage && text.length > 0 && (theirs === null || ours >= theirs);
     if (!ok) failed++;
-    console.log(`${ok ? '✓' : '✗'} ${m.id.padEnd(14)} → ${served.padEnd(36)} ttft ${String(ttft).padStart(5)} ms  ${inT}+${outT} tok  ours $${usd(ours)}  upstream ${theirs !== null ? `$${usd(theirs)}` : '?'}  margin ${margin}`);
+    console.log(`${ok ? '✓' : '✗'} ${m.id.padEnd(14)} → ${served.padEnd(36)} ttft ${String(ttft).padStart(5)} ms  ${inT}+${outT} tok  ours $${usd(ours)}  upstream ${theirs !== null ? `$${usd(theirs)}` : '?'}  margin ${margin}${holder ? `  holders ${holder}` : ''}`);
     console.log(`    ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
   } catch (e) {
     failed++;

@@ -127,6 +127,10 @@ export const ins = {
     return ix(data, [[admin, true, true], [pid, false, false], [pda.programData(pid), false, false], [pda.config(pid), false, true], [settleMint, false, false], [SystemProgram.programId, false, false]], pid);
   },
 
+  setBondMint(admin: PublicKey, bondMint: PublicKey, pid = programId()) {
+    return ix(new Writer().bytes(IX.set_bond_mint, 8).done(), [[admin, true, false], [pda.config(pid), false, true], [bondMint, false, false]], pid);
+  },
+
   registerProvider(authority: PublicKey, nodeKey: PublicKey, endpoint: string, manifestHash: Uint8Array, pid = programId()) {
     const data = new Writer().bytes(IX.register_provider, 8).pk(nodeKey).str(endpoint).bytes(manifestHash, 32).done();
     return ix(data, [[authority, true, true], [pda.config(pid), false, true], [pda.provider(authority, pid), false, true], [SystemProgram.programId, false, false]], pid);
