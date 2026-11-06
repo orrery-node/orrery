@@ -31,6 +31,16 @@ const RUN = `orrery router \\
   --rpc https://your-rpc.example.com \\
   --daily-cap 5`;
 
+const ANTH_PY = `from anthropic import Anthropic
+
+client = Anthropic(base_url="http://127.0.0.1:7171", api_key="unused")
+msg = client.messages.create(
+    model="llama-3.3-70b",
+    max_tokens=300,
+    messages=[{"role": "user", "content": "Explain a payment channel in two sentences."}],
+)
+print(msg.content[0].text)`;
+
 const RUN_OUT = `Orrery router on http://127.0.0.1:7171/v1  ·  3 providers  ·  route auto  ·  wallet 7xKXtg…
 session key 9WzDXw…AWWM signs vouchers; console at http://127.0.0.1:7171/`;
 
@@ -274,7 +284,8 @@ export default function Docs() {
           <Code lang="curl" copy>{CURL}</Code>
           <p>Every answer carries three headers so you can see who served it and what you paid:</p>
           <Code lang="response headers">{CURL_HEAD}</Code>
-          <p className="d-note">The Anthropic Messages API (<code>/v1/messages</code>) is not served yet. Tools that only speak it cannot use the router today.</p>
+          <p>From <code>orrery-node</code> 0.1.3 the router also serves the Anthropic Messages API: <code>POST /v1/messages</code>, streamed or not, with tool use, plus <code>/v1/messages/count_tokens</code>. Point an Anthropic client at <code>http://127.0.0.1:7171</code> (the SDK adds <code>/v1/messages</code> itself) and ask for a network model by name. Tool calls become function calls on the way to the provider and come back as <code>tool_use</code> blocks; payment is the same per-answer voucher.</p>
+          <Code lang="python" copy>{ANTH_PY}</Code>
 
           <H2 id="routes" n={n('routes')}>Models and routes</H2>
           <p>Model names are the ones providers list. <code>orrery models</code> prints every model on the network with its cheapest price and how many providers serve it; <code>orrery providers</code> prints every listing with what the chain says about it.</p>
@@ -418,10 +429,11 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (18 tests), and a full local rehearsal of the program, four providers (one with holder prices) and a router (17 of 17 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (23 tests), and a full local rehearsal of the program, four providers (one with holder prices) and a router, including the Anthropic Messages API (19 of 19 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
-            <li>Not yet: the Anthropic Messages API, a built-in hardware attestation verifier.</li>
+            <li>In main, shipping in 0.1.3: the Anthropic Messages API on the router.</li>
+            <li>Not yet: a built-in hardware attestation verifier.</li>
           </ul>
         </article>
       </div>
