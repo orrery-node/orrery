@@ -537,7 +537,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a pull request, run the program tests, `pnpm test` and `pnpm e2e` in `node/`, and keep the protocol document in step with any change to the program or the wire format. Security issues go through private reporting, not public issues: see [SECURITY.md](SECURITY.md).
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) lists good places to start. Before opening a pull request, run the program tests, `pnpm test` and `pnpm e2e` in `node/`, and keep the protocol document in step with any change to the program or the wire format. Security issues go through private reporting, not public issues: see [SECURITY.md](SECURITY.md).
 
 ## License
 
