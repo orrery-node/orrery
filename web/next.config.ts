@@ -8,6 +8,7 @@ const config: NextConfig = {
   devIndicators: false,
   agentRules: false,
   turbopack: { root: dirname(fileURLToPath(import.meta.url)) },
+  serverExternalPackages: ['orrery-node', '@solana/web3.js'],
 };
 
 export default config;

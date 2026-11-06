@@ -6,7 +6,7 @@ import FilmReel from '@/components/FilmReel';
 import ScrollFX from '@/components/ScrollFX';
 import Wire from '@/components/Wire';
 import { CA, NAME, NPM_PACKAGE, NPM_URL, PROGRAM_ID, REPO_URL, TICKER, WORKING_TITLE, X_URL } from '@/brand';
-import { programStatus } from '@/lib/chain';
+import { mainnet, programStatus } from '@/lib/chain';
 import { perM, rehearsal, ranAtLabel, ROUTE_WORD, short, usd } from '@/lib/rehearsal';
 
 export const revalidate = 300;
@@ -78,7 +78,14 @@ function TokenLoop() {
 }
 
 export default async function Home() {
-  const chain = await programStatus();
+  const [chain, live] = await Promise.all([programStatus(), mainnet()]);
+  const liveStats: { k: string; v: string; green?: boolean }[] = [
+    { k: 'providers listed', v: live.checked ? String(live.providers) : '—' },
+    { k: 'channels opened', v: live.checked ? String(live.channels) : '—' },
+    { k: 'settled on mainnet', v: live.checked ? `$${usd(BigInt(live.settledUnits))}` : '—', green: true },
+    { k: 'to the program', v: '$0', green: true },
+    { k: 'build', v: live.verified ? 'verified' : live.programHash ? 'deployed' : '—', green: !!live.verified },
+  ];
   const passed = rehearsal.checks.filter((c) => c.ok).length;
   const cheap = rehearsal.trips.find((t) => t.route === 'price' && !t.fellThrough)!;
   const cheapP = rehearsal.providers.find((p) => p.name === cheap.provider)!;
@@ -109,6 +116,7 @@ export default async function Home() {
           <a href="#pay">Payments</a>
           <a href="#provide">Providers</a>
           <a href="#token">${TICKER}</a>
+          <Link href="/try">Try it</Link>
           <Link href="/docs">Docs</Link>
         </nav>
         <div className="nav__cta">
@@ -130,6 +138,10 @@ export default async function Home() {
               <span className="lead">AI inference,</span> peer to peer. <span className="lead">Zero cut in between.</span>
             </h1>
             <p className="hero__lede">Your computer sends each request straight to someone else&apos;s machine and pays it directly on Solana. No server in the middle, and the program takes nothing.</p>
+            <div className="cta cta--center hero__try">
+              <Link href="/try" className="pill">Try it in the browser</Link>
+              <Link href="/docs#install" className="ghost">Install the router <Arrow /></Link>
+            </div>
           </div>
           <div className="hero__foot" data-orrery-clear>
             <RequestLine />
@@ -272,6 +284,21 @@ export default async function Home() {
               )}
               <Link href="/docs#token" className="ghost">Token in the docs <Arrow /></Link>
             </div>
+          </section>
+
+          <section className="ledgerline ledgerline--live" aria-label="Live on mainnet">
+            <p className="cap ledgerline__live"><i aria-hidden="true" /> Live on Solana mainnet{live.checked ? '' : ', once the site has an RPC'}</p>
+            <dl>
+              {liveStats.map((s) => (
+                <div key={s.k}>
+                  <dd className={`num${s.green ? ' green' : ''}`}>{s.v}</dd>
+                  <dt>{s.k}</dt>
+                </div>
+              ))}
+            </dl>
+            <p className="ledgerline__note">
+              Read from the program&apos;s account every five minutes.{live.programHash ? <> The deployed bytes hash to <span className="num">{live.programHash.slice(0, 8)}…{live.programHash.slice(-4)}</span>, the same as a reproducible build of the repo.</> : null} <Link href="/try">Ask it something</Link>.
+            </p>
           </section>
 
           <section className="ledgerline" aria-label="Rehearsal numbers" data-wire-k="Settled on chain" data-wire-v={`$${usd(settled)} over ${rehearsal.requests} requests`} data-wire-money="1" data-wire-at="30">
