@@ -22,6 +22,33 @@ function Check() {
   );
 }
 
+function HolderLadder() {
+  const tiers = [
+    { k: 'less than 0.1%', v: 'list price', pct: 100, price: '$0.885 · $1.185' },
+    { k: '0.1% or more', v: '20% off', pct: 80, price: '$0.708 · $0.948' },
+    { k: '1% or more', v: '35% off', pct: 65, price: '$0.575 · $0.770' },
+  ];
+  return (
+    <figure className="ladder" aria-label={`Holder prices at the seed provider: under 0.1% of ${TICKER} supply pays the list price, 0.1% or more pays 20% less, 1% or more pays 35% less.`}>
+      <div className="ladder__cols">
+        {tiers.map((t, i) => (
+          <div key={t.k} className={`ladder__col${i === 2 ? ' is-top' : ''}`}>
+            <div className="ladder__well">
+              <div className="ladder__bar" style={{ height: `${t.pct}%` }}>
+                <span className="num">{t.pct}%</span>
+              </div>
+            </div>
+            <span className="cap">hold {t.k}</span>
+            <b className={i ? 'green' : ''}>{t.v}</b>
+            <span className="num ladder__p">{t.price}</span>
+          </div>
+        ))}
+      </div>
+      <figcaption>llama-3.3-70b at the seed provider, per million tokens in · out. Your router reads your ${TICKER} balance and the supply from chain and pays the lower price; the provider checks the same two numbers.</figcaption>
+    </figure>
+  );
+}
+
 function TokenLoop() {
   const C = 240, R = 168;
   const at = (deg: number, r = R) => [C + r * Math.cos((deg * Math.PI) / 180), C + r * Math.sin((deg * Math.PI) / 180)] as const;
@@ -266,14 +293,15 @@ export default async function Home() {
             <SealFlow />
           </section>
 
-          <section className="token" id="token" data-wire-k={`Bonded $${TICKER}`} data-wire-v="10% of the :trusted score">
-            <h2><span className="lead">${TICKER}.</span> Backs the providers you trust.</h2>
-            <p className="sub">Launching on Meteora. In the program it has one job: providers bond it behind their listing, and routers count the bond toward reputation.</p>
+          <section className="token" id="token" data-wire-k={`Hold $${TICKER}`} data-wire-v="up to 35% off every answer">
+            <h2><span className="lead">${TICKER}.</span> Hold it, and every answer costs less.</h2>
+            <p className="sub">Launching on Meteora. Providers can publish holder prices: hold 0.1% of the supply and the seed provider charges you 20% less, hold 1% and it&apos;s 35% less. Providers also bond it behind their listing, which routers count toward reputation.</p>
+            <HolderLadder />
             <TokenLoop />
             <dl className="token__dl" data-rule>
+              <div><dt>Holder price</dt><dd>Up to 35% off, checked on chain by both sides</dd></div>
               <div><dt>Bond</dt><dd>Posted on chain behind a provider&apos;s listing</dd></div>
               <div><dt>Reputation</dt><dd>Bonded {TICKER} is 10% of the <code>:trusted</code> score</dd></div>
-              <div><dt>Never slashed</dt><dd>Unbonding returns it after seven days</dd></div>
               <div><dt>Contract</dt><dd className="num">{CA ? short(CA, 6, 6) : 'not launched yet'}</dd></div>
             </dl>
             <div className="cta cta--center">

@@ -2057,3 +2057,89 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* holder prices */
+.ladder {
+  max-width: 760px;
+  margin: 44px auto 8px;
+}
+.ladder__cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: end;
+}
+.ladder__col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.ladder__well {
+  position: relative;
+  width: 100%;
+  height: 190px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--line-2);
+}
+.ladder__bar {
+  position: relative;
+  width: min(120px, 70%);
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, rgba(247, 247, 247, 0.16), rgba(247, 247, 247, 0.04));
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+}
+.ladder__col:not(:first-child) .ladder__bar {
+  background: linear-gradient(180deg, rgba(20, 241, 149, 0.28), rgba(20, 241, 149, 0.05));
+  border-color: rgba(20, 241, 149, 0.45);
+}
+.ladder__col.is-top .ladder__bar {
+  box-shadow: 0 0 40px rgba(20, 241, 149, 0.18);
+}
+.ladder__bar span {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  font-size: 13px;
+  color: var(--fg);
+}
+.ladder__col .cap {
+  margin-top: 6px;
+}
+.ladder__col b {
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.ladder__p {
+  font-size: 13px;
+  color: var(--fg-3);
+}
+.ladder figcaption {
+  margin-top: 18px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--fg-3);
+  text-align: center;
+  max-width: 44em;
+  margin-inline: auto;
+}
+@media (max-width: 760px) {
+  .ladder__cols {
+    gap: 10px;
+  }
+  .ladder__well {
+    height: 150px;
+  }
+  .ladder__col b {
+    font-size: 18px;
+  }
+  .ladder__p {
+    font-size: 11.5px;
+  }
+}

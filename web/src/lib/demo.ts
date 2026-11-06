@@ -10,11 +10,31 @@ export const DEMO_MODELS = ['gpt-oss-120b', 'llama-3.3-70b', 'deepseek-v3', 'qwe
 type Trip = { at: number; model: string; route: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; ttftMs: number; totalMs: number; sealed: boolean; fellThrough: number; off?: number };
 type ChannelState = { provider: string; channel: string; deposit: bigint; cumulative: bigint };
 export type Demo = {
-  router: { trips: Trip[]; close(): Promise<void> };
-  channels: { list(): ChannelState[]; todaySpent(): bigint };
-  registry: { usable(): unknown[] };
+  router: { trips: Trip[]; close(): Promise<void>; stats: { all(): Map<string, { cooldownUntil: number }> } };
+  channels: { list(): ChannelState[]; todaySpent(): bigint; ensure(provider: string, need: bigint): Promise<unknown> };
+  registry: { usable(): { address: string }[] };
   wallet: string;
 };
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Opens (or checks) a channel to every usable provider before anyone asks, retrying the RPC's transient preflight
+ * failures, and lifts the router's cool-down so a provider that only failed on our side is tried again. */
+export async function warm(d: Demo): Promise<void> {
+  for (const e of d.registry.usable()) {
+    for (let i = 0; i < 5; i++) {
+      try {
+        await d.channels.ensure(e.address, 50_000n);
+        const o = d.router.stats.all().get(e.address);
+        if (o) o.cooldownUntil = 0;
+        break;
+      } catch (err) {
+        console.log(`[demo] channel to ${e.address.slice(0, 6)} not ready (${(err as Error).message.split('\n')[0]}); retry ${i + 1}`);
+        await pause(1500 * (i + 1));
+      }
+    }
+  }
+}
 
 let boot: Promise<Demo | null> | null = null;
 
@@ -56,5 +76,7 @@ async function start(): Promise<Demo | null> {
     holders: new HolderBook(conn), log: (l: string) => console.log(`[demo] ${l}`),
   });
   await router.start();
-  return { router, channels, registry, wallet: wallet.publicKey.toBase58() };
+  const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
+  await warm(d);
+  return d;
 }

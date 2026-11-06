@@ -5,16 +5,18 @@ declare module 'orrery-node/dist/router/server.js' {
     trips: { at: number; model: string; route: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; ttftMs: number; totalMs: number; sealed: boolean; fellThrough: number; off?: number }[];
     start(): Promise<unknown>;
     close(): Promise<void>;
+    stats: { all(): Map<string, { cooldownUntil: number }> };
   };
 }
 declare module 'orrery-node/dist/router/channels.js' {
   export const Channels: new (...a: unknown[]) => {
     list(): { provider: string; channel: string; deposit: bigint; cumulative: bigint }[];
     todaySpent(): bigint;
+    ensure(provider: string, need: bigint): Promise<unknown>;
   };
 }
 declare module 'orrery-node/dist/router/registry.js' {
-  export const Registry: new (...a: unknown[]) => { usable(): unknown[] };
+  export const Registry: new (...a: unknown[]) => { usable(): { address: string }[] };
 }
 declare module 'orrery-node/dist/holder.js' {
   export const HolderBook: new (...a: unknown[]) => unknown;

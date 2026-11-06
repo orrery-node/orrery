@@ -2,8 +2,9 @@
 // key on this computer signs a running total after every request, and nothing else is needed per request.
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import { decodeChannel, ins, pda } from '../chain/program.ts';
+import { sendFresh } from '../chain/send.ts';
 import { encodeVoucher, signVoucher } from '../chain/voucher.ts';
 import { signerOf, writePrivate, type Sign } from '../keys.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
@@ -109,8 +110,8 @@ export class Channels {
     if (!this.wallet) throw new Error('no wallet configured: the router needs one to open a channel (orrery router --wallet <keypair.json>)');
     const id = randomBytes(8).readBigUInt64LE();
     const providerKey = new PublicKey(provider);
-    const tx = new Transaction().add(ins.openChannel(this.wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey));
-    await sendAndConfirmTransaction(this.conn, tx, [this.wallet], { commitment: 'confirmed' });
+    const wallet = this.wallet;
+    await sendFresh(this.conn, () => new Transaction().add(ins.openChannel(wallet.publicKey, providerKey, this.mint, id, deposit, this.session.publicKey)), [wallet]);
     const state: ChannelState = {
       provider, channel: pda.channel(this.wallet.publicKey, providerKey, id).toBase58(), id: id.toString(), deposit, cumulative: 0n,
       usageHash: ZERO_HASH, voucher: null, openedAt: Date.now(), checkedAt: Date.now(),
@@ -124,8 +125,8 @@ export class Channels {
     const c = this.map.get(provider);
     if (!c || !this.wallet) return;
     const amount = atLeast > this.opts.deposit ? atLeast : this.opts.deposit;
-    const tx = new Transaction().add(ins.topUp(this.wallet.publicKey, new PublicKey(c.channel), this.mint, amount));
-    await sendAndConfirmTransaction(this.conn, tx, [this.wallet], { commitment: 'confirmed' });
+    const wallet = this.wallet;
+    await sendFresh(this.conn, () => new Transaction().add(ins.topUp(wallet.publicKey, new PublicKey(c.channel), this.mint, amount)), [wallet]);
     c.deposit += amount;
     this.save();
   }

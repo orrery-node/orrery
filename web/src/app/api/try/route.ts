@@ -1,6 +1,6 @@
 // POST /api/try — one question, answered by a provider on Solana mainnet and paid per answer by the site's router.
 // GET  /api/try — whether the demo router is up, how many providers it sees, and what it has spent today.
-import { DEMO_MODELS, DEMO_PORT, demo } from '@/lib/demo';
+import { DEMO_MODELS, DEMO_PORT, demo, warm } from '@/lib/demo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,9 +48,8 @@ export async function POST(req: Request) {
   const d = await demo();
   if (!d) return json(503, { error: 'The demo router is offline right now.' });
 
-  const run = async () => {
-    const t0 = Date.now();
-    const r = await fetch(`http://127.0.0.1:${DEMO_PORT}/v1/chat/completions`, {
+  const ask = () =>
+    fetch(`http://127.0.0.1:${DEMO_PORT}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -63,7 +62,15 @@ export async function POST(req: Request) {
       }),
       signal: AbortSignal.timeout(60_000),
     });
-    const j = (await r.json().catch(() => ({}))) as { choices?: { message?: { content?: string } }[]; error?: { code?: string; message?: string } };
+  const run = async () => {
+    const t0 = Date.now();
+    let r = await ask();
+    let j = (await r.json().catch(() => ({}))) as { choices?: { message?: { content?: string } }[]; error?: { code?: string; message?: string } };
+    if (!r.ok && /simulation failed|blockhash|cooling down|all providers failed/i.test(j.error?.message ?? '')) {
+      await warm(d);
+      r = await ask();
+      j = (await r.json().catch(() => ({}))) as typeof j;
+    }
     if (!r.ok) {
       const budget = j.error?.code === 'budget';
       return json(budget ? 429 : 502, { error: budget ? 'The demo has spent its $0.50 for today. Run your own router with npx -y orrery-node router.' : `The network could not answer: ${j.error?.message ?? r.status}` });

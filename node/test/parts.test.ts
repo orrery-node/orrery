@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PublicKey } from '@solana/web3.js';
 import { checkTiers, discounted, knownOff, sharePct, tierOff } from '../src/holder.ts';
+import { isTransient } from '../src/chain/send.ts';
 import { canonical, checkManifest, manifestHash, type Manifest } from '../src/manifest.ts';
 import { costOf, usd } from '../src/pricing.ts';
 import { decrypt, encrypt, newEnclaveKey, openRequest, sealRequest } from '../src/seal.ts';
@@ -72,6 +73,15 @@ describe('holder pricing', () => {
     assert.notDeepEqual(manifestHash(base), manifestHash(withTiers));
     assert.doesNotThrow(() => checkManifest(withTiers));
     assert.throws(() => checkManifest({ ...base, holder: { tiers: [{ share: 0, off: 1 }] } }));
+  });
+});
+
+describe('sending', () => {
+  it('retries only the RPC hiccups, not the transaction failing', () => {
+    assert.ok(isTransient(new Error('Simulation failed. \nMessage: Transaction simulation failed. \nLogs: \n[]. \nCatch the `SendTransactionError`')));
+    assert.ok(isTransient(new Error('Transaction simulation failed: Blockhash not found')));
+    assert.ok(!isTransient(new Error('Simulation failed. Logs: ["Program log: AnchorError ... NothingToRedeem"]')));
+    assert.ok(!isTransient(new Error('custom program error: 0xbc4')));
   });
 });
 
