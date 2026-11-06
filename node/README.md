@@ -105,6 +105,14 @@ orrery provider start    --config provider.json                         # serve,
 
 Only standard chat fields reach your upstream, so a caller can never spend your key on models or tools your price list does not cover. The node runs on its own key, which can redeem but never send your earnings anywhere except your wallet.
 
+## Hold $OREY, pay less
+
+Providers can publish holder prices: hold a share of the network token's supply and they charge you less. Your router reads your balance and the supply from chain, ranks providers by the price you will actually pay, and signs at it; the provider checks the same numbers for the wallet that opened the channel. The seed provider's tiers: 0.1% of supply for 20% off, 1% for 35% off.
+
+```jsonc
+"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }   // basis points
+```
+
 ## Commands
 
 | Command | Does |

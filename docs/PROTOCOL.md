@@ -76,6 +76,8 @@ Cost = `ceil((input tokens × input price + output tokens × output price) / 1e6
 | reputation | `:trusted` | reputation, descending |
 | privacy | `:private` | verified enclaves only, then by price |
 
+When the router's wallet earns a holder price at a provider (§9), the expected cost above is computed at that price.
+
 Reputation (0 to 1) = settled volume 35% (log, saturating at $1,000) + redemptions 15% (1,000) + age 15% (90 days) + bond 10% (√ of share of the network maximum) + this router's own success rate 25% (starts at 0.6). A failing provider cools down exponentially from 15 seconds up to 5 minutes. The router tries the top three in order. `x-orrery-provider: <address prefix>` pins one provider; `x-orrery-route` overrides the route.
 
 ## 7. Sealing (private route)
@@ -85,3 +87,14 @@ The router makes an ephemeral X25519 key, does ECDH with the provider's enclave 
 ## 8. What the admin cannot do
 
 List or delist providers, move channel deposits, move bonds, or charge a fee. The admin can tune the grace period, the unbonding delay and the minimum deposit within the bounds above, set the bond mint once, and hand over the admin role in two steps.
+
+## 9. Holder pricing
+
+A manifest may carry `holder: { tiers: [{ share, off }, …] }`, at most four tiers, `share` in basis points of the network token's supply (1 to 10,000) and `off` in basis points of the list price (1 to 9,000), each tier larger than the one before on both. The network token is `Config.bond_mint`; until the admin sets it, no tier applies.
+
+- A wallet's standing is the balance of its associated token account for that mint, against the mint's supply, both read from chain. Its discount is the largest `off` whose `balance × 10,000 ≥ supply × share`.
+- The holder price of a model is `floor(price × (10,000 − off) / 10,000)` for input and output separately; the cost formula (§4) is unchanged.
+- The provider computes the discount for the channel's payer and reports the `off` it applied in the `event: orrery` record. The router computes the discount for its own wallet, ranks with it (§6), and pays the smaller of its cost and the provider's at the discount the provider reported, provided that discount is one the manifest lists.
+- If the provider applied less than the router expected, the router still pays the provider's number (so the channel never stalls) and counts the request against that provider's local success rate.
+- The tiers are inside the manifest, so they are covered by the sha-256 on chain. The program itself does not change.
+

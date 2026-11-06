@@ -127,6 +127,7 @@ const TOC = [
   ['provider-config', 'provider.json'],
   ['private', 'The private route'],
   ['token', `$${TICKER}`],
+  ['holders', 'Holder pricing'],
   ['program', 'The program'],
   ['security', 'What can go wrong'],
   ['trouble', 'Troubleshooting'],
@@ -342,6 +343,7 @@ export default function Docs() {
               <tr><td><code>models[].price</code></td><td>USDC base units per million tokens: <code>120000</code> is $0.12</td></tr>
               <tr><td><code>models[].maxOutput</code>, <code>context</code></td><td>caps per request; the router reserves at most <code>maxOutput</code> tokens of payment</td></tr>
               <tr><td><code>redeem.everySecs</code>, <code>minUnits</code></td><td>how often to cash vouchers, and the smallest amount worth a transaction</td></tr>
+              <tr><td><code>holder.tiers</code></td><td>optional holder prices: <code>share</code> of the network token&apos;s supply and <code>off</code> the list price, both in basis points</td></tr>
             </tbody>
           </table>
 
@@ -350,7 +352,28 @@ export default function Docs() {
           <p>Before sealing anything, the router fetches the report and checks that it hashes to the on-chain claim, names the same key, has not expired, and booted an image on your allow list (<code>--enclave-images</code>). Checking the hardware vendor&apos;s signature needs an external verifier; without one the router does not treat an enclave as verified. Development reports are labeled and refused unless you pass <code>--allow-dev-enclaves</code>.</p>
 
           <H2 id="token" n={n('token')}>${TICKER}</H2>
-          <p>The token launches on Meteora. In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
+          <p>The token launches on Meteora. Holding it lowers your price at every provider that publishes holder prices (next section). In the program it has one role: providers can bond it behind their listing, and routers count the bond as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it.</p>
+
+          <H2 id="holders" n={n('holders')}>Holder pricing</H2>
+          <p>A provider can publish holder prices next to its list prices: hold a share of ${TICKER}&apos;s supply and that provider charges you less. The token is the mint the program&apos;s admin sets once as its bond mint, so a tier means the same at every provider. Holder prices switch on once the token exists and that mint is set.</p>
+          <table className="d-table">
+            <thead>
+              <tr><th>You hold</th><th>At the seed provider</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>less than 0.1% of supply</td><td>the list price</td></tr>
+              <tr><td>0.1% or more</td><td>20% less</td></tr>
+              <tr><td>1% or more</td><td>35% less</td></tr>
+            </tbody>
+          </table>
+          <ul>
+            <li>Your router reads your wallet&apos;s ${TICKER} balance (its associated token account) and the token&apos;s supply from chain, ranks providers by the price you will actually pay, and signs at that price.</li>
+            <li>The provider reads the same two numbers for the wallet that opened the channel and charges the same. Both use one integer formula: <code>floor(price × (10000 − off) / 10000)</code>.</li>
+            <li>The tiers sit inside the provider&apos;s price list, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, and your router counts the miss against its success rate.</li>
+            <li>The settlement program does not change and still takes 0%. A holder price is a discount the provider gives.</li>
+          </ul>
+          <Code lang="provider.json" copy>{`"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }`}</Code>
+          <p><code>share</code> is basis points of supply (10 = 0.1%), <code>off</code> is basis points of the list price (2000 = 20%). Up to four tiers, each larger than the one before. <code>orrery providers</code> shows each provider&apos;s tiers, and the router prints your share of supply when it starts.</p>
 
           <H2 id="program" n={n('program')}>The program</H2>
           <p>Program <code>{PROGRAM_ID}</code> on Solana.</p>
@@ -394,7 +417,7 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (13 tests), and a full local rehearsal of the program, three providers and a router (14 of 14 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (17 tests), and a full local rehearsal of the program, four providers (one with holder prices) and a router (16 of 16 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>Not yet: the Anthropic Messages API, a built-in hardware attestation verifier.</li>
           </ul>

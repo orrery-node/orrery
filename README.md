@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-14%2F14%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="14 of 14 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-16%2F16%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="16 of 16 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -46,6 +46,7 @@
 - [Routes](#routes)
 - [How payment works](#how-payment-works)
 - [The program takes 0%](#the-program-takes-0)
+- [Holder pricing](#holder-pricing)
 - [Run a provider](#run-a-provider)
 - [Architecture](#architecture)
 - [Security model](#security-model)
@@ -116,6 +117,20 @@ Requests and answers go straight between your router and the provider's machine.
     <td width="33%" valign="top">
       <b>Sealed when you ask</b><br>
       <sub>The private route encrypts the prompt (X25519, HKDF, AES-256-GCM) to a key inside a hardware enclave whose claim the router verified.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <b>Hold $OREY, pay less</b><br>
+      <sub>Providers can publish holder prices by share of supply. Your router reads your balance from chain and pays the lower price; the provider checks the same numbers.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>Reputation from the chain</b><br>
+      <sub>USDC settled, redemptions, age and bond, read from each provider's account, plus your own router's success rate. Nothing a provider can just claim.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <b>MIT, all of it</b><br>
+      <sub>The program, the router, the provider node, the rehearsal and this site. Read why every request went where it went.</sub>
     </td>
   </tr>
 </table>
@@ -265,6 +280,27 @@ The router prices each answer itself from the provider's published list and pays
 
 There is no fee field in the program and no third account to send a fee to. In the local rehearsal, 100 USDC went in and 100 USDC is accounted for: back with the user, paid to the providers, or still in open channels. There is no fourth line.
 
+## Holder pricing
+
+A provider can publish holder prices next to its list prices: hold a share of the network token's supply, and that provider charges you less. The token is the mint the program's admin sets once as its bond mint ($OREY), so a tier means the same thing at every provider. Holder prices switch on once the token exists and that mint is set.
+
+| You hold | You pay at a provider with these tiers (the seed provider's) |
+|---|---|
+| less than 0.1% of $OREY supply | the list price |
+| 0.1% or more | 20% less |
+| 1% or more | 35% less |
+
+- **Your router** reads your wallet's $OREY balance and the token's supply from chain, ranks providers by the price you will actually pay, and signs at that price.
+- **The provider** reads the same two numbers for the wallet that opened the channel and charges the same. Both sides use one integer formula, so they agree without trusting each other.
+- **The tiers are part of the price list**, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, but every router that sees it counts the miss against its success rate.
+- **Nothing is taken from anyone.** The settlement program does not change and still has no fee. A holder price is a discount a provider chooses to give.
+
+Providers add tiers to `provider.json`, in basis points (`share` of supply, `off` the list price):
+
+```jsonc
+"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }
+```
+
 ## Run a provider
 
 <p align="center">
@@ -330,6 +366,7 @@ WantedBy=multi-user.target
 
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
 - **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.
+- **Holder prices (optional).** Add `holder.tiers` to give wallets that hold $OREY a lower price. See [Holder pricing](#holder-pricing).
 - **Change anything** by editing the file and running `register` again: it updates the listing, and routers check the new price list against the hash on chain.
 
 ## Architecture
@@ -408,12 +445,12 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 13 tests
-pnpm e2e                                                        # full local rehearsal, 14 checks
+cd node && pnpm install && pnpm test                            # 17 tests
+pnpm e2e                                                        # full local rehearsal, 16 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
-**The rehearsal** (`node/devtools/e2e.ts`) starts a local validator with the program, lists three providers in front of mock models (one of them behind a development enclave), runs a router through thirteen requests on every route, switches the cheapest provider off mid-run, redeems on chain, has one provider release its channel, and checks every unit of USDC:
+**The rehearsal** (`node/devtools/e2e.ts`) starts a local validator with the program, creates a stand-in network token and sets it as the bond mint, lists four providers in front of mock models (one behind a development enclave, one with holder prices), runs a router whose wallet holds 2% of the token through fourteen requests on every route, switches the cheapest provider off mid-run, redeems on chain, has one provider release its channel, and checks every unit of USDC:
 
 ```
   ✓ /v1/models lists the network catalog
@@ -422,15 +459,17 @@ cd web && pnpm install && pnpm dev                              # http://localho
   ✓ privacy route seals the request to the only enclave
   ✓ route header works too
   ✓ speed route settles on the provider with the fastest first token
+  ✓ a wallet holding 2% of the network token pays the 1% tier price
   ✓ when the cheapest provider goes dark the request falls through
   ✓ router logged every answered request
   ✓ Kestrel GPU Co-op redeemed exactly what the router signed
   ✓ Ironbridge Compute redeemed exactly what the router signed
   ✓ Vault Nine redeemed exactly what the router signed
+  ✓ Halo Compute redeemed exactly what the router signed
   ✓ a provider releasing its channel sends the rest straight back to the user
   ✓ no fee in the program: user + providers + open deposits = 100 USDC
   ✓ program totals agree
-14/14 checks passed
+16/16 checks passed
 ```
 
 ## FAQ
@@ -468,7 +507,7 @@ No. Anyone can list, and no instruction in the program lets anyone, including th
 <details>
 <summary><b>What is $OREY for?</b></summary>
 
-Providers can bond it behind their listing, and routers count the bond as 10% of reputation on the `:trusted` route. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it. It launches on Meteora.
+Two things. Holding it lowers your price at every provider that publishes holder prices (at the seed provider: 0.1% of supply for 20% off, 1% for 35% off; see [Holder pricing](#holder-pricing)). And providers can bond it behind their listing, which routers count as 10% of reputation. A bond is never slashed; unbonding returns it after seven days, only to the provider that posted it. It launches on Meteora.
 </details>
 
 <details>
@@ -481,7 +520,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal, 14 of 14 checks
+- [x] Local end-to-end rehearsal, 16 of 16 checks
+- [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
 - [ ] Mainnet deployment and seed providers
