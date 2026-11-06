@@ -5,7 +5,7 @@ import { Mark } from '@/components/Mark';
 import DocsToc from '@/components/DocsToc';
 import P2PDiagram from '@/components/P2PDiagram';
 import { CopyButton } from '@/components/parts';
-import { NAME, PROGRAM_ID, ROUTER_URL, TICKER } from '@/brand';
+import { NAME, PROGRAM_ID, REPO_URL, ROUTER_URL, TICKER } from '@/brand';
 import './docs.css';
 
 export const metadata: Metadata = {
@@ -175,6 +175,7 @@ export default function Docs() {
           <a href="#install">Router</a>
           <a href="#provide">Providers</a>
           <a href="#program">Program</a>
+          {REPO_URL && <a href={REPO_URL} rel="noopener noreferrer" target="_blank">GitHub</a>}
         </nav>
         <Link href="/" className="d-nav__back">Back to the network</Link>
         <a href="#install" className="pill d-nav__cta">Install</a>
@@ -394,7 +395,7 @@ export default function Docs() {
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
             <li>Built and tested: the program (13 tests), the router and provider node (13 tests), and a full local rehearsal of the program, three providers and a router (14 of 14 checks).</li>
-            <li>Package: <code>{PKG}</code> on npm.</li>
+            <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>Not yet: the Anthropic Messages API, a built-in hardware attestation verifier.</li>
           </ul>
         </article>

@@ -43,4 +43,4 @@ orrery provider start    --config provider.json
 
 Only standard chat fields reach your upstream, so a caller cannot spend your key on models or tools your price list does not cover. Redemptions go straight to your wallet's USDC account.
 
-Docs: https://orrerynode.com/docs
+Docs: https://orrerynode.com/docs · Source: https://github.com/orrery-node/orrery (MIT)

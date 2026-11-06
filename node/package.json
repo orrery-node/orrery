@@ -14,6 +14,14 @@
     "payment-channel"
   ],
   "homepage": "https://orrerynode.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/orrery-node/orrery.git",
+    "directory": "node"
+  },
+  "bugs": {
+    "url": "https://github.com/orrery-node/orrery/issues"
+  },
   "type": "module",
   "bin": {
     "orrery": "./dist/cli.js"
