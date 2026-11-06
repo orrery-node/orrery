@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 const PKG = 'orrery-node';
-const USDC = 'EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY';
+const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 const INSTALL = `node --version          # v22 or newer
 npm install -g ${PKG}
@@ -419,6 +419,7 @@ export default function Docs() {
           <ul>
             <li>Built and tested: the program (13 tests), the router and provider node (17 tests), and a full local rehearsal of the program, four providers (one with holder prices) and a router (16 of 16 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
+            <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>).</li>
             <li>Not yet: the Anthropic Messages API, a built-in hardware attestation verifier.</li>
           </ul>
         </article>

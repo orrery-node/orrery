@@ -321,7 +321,7 @@ orrery provider start    --config provider.json                         # serve,
   "region": "eu-west",
   "publicUrl": "https://gpu.example.org",
   "rpcUrl": "https://your-rpc.example.com",
-  "settleMint": "EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY",
+  "settleMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "wallet": "~/.config/solana/provider-wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [
@@ -524,8 +524,9 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not) and `/v1/mode
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
-- [ ] Mainnet deployment and seed providers
-- [ ] Verified build of the program
+- [x] Program deployed on Solana mainnet and initialized (USDC settlement, 1 h close grace, 7 day unbonding, $0.10 minimum deposit)
+- [x] Reproducible build: the program on chain hashes to `0880750c…5451`, the same as `solana-verify build` of this repo
+- [ ] Seed provider live on mainnet
 - [ ] Independent audit
 - [ ] Anthropic Messages API (`/v1/messages`)
 - [ ] Built-in hardware attestation verifier

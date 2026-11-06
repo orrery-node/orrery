@@ -95,7 +95,7 @@ orrery provider start    --config provider.json                         # serve,
 ```jsonc
 {
   "name": "My GPU", "region": "eu-west", "publicUrl": "https://gpu.example.org",
-  "rpcUrl": "https://your-rpc.example.com", "settleMint": "EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY",
+  "rpcUrl": "https://your-rpc.example.com", "settleMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   "wallet": "~/.config/solana/provider-wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [{ "id": "llama-3.3-70b", "context": 131072, "maxOutput": 8192,
