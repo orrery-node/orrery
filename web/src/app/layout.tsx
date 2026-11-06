@@ -11,7 +11,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: `${NAME} — AI inference, peer to peer`,
   description: `${NAME} is a peer-to-peer AI inference network on Solana. A router on your computer picks a provider for every request and pays it directly. The program takes 0%.`,
-  openGraph: { title: `${NAME} — AI inference, peer to peer`, description: 'A router on your computer, providers anyone can run, payments straight to them on Solana. Zero cut in between.' },
+  openGraph: {
+    title: `${NAME} — AI inference, peer to peer`,
+    description: 'A router on your computer, providers anyone can run, payments straight to them on Solana. Zero cut in between.',
+    images: [{ url: '/og.jpg', width: 1280, height: 640, alt: `${NAME}: AI inference, peer to peer. Zero cut in between.` }],
+  },
+  twitter: { card: 'summary_large_image', images: ['/og.jpg'] },
 };
 
 export const viewport: Viewport = { themeColor: '#000000', colorScheme: 'dark' };
