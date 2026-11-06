@@ -368,8 +368,9 @@ export class ProviderNode {
       const sig = await sendFresh(this.conn, () => new Transaction().add(...ixs(batch)), [this.node]);
       for (const [k, e] of batch) {
         const before = e.redeemed;
+        const paid = e.best!.cumulative < e.channel.deposit ? e.best!.cumulative : e.channel.deposit;
         await this.entry(k, true).catch(() => undefined);
-        e.redeemed = e.channel.redeemed;
+        e.redeemed = e.channel.redeemed > paid ? e.channel.redeemed : paid;
         const amount = e.redeemed - before;
         done.push({ channel: k, amount, tx: sig });
         this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
