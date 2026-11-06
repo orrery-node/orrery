@@ -6,6 +6,7 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   devIndicators: false,
+  agentRules: false,
   turbopack: { root: dirname(fileURLToPath(import.meta.url)) },
 };
 

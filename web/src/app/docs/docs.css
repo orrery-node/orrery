@@ -11,7 +11,9 @@
   gap: 18px;
   height: 64px;
   padding-inline: var(--gutter);
-  background: rgba(6, 6, 9, 0.96);
+  background: rgba(251, 250, 247, 0.86);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
   border-bottom: 1px solid var(--line);
 }
 .d-nav__here {

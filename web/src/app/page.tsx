@@ -35,6 +35,13 @@ function TokenLoop() {
   };
   return (
     <svg className="loop" viewBox="0 0 480 480" role="img" aria-label={`Bonded ${TICKER} raises a provider's reputation, which gets it picked more often on the trusted route, where it is paid in USDC.`}>
+      <defs>
+        <linearGradient id="loop-sol" gradientUnits="userSpaceOnUse" x1="72" y1="72" x2="408" y2="408">
+          <stop offset="0" stopColor="#9945ff" />
+          <stop offset="0.52" stopColor="#4f7bff" />
+          <stop offset="1" stopColor="#12c98a" />
+        </linearGradient>
+      </defs>
       <circle cx={C} cy={C} r={R} className="loop__orbit" transform={`rotate(-90 ${C} ${C})`} />
       {Array.from({ length: 120 }, (_, i) => {
         const d = i * 3;
@@ -119,8 +126,9 @@ export default async function Home() {
           <Orrery />
           <div className="hero__foot" data-orrery-clear>
             <h1>
-              <span className="dim">AI inference, peer to peer.</span> <span className="grad">Zero cut in between.</span>
+              <span>AI inference, peer to peer.</span> <span className="grad">Zero cut in between.</span>
             </h1>
+            <p className="hero__lede">A router on your computer picks a provider for every request and pays it directly on Solana. The program in the middle takes nothing.</p>
             <RequestLine />
           </div>
         </section>
@@ -182,7 +190,7 @@ export default async function Home() {
         </div>
 
         <section className="film" data-wire-k="First token" data-wire-v={`${cheap.ttftMs} ms · ${cheapP.region}`}>
-          <video className="film__media" src="/media/rig.mp4" poster="/media/rig.jpg" autoPlay muted loop playsInline preload="metadata" aria-hidden="true" />
+          <img className="film__media" src="/media/rig-day.jpg" alt="" aria-hidden="true" loading="lazy" decoding="async" />
           <div className="film__shade" />
           <div className="film__text">
             <h2>Every provider is someone&apos;s own machine.</h2>

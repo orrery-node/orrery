@@ -1,23 +1,28 @@
 :root {
-  --ground: #08080a;
-  --ground-2: #0e0e10;
-  --ground-3: #141417;
-  --well: #0a0a0c;
-  --line: #1c1c20;
-  --line-2: #2a2a2f;
-  --fg: #f2f2ef;
-  --fg-2: #a8a8a3;
-  --fg-3: #7d7d78;
-  --dim: #82827d;
-  --green: #14f195;
-  --purple: #9945ff;
+  --ground: #fbfaf7;
+  --ground-2: #ffffff;
+  --ground-3: #f3f1f8;
+  --well: #f6f4fb;
+  --line: #e8e5ef;
+  --line-2: #d8d3e4;
+  --fg: #0e0c16;
+  --fg-2: #4a4658;
+  --fg-3: #67627a;
+  --dim: #8a8599;
+  --green: #057a4c;
+  --green-hi: #14f195;
+  --purple: #8b3dff;
+  --sol-purple: #9945ff;
+  --sol-blue: #4f7bff;
+  --sol-green: #12c98a;
   --green-ink: #03140b;
-  --violet: #b9b4ff;
+  --violet: #6b4cf0;
+  --shadow-card: 0 1px 2px rgba(30, 20, 70, 0.05), 0 2px 6px -2px rgba(30, 20, 70, 0.04), 0 36px 80px -40px rgba(60, 36, 150, 0.26);
   --sans: var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
   --mono: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
   --gutter: clamp(16px, 4.4vw, 64px);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -46,8 +51,8 @@ body {
 }
 
 ::selection {
-  background: var(--fg);
-  color: var(--ground);
+  background: var(--purple);
+  color: #ffffff;
 }
 
 a {
@@ -103,8 +108,8 @@ p {
 }
 
 .grad {
-  background-image: linear-gradient(90deg, var(--purple) 0%, #5f8ff2 50%, var(--green) 100%);
-  background-image: linear-gradient(90deg in oklch, var(--purple), var(--green));
+  background-image: linear-gradient(90deg, var(--sol-purple) 0%, var(--sol-blue) 52%, var(--sol-green) 100%);
+  background-image: linear-gradient(90deg in oklch, var(--sol-purple), var(--sol-blue) 52%, var(--sol-green));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

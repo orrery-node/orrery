@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: { title: `${NAME} — AI inference, peer to peer`, description: 'A router on your computer, providers anyone can run, payments straight to them on Solana. Zero cut in between.' },
 };
 
-export const viewport: Viewport = { themeColor: '#08080a', colorScheme: 'dark' };
+export const viewport: Viewport = { themeColor: '#fbfaf7', colorScheme: 'light' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
