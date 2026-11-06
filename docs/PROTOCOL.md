@@ -38,7 +38,7 @@ message (88 B) = "orrery/voucher/1" (16) ‖ channel (32) ‖ cumulative u64 LE 
 signature      = ed25519(session_key, message)
 ```
 
-A redemption transaction is `[Ed25519Program check over (public key, signature, message), redeem]`. The program scans the instructions sysvar zero-copy for a check that covers exactly this key and these bytes. One transaction can carry several checks and several redeems (the provider node batches three channels).
+A redemption transaction is `[Ed25519Program check over (public key, signature, message), redeem]`. The program scans the instructions sysvar zero-copy for a check that covers exactly this key and these bytes. One transaction can carry several checks and several redeems. The provider node packs as many channels as fit in Solana's 1,232-byte transaction limit: a one-channel redeem is 817 bytes and a two-channel one 1,148, so in practice two per transaction.
 
 Usage hash chain: `h_n = sha256(h_{n-1} ‖ "requestId|model|in|out|cost")`, `h_0 = 0`. Router and provider build the same chain from the same records; the head is stored on the channel at each redemption.
 
