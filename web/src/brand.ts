@@ -4,7 +4,7 @@ export const TICKER = 'OREY';
 export const WORKING_TITLE = false;
 
 // Set once the token exists (launched on Meteora DBC). null renders "not launched yet".
-export const CA: string | null = null;
+export const CA: string | null = '2nB8hRZcSGKbxpfazRd749nXbWRgG27q6yQcasWcThse';
 export const X_URL: string | null = 'https://x.com/OrreryNode';
 export const REPO_URL: string | null = 'https://github.com/orrery-node/orrery';
 
