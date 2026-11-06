@@ -29,7 +29,7 @@ export type ProviderConfig = {
   nodeKey?: string;
   nodeKeyEnv?: string;
   dataDir?: string;
-  upstream: { baseUrl: string; apiKey?: string; apiKeyEnv?: string; headers?: Record<string, string> };
+  upstream: { baseUrl: string; apiKey?: string; apiKeyEnv?: string; headers?: Record<string, string>; body?: Record<string, unknown> };
   models: ProviderOffer[];
   tee?: { mode: 'dev'; kind?: number };
   redeem?: { everySecs?: number; minUnits?: number };
@@ -269,7 +269,7 @@ export class ProviderNode {
       method: 'POST',
       timeoutMs: 30_000,
       headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) },
-      body: JSON.stringify(upstreamBody(body, offer.upstreamModel ?? offer.id, maxOut)),
+      body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), ...upstreamBody(body, offer.upstreamModel ?? offer.id, maxOut) }),
     });
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
 

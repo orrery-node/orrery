@@ -110,3 +110,17 @@ describe('routing', () => {
     assert.ok(paid > old);
   });
 });
+
+describe('provider upstream', () => {
+  it('forwards standard chat fields only, so a caller cannot spend the operator key on other models or tools', async () => {
+    const { upstreamBody } = await import('../src/provider/node.ts');
+    const out = upstreamBody(
+      { messages: [{ role: 'user', content: 'hi' }], temperature: 0.2, tools: [{ type: 'function' }], models: ['expensive/model'], plugins: [{ id: 'web' }], provider: { order: ['x'] }, n: 4, reasoning: { max_tokens: 9999 } },
+      'meta-llama/llama-3.3-70b-instruct',
+      512,
+    );
+    assert.deepEqual(Object.keys(out).sort(), ['max_tokens', 'messages', 'model', 'stream', 'stream_options', 'temperature', 'tools']);
+    assert.equal(out.model, 'meta-llama/llama-3.3-70b-instruct');
+    assert.equal(out.max_tokens, 512);
+  });
+});

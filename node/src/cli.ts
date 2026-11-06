@@ -82,7 +82,7 @@ async function provider(sub: string) {
   if (!cfgPath) throw new Error('--config <provider.json> is required');
   const cfg = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
   cfg.rpcUrl = flag('rpc', cfg.rpcUrl) ?? cfg.rpcUrl;
-  cfg.listen = cfg.listen ?? PROVIDER_PORT;
+  cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
   const node = new ProviderNode(cfg);
   if (sub === 'start') {
     await node.listen();

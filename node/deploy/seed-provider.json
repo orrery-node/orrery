@@ -1,0 +1,24 @@
+{
+  "name": "Orrery Seed",
+  "region": "us-west",
+  "listen": 7272,
+  "publicUrl": "https://orrery-seed.onrender.com",
+  "rpcUrl": "https://api.mainnet-beta.solana.com",
+  "settleMint": "EPjFWJd5Wm8eUi4wSPdf8qJxQAXnmSeKEr5mVGYLm3CY",
+  "authority": "DEV_WALLET_PUBKEY",
+  "nodeKeyEnv": "ORRERY_NODE_KEY",
+  "dataDir": "/var/data/orrery",
+  "upstream": {
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "headers": { "HTTP-Referer": "https://orrery-web.onrender.com", "X-Title": "Orrery seed provider" },
+    "body": { "provider": { "sort": "price" } }
+  },
+  "models": [
+    { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/llama-3.3-70b-instruct", "context": 131072, "maxOutput": 8192, "price": { "input": 708000, "output": 948000 } },
+    { "id": "deepseek-v3", "upstreamModel": "deepseek/deepseek-v3.2", "context": 163840, "maxOutput": 8192, "price": { "input": 312000, "output": 456000 } },
+    { "id": "qwen3-32b", "upstreamModel": "qwen/qwen3-32b", "context": 131072, "maxOutput": 8192, "price": { "input": 96000, "output": 336000 } },
+    { "id": "gpt-oss-120b", "upstreamModel": "openai/gpt-oss-120b", "context": 131072, "maxOutput": 8192, "price": { "input": 30000, "output": 112000 } }
+  ],
+  "redeem": { "everySecs": 120, "minUnits": 1 }
+}
