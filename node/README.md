@@ -63,6 +63,8 @@ reply = client.chat.completions.create(
 
 Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the **OpenAI SDKs**. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost`.
 
+Clients that speak the newer OpenAI Responses API work too: the router serves `/v1/responses` at the same base URL, streamed or not, with function calls.
+
 Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
 
 ```python

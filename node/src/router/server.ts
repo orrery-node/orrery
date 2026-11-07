@@ -12,6 +12,10 @@ import { applyAlias, parseModel, rank, Stats, type Alias, type Candidate, type R
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
+import { ResponsesStream, responsesToChat } from './responses.ts';
+
+/** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
+type Shape = { kind: 'anthropic' | 'responses'; id: string };
 
 export type RouterOptions = {
   port: number;
@@ -28,7 +32,7 @@ export type RouterOptions = {
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
-type StreamState = { started: boolean; stream: AnthropicStream | null; text: string; tools: boolean };
+type StreamState = { started: boolean; stream: AnthropicStream | ResponsesStream | null; text: string; tools: boolean };
 
 export type Trip = {
   at: number;
@@ -119,6 +123,7 @@ export class Router {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages') return await this.messages(req, res);
+      if (req.method === 'POST' && (url.pathname === '/v1/responses' || url.pathname === '/responses')) return await this.responses(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
       if (req.method === 'GET' && url.pathname === '/') {
@@ -163,10 +168,18 @@ export class Router {
     const a = await readJson(req);
     if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     if (!Array.isArray(a.messages) || !a.messages.length) throw new Unserved('messages is required', 400, 'bad_request');
-    return this.serve(toOpenAI(a), req, res, { id: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
+    return this.serve(toOpenAI(a), req, res, { kind: 'anthropic', id: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
   }
 
-  private async serve(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: { id: string } | null) {
+  /** The OpenAI Responses API: translated to a chat request, served the same way, answered as a response object. */
+  private async responses(req: IncomingMessage, res: ServerResponse) {
+    const a = await readJson(req);
+    if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
+    if (a.input === undefined || (Array.isArray(a.input) && !a.input.length)) throw new Unserved('input is required', 400, 'bad_request');
+    return this.serve(responsesToChat(a), req, res, { kind: 'responses', id: `resp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
+  }
+
+  private async serve(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     const header = String(req.headers['x-orrery-route'] ?? '');
     const { model, route } = parseModel(applyAlias(body.model, this.o.aliases), (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
@@ -204,7 +217,9 @@ export class Router {
             i = next - 1;
             continue;
           }
-          if (state.stream) res.write(`event: error\ndata: ${JSON.stringify(anthropicError(502, 'the provider dropped the stream and no other provider could resume it'))}\n\n`);
+          const dropped = 'the provider dropped the stream and no other provider could resume it';
+          if (anth?.kind === 'anthropic') res.write(`event: error\ndata: ${JSON.stringify(anthropicError(502, dropped))}\n\n`);
+          if (anth?.kind === 'responses') res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', code: 'provider_dropped', message: dropped })}\n\n`);
           res.end();
           return;
         }
@@ -213,7 +228,7 @@ export class Router {
     throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed');
   }
 
-  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: { id: string } | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {
+  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {
     const address = cand.entry.address;
     const maxOut = Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
@@ -269,8 +284,9 @@ export class Router {
         if (!state.started) {
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? { 'x-orrery-sealed': '1' } : {}) });
           state.started = true;
+          const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
-            state.stream = new AnthropicStream((event, d) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`), anth.id, cand.offer.id, estimateInputTokens(body));
+            state.stream = anth.kind === 'anthropic' ? new AnthropicStream(emit, anth.id, cand.offer.id, estimateInputTokens(body)) : new ResponsesStream(emit, anth.id, cand.offer.id);
             state.stream.start();
           }
         }
@@ -314,7 +330,12 @@ export class Router {
       res.end();
       return;
     }
-    if (anth) return send(res, 200, toMessage(chunks, anth.id, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
+    if (anth?.kind === 'anthropic') return send(res, 200, toMessage(chunks, anth.id, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
+    if (anth?.kind === 'responses') {
+      const r = new ResponsesStream(null, anth.id, cand.offer.id);
+      for (const c of chunks) r.chunk(c as Chunk);
+      return send(res, 200, r.finish(record.inputTokens, record.outputTokens), orreryHeaders);
+    }
     send(res, 200, assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
   }
 }

@@ -514,7 +514,7 @@ Two things. Holding it lowers your price at every provider that publishes holder
 <details>
 <summary><b>Which API does the router speak?</b></summary>
 
-OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), `/v1/models`, and the Anthropic Messages API (`/v1/messages`, streaming or not, tool use included, plus `/v1/messages/count_tokens`). For an Anthropic client, set `ANTHROPIC_BASE_URL=http://127.0.0.1:7171` and use a network model id such as `llama-3.3-70b`. Agents can also reach the network over MCP: `orrery mcp` serves `ask`, `models` and `status` on stdio in front of your router (`claude mcp add orrery -- npx -y orrery-node mcp`).
+OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI Responses API (`/v1/responses`, streaming or not, function calls included), `/v1/models`, and the Anthropic Messages API (`/v1/messages`, streaming or not, tool use included, plus `/v1/messages/count_tokens`). For an Anthropic client, set `ANTHROPIC_BASE_URL=http://127.0.0.1:7171` and use a network model id such as `llama-3.3-70b`. Agents can also reach the network over MCP: `orrery mcp` serves `ask`, `models` and `status` on stdio in front of your router (`claude mcp add orrery -- npx -y orrery-node mcp`).
 </details>
 
 ## Roadmap
