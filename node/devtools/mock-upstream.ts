@@ -8,6 +8,10 @@ const label = process.argv[4] ?? 'mock';
 
 const words = 'Requests travel from your computer to a provider and back; the router signs a running total and the provider redeems it on Solana.'.split(' ');
 
+// Like a model server with prefix caching: a request whose first message this server has seen before reports those
+// tokens as cached (usage.prompt_tokens_details.cached_tokens), the way vLLM and hosted APIs do.
+const seenPrefixes = new Set<string>();
+
 createServer(async (req, res) => {
   if (req.method === 'GET' && req.url?.endsWith('/models')) {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: [{ id: 'llama3.1:8b' }, { id: 'qwen2.5:7b' }] }));
@@ -26,6 +30,9 @@ createServer(async (req, res) => {
   const n = Math.min(words.length, Math.max(4, Math.min(max, 24)));
   const msgs = (body.messages ?? []) as { role: string; content: unknown }[];
   const last = msgs[msgs.length - 1];
+  const first = JSON.stringify(msgs[0] ?? '');
+  const cachedTokens = seenPrefixes.has(first) ? Math.min(promptTokens, Math.floor(first.length / 4)) : 0;
+  seenPrefixes.add(first);
   // A final assistant message is a partial answer to continue (assistant prefill): pick up after the words it holds.
   const from = last?.role === 'assistant' ? String(last.content).split(' ').filter(Boolean).length : 0;
   // "[die-mid]" in the prompt makes a fresh request drop its connection five words in, like a provider that died.
@@ -44,7 +51,7 @@ createServer(async (req, res) => {
     frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { content: (i ? ' ' : '') + words[i] }, finish_reason: null }] });
   }
   frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
-  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n - from, total_tokens: promptTokens + n - from } });
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n - from, total_tokens: promptTokens + n - from, prompt_tokens_details: { cached_tokens: cachedTokens } } });
   res.write('data: [DONE]\n\n');
   res.end();
 }).listen(port, '127.0.0.1', () => console.log(`mock upstream ${label} on :${port} (delay ${delayMs}ms)`));

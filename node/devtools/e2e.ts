@@ -80,7 +80,7 @@ await sleep(1_500);
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -96,7 +96,7 @@ for (const s of providerSpecs) {
   const node = new ProviderNode({
     name: s.name, region: s.region, listen: s.port, host: '127.0.0.1', publicUrl: `http://127.0.0.1:${s.port}`, rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
-    models: s.models.map(([id, input, output]) => ({ id, context: 131_072, maxOutput: 4_096, price: { input, output } })),
+    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) } }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
   });
@@ -140,7 +140,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog', models.data.length === 4, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog', models.data.length === 5, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
@@ -212,6 +212,20 @@ const rstRaw = await rst.text();
 const rstEv = [...rstRaw.matchAll(/^event: (\S+)/gm)].map((m) => m[1]);
 const rstText = rstRaw.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6))).filter((d) => d.type === 'response.output_text.delta').map((d) => d.delta).join('');
 check('/v1/responses streams response.created … response.completed', rst.status === 200 && rstEv[0] === 'response.created' && rstEv.at(-1) === 'response.completed' && rstText.length > 5, `${rstEv.length} events`);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const agentSystem = 'You are a careful coding agent working in this repository. '.repeat(64);
+const cachedAsk = async () => {
+  const res = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gpt-oss-120b', messages: [{ role: 'system', content: agentSystem }, { role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
+  const text = await res.text();
+  return { cost: res.headers.get('x-orrery-cost') ?? '', trip: trips.at(-1)!, status: res.status, text };
+};
+const turn1 = await cachedAsk();
+const turn2 = await cachedAsk();
+const cachedPrice = { input: 37_500, output: 140_000, cachedInput: 9_375 };
+const cachedN = Math.floor(JSON.stringify({ role: 'system', content: agentSystem }).length / 4);
+const full1 = costOf(cachedPrice, turn1.trip.inputTokens, turn1.trip.outputTokens);
+const hit2 = costOf(cachedPrice, turn2.trip.inputTokens, turn2.trip.outputTokens, cachedN);
+check('a repeated agent prompt is billed at the provider’s cached-input price', turn1.cost === usd(full1) && turn2.cost === usd(hit2) && hit2 < full1, turn2.cost ? `$${turn1.cost} → $${turn2.cost} · ${cachedN} of ${turn2.trip.inputTokens} input tokens cached` : `${turn1.status} ${turn1.text.slice(0, 200)}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
@@ -258,7 +272,7 @@ const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
 const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) as { name: string; upstream: { baseUrl: string }; models: { id: string; upstreamModel: string }[] } : null;
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
-check('router logged every answered request', trips.length === 22 + codexTrips + claudeTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 24 + codexTrips + claudeTrips, `${trips.length} trips`);
 
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};
