@@ -235,11 +235,30 @@ if (process.env.E2E_CODEX) {
   const ctxLine = profile.match(/^model_context_window = (\d+)$/m)?.[1];
   check(`orrery connect codex writes a profile and Codex CLI ${version} runs through the router`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1 && Number(ctxLine) > 0, `exit ${cx.code} · ${codexTrips} paid request(s) · context window ${ctxLine ?? 'missing'}${cx.out.includes('metadata') ? ' · codex warns: no built-in metadata' : ''}`);
 }
+let claudeTrips = 0;
+if (process.env.E2E_CLAUDE) {
+  const cfgDir = join(WORK, 'claude-home');
+  mkdirSync(cfgDir, { recursive: true });
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const before = trips.length;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('CLAUDE') && !k.startsWith('ANTHROPIC')));
+  const cc = await new Promise<{ code: number | null; out: string }>((done) => {
+    let out = '';
+    const p = spawn(process.env.E2E_CLAUDE === '1' ? 'claude' : process.env.E2E_CLAUDE!, ['-p', 'Say hello in one short sentence.', '--model', 'claude-sonnet-4-5'], { cwd: WORK, stdio: ['ignore', 'pipe', 'pipe'], env: { ...env, CLAUDE_CONFIG_DIR: cfgDir, ANTHROPIC_BASE_URL: ROUTER, ANTHROPIC_API_KEY: 'orrery', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' } });
+    p.stdout!.on('data', (d) => (out += d));
+    p.stderr!.on('data', (d) => (out += d));
+    const timer = setTimeout(() => p.kill('SIGTERM'), 180_000);
+    p.on('exit', (code) => { clearTimeout(timer); done({ code, out }); });
+  });
+  writeFileSync(join(WORK, 'claude.log'), cc.out);
+  claudeTrips = trips.length - before;
+  check('Claude Code runs through the router on the Anthropic API, claude-* answered by a network model', cc.code === 0 && cc.out.includes('Requests travel') && claudeTrips >= 1, `exit ${cc.code} · ${claudeTrips} paid request(s)`);
+}
 const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
 const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) as { name: string; upstream: { baseUrl: string }; models: { id: string; upstreamModel: string }[] } : null;
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
-check('router logged every answered request', trips.length === 22 + codexTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 22 + codexTrips + claudeTrips, `${trips.length} trips`);
 
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};

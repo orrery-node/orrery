@@ -17,6 +17,7 @@ describe('orrery connect', () => {
   it('tells SDK clients the base URL and that any key works', () => {
     assert.match(instructions('openai', 'http://127.0.0.1:7171', 'm', ''), /OPENAI_BASE_URL=http:\/\/127\.0\.0\.1:7171\/v1/);
     assert.match(instructions('anthropic', 'http://127.0.0.1:7171', 'm', ''), /ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:7171\n/);
+    assert.match(instructions('claude', 'http://127.0.0.1:7171', 'gpt-oss-120b', ''), /ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:7171 ANTHROPIC_API_KEY=orrery claude\n[\s\S]*--alias 'claude-\*=gpt-oss-120b'/);
     assert.match(instructions('codex', 'http://127.0.0.1:7171', 'm', '/h/orrery.config.toml'), /Save as \/h\/orrery\.config\.toml[\s\S]*codex --profile orrery/);
   });
 

@@ -72,7 +72,13 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
-`orrery connect openai`, `anthropic` and `mcp` print what those clients need. The rehearsal runs Codex CLI 0.167.0 through the router this way (`E2E_CODEX=1 npx tsx devtools/e2e.ts`) and checks the answer was paid for.
+Claude Code works the same way through the Anthropic API. Run the router with `--alias 'claude-*=gpt-oss-120b'` (any network model) and start Claude Code against it:
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
+```
+
+The router has no API key, so any value works. `orrery connect claude|openai|anthropic|mcp` prints what each client needs. The rehearsal runs Codex CLI 0.167.0 and Claude Code 2.1.301 through the router (`E2E_CODEX=1 E2E_CLAUDE=1 npx tsx devtools/e2e.ts`) and checks each answer was paid for.
 
 Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
 
