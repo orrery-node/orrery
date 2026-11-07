@@ -72,6 +72,8 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
+Coding agents resend their whole context every turn, and a provider's prompt cache only helps if the next turn comes back to it. The router remembers which provider last served each conversation prefix (for five minutes, about how long prompt caches last) and prices that provider's offer with the prefix as cached input. A provider that lists a cached-input price keeps the session when the cache makes it the cheaper choice.
+
 Claude Code works the same way through the Anthropic API. Run the router with `--alias 'claude-*=gpt-oss-120b'` (any network model) and start Claude Code against it:
 
 ```bash

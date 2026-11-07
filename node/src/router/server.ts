@@ -13,6 +13,7 @@ import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
+import { Affinity, prefixes } from './affinity.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
 type Shape = { kind: 'anthropic' | 'responses'; id: string };
@@ -75,6 +76,7 @@ const send = (res: ServerResponse, status: number, body: unknown, headers: Recor
 
 export class Router {
   readonly stats = new Stats();
+  readonly affinity = new Affinity();
   readonly trips: Trip[] = [];
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -190,7 +192,9 @@ export class Router {
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
-    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, await this.offOf());
+    const keys = prefixes(model, body.messages);
+    const sticky = this.affinity.find(keys);
+    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, await this.offOf(), (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
     if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
@@ -203,6 +207,7 @@ export class Router {
       try {
         const b = prefill === null ? body : { ...body, messages: [...((body.messages as unknown[]) ?? []), { role: 'assistant', content: prefill }] };
         await this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null);
+        if (prefill === null) this.affinity.remember(keys, cand.entry.address);
         return;
       } catch (err) {
         tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);

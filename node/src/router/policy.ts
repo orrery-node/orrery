@@ -87,8 +87,9 @@ export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): numb
 
 export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number };
 
-/** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. */
-export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0): Candidate[] {
+/** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. `cachedOf` is
+ * how much of this prompt a provider likely still has in its prompt cache (see affinity.ts), priced at its cached rate. */
+export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0, cachedOf: (e: ProviderEntry) => number = () => 0): Candidate[] {
   const now = Date.now();
   const maxBond = offers.reduce((m, o) => (o.entry.account.bonded > m ? o.entry.account.bonded : m), 0n);
   let c: Candidate[] = offers
@@ -100,7 +101,7 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
         entry,
         offer,
         off,
-        expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput)),
+        expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput), cachedOf(entry)),
         ttftMs: o.ttftMs,
         reputation: reputation(entry, o, maxBond),
         sealed: route === 'privacy',
