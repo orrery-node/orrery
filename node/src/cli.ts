@@ -11,6 +11,7 @@ import { Channels } from './router/channels.ts';
 import { parseAliases, ROUTES, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
+import { serveMcp } from './mcp.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -33,6 +34,8 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
       --allow-dev-enclaves      accept software attestation (local testing only)
+  ${CLI} mcp                     an MCP server on stdio for agents, in front of your running router
+      --router <url>            the router to use (default http://127.0.0.1:${ROUTER_PORT})
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
   ${CLI} channels                your router's channels and what the chain says about each
@@ -151,6 +154,7 @@ async function main() {
   const [cmd, sub] = argv;
   if (!cmd || cmd === 'help' || has('help')) return console.log(HELP);
   if (cmd === 'router') return router();
+  if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   if (cmd === 'models') return listModels();
   if (cmd === 'providers') return listProviders();
   if (cmd === 'provider') return provider(sub ?? 'start');

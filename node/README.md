@@ -78,6 +78,16 @@ Ask for a network model by name. Tool calls go to the provider as function calls
 
 If a client only sends its own model names, map them on the router: `orrery router --alias 'claude-*=llama-3.3-70b'` (comma-separate several, or set `ORRERY_ALIASES`).
 
+### Agents: Orrery as an MCP server
+
+`orrery mcp` runs an MCP server on stdio in front of your running router, so an agent can hand work to models on the network. It has three tools: `ask` (a model and a prompt, answered and paid per answer), `models` and `status`.
+
+```json
+{ "mcpServers": { "orrery": { "command": "npx", "args": ["-y", "orrery-node", "mcp"] } } }
+```
+
+Claude Code: `claude mcp add orrery -- npx -y orrery-node mcp`. Keep `orrery router` running; `--router <url>` points the MCP server at another one.
+
 ## One word picks the route
 
 | Suffix | Picks |
@@ -132,6 +142,7 @@ Providers can publish holder prices: hold a share of the network token's supply 
 
 | Command | Does |
 |---|---|
+| `orrery mcp` | an MCP server on stdio for agents, in front of your running router (`--router`) |
 | `orrery router` | run the router on `127.0.0.1:7171` (`--wallet`, `--rpc`, `--route`, `--deposit`, `--daily-cap`, `--alias`, `--port`) |
 | `orrery models` | every model on the network, cheapest price, provider count |
 | `orrery providers` | every listing and what the chain says about it |
