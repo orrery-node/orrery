@@ -282,7 +282,31 @@ const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
 const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) as { name: string; upstream: { baseUrl: string }; models: { id: string; upstreamModel: string }[] } : null;
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
-check('router logged every answered request', trips.length === 25 + codexTrips + claudeTrips, `${trips.length} trips`);
+let loadTrips = 0;
+if (process.env.E2E_LOAD) {
+  const n = Number(process.env.E2E_LOAD), conc = Number(process.env.E2E_LOAD_CONC ?? 1);
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const before = trips.length;
+  const models = ['llama-3.3-70b', 'deepseek-v3', 'qwen3-32b', 'gemma-3-27b', 'gpt-oss-120b'];
+  let next = 0, ok = 0;
+  const errors: string[] = [];
+  const t0 = Date.now();
+  await Promise.all(Array.from({ length: conc }, async () => {
+    while (next < n) {
+      const i = next++;
+      const res = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: models[i % models.length], messages: [{ role: 'user', content: `Question ${i}: say hello.` }], max_tokens: 32 }) });
+      const text = await res.text();
+      if (res.ok) ok++;
+      else errors.push(`${res.status} ${text.slice(0, 120)}`);
+    }
+  }));
+  const secs = (Date.now() - t0) / 1000;
+  loadTrips = trips.length - before;
+  const per = new Map<string, number>();
+  for (const t of trips.slice(before)) per.set(t.providerName, (per.get(t.providerName) ?? 0) + 1);
+  check(`${n} answers through the router, ${conc} at a time`, ok === n && errors.length === 0 && loadTrips === n, `${ok} ok · ${errors.length} failed · ${(n / secs).toFixed(1)} answers/s · ${[...per].map(([k, v]) => `${k} ${v}`).join(', ')}${errors.length ? ` · first error: ${errors[0]}` : ''}`);
+}
+check('router logged every answered request', trips.length === 25 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

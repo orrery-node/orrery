@@ -84,6 +84,26 @@ export class Router {
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
+  /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
+  private lanes = new Map<string, Promise<void>>();
+
+  private async inLane<T>(address: string, fn: () => Promise<T>): Promise<T> {
+    const before = this.lanes.get(address) ?? Promise.resolve();
+    let done!: () => void;
+    const mine = before.then(() => new Promise<void>((r) => (done = r)));
+    this.lanes.set(address, mine);
+    await before;
+    try {
+      return await fn();
+    } finally {
+      done();
+      if (this.lanes.get(address) === mine) this.lanes.delete(address);
+    }
+  }
+
+  private busy(address: string) {
+    return this.lanes.has(address);
+  }
   private log: (line: string) => void;
 
   constructor(private o: RouterOptions) {
@@ -219,13 +239,16 @@ export class Router {
 
     const tried: string[] = [];
     const state: StreamState = { started: false, stream: null, text: '', tools: false };
-    const cands = ranked.slice(0, 3);
+    const top = ranked.slice(0, 3);
+    // On the auto and speed routes a provider already answering another request hands this one to the next of the top
+    // three that is free; the price and reputation routes wait their turn.
+    const cands = route === 'auto' || route === 'speed' ? [...top.filter((c) => !this.busy(c.entry.address)), ...top.filter((c) => this.busy(c.entry.address))] : top;
     let prefill: string | null = null;
     for (let i = 0; i < cands.length; i++) {
       const cand = cands[i];
       try {
         const b = prefill === null ? body : { ...body, messages: [...((body.messages as unknown[]) ?? []), { role: 'assistant', content: prefill }] };
-        await this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null);
+        await this.inLane(cand.entry.address, () => this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null));
         if (prefill === null) this.affinity.remember(keys, cand.entry.address);
         return;
       } catch (err) {
