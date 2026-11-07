@@ -8,7 +8,7 @@ import { decrypt, sealRequest } from '../seal.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
-import { parseModel, rank, Stats, type Candidate, type Route } from './policy.ts';
+import { applyAlias, parseModel, rank, Stats, type Alias, type Candidate, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI } from './anthropic.ts';
@@ -24,6 +24,7 @@ export type RouterOptions = {
   refreshSecs?: number;
   log?: (line: string) => void;
   holders?: HolderBook;
+  aliases?: Alias[];
 };
 
 export type Trip = {
@@ -164,7 +165,7 @@ export class Router {
   private async serve(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: { id: string } | null) {
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     const header = String(req.headers['x-orrery-route'] ?? '');
-    const { model, route } = parseModel(body.model, (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
+    const { model, route } = parseModel(applyAlias(body.model, this.o.aliases), (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
     const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
     const estIn = estimateInputTokens(body);

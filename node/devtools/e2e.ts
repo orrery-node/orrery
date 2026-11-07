@@ -22,6 +22,7 @@ const { ProviderNode } = await import('../src/provider/node.ts');
 const { Channels } = await import('../src/router/channels.ts');
 const { Registry } = await import('../src/router/registry.ts');
 const { Router } = await import('../src/router/server.ts');
+const { parseAliases } = await import('../src/router/policy.ts');
 const { costOf, usd } = await import('../src/pricing.ts');
 const { discounted, HolderBook, sharePct } = await import('../src/holder.ts');
 
@@ -118,7 +119,7 @@ await mintTo(conn, admin, orey, userOrey.address, admin, 20_000_000n * TOKEN);
 const session = loadOrCreateKeypair(join(WORK, 'home/router/session.json'));
 const registry = new Registry(conn, { allowDev: true, measurements: [] });
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn) });
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn), aliases: parseAliases('claude-*=llama-3.3-70b') });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
@@ -175,7 +176,10 @@ const raw = await as.text();
 const evs = [...raw.matchAll(/^event: (\S+)/gm)].map((m) => m[1]);
 const streamed = raw.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6))).filter((d) => d.delta?.type === 'text_delta').map((d) => d.delta.text).join('');
 check('/v1/messages streams message_start … message_stop', as.status === 200 && evs[0] === 'message_start' && evs.at(-1) === 'message_stop' && evs.includes('content_block_delta') && streamed.length > 5, `${evs.length} events, ${streamed.length} chars`);
-check('router logged every answered request', trips.length === 16, `${trips.length} trips`);
+const al = await fetch(`${ROUTER}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 64, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const alj = (await al.json()) as { model?: string; content?: { text?: string }[] };
+check('an alias answers an Anthropic model name with a network model', al.status === 200 && alj.model === 'llama-3.3-70b' && (alj.content?.[0]?.text ?? '').length > 5, `claude-sonnet-4-5 → ${alj.model}`);
+check('router logged every answered request', trips.length === 17, `${trips.length} trips`);
 
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};

@@ -423,7 +423,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 | `orrery close <channel> --wallet <keypair> --finish` | after the grace period, the rest comes back to you |
 | `orrery provider register \| show \| start \| attest \| redeem --config provider.json` | run a provider |
 
-Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`. Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`).
+Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`, `--alias` (`claude-*=llama-3.3-70b`: answer other model names with a network model). Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`), `ORRERY_ALIASES`.
 
 ## Router console
 

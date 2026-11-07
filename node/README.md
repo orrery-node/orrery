@@ -76,6 +76,8 @@ print(msg.content[0].text)
 
 Ask for a network model by name. Tool calls go to the provider as function calls and come back as `tool_use` blocks; payment is the same per-answer voucher.
 
+If a client only sends its own model names, map them on the router: `orrery router --alias 'claude-*=llama-3.3-70b'` (comma-separate several, or set `ORRERY_ALIASES`).
+
 ## One word picks the route
 
 | Suffix | Picks |
@@ -130,7 +132,7 @@ Providers can publish holder prices: hold a share of the network token's supply 
 
 | Command | Does |
 |---|---|
-| `orrery router` | run the router on `127.0.0.1:7171` (`--wallet`, `--rpc`, `--route`, `--deposit`, `--daily-cap`, `--port`) |
+| `orrery router` | run the router on `127.0.0.1:7171` (`--wallet`, `--rpc`, `--route`, `--deposit`, `--daily-cap`, `--alias`, `--port`) |
 | `orrery models` | every model on the network, cheapest price, provider count |
 | `orrery providers` | every listing and what the chain says about it |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed |

@@ -21,6 +21,24 @@ export function parseModel(raw: string, fallback: Route): { model: string; route
   return { model: raw, route: fallback };
 }
 
+/** Model aliases: `from=to` pairs, comma separated. A `from` ending in * matches any name with that prefix, so a
+ * client that only knows its own model names (claude-*, gpt-*) can be pointed at a network model. */
+export type Alias = { from: string; prefix: boolean; to: string };
+
+export function parseAliases(spec: string | undefined): Alias[] {
+  return (spec ?? '').split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
+    const i = p.indexOf('=');
+    if (i <= 0 || i === p.length - 1) throw new Error(`alias "${p}" should look like from=to`);
+    const from = p.slice(0, i).trim();
+    return { from: from.endsWith('*') ? from.slice(0, -1) : from, prefix: from.endsWith('*'), to: p.slice(i + 1).trim() };
+  });
+}
+
+export function applyAlias(model: string, aliases: Alias[] | undefined): string {
+  for (const a of aliases ?? []) if (a.prefix ? model.startsWith(a.from) : model === a.from) return a.to;
+  return model;
+}
+
 export type Observed = { ttftMs: number | null; ok: number; fail: number; cooldownUntil: number };
 
 export class Stats {
