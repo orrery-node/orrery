@@ -85,7 +85,7 @@ export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): numb
   return 0.35 * settled + 0.15 * redeems + 0.15 * age + 0.1 * bond + 0.25 * local;
 }
 
-export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number };
+export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number; cached: number };
 
 /** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. `cachedOf` is
  * how much of this prompt a provider likely still has in its prompt cache (see affinity.ts), priced at its cached rate. */
@@ -97,11 +97,13 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
     .map(({ entry, offer }) => {
       const o = stats.get(entry.address);
       const off = offOf(entry);
+      const cached = offer.price.cachedInput === undefined ? 0 : cachedOf(entry);
       return {
         entry,
         offer,
         off,
-        expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput), cachedOf(entry)),
+        cached,
+        expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput), cached),
         ttftMs: o.ttftMs,
         reputation: reputation(entry, o, maxBond),
         sealed: route === 'privacy',

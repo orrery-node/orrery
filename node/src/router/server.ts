@@ -49,6 +49,7 @@ export type Trip = {
   sealed: boolean;
   fellThrough: number;
   resumed?: boolean;
+  cacheKept?: boolean;
   off: number;
 };
 
@@ -322,11 +323,11 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
-    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}`);
+    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
 
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
     if (wantsStream) {

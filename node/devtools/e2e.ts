@@ -229,7 +229,7 @@ const cachedPrice = { input: 37_500, output: 140_000, cachedInput: 9_375 };
 const cachedN = Math.floor(JSON.stringify({ role: 'system', content: agentSystem }).length / 4);
 const full1 = costOf(cachedPrice, turn1.trip.inputTokens, turn1.trip.outputTokens);
 const hit2 = costOf(cachedPrice, turn2.trip.inputTokens, turn2.trip.outputTokens, cachedN);
-check('a repeated agent prompt stays with the provider holding its cache and is billed at its cached-input price', turn1.trip.providerName === 'Ironbridge Compute' && turn2.trip.providerName === 'Ironbridge Compute' && turn1.cost === usd(full1) && turn2.cost === usd(hit2) && hit2 < full1, turn2.cost ? `$${turn1.cost} → $${turn2.cost} · ${cachedN} of ${turn2.trip.inputTokens} input tokens cached · price route, turn 2 went to ${turn2.trip.providerName} (Vault Nine lists less)` : `${turn1.status} ${turn1.text.slice(0, 200)}`);
+check('a repeated agent prompt stays with the provider holding its cache and is billed at its cached-input price', turn1.trip.providerName === 'Ironbridge Compute' && turn2.trip.providerName === 'Ironbridge Compute' && !turn1.trip.cacheKept && turn2.trip.cacheKept === true && turn1.cost === usd(full1) && turn2.cost === usd(hit2) && hit2 < full1, turn2.cost ? `$${turn1.cost} → $${turn2.cost} · ${cachedN} of ${turn2.trip.inputTokens} input tokens cached · price route, turn 2 went to ${turn2.trip.providerName} (Vault Nine lists less)` : `${turn1.status} ${turn1.text.slice(0, 200)}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
@@ -278,6 +278,10 @@ const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) 
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
 check('router logged every answered request', trips.length === 24 + codexTrips + claudeTrips, `${trips.length} trips`);
 
+if (process.env.E2E_HOLD) {
+  console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
+  await sleep(Number(process.env.E2E_HOLD) * 1000);
+}
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};
 for (const n of nodes) for (const d of await n.redeemDue(1n)) redeemTx[n.pda.toBase58()] = d.tx;
