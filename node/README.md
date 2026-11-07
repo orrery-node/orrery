@@ -115,6 +115,7 @@ The router tries the top three providers in order, so a slow or dead one is skip
 Put a node in front of any OpenAI-compatible server — **vLLM, SGLang, Ollama, llama.cpp**, or API capacity you hold — set your prices, and list it. Routers anywhere can then pay you per answer. No application, no stake, and nothing in the program can delist you.
 
 ```bash
+orrery provider init                                                   # find Ollama, vLLM, llama.cpp, LM Studio or SGLang and write provider.json
 orrery provider register --config provider.json --wallet wallet.json   # list on chain; the wallet stays cold
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
@@ -150,7 +151,7 @@ Providers can publish holder prices: hold a share of the network token's supply 
 | `orrery providers` | every listing and what the chain says about it |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed |
 | `orrery close <channel> [--finish]` | close a channel; the rest comes back to you |
-| `orrery provider register \| show \| start \| attest \| redeem` | run a provider |
+| `orrery provider init \| register \| show \| start \| attest \| redeem` | run a provider (`init` finds a local model server and writes provider.json) |
 
 The router also serves a live console at `http://127.0.0.1:7171/` with every request, the provider that answered and what it cost.
 

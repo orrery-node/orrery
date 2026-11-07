@@ -9,6 +9,10 @@ const label = process.argv[4] ?? 'mock';
 const words = 'Requests travel from your computer to a provider and back; the router signs a running total and the provider redeems it on Solana.'.split(' ');
 
 createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url?.endsWith('/models')) {
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: [{ id: 'llama3.1:8b' }, { id: 'qwen2.5:7b' }] }));
+    return;
+  }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;

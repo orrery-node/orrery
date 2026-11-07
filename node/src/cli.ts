@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
 import { decodeChannel, decodeConfig, decodeProvider, ins, pda } from './chain/program.ts';
@@ -12,6 +12,7 @@ import { parseAliases, ROUTES, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
+import { draftConfig, findUpstream } from './provider/init.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -41,6 +42,8 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} channels                your router's channels and what the chain says about each
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
   ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
+  ${CLI} provider init    find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json
+      --upstream <url> --name <name> --public-url <url> --out <file> --force
   ${CLI} provider start   --config provider.json
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
@@ -153,6 +156,16 @@ async function provider(sub: string) {
 async function main() {
   const [cmd, sub] = argv;
   if (!cmd || cmd === 'help' || has('help')) return console.log(HELP);
+  if (cmd === 'provider' && sub === 'init') {
+    const out = flag('out', 'provider.json')!;
+    if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
+    const found = await findUpstream(flag('upstream'));
+    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), wallet: flag('wallet') });
+    writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
+    console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
+    console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  3. ${CLI} provider start --config ${out}`);
+    return;
+  }
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   if (cmd === 'models') return listModels();
