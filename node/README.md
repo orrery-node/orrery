@@ -63,6 +63,19 @@ reply = client.chat.completions.create(
 
 Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the **OpenAI SDKs**. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost`.
 
+Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(base_url="http://127.0.0.1:7171", api_key="unused")
+msg = client.messages.create(model="llama-3.3-70b", max_tokens=300,
+                             messages=[{"role": "user", "content": "Explain a payment channel in two sentences."}])
+print(msg.content[0].text)
+```
+
+Ask for a network model by name. Tool calls go to the provider as function calls and come back as `tool_use` blocks; payment is the same per-answer voucher.
+
 ## One word picks the route
 
 | Suffix | Picks |
