@@ -230,6 +230,12 @@ const cachedN = Math.floor(JSON.stringify({ role: 'system', content: agentSystem
 const full1 = costOf(cachedPrice, turn1.trip.inputTokens, turn1.trip.outputTokens);
 const hit2 = costOf(cachedPrice, turn2.trip.inputTokens, turn2.trip.outputTokens, cachedN);
 check('a repeated agent prompt stays with the provider holding its cache and is billed at its cached-input price', turn1.trip.providerName === 'Ironbridge Compute' && turn2.trip.providerName === 'Ironbridge Compute' && !turn1.trip.cacheKept && turn2.trip.cacheKept === true && turn1.cost === usd(full1) && turn2.cost === usd(hit2) && hit2 < full1, turn2.cost ? `$${turn1.cost} → $${turn2.cost} · ${cachedN} of ${turn2.trip.inputTokens} input tokens cached · price route, turn 2 went to ${turn2.trip.providerName} (Vault Nine lists less)` : `${turn1.status} ${turn1.text.slice(0, 200)}`);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const capped = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-price': '0.15/0.60' }, body: JSON.stringify({ model: 'gemma-3-27b', messages: [{ role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
+await capped.text();
+const overCap = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-price': '0.20/1.00' }, body: JSON.stringify({ model: 'deepseek-v3', messages: [{ role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
+const overCapJ = (await overCap.json()) as { error?: { code?: string; message?: string } };
+check('a price ceiling keeps the router under it, counting the holder discount, and says so when nothing fits', capped.status === 200 && nameOf(capped.headers.get('x-orrery-provider')) === 'Halo Compute' && overCap.status === 404 && overCapJ.error?.code === 'over_price_ceiling', `gemma under $0.15/$0.60 → ${nameOf(capped.headers.get('x-orrery-provider'))} (lists $0.20/$0.80, holder −35%) · deepseek under $0.20/$1.00 → ${overCap.status} ${overCapJ.error?.code}: ${overCapJ.error?.message}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
@@ -276,7 +282,7 @@ const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
 const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) as { name: string; upstream: { baseUrl: string }; models: { id: string; upstreamModel: string }[] } : null;
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
-check('router logged every answered request', trips.length === 24 + codexTrips + claudeTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 25 + codexTrips + claudeTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

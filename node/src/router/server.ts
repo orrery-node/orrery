@@ -8,7 +8,7 @@ import { decrypt, sealRequest } from '../seal.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
-import { applyAlias, parseModel, rank, Stats, type Alias, type Candidate, type Route } from './policy.ts';
+import { applyAlias, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
@@ -30,6 +30,8 @@ export type RouterOptions = {
   log?: (line: string) => void;
   holders?: HolderBook;
   aliases?: Alias[];
+  /** Never route to a listing above this, after any holder discount. A request can set its own with x-orrery-max-price. */
+  maxPrice?: Ceiling;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -193,9 +195,25 @@ export class Router {
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
+    let ceiling: Ceiling | undefined;
+    try {
+      ceiling = req.headers['x-orrery-max-price'] ? parseCeiling(String(req.headers['x-orrery-max-price'])) : this.o.maxPrice;
+    } catch (e) {
+      throw new Unserved((e as Error).message, 400, 'bad_request');
+    }
+    const offOf = await this.offOf();
+    if (ceiling) {
+      const within = offers.filter((o) => underCeiling(discounted(o.offer.price, offOf(o.entry)), ceiling));
+      if (!within.length) {
+        const low = offers.map((o) => discounted(o.offer.price, offOf(o.entry))).sort((a, b) => a.input + a.output - (b.input + b.output))[0];
+        const d = (u: number) => `$${(u / 1e6).toFixed(u % 10_000 ? 4 : 2)}`;
+        throw new Unserved(`no provider serves ${model} under your price ceiling of ${d(ceiling.input)}/${d(ceiling.output)} per million; the lowest listing is ${d(low.input)}/${d(low.output)}`, 404, 'over_price_ceiling');
+      }
+      offers = within;
+    }
     const keys = prefixes(model, body.messages);
     const sticky = this.affinity.find(keys);
-    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, await this.offOf(), (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
+    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, offOf, (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
     if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 

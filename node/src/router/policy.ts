@@ -130,3 +130,18 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
     }
   }
 }
+
+/** A price ceiling in USDC base units per million tokens, input and output. */
+export type Ceiling = { input: number; output: number };
+
+/** "0.50/1.50" (dollars per million tokens, input/output) as a ceiling; undefined when not given. */
+export function parseCeiling(s: string | undefined): Ceiling | undefined {
+  if (s === undefined || s === '') return undefined;
+  const m = /^\s*\$?(\d+(?:\.\d+)?)\s*\/\s*\$?(\d+(?:\.\d+)?)\s*$/.exec(s);
+  if (!m) throw new Error(`a price ceiling looks like 0.50/1.50 (dollars per million tokens, input/output), not ${s}`);
+  return { input: Math.round(Number(m[1]) * 1e6), output: Math.round(Number(m[2]) * 1e6) };
+}
+
+export function underCeiling(p: { input: number; output: number }, c: Ceiling | undefined): boolean {
+  return !c || (p.input <= c.input && p.output <= c.output);
+}
