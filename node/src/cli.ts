@@ -15,6 +15,7 @@ import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
+import { doctor, render } from './doctor.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -43,6 +44,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
+  ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
   ${CLI} channels                your router's channels and what the chain says about each
@@ -185,6 +187,14 @@ async function main() {
     const ctx = await contextFromRouter(routerUrl, model);
     writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
     return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
+  }
+  if (cmd === 'doctor') {
+    const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+    const address = flag('address');
+    const lines = await doctor({ rpc: rpc(), mint: mint(), wallet: address ? new PublicKey(address) : walletPath ? loadKeypair(expand(walletPath)).publicKey : undefined, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, deposit: dollars(flag('deposit', '2')!), allowDev: has('allow-dev-enclaves') });
+    console.log(render(lines));
+    if (lines.some((l) => l.ok === false)) process.exitCode = 1;
+    return;
   }
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
