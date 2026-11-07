@@ -65,6 +65,20 @@ Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the 
 
 Clients that speak the newer OpenAI Responses API work too: the router serves `/v1/responses` at the same base URL, streamed or not, with function calls.
 
+The Codex CLI is one of them. Add the router as a model provider in `~/.codex/config.toml`:
+
+```toml
+model = "llama-3.3-70b"
+model_provider = "orrery"
+
+[model_providers.orrery]
+name = "Orrery"
+base_url = "http://127.0.0.1:7171/v1"
+wire_api = "responses"
+```
+
+The rehearsal runs Codex CLI 0.167.0 against the router (`E2E_CODEX=1 npx tsx devtools/e2e.ts`) and checks the answer was paid for.
+
 Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
 
 ```python

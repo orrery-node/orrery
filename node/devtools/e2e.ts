@@ -212,11 +212,31 @@ const rstRaw = await rst.text();
 const rstEv = [...rstRaw.matchAll(/^event: (\S+)/gm)].map((m) => m[1]);
 const rstText = rstRaw.split('\n').filter((l) => l.startsWith('data: ')).map((l) => JSON.parse(l.slice(6))).filter((d) => d.type === 'response.output_text.delta').map((d) => d.delta).join('');
 check('/v1/responses streams response.created … response.completed', rst.status === 200 && rstEv[0] === 'response.created' && rstEv.at(-1) === 'response.completed' && rstText.length > 5, `${rstEv.length} events`);
+let codexTrips = 0;
+if (process.env.E2E_CODEX) {
+  const codexHome = join(WORK, 'codex-home');
+  mkdirSync(codexHome, { recursive: true });
+  writeFileSync(join(codexHome, 'config.toml'), ['model = "llama-3.3-70b"', 'model_provider = "orrery"', '', '[model_providers.orrery]', 'name = "Orrery"', `base_url = "${ROUTER}/v1"`, 'wire_api = "responses"', ''].join('\n'));
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const before = trips.length;
+  const version = process.env.E2E_CODEX === '1' ? '0.167.0' : process.env.E2E_CODEX;
+  const cx = await new Promise<{ code: number | null; out: string }>((done) => {
+    let out = '';
+    const p = spawn('npx', ['-y', `@openai/codex@${version}`, 'exec', '--skip-git-repo-check', '--sandbox', 'read-only', 'Say hello in one short sentence.'], { cwd: WORK, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CODEX_HOME: codexHome } });
+    p.stdout!.on('data', (d) => (out += d));
+    p.stderr!.on('data', (d) => (out += d));
+    const timer = setTimeout(() => p.kill('SIGTERM'), 180_000);
+    p.on('exit', (code) => { clearTimeout(timer); done({ code, out }); });
+  });
+  writeFileSync(join(WORK, 'codex.log'), cx.out);
+  codexTrips = trips.length - before;
+  check(`Codex CLI ${version} runs through the router on the Responses API`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1, `exit ${cx.code} · ${codexTrips} paid request(s)`);
+}
 const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
 const initCfg = existsSync(initOut) ? JSON.parse(readFileSync(initOut, 'utf8')) as { name: string; upstream: { baseUrl: string }; models: { id: string; upstreamModel: string }[] } : null;
 check('orrery provider init finds a model server and writes provider.json', initCfg?.name === 'Rehearsal Rig' && initCfg.upstream.baseUrl === 'http://127.0.0.1:19102/v1' && initCfg.models.map((m) => m.id).join(',') === 'llama3.1-8b,qwen2.5-7b', initCfg ? initCfg.models.map((m) => `${m.upstreamModel} → ${m.id}`).join(', ') : 'no file');
-check('router logged every answered request', trips.length === 22, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 22 + codexTrips, `${trips.length} trips`);
 
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};
