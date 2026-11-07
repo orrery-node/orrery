@@ -141,6 +141,8 @@ orrery provider register --config provider.json --wallet wallet.json   # list on
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
+For vLLM and SGLang, `init` also lists a cached-input price (a quarter of the input price to start) for the prompt prefixes agents resend every turn. Turn on the server's cache report so hits reach Orrery: `--enable-prompt-tokens-details` for vLLM, `--enable-cache-report` for SGLang. Without a report every token is billed at the input price; a report can only lower a bill.
+
 ```jsonc
 {
   "name": "My GPU", "region": "eu-west", "publicUrl": "https://gpu.example.org",
