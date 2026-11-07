@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const PER_IP = 5;
 const WINDOW_MS = 10 * 60_000;
-const PER_DAY = 300;
+const PER_DAY = 2000;
 const MAX_PROMPT = 400;
 
 const hits = new Map<string, number[]>();
