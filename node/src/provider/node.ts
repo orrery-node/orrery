@@ -15,6 +15,7 @@ import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
+import { isLocal, providerConsolePage } from './console.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
 
@@ -105,6 +106,8 @@ export class ProviderNode {
   private readonly apiKey: string | undefined;
   private readonly holders: HolderBook | null;
   private ledger = new Map<string, Entry>();
+  private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
+  private answers = 0;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private dir: string;
@@ -213,6 +216,22 @@ export class ProviderNode {
     }
   }
 
+  /** What this node has earned: signed to it by routers, redeemed on chain, waiting to be redeemed. */
+  status() {
+    let signed = 0n, redeemed = 0n;
+    const channels = [...this.ledger.entries()].map(([channel, e]) => {
+      const s = e.best?.cumulative ?? 0n;
+      signed += s;
+      redeemed += e.redeemed;
+      return { channel, deposit: usd(e.channel.deposit), signed: usd(s), redeemed: usd(e.redeemed), waiting: usd(s > e.redeemed ? s - e.redeemed : 0n), unsigned: e.unpaid.length };
+    });
+    return {
+      provider: this.pda.toBase58(), name: this.manifest.name, answers: this.answers,
+      signed: usd(signed), redeemed: usd(redeemed), waiting: usd(signed > redeemed ? signed - redeemed : 0n),
+      channels, recent: this.served.slice().reverse().map((r) => ({ ...r, cost: usd(r.cost) })),
+    };
+  }
+
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://x');
     try {
@@ -223,6 +242,14 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/v1/attestation') {
         if (!this.attestation || !this.enclave) return fail(res, 404, 'no_tee', 'this node does not run in an enclave');
         return json(res, 200, { kind: this.attestation.kind, measurement: this.attestation.measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), report: this.attestation.report.toString('base64'), reportHash: this.attestation.reportHash.toString('hex') });
+      }
+      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/orrery/status')) {
+        if (!isLocal(req)) return fail(res, 404, 'not_found', 'no such route');
+        if (url.pathname === '/') {
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          return void res.end(providerConsolePage());
+        }
+        return json(res, 200, this.status());
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
@@ -314,6 +341,9 @@ export class ProviderNode {
     send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex'), off }), 'orrery');
     res.write(sseFrame('[DONE]'));
     res.end();
+    this.answers += 1;
+    this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey });
+    if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
     this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
   }
 

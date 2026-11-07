@@ -1,9 +1,10 @@
 // The page at http://127.0.0.1:7171/ — what the router did, read from /orrery/status. Plain HTML, no build step.
 import { NAME } from '../brand.ts';
 
-export function consolePage(): string {
+/** The shared page head, styles and header bar of the local consoles (router and provider). */
+export function consoleHead(title: string, here: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${NAME} router</title>
+<title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
 <style>
@@ -30,7 +31,11 @@ td{color:var(--fg2)}td:first-child{color:var(--fg)}tbody tr:hover td{background:
 .go{color:var(--green)}.stop{color:var(--warn)}.sig{color:var(--purple)}.empty td{color:var(--fg3);font-family:var(--sans);font-size:14px;padding:22px 16px}
 @media (max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats div:nth-child(3){border-left:0}.stats div:nth-child(n+3){border-top:1px solid var(--line)}.live{display:none}}
 </style></head><body>
-<header><span class="brand"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="g" x1="2" y1="18" x2="22" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9945ff"/><stop offset=".5" stop-color="#5f8ff2"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3"/><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3" opacity=".6" transform="rotate(62 12 12)"/><circle cx="12" cy="12" r="2.5" fill="#f5f5f5"/><circle cx="20.6" cy="9.7" r="1.7" fill="#14f195"/></svg><span class="grad">${NAME}</span></span><span class="here">Router console</span><span class="live"><i></i>live from this computer</span></header>
+<header><span class="brand"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="g" x1="2" y1="18" x2="22" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9945ff"/><stop offset=".5" stop-color="#5f8ff2"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3"/><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3" opacity=".6" transform="rotate(62 12 12)"/><circle cx="12" cy="12" r="2.5" fill="#f5f5f5"/><circle cx="20.6" cy="9.7" r="1.7" fill="#14f195"/></svg><span class="grad">${NAME}</span></span><span class="here">${here}</span><span class="live"><i></i>live from this computer</span></header>`;
+}
+
+export function consolePage(): string {
+  return `${consoleHead(`${NAME} router`, 'Router console')}
 <main>
 <div><h1><span>Your router.</span> Every request, straight to a provider.</h1><p class="lede">Point any OpenAI-compatible tool at <code id="base">http://127.0.0.1/v1</code>, or an Anthropic client at the same address without <code>/v1</code>. Each answer is paid from your channel to the machine that served it; nothing in between.</p></div>
 <div class="stats" id="sum"></div>
