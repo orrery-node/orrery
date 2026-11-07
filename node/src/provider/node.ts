@@ -287,7 +287,7 @@ export class ProviderNode {
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0' });
     const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
-    type Usage = { prompt_tokens?: number; completion_tokens?: number };
+    type Usage = { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     let usage: Usage | null = null;
     let chars = 0;
     for await (const ev of readSse(upstream.body)) {
@@ -305,7 +305,7 @@ export class ProviderNode {
     }
     const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body);
     const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
-    const cost = costOf(price, inputTokens, outputTokens);
+    const cost = costOf(price, inputTokens, outputTokens, usage?.prompt_tokens_details?.cached_tokens ?? 0);
     const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
     e.owed += record.cost;
     e.usageHash = nextUsageHash(e.usageHash, record);

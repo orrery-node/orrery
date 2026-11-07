@@ -51,7 +51,7 @@ Usage hash chain: `h_n = sha256(h_{n-1} ‖ "requestId|model|in|out|cost")`, `h_
 5. The router recomputes the cost from the same price list and pays **the smaller** of the two: it raises the total, signs a new voucher, and posts it to `/orrery/voucher` at once (it also rides on the next request).
 6. The provider redeems the highest voucher when it chooses (`redeem.everySecs`, minimum amount). Closing channels are redeemed regardless of amount.
 
-Cost = `ceil((input tokens × input price + output tokens × output price) / 1e6)` USDC base units, with prices in base units per million tokens ($0.60/M = 600000).
+Cost = `ceil((input tokens × input price + output tokens × output price) / 1e6)` USDC base units, with prices in base units per million tokens ($0.60/M = 600000). A model may also list `cachedInput`, a price at or below its input price for input tokens the model server served from a prompt cache (the provider reads `usage.prompt_tokens_details.cached_tokens` from its upstream). Those tokens are billed at `cachedInput` and the rest at `input`. The router still signs the lower of the bill and its own full-price figure, so a cache report can only lower what a provider is paid, and the usage record and voucher are unchanged.
 
 ## 5. What can go wrong
 

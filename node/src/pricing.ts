@@ -1,11 +1,16 @@
 // Prices are USDC base units (6 decimals) per million tokens, so $0.60 per million is 600_000. Both sides compute
 // a request's cost with the same integer formula, rounded up to the next base unit.
-export type Price = { input: number; output: number };
+// A provider may also list cachedInput: the price of input tokens its model server served from a prompt cache (the long
+// prefix a coding agent resends every turn). It can only be at or below the input price.
+export type Price = { input: number; output: number; cachedInput?: number };
 
 const MILLION = 1_000_000n;
+const whole = (n: number) => BigInt(Math.max(0, Math.floor(n)));
 
-export function costOf(p: Price, inputTokens: number, outputTokens: number): bigint {
-  const raw = BigInt(Math.max(0, Math.floor(inputTokens))) * BigInt(p.input) + BigInt(Math.max(0, Math.floor(outputTokens))) * BigInt(p.output);
+export function costOf(p: Price, inputTokens: number, outputTokens: number, cachedTokens = 0): bigint {
+  const input = whole(inputTokens);
+  const cached = p.cachedInput === undefined ? 0n : whole(Math.min(cachedTokens, inputTokens));
+  const raw = (input - cached) * BigInt(p.input) + cached * BigInt(p.cachedInput ?? p.input) + whole(outputTokens) * BigInt(p.output);
   return (raw + MILLION - 1n) / MILLION;
 }
 

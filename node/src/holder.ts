@@ -37,7 +37,8 @@ export function tierOff(tiers: HolderTier[] | undefined, balance: bigint, supply
 export function discounted(p: Price, off: number): Price {
   if (!off) return p;
   const keep = 10_000 - off;
-  return { input: Math.floor((p.input * keep) / 10_000), output: Math.floor((p.output * keep) / 10_000) };
+  const cut = (n: number) => Math.floor((n * keep) / 10_000);
+  return { input: cut(p.input), output: cut(p.output), ...(p.cachedInput === undefined ? {} : { cachedInput: cut(p.cachedInput) }) };
 }
 
 /** One of the manifest's own discounts, or 0. Anything else a provider reports is ignored. */

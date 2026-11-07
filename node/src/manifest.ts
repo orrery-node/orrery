@@ -51,6 +51,7 @@ export function checkManifest(m: unknown): Manifest {
   for (const o of x.models) {
     if (!MODEL_ID.test(o.id)) throw new Error(`manifest: bad model id ${o.id}`);
     if (!Number.isSafeInteger(o.price?.input) || !Number.isSafeInteger(o.price?.output) || o.price.input < 0 || o.price.output < 0) throw new Error(`manifest: bad price for ${o.id}`);
+    if (o.price.cachedInput !== undefined && (!Number.isSafeInteger(o.price.cachedInput) || o.price.cachedInput < 0 || o.price.cachedInput > o.price.input)) throw new Error(`manifest: cachedInput for ${o.id} must be between 0 and the input price`);
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
   }
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
