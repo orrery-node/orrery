@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
 import { decodeChannel, decodeConfig, decodeProvider, ins, pda } from './chain/program.ts';
@@ -13,6 +14,7 @@ import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
 import { draftConfig, findUpstream } from './provider/init.ts';
+import { CLIENTS, codexProfile, instructions, type Client } from './connect.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -37,6 +39,9 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --allow-dev-enclaves      accept software attestation (local testing only)
   ${CLI} mcp                     an MCP server on stdio for agents, in front of your running router
       --router <url>            the router to use (default http://127.0.0.1:${ROUTER_PORT})
+  ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
+      --model <id>              network model to use (default gpt-oss-120b)   --router <url>
+      --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
   ${CLI} channels                your router's channels and what the chain says about each
@@ -165,6 +170,19 @@ async function main() {
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
     console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  3. ${CLI} provider start --config ${out}`);
     return;
+  }
+  if (cmd === 'connect') {
+    if (!sub || !(CLIENTS as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} connect <${CLIENTS.join('|')}> [--model <id>] [--write]`);
+    const routerUrl = flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!;
+    const model = flag('model', 'gpt-oss-120b')!;
+    const profilePath = `${expand(process.env.CODEX_HOME ?? '~/.codex')}/orrery.config.toml`;
+    if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath));
+    if (sub !== 'codex') throw new Error('--write is for codex; the others take environment variables');
+    if (existsSync(profilePath) && !has('force')) throw new Error(`${profilePath} exists; pass --force to replace it`);
+    mkdirSync(dirname(profilePath), { recursive: true });
+    writeFileSync(profilePath, codexProfile(routerUrl, model));
+    return console.log(`wrote ${profilePath}
+run: codex --profile orrery`);
   }
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);

@@ -216,13 +216,14 @@ let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
   mkdirSync(codexHome, { recursive: true });
-  writeFileSync(join(codexHome, 'config.toml'), ['model = "llama-3.3-70b"', 'model_provider = "orrery"', '', '[model_providers.orrery]', 'name = "Orrery"', `base_url = "${ROUTER}/v1"`, 'wire_api = "responses"', ''].join('\n'));
+  writeFileSync(join(codexHome, 'config.toml'), 'approval_policy = "never"\n');
+  await new Promise<void>((done) => { const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'connect', 'codex', '--write', '--model', 'llama-3.3-70b', '--router', ROUTER], { stdio: 'ignore', env: { ...process.env, CODEX_HOME: codexHome } }); pc.on('exit', () => done()); });
   for (const o of router.stats.all().values()) o.cooldownUntil = 0;
   const before = trips.length;
   const version = process.env.E2E_CODEX === '1' ? '0.167.0' : process.env.E2E_CODEX;
   const cx = await new Promise<{ code: number | null; out: string }>((done) => {
     let out = '';
-    const p = spawn('npx', ['-y', `@openai/codex@${version}`, 'exec', '--skip-git-repo-check', '--sandbox', 'read-only', 'Say hello in one short sentence.'], { cwd: WORK, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CODEX_HOME: codexHome } });
+    const p = spawn('npx', ['-y', `@openai/codex@${version}`, 'exec', '--profile', 'orrery', '--skip-git-repo-check', '--sandbox', 'read-only', 'Say hello in one short sentence.'], { cwd: WORK, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CODEX_HOME: codexHome } });
     p.stdout!.on('data', (d) => (out += d));
     p.stderr!.on('data', (d) => (out += d));
     const timer = setTimeout(() => p.kill('SIGTERM'), 180_000);
@@ -230,7 +231,7 @@ if (process.env.E2E_CODEX) {
   });
   writeFileSync(join(WORK, 'codex.log'), cx.out);
   codexTrips = trips.length - before;
-  check(`Codex CLI ${version} runs through the router on the Responses API`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1, `exit ${cx.code} · ${codexTrips} paid request(s)`);
+  check(`orrery connect codex writes a profile and Codex CLI ${version} runs through the router`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1, `exit ${cx.code} · ${codexTrips} paid request(s)`);
 }
 const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });
