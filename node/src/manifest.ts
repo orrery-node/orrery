@@ -21,6 +21,9 @@ export type Manifest = {
   models: ModelOffer[];
   tee?: { kind: number; enclaveKey: string };
   holder?: { tiers: HolderTier[] };
+  /** The node's upstream continues a partial answer handed to it as a final assistant message, so a router can resume a
+   * stream another provider dropped. */
+  resume?: boolean;
 };
 
 function sortKeys(v: unknown): unknown {
@@ -51,5 +54,6 @@ export function checkManifest(m: unknown): Manifest {
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
   }
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
+  if (x.resume !== undefined && typeof x.resume !== 'boolean') throw new Error('manifest: resume must be true or false');
   return x;
 }

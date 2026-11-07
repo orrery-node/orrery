@@ -237,7 +237,7 @@ The full guide, with every flag and a troubleshooting table, is at **[orrerynode
 | `:trusted` | reputation | settled volume 35% · redemptions 15% · age 15% · bonded $OREY 10% · this router's own success rate 25% |
 | `:private` | privacy | only providers whose enclave this router verified; the request is sealed |
 
-The router tries the top three providers in order and cools a failing one down for 15 seconds up to 5 minutes, so a slow or dead provider is skipped without your tool noticing. Pin one with `x-orrery-provider: <address prefix>`, or set the route with `x-orrery-route`.
+The router tries the top three providers in order and cools a failing one down for 15 seconds up to 5 minutes, so a slow or dead provider is skipped without your tool noticing. If a provider drops a stream mid-answer, the router hands the text so far to the next provider whose manifest says `resume: true` and keeps writing into the same stream; the provider that dropped it is paid nothing for that answer. Pin one with `x-orrery-provider: <address prefix>`, or set the route with `x-orrery-route`.
 
 ## How payment works
 

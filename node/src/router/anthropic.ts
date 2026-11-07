@@ -61,7 +61,7 @@ export function toOpenAI(a: Json): Json {
 const STOP: Record<string, string> = { stop: 'end_turn', length: 'max_tokens', tool_calls: 'tool_use', function_call: 'tool_use', content_filter: 'end_turn' };
 
 type Delta = { content?: string | null; tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[] };
-type Chunk = { choices?: { index?: number; delta?: Delta; finish_reason?: string | null }[] };
+export type Chunk = { choices?: { index?: number; delta?: Delta; finish_reason?: string | null }[] };
 
 /** Turns a provider's OpenAI stream into Anthropic stream events, written as they arrive. */
 export class AnthropicStream {

@@ -11,7 +11,7 @@ import { Channels } from './channels.ts';
 import { applyAlias, parseModel, rank, Stats, type Alias, type Candidate, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
-import { AnthropicStream, anthropicError, toMessage, toOpenAI } from './anthropic.ts';
+import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 
 export type RouterOptions = {
   port: number;
@@ -27,6 +27,9 @@ export type RouterOptions = {
   aliases?: Alias[];
 };
 
+/** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
+type StreamState = { started: boolean; stream: AnthropicStream | null; text: string; tools: boolean };
+
 export type Trip = {
   at: number;
   model: string;
@@ -40,6 +43,7 @@ export type Trip = {
   totalMs: number;
   sealed: boolean;
   fellThrough: number;
+  resumed?: boolean;
   off: number;
 };
 
@@ -178,14 +182,29 @@ export class Router {
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
     const tried: string[] = [];
-    for (const cand of ranked.slice(0, 3)) {
+    const state: StreamState = { started: false, stream: null, text: '', tools: false };
+    const cands = ranked.slice(0, 3);
+    let prefill: string | null = null;
+    for (let i = 0; i < cands.length; i++) {
+      const cand = cands[i];
       try {
-        await this.forward(cand, body, wantsStream, res, route, tried.length, false, anth);
+        const b = prefill === null ? body : { ...body, messages: [...((body.messages as unknown[]) ?? []), { role: 'assistant', content: prefill }] };
+        await this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null);
         return;
       } catch (err) {
         tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
         this.stats.fail(cand.entry.address);
         if (res.headersSent) {
+          // The client already has part of the answer. Hand that text to the next provider that says it can continue it,
+          // and keep writing into the same stream; a stream that carried a tool call ends here.
+          const next = state.text && !state.tools ? cands.findIndex((c, j) => j > i && c.entry.manifest?.resume === true) : -1;
+          if (next > i) {
+            this.log(`stream from ${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)} dropped after ${state.text.length} chars; resuming with ${cands[next].entry.manifest?.name ?? cands[next].entry.address.slice(0, 6)}`);
+            prefill = state.text;
+            i = next - 1;
+            continue;
+          }
+          if (state.stream) res.write(`event: error\ndata: ${JSON.stringify(anthropicError(502, 'the provider dropped the stream and no other provider could resume it'))}\n\n`);
           res.end();
           return;
         }
@@ -194,7 +213,7 @@ export class Router {
     throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed');
   }
 
-  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: { id: string } | null = null): Promise<void> {
+  private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: { id: string } | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {
     const address = cand.entry.address;
     const maxOut = Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
@@ -220,12 +239,12 @@ export class Router {
         const allowed = this.inflight.get(address) ?? 0n;
         if (BigInt(u.cost) <= allowed && u.model === cand.offer.id) {
           this.o.channels.settle(address, { ...u, cost: BigInt(u.cost) });
-          return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth);
+          return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
         }
       }
       if (j.error.code === 'channel_exhausted') {
         await this.o.channels.topUp(address, BigInt(j.error.need ?? '0'));
-        return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth);
+        return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
       }
       throw new Error(`payment refused: ${j.error.code}`);
     }
@@ -235,8 +254,6 @@ export class Router {
     let record: (UsageRecord & { owed: string }) | null = null;
     let claimedOff = 0;
     const chunks: Record<string, unknown>[] = [];
-    let started = false;
-    let stream: AnthropicStream | null = null;
     for await (const ev of readSse(r.body)) {
       let data = ev.data;
       if (data === '[DONE]') break;
@@ -249,15 +266,20 @@ export class Router {
       }
       if (!ttft) ttft = Date.now() - t0;
       if (wantsStream) {
-        if (!started) {
+        if (!state.started) {
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? { 'x-orrery-sealed': '1' } : {}) });
-          started = true;
+          state.started = true;
           if (anth) {
-            stream = new AnthropicStream((event, d) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`), anth.id, cand.offer.id, estimateInputTokens(body));
-            stream.start();
+            state.stream = new AnthropicStream((event, d) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`), anth.id, cand.offer.id, estimateInputTokens(body));
+            state.stream.start();
           }
         }
-        if (stream) stream.chunk(JSON.parse(data));
+        const parsed = JSON.parse(data) as Chunk;
+        for (const ch of parsed.choices ?? []) {
+          if (ch.delta?.content) state.text += ch.delta.content;
+          if (ch.delta?.tool_calls?.length) state.tools = true;
+        }
+        if (state.stream) state.stream.chunk(parsed);
         else res.write(sseFrame(data));
       } else {
         chunks.push(JSON.parse(data));
@@ -279,15 +301,15 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff,
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
-    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}`);
+    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}`);
 
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
     if (wantsStream) {
-      if (stream) stream.finish(record.inputTokens, record.outputTokens);
+      if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else res.write(sseFrame('[DONE]'));
       res.end();
       return;

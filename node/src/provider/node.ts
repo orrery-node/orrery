@@ -37,6 +37,8 @@ export type ProviderConfig = {
   redeem?: { everySecs?: number; minUnits?: number };
   /** Holder pricing: hold `share` basis points of the network token's supply, pay `off` basis points less. */
   holder?: { tiers: HolderTier[] };
+  /** Set when the upstream continues a final assistant message (assistant prefill), so routers may resume through this node. */
+  resume?: boolean;
 };
 
 type Entry = {
@@ -139,6 +141,7 @@ export class ProviderNode {
       models: cfg.models.map(({ upstreamModel: _u, ...o }) => o),
       tee: this.enclave ? { kind: this.attestation!.kind, enclaveKey: this.enclave.publicKey.toString('hex') } : undefined,
       holder: cfg.holder ? { tiers: checkTiers(cfg.holder.tiers) } : undefined,
+      resume: cfg.resume ? true : undefined,
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
     this.manifestBytes = canonical(this.manifest);

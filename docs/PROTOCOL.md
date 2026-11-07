@@ -90,6 +90,8 @@ List or delist providers, move channel deposits, move bonds, or charge a fee. Th
 
 ## 9. Holder pricing
 
+A manifest may carry `resume: true` when the node's upstream continues a partial answer given to it as a final assistant message (assistant prefill). A router whose stream from one provider breaks after some text, with no tool call in it, may send the same request plus that text as an assistant message to the next such provider and keep streaming; the provider that broke the stream wrote no usage record, so the router signs nothing for it.
+
 A manifest may carry `holder: { tiers: [{ share, off }, …] }`, at most four tiers, `share` in basis points of the network token's supply (1 to 10,000) and `off` in basis points of the list price (1 to 9,000), each tier larger than the one before on both. The network token is `Config.bond_mint`; until the admin sets it, no tier applies.
 
 - A wallet's standing is the balance of its associated token account for that mint, against the mint's supply, both read from chain. Its discount is the largest `off` whose `balance × 10,000 ≥ supply × share`.

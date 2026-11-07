@@ -20,16 +20,27 @@ createServer(async (req, res) => {
   const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
   const max = Math.min(Number(body.max_tokens ?? 64), 64);
   const n = Math.min(words.length, Math.max(4, Math.min(max, 24)));
+  const msgs = (body.messages ?? []) as { role: string; content: unknown }[];
+  const last = msgs[msgs.length - 1];
+  // A final assistant message is a partial answer to continue (assistant prefill): pick up after the words it holds.
+  const from = last?.role === 'assistant' ? String(last.content).split(' ').filter(Boolean).length : 0;
+  // "[die-mid]" in the prompt makes a fresh request drop its connection five words in, like a provider that died.
+  const dies = from === 0 && JSON.stringify(msgs).includes('[die-mid]');
   await new Promise((r) => setTimeout(r, delayMs));
   res.writeHead(200, { 'content-type': 'text/event-stream' });
   const id = `chatcmpl-${label}-${Date.now()}`;
   const frame = (o: unknown) => res.write(`data: ${JSON.stringify(o)}\n\n`);
   frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] });
-  for (let i = 0; i < n; i++) {
+  for (let i = from; i < n; i++) {
+    if (dies && i === 5) {
+      await new Promise((r) => setTimeout(r, 150));
+      res.socket?.destroy();
+      return;
+    }
     frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { content: (i ? ' ' : '') + words[i] }, finish_reason: null }] });
   }
   frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
-  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n, total_tokens: promptTokens + n } });
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n - from, total_tokens: promptTokens + n - from } });
   res.write('data: [DONE]\n\n');
   res.end();
 }).listen(port, '127.0.0.1', () => console.log(`mock upstream ${label} on :${port} (delay ${delayMs}ms)`));
