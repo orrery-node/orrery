@@ -13,7 +13,7 @@ import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
-import { draftConfig, findUpstream } from './provider/init.ts';
+import { CACHE_REPORTING, draftConfig, findUpstream } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 
 const argv = process.argv.slice(2);
@@ -169,6 +169,7 @@ async function main() {
     const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), wallet: flag('wallet') });
     writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
+    if (CACHE_REPORTING[found.name]) console.log(`each model also has a cached-input price (a quarter of input) for prompt-cache hits; start ${found.name} with ${CACHE_REPORTING[found.name]} so it reports them`);
     console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  3. ${CLI} provider start --config ${out}`);
     return;
   }

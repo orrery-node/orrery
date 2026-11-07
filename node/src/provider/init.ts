@@ -15,6 +15,12 @@ export const KNOWN_UPSTREAMS: [string, string][] = [
 
 export type Found = { name: string; baseUrl: string; models: string[] };
 
+/** Servers that can report prompt-cache hits in usage.prompt_tokens_details.cached_tokens, and the flag that turns it on. */
+export const CACHE_REPORTING: Record<string, string> = {
+  vLLM: '--enable-prompt-tokens-details',
+  SGLang: '--enable-cache-report',
+};
+
 /** The first server that answers /models with at least one model: the one given, or the known local ones in order. */
 export async function findUpstream(explicit: string | undefined, fetchFn: Fetch = fetch as unknown as Fetch): Promise<Found> {
   const tries: [string, string][] = explicit ? [['your server', explicit.replace(/\/$/, '')]] : KNOWN_UPSTREAMS;
@@ -35,7 +41,8 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
 /** A network-style model id from an upstream one: llama3.1:8b → llama3.1-8b, Qwen/Qwen3-32B → qwen3-32b. */
 export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-|-$/g, '');
 
-/** A starting provider config: every model the server lists, at a placeholder price to edit. */
+/** A starting provider config: every model the server lists, at a placeholder price to edit. A server that can report
+ * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports. */
 export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
@@ -46,7 +53,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     wallet: o.wallet ?? '~/.config/solana/id.json',
     dataDir: '~/.orrery/provider',
     upstream: { baseUrl: found.baseUrl },
-    models: found.models.map((id) => ({ id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000 } })),
+    models: found.models.map((id) => ({ id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
     redeem: { everySecs: 300, minUnits: 1_000 },
   };
 }

@@ -108,6 +108,7 @@ export class ProviderNode {
   private ledger = new Map<string, Entry>();
   private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
   private answers = 0;
+  private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private dir: string;
@@ -332,6 +333,10 @@ export class ProviderNode {
     }
     const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body);
     const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
+    if (price.cachedInput !== undefined && usage && !usage.prompt_tokens_details && !this.warnedNoCacheReport) {
+      this.warnedNoCacheReport = true;
+      this.log(`${offer.id} lists a cached-input price but the model server reported no cache hits (usage.prompt_tokens_details); vLLM needs --enable-prompt-tokens-details, SGLang --enable-cache-report`);
+    }
     const cost = costOf(price, inputTokens, outputTokens, usage?.prompt_tokens_details?.cached_tokens ?? 0);
     const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
     e.owed += record.cost;

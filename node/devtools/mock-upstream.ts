@@ -14,7 +14,8 @@ const seenPrefixes = new Set<string>();
 
 createServer(async (req, res) => {
   if (req.method === 'GET' && req.url?.endsWith('/models')) {
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: [{ id: 'llama3.1:8b' }, { id: 'qwen2.5:7b' }] }));
+    const ids = (process.env.MOCK_MODELS ?? 'llama3.1:8b,qwen2.5:7b').split(',');
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: ids.map((id) => ({ id })) }));
     return;
   }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {

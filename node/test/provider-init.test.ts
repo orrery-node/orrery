@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { draftConfig, findUpstream, networkId } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, findUpstream, networkId } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -28,5 +28,14 @@ describe('orrery provider init', () => {
     assert.equal(c.name, 'Basement GPU');
     assert.deepEqual(c.upstream, { baseUrl: 'http://127.0.0.1:11434/v1' });
     assert.deepEqual(c.models.map((m) => [m.id, m.upstreamModel, m.price.input, m.price.output]), [['llama3.1-8b', 'llama3.1:8b', 500_000, 1_000_000], ['qwen2.5-7b', 'qwen2.5:7b', 500_000, 1_000_000]]);
+  });
+
+  it('gives a server that reports cache hits a cached-input price, and leaves the others at the input price', () => {
+    const v = draftConfig({ name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', models: ['Qwen/Qwen3-32B'] });
+    assert.equal(v.models[0].price.cachedInput, 125_000);
+    const o = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b'] });
+    assert.equal('cachedInput' in o.models[0].price, false);
+    assert.equal(CACHE_REPORTING.vLLM, '--enable-prompt-tokens-details');
+    assert.equal(CACHE_REPORTING.SGLang, '--enable-cache-report');
   });
 });
