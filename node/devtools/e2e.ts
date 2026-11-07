@@ -231,7 +231,9 @@ if (process.env.E2E_CODEX) {
   });
   writeFileSync(join(WORK, 'codex.log'), cx.out);
   codexTrips = trips.length - before;
-  check(`orrery connect codex writes a profile and Codex CLI ${version} runs through the router`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1, `exit ${cx.code} · ${codexTrips} paid request(s)`);
+  const profile = readFileSync(join(codexHome, 'orrery.config.toml'), 'utf8');
+  const ctxLine = profile.match(/^model_context_window = (\d+)$/m)?.[1];
+  check(`orrery connect codex writes a profile and Codex CLI ${version} runs through the router`, cx.code === 0 && cx.out.includes('Requests travel') && codexTrips >= 1 && Number(ctxLine) > 0, `exit ${cx.code} · ${codexTrips} paid request(s) · context window ${ctxLine ?? 'missing'}${cx.out.includes('metadata') ? ' · codex warns: no built-in metadata' : ''}`);
 }
 const initOut = join(WORK, 'init-provider.json');
 await new Promise<void>((done) => { const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Rehearsal Rig', '--out', initOut], { stdio: 'ignore' }); pi.on('exit', () => done()); });

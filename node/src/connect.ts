@@ -7,10 +7,11 @@ export type Client = (typeof CLIENTS)[number];
 
 /** A Codex CLI profile file ($CODEX_HOME/orrery.config.toml, used with `codex --profile orrery`). It sits beside the
  * user's config.toml and leaves it untouched. */
-export function codexProfile(router: string, model: string): string {
+export function codexProfile(router: string, model: string, contextWindow?: number): string {
   return [
     `model = "${model}"`,
     'model_provider = "orrery"',
+    ...(contextWindow && contextWindow > 0 ? [`model_context_window = ${Math.floor(contextWindow)}`] : []),
     '',
     '[model_providers.orrery]',
     'name = "Orrery"',
@@ -32,5 +33,20 @@ export function instructions(client: Client, router: string, model: string, code
       return `ANTHROPIC_BASE_URL=${base}\nANTHROPIC_API_KEY=orrery   # any value; the router has no key\nmodel: ${model}   (or run the router with --alias 'claude-*=${model}')`;
     case 'mcp':
       return `Command for an MCP client: npx -y orrery-node mcp --router ${base}\nClaude Code: claude mcp add orrery -- npx -y orrery-node mcp --router ${base}`;
+  }
+}
+
+type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
+
+/** The model's context length as the running router lists it (from the providers' manifests), if the router is up. */
+export async function contextFromRouter(router: string, model: string, fetchFn: Fetch = fetch as unknown as Fetch): Promise<number | undefined> {
+  try {
+    const r = await fetchFn(`${router.replace(/\/$/, '')}/v1/models`, { signal: AbortSignal.timeout(1_500) });
+    if (!r.ok) return undefined;
+    const j = (await r.json()) as { data?: { id?: string; context_length?: number }[] };
+    const m = (j.data ?? []).find((x) => x.id === model);
+    return typeof m?.context_length === 'number' && m.context_length > 0 ? m.context_length : undefined;
+  } catch {
+    return undefined;
   }
 }

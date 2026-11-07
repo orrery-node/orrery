@@ -14,7 +14,7 @@ import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
 import { draftConfig, findUpstream } from './provider/init.ts';
-import { CLIENTS, codexProfile, instructions, type Client } from './connect.ts';
+import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -180,9 +180,9 @@ async function main() {
     if (sub !== 'codex') throw new Error('--write is for codex; the others take environment variables');
     if (existsSync(profilePath) && !has('force')) throw new Error(`${profilePath} exists; pass --force to replace it`);
     mkdirSync(dirname(profilePath), { recursive: true });
-    writeFileSync(profilePath, codexProfile(routerUrl, model));
-    return console.log(`wrote ${profilePath}
-run: codex --profile orrery`);
+    const ctx = await contextFromRouter(routerUrl, model);
+    writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
+    return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
   }
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
