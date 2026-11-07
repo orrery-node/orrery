@@ -72,6 +72,8 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
+Three limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never route above a price per million tokens, after holder discounts; a request can set its own with `x-orrery-max-price`), `--daily-cap` (refuse requests once the day's spending would pass it) and the channel deposit itself (a session key cannot sign past it).
+
 Both sides get a local console. The router serves one at `http://127.0.0.1:7171/` (every answer, its provider, cost and why it went there), and a provider node serves one at its own port: answers served, totals signed by routers, what is redeemed on chain and what is waiting. The provider page answers only on that computer, and a request relayed by a proxy on the same machine gets a 404.
 
 Coding agents resend their whole context every turn, and a provider's prompt cache only helps if the next turn comes back to it. The router remembers which provider last served each conversation prefix (for five minutes, about how long prompt caches last) and prices that provider's offer with the prefix as cached input. A provider that lists a cached-input price keeps the session when the cache makes it the cheaper choice.
