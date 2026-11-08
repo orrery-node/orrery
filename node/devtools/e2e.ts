@@ -251,6 +251,15 @@ const fb1j = (await fb1.json()) as { model?: string };
 const fb2 = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-price': '0.20/1.00' }, body: JSON.stringify({ models: ['deepseek-v3', 'qwen3-32b'], messages: [{ role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
 const fb2j = (await fb2.json()) as { model?: string };
 check('a request with fallbacks moves to the next model when the first cannot be served', fb1.status === 200 && fb1j.model === 'llama-3.3-70b' && fb2.status === 200 && fb2j.model === 'qwen3-32b', `no-such-model|llama-3.3-70b → ${fb1j.model} · [deepseek-v3, qwen3-32b] under $0.20/$1.00 → ${fb2j.model} via ${nameOf(fb2.headers.get('x-orrery-provider'))}`);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const { bench, renderBench } = await import('../src/bench.ts');
+const benchFrom = trips.length;
+const benchRows = await bench({ model: 'llama-3.3-70b', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'llama-3.3-70b')), router: ROUTER, n: 3 });
+writeFileSync(join(WORK, 'bench.txt'), renderBench('llama-3.3-70b', benchRows));
+const benchSpent = benchRows.flatMap((r) => r.units).reduce((a, b) => a + b, 0n);
+const benchTrips = trips.slice(benchFrom).reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
+const byName = Object.fromEntries(benchRows.map((r) => [r.name, `${r.answered}/${r.asked}`]));
+check('orrery bench asks each provider of a model through the router and adds up to what it paid', byName['Ironbridge Compute'] === '3/3' && byName['Vault Nine'] === '3/3' && byName['Kestrel GPU Co-op'] === '0/1' && benchSpent === benchTrips && benchSpent > 0n, `${Object.entries(byName).map(([k, v]) => `${k} ${v}`).join(', ')} · spent $${usd(benchSpent)}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
@@ -329,7 +338,7 @@ const { readTrips, summarize } = await import('../src/spend.ts');
 const logged = summarize(readTrips(join(WORK, 'home/router/trips.jsonl')), 'model', Infinity);
 const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
-check('router logged every answered request', trips.length === 27 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 33 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

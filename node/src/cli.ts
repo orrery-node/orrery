@@ -17,6 +17,7 @@ import { CACHE_REPORTING, draftConfig, findUpstream } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { doctor, render } from './doctor.ts';
 import { readTrips, summarize, windowMs } from './spend.ts';
+import { bench, renderBench } from './bench.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -45,6 +46,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
+  ${CLI} bench <model> [--n 3]   ask every provider of a model a few short questions through your router (paid) and compare
   ${CLI} spend [--since 24h|7d] [--by model|provider]   what your router paid, from its own log of answers
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
@@ -189,6 +191,15 @@ async function main() {
     const ctx = await contextFromRouter(routerUrl, model);
     writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
     return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
+  }
+  if (cmd === 'bench') {
+    if (!sub) throw new Error(`usage: ${CLI} bench <model> [--n 3] [--router <url>]`);
+    const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    await registry.refresh();
+    const providers = registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === sub));
+    if (!providers.length) throw new Error(`no provider on the network lists ${sub}; see ${CLI} models`);
+    const rows = await bench({ model: sub, providers, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, n: Math.max(1, Math.min(20, Number(flag('n', '3')))) });
+    return console.log(renderBench(sub, rows));
   }
   if (cmd === 'spend') {
     const by = flag('by', 'model') === 'provider' ? 'provider' : 'model';
