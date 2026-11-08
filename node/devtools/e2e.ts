@@ -6,6 +6,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { request as httpRequest } from 'node:http';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount } from '@solana/spl-token';
 
@@ -271,6 +272,16 @@ const embj = (await emb.json()) as { data?: { embedding: number[]; index: number
 const embCost = emb.headers.get('x-orrery-cost');
 const embExpected = costOf({ input: 20_000, output: 0 }, embj.usage?.prompt_tokens ?? 0, 0);
 check('embeddings are routed and paid like any answer, priced on input tokens', emb.status === 200 && embj.model === 'bge-m3' && embj.data?.length === 3 && embj.data.every((d) => d.embedding.length === 8) && embCost === usd(embExpected) && trips.at(-1)?.model === 'bge-m3', `${embj.data?.length} vectors · ${embj.usage?.prompt_tokens} input tokens · $${embCost} via ${nameOf(emb.headers.get('x-orrery-provider'))}`);
+const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
+  const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
+  r.on('error', () => done(0));
+  r.end();
+});
+const rebindRouter = await rawGet(17171, '/orrery/status', { host: 'attacker.example:17171' });
+const rebindProvider = await rawGet(providerSpecs[1].port, '/orrery/status', { host: 'attacker.example:' + providerSpecs[1].port });
+const crossSite = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'text/plain', origin: 'https://attacker.example' }, body: JSON.stringify({ model: 'llama-3.3-70b', messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const localOk = await rawGet(17171, '/orrery/status', { host: 'localhost:17171' });
+check('a web page cannot spend through the router or read it by pointing a domain here', rebindRouter === 403 && rebindProvider === 404 && crossSite.status === 403 && localOk === 200, `rebinding: router ${rebindRouter}, provider console ${rebindProvider} · cross-site POST ${crossSite.status} · localhost ${localOk}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');

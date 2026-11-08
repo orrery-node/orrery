@@ -63,6 +63,15 @@ class Unserved extends Error {
   }
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+/** The host part of a Host header: "localhost:7171" → "localhost", "[::1]:7171" → "[::1]". */
+export function hostname(h: string | undefined): string {
+  if (!h) return '';
+  if (h.startsWith('[')) return h.slice(0, h.indexOf(']') + 1);
+  return h.replace(/:\d+$/, '').toLowerCase();
+}
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const parts: Buffer[] = [];
   let n = 0;
@@ -146,6 +155,10 @@ export class Router {
     const url = new URL(req.url ?? '/', 'http://x');
     const origin = req.headers.origin;
     if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) return send(res, 403, { error: { code: 'origin', message: 'the router only answers this computer' } });
+    // A page on some other site that points its own domain at 127.0.0.1 (DNS rebinding) would read this router with no
+    // Origin header; the Host header still names that domain, so a router listening on this computer only answers
+    // requests addressed to this computer.
+    if (LOOPBACK_HOSTS.has(this.o.host ?? '127.0.0.1') && !LOOPBACK_HOSTS.has(hostname(req.headers.host))) return send(res, 403, { error: { code: 'host', message: 'the router only answers requests addressed to this computer' } });
     try {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);

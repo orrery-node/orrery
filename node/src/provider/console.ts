@@ -5,11 +5,15 @@ import { NAME } from '../brand.ts';
 import { consoleHead } from '../router/console.ts';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+/** Host names that address this computer; a page that points its own domain here (DNS rebinding) still sends its own. */
+const LOCAL_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
-/** A request from this computer itself. One relayed by a proxy on the same machine carries forwarding headers and is not. */
+/** A request from this computer, addressed to this computer. One relayed by a proxy on the same machine carries forwarding
+ * headers and is not; nor is one whose Host names another domain. */
 export function isLocal(req: Pick<IncomingMessage, 'headers'> & { socket: { remoteAddress?: string } }): boolean {
   if (!LOOPBACK.has(req.socket.remoteAddress ?? '')) return false;
-  return !req.headers['x-forwarded-for'] && !req.headers.forwarded && !req.headers['x-real-ip'];
+  if (req.headers['x-forwarded-for'] || req.headers.forwarded || req.headers['x-real-ip']) return false;
+  return LOCAL_NAMES.has(String(req.headers.host ?? '').replace(/:\d+$/, '').toLowerCase());
 }
 
 export function providerConsolePage(): string {

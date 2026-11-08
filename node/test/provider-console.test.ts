@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isLocal } from '../src/provider/console.ts';
 
-const req = (remoteAddress: string, headers: Record<string, string> = {}) => ({ socket: { remoteAddress }, headers });
+const req = (remoteAddress: string, headers: Record<string, string> = {}) => ({ socket: { remoteAddress }, headers: { host: '127.0.0.1:17282', ...headers } });
 
 describe('provider console access', () => {
   it('answers requests from this computer', () => {
@@ -21,5 +21,11 @@ describe('provider console access', () => {
     assert.ok(!isLocal(req('127.0.0.1', { 'x-forwarded-for': '203.0.113.7' })));
     assert.ok(!isLocal(req('127.0.0.1', { forwarded: 'for=203.0.113.7' })));
     assert.ok(!isLocal(req('::1', { 'x-real-ip': '203.0.113.7' })));
+  });
+
+  it('refuses a page that points its own domain at this computer (DNS rebinding)', () => {
+    assert.ok(!isLocal(req('127.0.0.1', { host: 'attacker.example:17282' })));
+    assert.ok(isLocal(req('127.0.0.1', { host: 'localhost:17282' })));
+    assert.ok(isLocal(req('::1', { host: '[::1]:17282' })));
   });
 });
