@@ -523,7 +523,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal, 17 of 17 checks
+- [x] Local end-to-end rehearsal on the real program, 30 of 30 checks
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
@@ -533,7 +533,13 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] $OREY live on Meteora (`2nB8hRZcSGKbxpfazRd749nXbWRgG27q6yQcasWcThse`), set as the program's bond mint, holder prices on
 - [ ] Buyback and burn: a share of what Orrery earns buys $OREY on the market and burns it. It runs outside the settlement program, which keeps no fee; a smaller supply moves every holder toward the next tier
 - [ ] Independent audit
-- [x] Anthropic Messages API (`/v1/messages`) on the router, tool use included (in main, ships in orrery-node 0.1.3)
+- [x] Anthropic Messages API (`/v1/messages`) on the router, tool use included (orrery-node 0.1.3)
+- [x] OpenAI Responses API, MCP server, model aliases, resumed streams, `orrery provider init` (in main, orrery-node 0.1.4)
+- [x] Codex CLI and Claude Code through the router, checked in the rehearsal; `orrery connect` writes their settings (0.1.4)
+- [x] Cached-input prices and prompt-cache affinity for agents that resend their context every turn (0.1.4)
+- [x] Parallel requests: one lane per provider, busy providers hand off to the next free one; 400 answers 16 at a time, 0 failed (0.1.4)
+- [x] Spending limits for unattended agents: `--max-price`, `--daily-cap`, the channel deposit (0.1.4)
+- [x] Router and provider consoles, `orrery doctor` (0.1.4)
 - [ ] Built-in hardware attestation verifier
 - [ ] $OREY bonds live on mainnet
 
