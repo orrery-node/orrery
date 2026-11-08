@@ -271,6 +271,7 @@ export class ProviderNode {
         return json(res, 200, { paid: e.best?.cumulative ?? 0n, owed: e.owed });
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') return await this.complete(req, res);
+      if (req.method === 'POST' && url.pathname === '/v1/embeddings') return await this.complete(req, res, 'embeddings');
       return fail(res, 404, 'not_found', 'no such route');
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -279,7 +280,7 @@ export class ProviderNode {
     }
   }
 
-  private async complete(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | 'embeddings' = 'chat'): Promise<void> {
     const address = String(req.headers['x-orrery-channel'] ?? '');
     if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-orrery-channel');
     let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
@@ -306,17 +307,53 @@ export class ProviderNode {
     const paid = e.best?.cumulative ?? 0n;
     if (paid < e.owed) return fail(res, 402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
-    const maxOut = Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
+    const maxOut = kind === 'embeddings' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
     const maxCost = costOf(price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
       if (e.owed + maxCost > e.channel.deposit) return fail(res, 402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
     }
 
+    const settle = (send: (data: string, event?: string) => void, inputTokens: number, outputTokens: number, cachedTokens: number) => {
+      const cost = costOf(price, inputTokens, outputTokens, cachedTokens);
+      const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
+      e.owed += record.cost;
+      e.usageHash = nextUsageHash(e.usageHash, record);
+      e.unpaid.push({ ...record, owedAfter: e.owed });
+      this.save();
+      send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex'), off }), 'orrery');
+      res.write(sseFrame('[DONE]'));
+      res.end();
+      this.answers += 1;
+      this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey });
+      appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost) });
+      if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
+      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
+    };
+    const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
+
+    if (kind === 'embeddings') {
+      // Embeddings ride the same envelope as a chat stream: one data event with the upstream's answer, then the usage
+      // record, so a router pays for them exactly like any other answer.
+      const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/embeddings`, {
+        method: 'POST',
+        timeoutMs: 30_000,
+        headers: upHeaders,
+        body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), model: offer.upstreamModel ?? offer.id, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) }),
+      });
+      if (!up.ok) return fail(res, 502, 'upstream_error', `upstream answered ${up.status}`);
+      const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0' });
+      const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
+      sendE(JSON.stringify({ ...j, model: offer.id }));
+      settle(sendE, j.usage?.prompt_tokens ?? estimateInputTokens(body), 0, 0);
+      return;
+    }
+
     const upstream = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       timeoutMs: 30_000,
-      headers: { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) },
+      headers: upHeaders,
       body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), ...upstreamBody(body, offer.upstreamModel ?? offer.id, maxOut) }),
     });
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
@@ -345,20 +382,7 @@ export class ProviderNode {
       this.warnedNoCacheReport = true;
       this.log(`${offer.id} lists a cached-input price but the model server reported no cache hits (usage.prompt_tokens_details); vLLM needs --enable-prompt-tokens-details, SGLang --enable-cache-report`);
     }
-    const cost = costOf(price, inputTokens, outputTokens, usage?.prompt_tokens_details?.cached_tokens ?? 0);
-    const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
-    e.owed += record.cost;
-    e.usageHash = nextUsageHash(e.usageHash, record);
-    e.unpaid.push({ ...record, owedAfter: e.owed });
-    this.save();
-    send(JSON.stringify({ ...record, cost: record.cost.toString(), owed: e.owed.toString(), usageHash: e.usageHash.toString('hex'), off }), 'orrery');
-    res.write(sseFrame('[DONE]'));
-    res.end();
-    this.answers += 1;
-    this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey });
-    appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost) });
-    if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
-    this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
+    settle(send, inputTokens, outputTokens, usage?.prompt_tokens_details?.cached_tokens ?? 0);
   }
 
   /** Redeem every channel whose best voucher is ahead of what is on chain, a few channels per transaction. */
