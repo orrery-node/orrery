@@ -23,6 +23,19 @@ const TOOLS = [
     },
   },
   {
+    name: 'embed',
+    description: 'Turn text into vectors with an embedding model on the Orrery network, paid for this one call. Returns the vectors as JSON.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'a network embedding model id, e.g. bge-m3' },
+        input: { description: 'a string or an array of strings', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        max_price: { type: 'string', description: 'optional price ceiling in dollars per million input tokens, written input/output, e.g. 0.05/0' },
+      },
+      required: ['model', 'input'],
+    },
+  },
+  {
     name: 'models',
     description: 'List the models on the Orrery network with the cheapest price per million tokens, the cheapest cached-input price where one is listed, context length, and how many providers serve each. Prices come from listings pinned on Solana.',
     inputSchema: { type: 'object', properties: {} },
@@ -69,6 +82,15 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const who = r.headers.get('x-orrery-provider');
       const cost = r.headers.get('x-orrery-cost');
       return text(`${answer}\n\n— answered by ${who ? `${who.slice(0, 6)}…` : 'a provider'} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer`);
+    }
+    if (name === 'embed') {
+      if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
+      const r = await fetchFn(`${router}/v1/embeddings`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, input: a.input }) });
+      const j = (await r.json()) as { data?: { embedding: number[] }[]; usage?: { prompt_tokens?: number }; error?: { message?: string } };
+      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
+      const vectors = (j.data ?? []).map((d) => d.embedding);
+      return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}`);
     }
     if (name === 'models') {
       const r = await fetchFn(`${router}/v1/models`);
