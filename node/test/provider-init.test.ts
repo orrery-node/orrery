@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_REPORTING, draftConfig, findUpstream, networkId } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, networkId } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -37,5 +37,12 @@ describe('orrery provider init', () => {
     assert.equal('cachedInput' in o.models[0].price, false);
     assert.equal(CACHE_REPORTING.vLLM, '--enable-prompt-tokens-details');
     assert.equal(CACHE_REPORTING.SGLang, '--enable-cache-report');
+  });
+
+  it('prices embedding models on input tokens only', () => {
+    for (const id of ['BAAI/bge-m3', 'intfloat/e5-large-v2', 'nomic-embed-text', 'mxbai-embed-large', 'text-embedding-3-small', 'Snowflake/snowflake-arctic-embed-l']) assert.ok(isEmbeddingModel(id), id);
+    for (const id of ['Qwen/Qwen3-32B', 'llama3.1:8b', 'deepseek-v3', 'gemma-3-27b']) assert.ok(!isEmbeddingModel(id), id);
+    const c = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['nomic-embed-text', 'llama3.1:8b'] });
+    assert.deepEqual(c.models.map((m) => [m.id, m.price.input, m.price.output]), [['nomic-embed-text', 20_000, 0], ['llama3.1-8b', 500_000, 1_000_000]]);
   });
 });

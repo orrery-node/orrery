@@ -38,11 +38,15 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
   throw new Error(explicit ? `no models at ${explicit}/models` : `no OpenAI-compatible server answered on ${KNOWN_UPSTREAMS.map(([n, u]) => `${n} (${u})`).join(', ')}; pass --upstream <url>`);
 }
 
+/** Embedding models by their usual names; they are priced on input tokens only. */
+export const isEmbeddingModel = (id: string) => /(^|[/_.-])(embed|embedding|bge|e5|gte|nomic-embed|mxbai|arctic-embed|jina-embeddings)/i.test(id);
+
 /** A network-style model id from an upstream one: llama3.1:8b → llama3.1-8b, Qwen/Qwen3-32B → qwen3-32b. */
 export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-|-$/g, '');
 
 /** A starting provider config: every model the server lists, at a placeholder price to edit. A server that can report
- * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports. */
+ * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports.
+ * Embedding models are priced on input tokens only ($0.02 per million to start). */
 export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
@@ -53,7 +57,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     wallet: o.wallet ?? '~/.config/solana/id.json',
     dataDir: '~/.orrery/provider',
     upstream: { baseUrl: found.baseUrl },
-    models: found.models.map((id) => ({ id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
+    models: found.models.map((id) => (isEmbeddingModel(id) ? { id: networkId(id), upstreamModel: id, context: 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } } : { id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
     redeem: { everySecs: 300, minUnits: 1_000 },
   };
 }
