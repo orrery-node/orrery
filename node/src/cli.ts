@@ -17,7 +17,7 @@ import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel } from './
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { doctor, render } from './doctor.ts';
 import { readTrips, summarize, windowMs } from './spend.ts';
-import { bench, renderBench } from './bench.ts';
+import { bench, median, renderBench } from './bench.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -46,9 +46,9 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
-  ${CLI} bench <model> [--n 3]   ask every provider of a model a few short questions through your router (paid) and compare
-  ${CLI} spend [--since 24h|7d] [--by model|provider]   what your router paid, from its own log of answers
-  ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>]   check the RPC, the program, every listing, a wallet and the router (reads only)
+  ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
+  ${CLI} spend [--since 24h|7d] [--by model|provider] [--json]   what your router paid, from its own log of answers
+  ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
   ${CLI} channels                your router's channels and what the chain says about each
@@ -212,12 +212,14 @@ async function main() {
     const providers = registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === sub));
     if (!providers.length) throw new Error(`no provider on the network lists ${sub}; see ${CLI} models`);
     const rows = await bench({ model: sub, providers, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, n: Math.max(1, Math.min(20, Number(flag('n', '3')))) });
+    if (has('json')) return console.log(JSON.stringify({ model: sub, providers: rows.map((r) => ({ name: r.name, address: r.address, asked: r.asked, answered: r.answered, ttftMsMedian: median(r.ttftMs) || null, totalMsMedian: median(r.totalMs) || null, perAnswer: r.units.length ? usd(r.units.reduce((a, b) => a + b, 0n) / BigInt(r.units.length)) : null, listed: r.price, error: r.error ?? null })) }, null, 2));
     return console.log(renderBench(sub, rows));
   }
   if (cmd === 'spend') {
     const by = flag('by', 'model') === 'provider' ? 'provider' : 'model';
     const since = flag('since', '24h')!;
     const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
+    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })) }, null, 2));
     if (!total.answers) return console.log(`No answers in the last ${since}. The router logs each answer it pays for to ${home('router', 'trips.jsonl')}.`);
     const line = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => `${r.key.padEnd(26)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r.cacheKept ? `  ${r.cacheKept} kept for cache` : ''}`;
     console.log(`last ${since}, by ${by}`);
@@ -229,7 +231,7 @@ async function main() {
     const walletPath = flag('wallet', process.env.ORRERY_WALLET);
     const address = flag('address');
     const lines = await doctor({ rpc: rpc(), mint: mint(), wallet: address ? new PublicKey(address) : walletPath ? loadKeypair(expand(walletPath)).publicKey : undefined, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, deposit: dollars(flag('deposit', '2')!), allowDev: has('allow-dev-enclaves'), version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
-    console.log(render(lines));
+    console.log(has('json') ? JSON.stringify(lines.map((l) => ({ ...l, what: l.what.trim() })), null, 2) : render(lines));
     if (lines.some((l) => l.ok === false)) process.exitCode = 1;
     return;
   }
