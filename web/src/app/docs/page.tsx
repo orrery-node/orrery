@@ -31,6 +31,19 @@ const RUN = `orrery router \\
   --rpc https://your-rpc.example.com \\
   --daily-cap 5`;
 
+const CODEX = `# writes ~/.codex/orrery.config.toml and leaves your config.toml alone
+npx -y orrery-node connect codex --write
+codex --profile orrery`;
+
+const CLAUDE = `orrery router --wallet ~/.config/solana/id.json --alias 'claude-*=gpt-oss-120b'
+
+ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude`;
+
+const MCP = `claude mcp add orrery -- npx -y orrery-node mcp`;
+
+const LIMITS = `orrery router --wallet agent.json --max-price 0.50/1.50 --daily-cap 5
+orrery doctor --wallet agent.json`;
+
 const ANTH_PY = `from anthropic import Anthropic
 
 client = Anthropic(base_url="http://127.0.0.1:7171", api_key="unused")
@@ -131,6 +144,7 @@ const TOC = [
   ['wallet', 'Fund a wallet'],
   ['router', 'Run the router'],
   ['tools', 'Connect your tools'],
+  ['agents', 'Coding agents'],
   ['routes', 'Models and routes'],
   ['pay', 'How you pay'],
   ['channels', 'Your channels'],
@@ -259,6 +273,8 @@ export default function Docs() {
               <tr><td><code>--top-up-below</code></td><td>0.25</td><td>add to a channel when what is left falls under this</td></tr>
               <tr><td><code>--daily-cap</code></td><td>5</td><td>stop spending for the day after this many USDC</td></tr>
               <tr><td><code>--min-reputation</code></td><td>0.2</td><td>the auto route ignores providers below this score (0 to 1)</td></tr>
+              <tr><td><code>--max-price</code></td><td>none</td><td>never route above this price, dollars per million tokens in/out, e.g. <code>0.50/1.50</code>, after holder discounts. Per request: header <code>x-orrery-max-price</code>. Env <code>ORRERY_MAX_PRICE</code>.</td></tr>
+              <tr><td><code>--alias</code></td><td>none</td><td>answer other model names with a network model, e.g. <code>'claude-*=gpt-oss-120b'</code>. Env <code>ORRERY_ALIASES</code>.</td></tr>
               <tr><td><code>--port</code></td><td>7171</td><td>local port</td></tr>
               <tr><td><code>--refresh</code></td><td>60</td><td>seconds between re-reading the provider list from the chain</td></tr>
               <tr><td><code>--enclave-images</code></td><td>none</td><td>comma-separated enclave measurements you trust for <code>:private</code></td></tr>
@@ -286,6 +302,18 @@ export default function Docs() {
           <Code lang="response headers">{CURL_HEAD}</Code>
           <p>Since <code>orrery-node</code> 0.1.3 the router also serves the Anthropic Messages API: <code>POST /v1/messages</code>, streamed or not, with tool use, plus <code>/v1/messages/count_tokens</code>. Point an Anthropic client at <code>http://127.0.0.1:7171</code> (the SDK adds <code>/v1/messages</code> itself) and ask for a network model by name. Tool calls become function calls on the way to the provider and come back as <code>tool_use</code> blocks; payment is the same per-answer voucher.</p>
           <Code lang="python" copy>{ANTH_PY}</Code>
+
+          <H2 id="agents" n={n('agents')}>Coding agents</H2>
+          <p>Codex speaks the OpenAI Responses API and Claude Code the Anthropic Messages API, and the router serves both from <code>orrery-node</code> 0.1.4. Both were run through the router in our rehearsal, each answer signed for and redeemed. <code>orrery connect codex|claude|openai|anthropic|mcp</code> prints what each client needs.</p>
+          <p>Codex: one command writes a profile next to your Codex config, with the model&apos;s context window read from your router.</p>
+          <Code lang="bash" copy>{CODEX}</Code>
+          <p>Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it. The router has no API key; any value works.</p>
+          <Code lang="bash" copy>{CLAUDE}</Code>
+          <p>Any MCP client can hand work to the network through <code>orrery mcp</code>, which offers <code>ask</code>, <code>models</code> and <code>status</code> in front of your running router.</p>
+          <Code lang="bash" copy>{MCP}</Code>
+          <p>Agents resend their context every turn. When a provider lists a cached-input price, those tokens bill at it, and the router keeps the next turns on the provider that holds the cache for five minutes. Parallel requests are fine: each provider gets one lane and a busy one hands the request to the next free provider.</p>
+          <p>For an agent you leave running, set a price ceiling and a daily cap, and check the setup first. <code>orrery doctor</code> only reads.</p>
+          <Code lang="bash" copy>{LIMITS}</Code>
 
           <H2 id="routes" n={n('routes')}>Models and routes</H2>
           <p>Model names are the ones providers list. <code>orrery models</code> prints every model on the network with its cheapest price and how many providers serve it; <code>orrery providers</code> prints every listing with what the chain says about it.</p>
