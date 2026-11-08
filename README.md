@@ -523,7 +523,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal on the real program, 30 of 30 checks
+- [x] Local end-to-end rehearsal on the real program, 39 of 39 checks (every API, embeddings, fallbacks, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
