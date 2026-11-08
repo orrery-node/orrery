@@ -72,6 +72,8 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
+`orrery spend --since 24h --by model|provider` sums what your router paid, from the log it keeps of every answer it signs for (`~/.orrery/router/trips.jsonl`). The rehearsal checks that the log adds up to exactly what the router signed.
+
 `orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router.
 
 Three limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never route above a price per million tokens, after holder discounts; a request can set its own with `x-orrery-max-price`), `--daily-cap` (refuse requests once the day's spending would pass it) and the channel deposit itself (a session key cannot sign past it).
