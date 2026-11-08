@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-17%2F17%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="17 of 17 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-39%2F39%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="39 of 39 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -448,7 +448,7 @@ assets/    brand and README media
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
 cd node && pnpm install && pnpm test                            # 18 tests
-pnpm e2e                                                        # full local rehearsal, 17 checks
+pnpm e2e                                                        # full local rehearsal, 39 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
