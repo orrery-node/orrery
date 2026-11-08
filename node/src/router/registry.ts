@@ -105,12 +105,13 @@ export class Registry {
     return out;
   }
 
-  catalog(): { id: string; providers: number; cheapest: ModelOffer['price']; context: number; private: number }[] {
-    const by = new Map<string, { id: string; providers: number; cheapest: ModelOffer['price']; context: number; private: number }>();
+  catalog(): { id: string; providers: number; cheapest: ModelOffer['price']; cachedFrom: number | null; context: number; private: number }[] {
+    const by = new Map<string, { id: string; providers: number; cheapest: ModelOffer['price']; cachedFrom: number | null; context: number; private: number }>();
     for (const e of this.usable()) {
       for (const m of e.manifest!.models) {
-        const c = by.get(m.id) ?? { id: m.id, providers: 0, cheapest: m.price, context: m.context, private: 0 };
+        const c = by.get(m.id) ?? { id: m.id, providers: 0, cheapest: m.price, cachedFrom: null, context: m.context, private: 0 };
         c.providers += 1;
+        if (m.price.cachedInput !== undefined && (c.cachedFrom === null || m.price.cachedInput < c.cachedFrom)) c.cachedFrom = m.price.cachedInput;
         if (m.price.input + m.price.output < c.cheapest.input + c.cheapest.output) c.cheapest = m.price;
         c.context = Math.max(c.context, m.context);
         if (e.tee?.verified) c.private += 1;

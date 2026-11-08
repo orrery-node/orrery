@@ -167,7 +167,7 @@ export class Router {
   private models(res: ServerResponse) {
     const data = this.o.registry.catalog().map((m) => ({
       id: m.id, object: 'model', owned_by: 'network', providers: m.providers, private_providers: m.private, context_length: m.context,
-      pricing: { prompt_per_million: m.cheapest.input / 1e6, completion_per_million: m.cheapest.output / 1e6 },
+      pricing: { prompt_per_million: m.cheapest.input / 1e6, completion_per_million: m.cheapest.output / 1e6, ...(m.cachedFrom !== null ? { cached_prompt_per_million: m.cachedFrom / 1e6 } : {}) },
     }));
     send(res, 200, { object: 'list', data });
   }

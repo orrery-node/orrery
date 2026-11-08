@@ -89,7 +89,7 @@ async function listModels() {
   await registry.refresh();
   const rows = registry.catalog();
   if (!rows.length) return console.log('No models listed yet.');
-  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} providers  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.private ? `  · ${m.private} private` : ''}`);
+  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} ${m.providers === 1 ? 'provider ' : 'providers'}  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.cachedFrom !== null ? ` · cached in from ${perMillion(m.cachedFrom)}` : ''}${m.private ? `  · ${m.private} private` : ''}`);
 }
 
 const tiersText = (t?: HolderTier[]) => (t?.length ? `holders ${t.map((x) => `${x.share / 100}%→−${x.off / 100}%`).join(' ')}  ` : '');
