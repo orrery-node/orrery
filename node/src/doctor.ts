@@ -12,8 +12,12 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; router: string; deposit: bigint; allowDev?: boolean }): Promise<Check[]> {
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string }): Promise<Check[]> {
   const out: Check[] = [];
+  if (o.version) {
+    const latest = await fetchWithTimeout('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
+    out.push(versionCheck(o.version, latest));
+  }
   const conn = new Connection(o.rpc, 'confirmed');
   let t0 = Date.now();
   try {
@@ -62,6 +66,22 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { route?: string; channels?: unknown[] } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: `not running at ${o.router}; start it with orrery router --wallet <keypair.json>` });
   return out;
+}
+
+/** Compares dotted versions: is b newer than a? */
+export function newer(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pb[i] ?? 0) !== (pa[i] ?? 0)) return (pb[i] ?? 0) > (pa[i] ?? 0);
+  }
+  return false;
+}
+
+export function versionCheck(current: string, latest: string | null): Check {
+  if (!latest) return { ok: null, what: 'version', detail: `${current}; npm did not answer` };
+  if (newer(current, latest)) return { ok: null, what: 'version', detail: `${current}; ${latest} is on npm: npx -y orrery-node@latest` };
+  if (newer(latest, current)) return { ok: true, what: 'version', detail: `${current}, ahead of npm (${latest})` };
+  return { ok: true, what: 'version', detail: `${current}, the latest on npm` };
 }
 
 export function render(lines: Check[]): string {
