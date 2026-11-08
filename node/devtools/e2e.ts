@@ -199,9 +199,14 @@ mcpSend({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion
 mcpSend({ jsonrpc: '2.0', method: 'notifications/initialized' });
 mcpSend({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
 mcpSend({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'ask', arguments: { model: 'llama-3.3-70b', prompt: 'Say hello.', max_tokens: 64 } } });
-for (let i = 0; i < 100 && !mcpOut[3]; i++) await sleep(200);
+mcpSend({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'models', arguments: {} } });
+mcpSend({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'ask', arguments: { model: 'deepseek-v3', prompt: 'Say hello.', max_tokens: 32, max_price: '0.20/1.00' } } });
+for (let i = 0; i < 100 && !(mcpOut[3] && mcpOut[4] && mcpOut[5]); i++) await sleep(200);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
 check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
+const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
+const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
+check('an agent sees on-chain prices, cached ones included, and caps what one ask may cost', /gpt-oss-120b .*cached in from \$0\.0094/.test(mcpModels) && mcpOut[5]?.result?.isError === true && mcpCapped.includes('price ceiling'), `${mcpModels.split('\n').find((l: string) => l.startsWith('gpt-oss-120b')) ?? ''} · capped ask: ${mcpCapped.slice(0, 90)}`);
 mcp.kill();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const rr = await fetch(`${ROUTER}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', instructions: 'Be brief.', input: 'Say hello.', max_output_tokens: 64 }) });

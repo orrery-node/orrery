@@ -9,7 +9,7 @@ type Fetch = (url: string, init?: { method?: string; headers?: Record<string, st
 const TOOLS = [
   {
     name: 'ask',
-    description: 'Ask a model on the Orrery network. The local router picks a provider listed on Solana and pays it for this one answer. Add :cheap, :fast, :trusted or :private to the model name to pick the route.',
+    description: 'Ask a model on the Orrery network. The local router picks a provider listed on Solana and pays it for this one answer. Add :cheap, :fast, :trusted or :private to the model name to pick the route, and max_price to cap what you pay per million tokens.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -17,13 +17,14 @@ const TOOLS = [
         prompt: { type: 'string', description: 'what to ask' },
         system: { type: 'string', description: 'optional system prompt' },
         max_tokens: { type: 'number', description: 'cap on the answer length (default 1024)' },
+        max_price: { type: 'string', description: 'optional price ceiling in dollars per million tokens, input/output, e.g. 0.50/1.50; no provider above it is used' },
       },
       required: ['model', 'prompt'],
     },
   },
   {
     name: 'models',
-    description: 'List the models on the Orrery network with the cheapest price per million tokens and how many providers serve each.',
+    description: 'List the models on the Orrery network with the cheapest price per million tokens, the cheapest cached-input price where one is listed, context length, and how many providers serve each. Prices come from listings pinned on Solana.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -60,7 +61,8 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     if (name === 'ask') {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
-      const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
+      const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
       const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
       const answer = j.choices?.[0]?.message?.content ?? '';
@@ -70,8 +72,9 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'models') {
       const r = await fetchFn(`${router}/v1/models`);
-      const j = (await r.json()) as { data?: { id: string; providers: number; pricing: { prompt_per_million: number; completion_per_million: number } }[] };
-      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  $${m.pricing.prompt_per_million.toFixed(3)} in / $${m.pricing.completion_per_million.toFixed(3)} out per million`);
+      const j = (await r.json()) as { data?: { id: string; providers: number; context_length?: number; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number } }[] };
+      const usd = (v: number) => `$${v < 0.1 ? v.toFixed(4) : v.toFixed(2)}`;
+      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}`);
       return text(rows.length ? rows.join('\n') : 'no models on the network right now');
     }
     if (name === 'status') {
