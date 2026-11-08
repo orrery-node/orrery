@@ -284,7 +284,7 @@ export default function Docs() {
           <Code lang="curl" copy>{CURL}</Code>
           <p>Every answer carries three headers so you can see who served it and what you paid:</p>
           <Code lang="response headers">{CURL_HEAD}</Code>
-          <p>From <code>orrery-node</code> 0.1.3 the router also serves the Anthropic Messages API: <code>POST /v1/messages</code>, streamed or not, with tool use, plus <code>/v1/messages/count_tokens</code>. Point an Anthropic client at <code>http://127.0.0.1:7171</code> (the SDK adds <code>/v1/messages</code> itself) and ask for a network model by name. Tool calls become function calls on the way to the provider and come back as <code>tool_use</code> blocks; payment is the same per-answer voucher.</p>
+          <p>Since <code>orrery-node</code> 0.1.3 the router also serves the Anthropic Messages API: <code>POST /v1/messages</code>, streamed or not, with tool use, plus <code>/v1/messages/count_tokens</code>. Point an Anthropic client at <code>http://127.0.0.1:7171</code> (the SDK adds <code>/v1/messages</code> itself) and ask for a network model by name. Tool calls become function calls on the way to the provider and come back as <code>tool_use</code> blocks; payment is the same per-answer voucher.</p>
           <Code lang="python" copy>{ANTH_PY}</Code>
 
           <H2 id="routes" n={n('routes')}>Models and routes</H2>
@@ -429,10 +429,10 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (23 tests), and a full local rehearsal of the program, four providers (one with holder prices) and a router, including the Anthropic Messages API (19 of 19 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (54 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, and Codex CLI and Claude Code through the router (30 of 30 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
-            <li>In main, shipping in 0.1.3: the Anthropic Messages API on the router.</li>
+            <li>New in 0.1.4: the OpenAI Responses API, MCP, model aliases, resumed streams, <code>orrery connect</code> for Codex and Claude Code, cached-input prices and cache affinity, parallel lanes, <code>--max-price</code>, router and provider consoles, <code>orrery doctor</code> and <code>orrery provider init</code>.</li>
             <li>Not yet: a built-in hardware attestation verifier.</li>
           </ul>
         </article>
