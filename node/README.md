@@ -72,6 +72,8 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
+`orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router.
+
 Three limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never route above a price per million tokens, after holder discounts; a request can set its own with `x-orrery-max-price`), `--daily-cap` (refuse requests once the day's spending would pass it) and the channel deposit itself (a session key cannot sign past it).
 
 Both sides get a local console. The router serves one at `http://127.0.0.1:7171/` (every answer, its provider, cost and why it went there), and a provider node serves one at its own port: answers served, totals signed by routers, what is redeemed on chain and what is waiting. The provider page answers only on that computer, and a request relayed by a proxy on the same machine gets a 404.
