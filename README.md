@@ -540,6 +540,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Parallel requests: one lane per provider, busy providers hand off to the next free one; 400 answers 16 at a time, 0 failed (0.1.4)
 - [x] Spending limits for unattended agents: `--max-price`, `--daily-cap`, the channel deposit (0.1.4)
 - [x] Router and provider consoles, `orrery doctor` (0.1.4)
+- [x] Embeddings (`/v1/embeddings`), routed and paid like chat, priced on input tokens (0.1.5)
+- [x] Model fallbacks (`"a|b"` or a `models` array), `orrery bench`, `orrery spend` and `orrery provider earnings`, MCP prices and `max_price` (0.1.5)
 - [ ] Built-in hardware attestation verifier
 - [ ] $OREY bonds live on mainnet
 
