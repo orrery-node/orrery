@@ -115,7 +115,7 @@ If a client only sends its own model names, map them on the router: `orrery rout
 
 ### Agents: Orrery as an MCP server
 
-`orrery mcp` runs an MCP server on stdio in front of your running router, so an agent can hand work to models on the network. It has three tools: `ask` (a model and a prompt, answered and paid per answer; an optional `max_price` like `0.50/1.50` caps what that call may pay per million tokens), `models` (each model's lowest listed price, cached rate and context length) and `status`.
+`orrery mcp` runs an MCP server on stdio in front of your running router, so an agent can hand work to models on the network. It has four tools: `ask` (a model and a prompt, answered and paid per answer; an optional `max_price` like `0.50/1.50` caps what that call may pay per million tokens), `embed` (vectors from an embedding model on the network, paid per call), `models` (each model's lowest listed price, cached rate and context length) and `status`.
 
 ```json
 { "mcpServers": { "orrery": { "command": "npx", "args": ["-y", "orrery-node", "mcp"] } } }
