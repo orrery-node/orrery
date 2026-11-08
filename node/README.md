@@ -63,6 +63,8 @@ reply = client.chat.completions.create(
 
 Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the **OpenAI SDKs**. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost`.
 
+Embeddings work the same way: the router serves `/v1/embeddings`, routed to a provider that lists the embedding model and paid from the same channel, priced on input tokens (a provider lists an input price and an output price of 0).
+
 Clients that speak the newer OpenAI Responses API work too: the router serves `/v1/responses` at the same base URL, streamed or not, with function calls.
 
 The Codex CLI is one of them. One command writes a Codex profile for your router, beside your own `config.toml` and without touching it:
