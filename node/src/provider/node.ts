@@ -16,7 +16,7 @@ import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type Enclave
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
-import { appendTrip } from '../spend.ts';
+import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
 
@@ -252,6 +252,13 @@ export class ProviderNode {
           return void res.end(providerConsolePage());
         }
         return json(res, 200, this.status());
+      }
+      if (req.method === 'GET' && url.pathname === '/orrery/earnings') {
+        if (!isLocal(req)) return fail(res, 404, 'not_found', 'no such route');
+        const since = url.searchParams.get('since') ?? '24h';
+        const { rows, total } = summarize(readTrips(`${this.dir}/served.jsonl`), 'model', windowMs(since));
+        const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint }) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units) });
+        return json(res, 200, { since, rows: rows.map(out), total: out(total) });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
