@@ -213,7 +213,28 @@ export class Router {
     return this.serve(responsesToChat(a), req, res, { kind: 'responses', id: `resp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
   }
 
+  /** A request may name fallbacks, as "a|b" or an OpenRouter-style models array: when no provider of one model can
+   * serve it (none listed, over the price ceiling, all cooling down or all failed before answering), the next is tried. */
   private async serve(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
+    const list = Array.isArray(body.models) && body.models.length && body.models.every((m) => typeof m === 'string') ? (body.models as string[]) : typeof body.model === 'string' ? body.model.split('|').map((m) => m.trim()).filter(Boolean) : [];
+    if (!list.length) throw new Unserved('model is required', 400, 'bad_request');
+    const rest: Record<string, unknown> = { ...body };
+    delete rest.models;
+    let last: Unserved | null = null;
+    for (const m of list.slice(0, 4)) {
+      try {
+        return await this.serveOne({ ...rest, model: m }, req, res, anth);
+      } catch (e) {
+        const u = e as Unserved;
+        if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'no_provider', 'all_failed'].includes(u.code)) throw e;
+        last = u;
+        if (list.length > 1) this.log(`${m}: ${u.message}; trying the next model`);
+      }
+    }
+    throw last ?? new Unserved('model is required', 400, 'bad_request');
+  }
+
+  private async serveOne(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     const header = String(req.headers['x-orrery-route'] ?? '');
     const { model, route } = parseModel(applyAlias(body.model, this.o.aliases), (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
