@@ -60,6 +60,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
+  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
 
   --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
 `;
@@ -130,6 +131,16 @@ async function provider(sub: string) {
   const cfg = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
   cfg.rpcUrl = flag('rpc', process.env.ORRERY_RPC_URL ?? cfg.rpcUrl) ?? cfg.rpcUrl;
   cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
+  if (sub === 'earnings') {
+    const by = flag('by', 'model') === 'channel' ? 'provider' : 'model';
+    const since = flag('since', '24h')!;
+    const log = `${expand(cfg.dataDir ?? home('provider'))}/served.jsonl`;
+    const { rows, total } = summarize(readTrips(log), by, windowMs(since));
+    if (!total.answers) return console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
+    console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
+    for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    return;
+  }
   const node = new ProviderNode(cfg);
   if (sub === 'start') {
     await node.listen();

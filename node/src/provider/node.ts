@@ -16,6 +16,7 @@ import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type Enclave
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
+import { appendTrip } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
 
@@ -348,6 +349,7 @@ export class ProviderNode {
     res.end();
     this.answers += 1;
     this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey });
+    appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost) });
     if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
     this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
   }

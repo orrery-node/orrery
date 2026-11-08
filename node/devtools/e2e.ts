@@ -337,6 +337,8 @@ if (process.env.E2E_LOAD) {
 const { readTrips, summarize } = await import('../src/spend.ts');
 const logged = summarize(readTrips(join(WORK, 'home/router/trips.jsonl')), 'model', Infinity);
 const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
+const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
+check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
 check('router logged every answered request', trips.length === 33 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
