@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appendTrip, readTrips, summarize, windowMs } from '../src/spend.ts';
@@ -35,5 +35,13 @@ describe('orrery spend', () => {
     writeFileSync(path, `${readTrips(path).map((x) => JSON.stringify(x)).join('\n')}\nnot json\n`);
     assert.equal(readTrips(path).length, 2);
     assert.equal(readTrips(join(dir, 'missing.jsonl')).length, 0);
+  });
+
+  it('rolls the log over at the size limit and still reads both files', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-roll-'));
+    const path = join(dir, 'trips.jsonl');
+    for (let i = 0; i < 5; i++) appendTrip(path, t(i, 'm', 'P', '0.000001'), 300);
+    assert.equal(readTrips(path).length, 5);
+    assert.ok(existsSync(`${path}.1`));
   });
 });

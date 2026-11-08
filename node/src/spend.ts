@@ -1,13 +1,17 @@
 // What this router paid, read from its own log of answers (one JSON line each, appended as they are signed for).
 // `orrery spend` sums it by model or by provider for any window, so an agent's bill comes from your own disk.
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number };
 
-export function appendTrip(path: string, t: LoggedTrip) {
+/** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
+export const ROLL_BYTES = 10 * 1024 * 1024;
+
+export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) {
   try {
     mkdirSync(dirname(path), { recursive: true });
+    if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
     appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
@@ -15,9 +19,9 @@ export function appendTrip(path: string, t: LoggedTrip) {
 }
 
 export function readTrips(path: string): LoggedTrip[] {
-  if (!existsSync(path)) return [];
   const out: LoggedTrip[] = [];
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
+  const text = [`${path}.1`, path].filter((p) => existsSync(p)).map((p) => readFileSync(p, 'utf8')).join('\n');
+  for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
       out.push(JSON.parse(line) as LoggedTrip);
