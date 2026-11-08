@@ -72,6 +72,8 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
+`orrery bench <model> --n 3` asks every provider of a model a few short questions through your router, one provider at a time, and compares first-token time, total time and cost per answer against each listed price. Every ask is a real, paid request.
+
 `orrery spend --since 24h --by model|provider` sums what your router paid, from the log it keeps of every answer it signs for (`~/.orrery/router/trips.jsonl`). The rehearsal checks that the log adds up to exactly what the router signed.
 
 `orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router.
