@@ -18,6 +18,16 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: ids.map((id) => ({ id })) }));
     return;
   }
+  if (req.method === 'POST' && req.url?.endsWith('/embeddings')) {
+    const parts: Buffer[] = [];
+    for await (const c of req) parts.push(c as Buffer);
+    const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+    const inputs: string[] = Array.isArray(body.input) ? body.input.map(String) : [String(body.input ?? '')];
+    const vec = (text: string) => Array.from({ length: 8 }, (_, i) => Number((Math.sin(text.length * (i + 1)) / 2).toFixed(6)));
+    const tokens = inputs.reduce((a, t) => a + Math.max(1, Math.ceil(t.length / 4)), 0);
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', model: body.model, data: inputs.map((t, index) => ({ object: 'embedding', index, embedding: vec(t) })), usage: { prompt_tokens: tokens, total_tokens: tokens } }));
+    return;
+  }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;

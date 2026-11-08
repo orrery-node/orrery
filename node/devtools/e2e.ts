@@ -80,7 +80,7 @@ await sleep(1_500);
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -140,7 +140,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 5 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 6 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
@@ -260,6 +260,13 @@ const benchSpent = benchRows.flatMap((r) => r.units).reduce((a, b) => a + b, 0n)
 const benchTrips = trips.slice(benchFrom).reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
 const byName = Object.fromEntries(benchRows.map((r) => [r.name, `${r.answered}/${r.asked}`]));
 check('orrery bench asks each provider of a model through the router and adds up to what it paid', byName['Ironbridge Compute'] === '3/3' && byName['Vault Nine'] === '3/3' && byName['Kestrel GPU Co-op'] === '0/1' && benchSpent === benchTrips && benchSpent > 0n, `${Object.entries(byName).map(([k, v]) => `${k} ${v}`).join(', ')} · spent $${usd(benchSpent)}`);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const embInput = ['Payment channels settle on Solana.', 'The router signs a running total.', 'A provider redeems whenever it likes.'];
+const emb = await fetch(`${ROUTER}/v1/embeddings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'bge-m3', input: embInput }) });
+const embj = (await emb.json()) as { data?: { embedding: number[]; index: number }[]; usage?: { prompt_tokens: number }; model?: string };
+const embCost = emb.headers.get('x-orrery-cost');
+const embExpected = costOf({ input: 20_000, output: 0 }, embj.usage?.prompt_tokens ?? 0, 0);
+check('embeddings are routed and paid like any answer, priced on input tokens', emb.status === 200 && embj.model === 'bge-m3' && embj.data?.length === 3 && embj.data.every((d) => d.embedding.length === 8) && embCost === usd(embExpected) && trips.at(-1)?.model === 'bge-m3', `${embj.data?.length} vectors · ${embj.usage?.prompt_tokens} input tokens · $${embCost} via ${nameOf(emb.headers.get('x-orrery-provider'))}`);
 let codexTrips = 0;
 if (process.env.E2E_CODEX) {
   const codexHome = join(WORK, 'codex-home');
@@ -340,7 +347,7 @@ const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
 check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
-check('router logged every answered request', trips.length === 33 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 34 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };
