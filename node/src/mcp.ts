@@ -29,7 +29,7 @@ const TOOLS = [
   },
   {
     name: 'status',
-    description: 'What the local router has spent today and the payment channels it has open.',
+    description: 'What the local router has spent today, the payment channels it has open, and the last 24 hours of spend by model from its own log.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -81,7 +81,9 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const r = await fetchFn(`${router}/orrery/status`);
       const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[] };
       const ch = (j.channels ?? []).map((c) => `${c.provider.slice(0, 6)}…  spent $${c.spent}, $${c.left} left`);
-      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}`);
+      const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[] } | null;
+      const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
+      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {

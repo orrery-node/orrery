@@ -14,7 +14,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip } from '../spend.ts';
+import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
@@ -153,6 +153,13 @@ export class Router {
       if (req.method === 'POST' && (url.pathname === '/v1/responses' || url.pathname === '/responses')) return await this.responses(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
+      if (req.method === 'GET' && url.pathname === '/orrery/spend') {
+        const since = url.searchParams.get('since') ?? '24h';
+        const by = url.searchParams.get('by') === 'provider' ? 'provider' : 'model';
+        const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
+        const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total) });
+      }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         return void res.end(consolePage());
