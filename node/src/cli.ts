@@ -16,6 +16,7 @@ import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { doctor, render } from './doctor.ts';
+import { readTrips, summarize, windowMs } from './spend.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -44,6 +45,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
+  ${CLI} spend [--since 24h|7d] [--by model|provider]   what your router paid, from its own log of answers
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
@@ -187,6 +189,17 @@ async function main() {
     const ctx = await contextFromRouter(routerUrl, model);
     writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
     return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
+  }
+  if (cmd === 'spend') {
+    const by = flag('by', 'model') === 'provider' ? 'provider' : 'model';
+    const since = flag('since', '24h')!;
+    const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
+    if (!total.answers) return console.log(`No answers in the last ${since}. The router logs each answer it pays for to ${home('router', 'trips.jsonl')}.`);
+    const line = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => `${r.key.padEnd(26)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r.cacheKept ? `  ${r.cacheKept} kept for cache` : ''}`;
+    console.log(`last ${since}, by ${by}`);
+    for (const r of rows) console.log(line(r));
+    console.log(line(total));
+    return;
   }
   if (cmd === 'doctor') {
     const walletPath = flag('wallet', process.env.ORRERY_WALLET);

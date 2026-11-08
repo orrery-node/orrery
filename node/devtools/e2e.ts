@@ -315,6 +315,10 @@ if (process.env.E2E_LOAD) {
   for (const t of trips.slice(before)) per.set(t.providerName, (per.get(t.providerName) ?? 0) + 1);
   check(`${n} answers through the router, ${conc} at a time`, ok === n && errors.length === 0 && loadTrips === n, `${ok} ok · ${errors.length} failed · ${(n / secs).toFixed(1)} answers/s · ${[...per].map(([k, v]) => `${k} ${v}`).join(', ')}${errors.length ? ` · first error: ${errors[0]}` : ''}`);
 }
+const { readTrips, summarize } = await import('../src/spend.ts');
+const logged = summarize(readTrips(join(WORK, 'home/router/trips.jsonl')), 'model', Infinity);
+const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
+check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
 check('router logged every answered request', trips.length === 25 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

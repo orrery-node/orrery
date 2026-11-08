@@ -14,6 +14,8 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
+import { appendTrip } from '../spend.ts';
+import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
 type Shape = { kind: 'anthropic' | 'responses'; id: string };
@@ -368,6 +370,7 @@ export class Router {
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
+    appendTrip(home('router', 'trips.jsonl'), trip);
     this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
 
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost };
