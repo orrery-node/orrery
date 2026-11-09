@@ -6,7 +6,7 @@ import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts'
 import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
-import { perMillion, usd } from './pricing.ts';
+import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { ProviderNode, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.ts';
@@ -18,6 +18,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } f
 import { doctor, render } from './doctor.ts';
 import { readTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
+import { quote, renderQuote } from './quote.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -50,6 +51,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} spend [--since 24h|7d] [--by model|provider] [--json]   what your router paid, from its own log of answers
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
+  ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
   ${CLI} providers               every listed provider and what the chain says about it
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
@@ -268,6 +270,19 @@ async function main() {
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
   if (cmd === 'models') return listModels();
+  if (cmd === 'quote') {
+    const model = sub;
+    if (!model) throw new Error(`usage: ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]`);
+    const prompt = flag('prompt');
+    const inTokens = prompt ? estimateInputTokens({ messages: [{ role: 'user', content: prompt }] }) : Number(flag('in', '2000'));
+    const outTokens = Number(flag('out', '500'));
+    const cachedShare = Math.max(0, Math.min(1, Number(flag('cached', '0.8'))));
+    const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    await registry.refresh();
+    const rows = quote(registry.usable(), model, inTokens, outTokens, cachedShare);
+    if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached) })) }, null, 2));
+    return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows));
+  }
   if (cmd === 'providers') return listProviders();
   if (cmd === 'provider') return provider(sub ?? 'start');
   if (cmd === 'channels') return listChannels();
