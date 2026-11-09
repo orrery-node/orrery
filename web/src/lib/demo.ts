@@ -1,6 +1,7 @@
 // Server only. The "try it" page runs the real orrery-node router inside the site's server, with a small site
 // wallet (DEMO_WALLET_KEY) that pays providers on mainnet. Same code a user runs with `npx orrery-node router`;
 // the only differences are a lower deposit and a daily cap of $0.50.
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 
@@ -39,7 +40,7 @@ export async function warm(d: Demo): Promise<void> {
 /** Each deploy starts the demo with fresh state, so channels it opened in earlier runs hold deposits it can no longer
  * sign against. Ask to close those, then close them once the provider's hour to redeem has passed; the deposits and
  * the account rent come back to the demo wallet. The live channels are left alone. */
-async function tidy(d: Demo, conn: Connection, wallet: Keypair): Promise<void> {
+async function tidy(d: Demo, conn: Connection, wallet: Keypair, keep: PublicKey | null = null): Promise<void> {
   const { ACCOUNT, decodeChannel, decodeProvider, ins, programId } = await import('orrery-node/dist/chain/program.js');
   const live = new Set(d.channels.list().map((c) => c.channel));
   const accs = await conn.getProgramAccounts(programId(), {
@@ -52,6 +53,7 @@ async function tidy(d: Demo, conn: Connection, wallet: Keypair): Promise<void> {
   for (const { pubkey, account } of accs) {
     if (live.has(pubkey.toBase58())) continue;
     const c = decodeChannel(account.data);
+    if (keep && c.closingAt === 0n && c.sessionKey.equals(keep)) continue;
     try {
       if (c.closingAt === 0n) {
         await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(wallet.publicKey, pubkey)), [wallet], { commitment: 'confirmed' });
@@ -87,17 +89,18 @@ async function start(): Promise<Demo | null> {
   const home = process.env.ORRERY_HOME ?? '/tmp/orrery-demo';
   process.env.ORRERY_HOME = home;
   mkdirSync(`${home}/router`, { recursive: true });
-  const [{ Router }, { Channels }, { Registry }, { HolderBook }, { USDC_MAINNET }, { loadOrCreateKeypair }] = await Promise.all([
+  const [{ Router }, { Channels }, { Registry }, { HolderBook }, { USDC_MAINNET }] = await Promise.all([
     import('orrery-node/dist/router/server.js'),
     import('orrery-node/dist/router/channels.js'),
     import('orrery-node/dist/router/registry.js'),
     import('orrery-node/dist/holder.js'),
     import('orrery-node/dist/brand.js'),
-    import('orrery-node/dist/keys.js'),
   ]);
   const conn = new Connection(rpc, 'confirmed');
   const wallet = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(key)));
-  const session = loadOrCreateKeypair(`${home}/router/session.json`);
+  // The session key comes from the wallet key, so every run signs with the same one and can pick up the channel the
+  // previous run left open (the router finds it on chain and checks the node's last voucher) instead of opening another.
+  const session = Keypair.fromSeed(createHash('sha256').update('orrery-demo-session/1').update(Buffer.from(wallet.secretKey)).digest());
   const channels = new Channels(conn, wallet, session, new PublicKey(USDC_MAINNET), `${home}/router/channels.json`, {
     deposit: 200_000n,
     topUpBelow: 50_000n,
@@ -110,11 +113,13 @@ async function start(): Promise<Demo | null> {
   });
   await router.start();
   const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
-  // Clean up before opening a new channel: every channel on chain belongs to an earlier run, and closing the ones past
-  // their grace period returns the deposit this run's first channel needs.
+  // Clean up before the first request: channels from earlier runs under another session key are closed (their
+  // deposits come back after the grace period); an open one under this session key is left for the router to resume.
+  let booting = true;
   sweeper = async () => {
     lastSweep = Date.now();
-    await tidy(d, conn, wallet).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
+    await tidy(d, conn, wallet, booting ? session.publicKey : null).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
+    booting = false;
   };
   await sweeper();
   await warm(d);
