@@ -54,7 +54,7 @@
 - [Router console](#router-console)
 - [Build from source](#build-from-source)
 - [FAQ](#faq)
-- [Roadmap](#roadmap)
+- [Roadmap](#roadmap) · [Changelog](CHANGELOG.md)
 - [Contributing](#contributing)
 
 ---
