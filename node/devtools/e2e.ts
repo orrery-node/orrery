@@ -274,6 +274,12 @@ const benchSpent = benchRows.flatMap((r) => r.units).reduce((a, b) => a + b, 0n)
 const benchTrips = trips.slice(benchFrom).reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
 const byName = Object.fromEntries(benchRows.map((r) => [r.name, `${r.answered}/${r.asked}`]));
 check('orrery bench asks each provider of a model through the router and adds up to what it paid', byName['Ironbridge Compute'] === '3/3' && byName['Vault Nine'] === '3/3' && byName['Kestrel GPU Co-op'] === '0/1' && benchSpent === benchTrips && benchSpent > 0n, `${Object.entries(byName).map(([k, v]) => `${k} ${v}`).join(', ')} · spent $${usd(benchSpent)}`);
+const embFrom = trips.length;
+const embRows = await bench({ model: 'bge-m3', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'bge-m3')), router: ROUTER, n: 2 });
+const embSpent = embRows.flatMap((r) => r.units).reduce((a, b) => a + b, 0n);
+const embTrips = trips.slice(embFrom);
+check('orrery bench asks an embedding model through /v1/embeddings', embRows.length === 1 && embRows[0].answered === 2 && embTrips.length === 2 && embTrips.every((t) => t.model === 'bge-m3' && t.outputTokens === 0) && embSpent === embTrips.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n),
+  `${embRows[0]?.name} ${embRows[0]?.answered}/${embRows[0]?.asked} · spent $${usd(embSpent)}`);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const embInput = ['Payment channels settle on Solana.', 'The router signs a running total.', 'A provider redeems whenever it likes.'];
 const emb = await fetch(`${ROUTER}/v1/embeddings`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'bge-m3', input: embInput }) });
@@ -371,7 +377,7 @@ const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
 check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
-check('router logged every answered request', trips.length === 37 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 39 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

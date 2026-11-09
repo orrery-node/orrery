@@ -1,6 +1,7 @@
 // `orrery bench <model>`: asks every provider that lists a model a few short questions through your own router, one
 // provider at a time, and reports what you would get from each: first-token time, total time and what an answer cost.
-// Each ask is a real, paid request.
+// Each ask is a real, paid request. A model listed on input tokens only is an embedding model and is asked through
+// /v1/embeddings.
 import type { ProviderEntry } from './router/registry.ts';
 
 export type BenchRow = { name: string; address: string; asked: number; answered: number; ttftMs: number[]; totalMs: number[]; units: bigint[]; price: { input: number; output: number } | null; error?: string };
@@ -19,6 +20,9 @@ const toUnits = (usd: string | null) => {
   return BigInt(w) * 1_000_000n + BigInt((f + '000000').slice(0, 6));
 };
 
+/** provider init lists embedding models with an output price of zero; a chat model always charges for output. */
+export const isEmbedding = (offer: { price: { output: number } } | undefined) => offer?.price.output === 0;
+
 export async function bench(o: { model: string; providers: ProviderEntry[]; router: string; n: number; fetchFn?: Fetch; now?: () => number }): Promise<BenchRow[]> {
   const f = o.fetchFn ?? (fetch as unknown as Fetch);
   const now = o.now ?? (() => performance.now());
@@ -30,10 +34,12 @@ export async function bench(o: { model: string; providers: ProviderEntry[]; rout
       row.asked += 1;
       const t0 = now();
       try {
-        const r = await f(`${o.router.replace(/\/$/, '')}/v1/chat/completions`, {
+        const r = await f(`${o.router.replace(/\/$/, '')}/v1/${isEmbedding(offer) ? 'embeddings' : 'chat/completions'}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-orrery-provider': e.address },
-          body: JSON.stringify({ model: o.model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 }),
+          body: JSON.stringify(isEmbedding(offer)
+            ? { model: o.model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
+            : { model: o.model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 }),
         });
         const j = (await r.json()) as { error?: { message?: string } };
         if (!r.ok) {

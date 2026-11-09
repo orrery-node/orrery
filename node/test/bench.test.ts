@@ -29,4 +29,19 @@ describe('orrery bench', () => {
     assert.match(text, /Dark\s+0\/1\s+did not answer: all providers failed/);
     assert.match(text, /spent \$0\.000016 on this bench/);
   });
+
+  it('asks an embedding model (listed on input tokens only) through /v1/embeddings', async () => {
+    const urls: string[] = [];
+    const bodies: Record<string, unknown>[] = [];
+    const fetchFn = async (url: string, init: { body: string }) => {
+      urls.push(url);
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, status: 200, headers: { get: (h: string) => (h === 'x-orrery-cost' ? '0.000001' : h === 'x-orrery-ttft-ms' ? '12' : null) }, json: async () => ({}) };
+    };
+    const emb = { address: 'e', manifest: { name: 'Emb', models: [{ id: 'bge-m3', price: { input: 20_000, output: 0 } }] } } as never;
+    const rows = await bench({ model: 'bge-m3', providers: [emb], router: 'http://r', n: 2, fetchFn, now: () => 0 });
+    assert.deepEqual(urls, ['http://r/v1/embeddings', 'http://r/v1/embeddings']);
+    assert.ok(Array.isArray(bodies[0].input) && !('messages' in bodies[0]));
+    assert.equal(rows[0].answered, 2);
+  });
 });
