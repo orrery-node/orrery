@@ -263,6 +263,18 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/health') {
         return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
+      if (req.method === 'GET' && url.pathname === '/orrery/channel') {
+        // Where a channel stands on this node: the latest total its router signed (the voucher itself, so a router that
+        // lost its own state can check the signature and carry on from there) and what this node is owed.
+        const address = url.searchParams.get('address') ?? '';
+        try {
+          new PublicKey(address);
+        } catch {
+          return fail(res, 400, 'bad_request', 'address is not a Solana address');
+        }
+        const e = await this.entry(address);
+        return json(res, 200, { channel: address, voucher: e.best ? encodeVoucher(e.best) : null, paid: e.best?.cumulative ?? 0n, owed: e.owed });
+      }
       if (req.method === 'POST' && url.pathname === '/orrery/voucher') {
         const b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string };
         const e = await this.entry(b.channel);

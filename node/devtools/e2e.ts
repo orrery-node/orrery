@@ -384,6 +384,14 @@ const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/
 const ibSigned = channels.get(ib.pda.toBase58())?.cumulative ?? 0n;
 const relayed = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-forwarded-for': '203.0.113.7' } });
 check('the provider console shows what routers signed to it, and only on its own computer', ibStatus.signed === usd(ibSigned) && ibStatus.waiting === usd(ibSigned) && ibStatus.answers > 0 && relayed.status === 404, `Ironbridge: ${ibStatus.answers} answers · $${ibStatus.signed} signed · $${ibStatus.waiting} waiting · relayed request ${relayed.status}`);
+const ibBefore = channels.get(ib.pda.toBase58())!;
+const reborn = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-after-restart.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+const picked = await reborn.ensure(ib.pda.toBase58(), 1n);
+const stranger = new Channels(conn, user, Keypair.generate(), usdc, join(WORK, 'home/router/channels-stranger.json'), { deposit: USD, topUpBelow: 0n, dailyCap: USD });
+const strangerFound = await (stranger as unknown as { recover(p: string): Promise<unknown> }).recover(ib.pda.toBase58());
+check('a router that lost its channel records picks its channel back up from the node’s last voucher, and only with its own session key',
+  picked.channel === ibBefore.channel && picked.cumulative === ibBefore.cumulative && picked.usageHash.equals(ibBefore.usageHash) && strangerFound === null,
+  `Ironbridge channel ${picked.channel.slice(0, 6)}… resumed at $${usd(picked.cumulative)} signed · another session key: ${strangerFound === null ? 'not resumed' : 'resumed'}`);
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
   await sleep(Number(process.env.E2E_HOLD) * 1000);

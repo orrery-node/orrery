@@ -3,9 +3,10 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
-import { decodeChannel, ins, pda } from '../chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeProvider, ins, pda, programId } from '../chain/program.ts';
 import { sendFresh } from '../chain/send.ts';
-import { encodeVoucher, signVoucher } from '../chain/voucher.ts';
+import { decodeVoucher, encodeVoucher, signVoucher, verifyVoucher } from '../chain/voucher.ts';
+import { fetchWithTimeout } from '../sse.ts';
 import { signerOf, writePrivate, type Sign } from '../keys.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 
@@ -101,9 +102,57 @@ export class Channels {
     }
     const pending = this.opening.get(provider);
     if (pending) return pending;
-    const p = this.open(provider, need > this.opts.deposit ? need : this.opts.deposit).finally(() => this.opening.delete(provider));
+    const p = this.recover(provider)
+      .catch(() => null)
+      .then(async (found) => {
+        if (!found) return this.open(provider, need > this.opts.deposit ? need : this.opts.deposit);
+        if (found.deposit - found.cumulative < need) await this.topUp(provider, need);
+        return found;
+      })
+      .finally(() => this.opening.delete(provider));
     this.opening.set(provider, p);
     return p;
+  }
+
+  /** A router that lost its own record of a channel (a new machine, a wiped home folder, a server that restarted) but
+   * still has the session key can pick the channel up where it left off. It looks on chain for an open channel from
+   * this wallet to the provider with this session key, asks the node for the latest voucher it holds, and carries on
+   * from that voucher only if the signature is its own and the node is owed nothing beyond it. Otherwise it opens a
+   * new channel as before. */
+  private async recover(provider: string): Promise<ChannelState | null> {
+    if (!this.wallet) return null;
+    const accounts = await this.conn.getProgramAccounts(programId(), {
+      filters: [
+        { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } },
+        { memcmp: { offset: 8, bytes: this.wallet.publicKey.toBase58() } },
+        { memcmp: { offset: 40, bytes: provider } },
+      ],
+    });
+    const mine = accounts
+      .map((a) => ({ address: a.pubkey, ch: decodeChannel(a.account.data) }))
+      .filter((a) => a.ch.closingAt === 0n && a.ch.sessionKey.equals(this.session.publicKey) && a.ch.mint.equals(this.mint))
+      .sort((a, b) => Number(b.ch.openedAt - a.ch.openedAt));
+    if (!mine.length) return null;
+    const info = await this.conn.getAccountInfo(new PublicKey(provider));
+    if (!info) return null;
+    const endpoint = decodeProvider(info.data).endpoint.replace(/\/$/, '');
+    for (const { address, ch } of mine) {
+      const r = await fetchWithTimeout(`${endpoint}/orrery/channel?address=${address.toBase58()}`, { timeoutMs: 5_000 }).catch(() => null);
+      if (!r?.ok) continue;
+      const j = (await r.json()) as { voucher: string | null; owed: string };
+      const v = j.voucher ? decodeVoucher(j.voucher) : null;
+      if (v && !verifyVoucher(this.session.publicKey, address, v)) continue;
+      const cumulative = v?.cumulative ?? 0n;
+      if (BigInt(j.owed) !== cumulative || cumulative < ch.redeemed || cumulative > ch.deposit) continue;
+      const state: ChannelState = {
+        provider, channel: address.toBase58(), id: ch.id.toString(), deposit: ch.deposit, cumulative,
+        usageHash: v ? Buffer.from(v.usageHash) : ZERO_HASH, voucher: v ? encodeVoucher(v) : null, openedAt: Number(ch.openedAt) * 1000, checkedAt: Date.now(),
+      };
+      this.map.set(provider, state);
+      this.save();
+      return state;
+    }
+    return null;
   }
 
   private async open(provider: string, deposit: bigint): Promise<ChannelState> {
