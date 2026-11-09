@@ -37,10 +37,11 @@ export async function warm(d: Demo): Promise<void> {
   }
 }
 
-/** Each deploy starts the demo with fresh state, so channels it opened in earlier runs hold deposits it can no longer
- * sign against. Ask to close those, then close them once the provider's hour to redeem has passed; the deposits and
- * the account rent come back to the demo wallet. The live channels are left alone. */
-async function tidy(d: Demo, conn: Connection, wallet: Keypair, keep: PublicKey | null = null): Promise<void> {
+/** Channels opened under an older session key can no longer be signed against: ask to close them, then close them
+ * once the provider's hour to redeem has passed, and the deposits and account rent come back to the demo wallet. Under
+ * this run's session key, the newest open channel to each provider is kept whoever holds it (this run, or the previous
+ * instance still finishing during a deploy); only older duplicates are closed. */
+async function tidy(d: Demo, conn: Connection, wallet: Keypair, session: PublicKey): Promise<void> {
   const { ACCOUNT, decodeChannel, decodeProvider, ins, programId } = await import('orrery-node/dist/chain/program.js');
   const live = new Set(d.channels.list().map((c) => c.channel));
   const accs = await conn.getProgramAccounts(programId(), {
@@ -50,10 +51,18 @@ async function tidy(d: Demo, conn: Connection, wallet: Keypair, keep: PublicKey 
     ],
   });
   const now = Math.floor(Date.now() / 1000);
+  const newest = new Map<string, { key: string; at: bigint }>();
   for (const { pubkey, account } of accs) {
-    if (live.has(pubkey.toBase58())) continue;
     const c = decodeChannel(account.data);
-    if (keep && c.closingAt === 0n && c.sessionKey.equals(keep)) continue;
+    if (c.closingAt !== 0n || !c.sessionKey.equals(session)) continue;
+    const p = c.provider.toBase58();
+    const n = newest.get(p);
+    if (!n || c.openedAt > n.at) newest.set(p, { key: pubkey.toBase58(), at: c.openedAt });
+  }
+  const kept = new Set([...newest.values()].map((n) => n.key));
+  for (const { pubkey, account } of accs) {
+    if (live.has(pubkey.toBase58()) || kept.has(pubkey.toBase58())) continue;
+    const c = decodeChannel(account.data);
     try {
       if (c.closingAt === 0n) {
         await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(wallet.publicKey, pubkey)), [wallet], { commitment: 'confirmed' });
@@ -115,11 +124,9 @@ async function start(): Promise<Demo | null> {
   const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
   // Clean up before the first request: channels from earlier runs under another session key are closed (their
   // deposits come back after the grace period); an open one under this session key is left for the router to resume.
-  let booting = true;
   sweeper = async () => {
     lastSweep = Date.now();
-    await tidy(d, conn, wallet, booting ? session.publicKey : null).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
-    booting = false;
+    await tidy(d, conn, wallet, session.publicKey).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
   };
   await sweeper();
   await warm(d);

@@ -31,7 +31,7 @@ declare module 'orrery-node/dist/chain/program.js' {
   import type { PublicKey, TransactionInstruction } from '@solana/web3.js';
   export const ACCOUNT: { Channel: Uint8Array };
   export const programId: () => PublicKey;
-  export function decodeChannel(data: Buffer): { payer: PublicKey; provider: PublicKey; sessionKey: PublicKey; mint: PublicKey; closingAt: bigint };
+  export function decodeChannel(data: Buffer): { payer: PublicKey; provider: PublicKey; sessionKey: PublicKey; mint: PublicKey; openedAt: bigint; closingAt: bigint };
   export function decodeProvider(data: Buffer): { authority: PublicKey };
   export const ins: {
     requestClose(payer: PublicKey, channel: PublicKey): TransactionInstruction;
