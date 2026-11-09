@@ -41,6 +41,14 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude`;
 
 const MCP = `claude mcp add orrery -- npx -y orrery-node mcp`;
 
+const MORE = `# a backup model: the next one answers when nothing of the first can
+curl localhost:7171/v1/chat/completions -d '{"model": "deepseek-v3|qwen3-32b", "messages": [...]}'
+
+orrery spend --since 24h --by model     # what your router paid, from its own log
+orrery bench gpt-oss-120b --n 3         # every provider of a model, through your router (paid)`;
+
+const EMBED = `curl localhost:7171/v1/embeddings -d '{"model": "bge-m3", "input": ["first text", "second text"]}'`;
+
 const LIMITS = `orrery router --wallet agent.json --max-price 0.50/1.50 --daily-cap 5
 orrery doctor --wallet agent.json`;
 
@@ -314,6 +322,10 @@ export default function Docs() {
           <p>Agents resend their context every turn. When a provider lists a cached-input price, those tokens bill at it, and the router keeps the next turns on the provider that holds the cache for five minutes. Parallel requests are fine: each provider gets one lane and a busy one hands the request to the next free provider.</p>
           <p>For an agent you leave running, set a price ceiling and a daily cap, and check the setup first. <code>orrery doctor</code> only reads.</p>
           <Code lang="bash" copy>{LIMITS}</Code>
+          <p>From 0.1.5 a request can name fallbacks, as <code>&quot;a|b&quot;</code> or an OpenRouter-style <code>models</code> array, and the router moves to the next model when nothing of the first can answer. Every answer the router pays for is logged on your machine, so <code>orrery spend</code> can sum it, and <code>orrery bench</code> compares the providers of a model from where you sit. <code>doctor</code>, <code>bench</code> and <code>spend</code> take <code>--json</code>.</p>
+          <Code lang="bash" copy>{MORE}</Code>
+          <p>Embeddings go through the same router at <code>/v1/embeddings</code>, paid from the same channel and priced on input tokens, wherever a provider lists an embedding model. The MCP server has an <code>embed</code> tool for agents, and its <code>ask</code> takes a <code>max_price</code>.</p>
+          <Code lang="bash" copy>{EMBED}</Code>
 
           <H2 id="routes" n={n('routes')}>Models and routes</H2>
           <p>Model names are the ones providers list. <code>orrery models</code> prints every model on the network with its cheapest price and how many providers serve it; <code>orrery providers</code> prints every listing with what the chain says about it.</p>
@@ -457,9 +469,10 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (54 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, and Codex CLI and Claude Code through the router (30 of 30 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (65 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (39 of 39 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
+            <li>New in 0.1.5: embeddings, model fallbacks, <code>orrery bench</code>, <code>orrery spend</code> and <code>orrery provider earnings</code>, MCP prices with <code>max_price</code> and an <code>embed</code> tool, last-24-hours tables in both consoles, a Host check against DNS rebinding, and <code>--json</code> output.</li>
             <li>New in 0.1.4: the OpenAI Responses API, MCP, model aliases, resumed streams, <code>orrery connect</code> for Codex and Claude Code, cached-input prices and cache affinity, parallel lanes, <code>--max-price</code>, router and provider consoles, <code>orrery doctor</code> and <code>orrery provider init</code>.</li>
             <li>Not yet: a built-in hardware attestation verifier.</li>
           </ul>
