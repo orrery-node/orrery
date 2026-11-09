@@ -34,7 +34,8 @@ export async function GET() {
   const d = await demo();
   if (!d) return json(200, { online: false });
   sweepIfDue();
-  return json(200, { online: true, providers: d.registry.usable().length, wallet: d.wallet, spentToday: usd(d.channels.todaySpent()), cap: '0.500000' });
+  const recent = d.router.trips.slice(-12).reverse().map((t) => ({ at: t.at, model: t.model, provider: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed }));
+  return json(200, { online: true, providers: d.registry.usable().length, wallet: d.wallet, spentToday: usd(d.channels.todaySpent()), cap: '0.500000', recent });
 }
 
 export async function POST(req: Request) {

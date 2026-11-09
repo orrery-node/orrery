@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Mark } from '@/components/Mark';
 import Elsewhere from '@/components/Elsewhere';
 import TryBox from '@/components/TryBox';
+import PaidTape from '@/components/PaidTape';
 import { CopyButton } from '@/components/parts';
 import { NAME, PROGRAM_ID } from '@/brand';
 import '../docs/docs.css';
@@ -48,6 +49,8 @@ export default function Try() {
         </p>
 
         <TryBox />
+
+        <PaidTape />
 
         <section className="tryp__how" aria-label="What happens">
           <h2>
