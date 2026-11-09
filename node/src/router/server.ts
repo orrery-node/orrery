@@ -15,6 +15,7 @@ import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
 import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
+import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
@@ -167,6 +168,21 @@ export class Router {
       if (req.method === 'POST' && (url.pathname === '/v1/embeddings' || url.pathname === '/embeddings')) return await this.embeddings(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
+      if (req.method === 'GET' && url.pathname === '/orrery/quote') {
+        // What one request would cost at every provider of a model, from the lists on chain; nothing is sent or paid.
+        const model = url.searchParams.get('model') ?? '';
+        const prompt = url.searchParams.get('prompt');
+        const inTokens = prompt ? estimateInputTokens({ messages: [{ role: 'user', content: prompt }] }) : Number(url.searchParams.get('in') ?? 2000);
+        const outTokens = Number(url.searchParams.get('out') ?? 500);
+        const cachedShare = Math.max(0, Math.min(1, Number(url.searchParams.get('cached') ?? 0.8)));
+        if (!model || !Number.isFinite(inTokens) || !Number.isFinite(outTokens)) return send(res, 400, { error: { message: 'quote needs a model and token counts', type: 'invalid_request_error' } });
+        const rows = quote(this.o.registry.usable(), model, inTokens, outTokens, cachedShare);
+        return send(res, 200, {
+          model, inTokens, outTokens, cachedShare,
+          rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached) })),
+          text: renderQuote(model, inTokens, outTokens, cachedShare, rows),
+        });
+      }
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {
         const since = url.searchParams.get('since') ?? '24h';
         const by = url.searchParams.get('by') === 'provider' ? 'provider' : 'model';

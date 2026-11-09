@@ -36,6 +36,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'quote',
+    description: 'What one request would cost at every provider that lists a model, from the prices pinned on Solana, cheapest first, with the cached-input rate where one is listed. Nothing is sent or paid. Use it to pick a model or check a job fits a budget before asking.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'a network model id, e.g. gpt-oss-120b' },
+        input_tokens: { type: 'number', description: 'tokens the model will read (default 2000)' },
+        output_tokens: { type: 'number', description: 'tokens it will write (default 500)' },
+        prompt: { type: 'string', description: 'instead of input_tokens: the prompt, to estimate from' },
+        cached_share: { type: 'number', description: 'share of the input resent from a prompt cache, 0 to 1 (default 0.8)' },
+      },
+      required: ['model'],
+    },
+  },
+  {
     name: 'models',
     description: 'List the models on the Orrery network with the cheapest price per million tokens, the cheapest cached-input price where one is listed, context length, and how many providers serve each. Prices come from listings pinned on Solana.',
     inputSchema: { type: 'object', properties: {} },
@@ -91,6 +106,17 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
       const vectors = (j.data ?? []).map((d) => d.embedding);
       return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}`);
+    }
+    if (name === 'quote') {
+      if (typeof a.model !== 'string') return text('quote needs a model', true);
+      const q = new URLSearchParams({ model: a.model });
+      if (typeof a.prompt === 'string') q.set('prompt', a.prompt);
+      if (typeof a.input_tokens === 'number') q.set('in', String(a.input_tokens));
+      if (typeof a.output_tokens === 'number') q.set('out', String(a.output_tokens));
+      if (typeof a.cached_share === 'number') q.set('cached', String(a.cached_share));
+      const r = await fetchFn(`${router}/orrery/quote?${q}`);
+      const j = (await r.json()) as { text?: string; error?: { message?: string } };
+      return r.ok ? text(j.text ?? '') : text(`the router could not quote: ${j.error?.message ?? r.status}`, true);
     }
     if (name === 'models') {
       const r = await fetchFn(`${router}/v1/models`);
