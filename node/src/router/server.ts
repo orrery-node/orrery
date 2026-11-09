@@ -35,6 +35,8 @@ export type RouterOptions = {
   aliases?: Alias[];
   /** Never route to a listing above this, after any holder discount. A request can set its own with x-orrery-max-price. */
   maxPrice?: Ceiling;
+  /** A dollar budget for every request that does not send its own x-orrery-max-cost. */
+  maxCost?: string;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -302,7 +304,7 @@ export class Router {
     // A dollar budget for this one request. Each provider caps what it bills at the cost of the full prompt plus the
     // most output it may write, and the router never signs past that cap either, so a listing whose cap fits the
     // budget cannot cost more.
-    const budgetHeader = req.headers['x-orrery-max-cost'];
+    const budgetHeader = req.headers['x-orrery-max-cost'] ?? this.o.maxCost;
     if (budgetHeader !== undefined) {
       const dollars = Number(String(budgetHeader).replace(/^\$/, ''));
       if (!Number.isFinite(dollars) || dollars <= 0) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');

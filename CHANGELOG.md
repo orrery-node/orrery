@@ -9,7 +9,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · `orrery provider compare` puts your price list next to every other listing of the same models and says where each would stand: cheapest of N and by how much, how many are cheaper, or that nobody else lists it.
 - **Router** · `orrery quote <model>` shows what one request costs at every provider that lists the model, from the prices on chain, with the cached rate where there is one. Nothing is sent or paid.
 - **Router** · Agents get the same quote over MCP (a `quote` tool) and from the router at `GET /orrery/quote`, so they can price a job before they spend on it.
-- **Router** · A dollar budget per request: send `x-orrery-max-cost: 0.001` (or `max_cost` from MCP) and only providers whose worst case fits are used; if none fits, the router says what the cheapest could cost.
+- **Router** · A dollar budget per request: send `x-orrery-max-cost: 0.001` (or `max_cost` from MCP), or start the router with `--max-cost` to give every request one, and only providers whose worst case fits are used; if none fits, the router says what the cheapest could cost.
 - **Router** · `orrery channels --wallet` lists every channel your wallet has on chain, including ones your router has no record of, and says which it will pick back up and which to close.
 
 ## 0.1.6 · 2026-11-09 07:39 UTC

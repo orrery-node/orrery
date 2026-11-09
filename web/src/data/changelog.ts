@@ -8,7 +8,7 @@ export const UNRELEASED: Change[] = [
   { who: 'provider', text: '`orrery provider compare` puts your price list next to every other listing of the same models and says where each would stand: cheapest of N and by how much, how many are cheaper, or that nobody else lists it.' },
   { who: 'router', text: '`orrery quote <model>` shows what one request costs at every provider that lists the model, from the prices on chain, with the cached rate where there is one. Nothing is sent or paid.' },
   { who: 'router', text: 'Agents get the same quote over MCP (a `quote` tool) and from the router at `GET /orrery/quote`, so they can price a job before they spend on it.' },
-  { who: 'router', text: 'A dollar budget per request: send `x-orrery-max-cost: 0.001` (or `max_cost` from MCP) and only providers whose worst case fits are used; if none fits, the router says what the cheapest could cost.' },
+  { who: 'router', text: 'A dollar budget per request: send `x-orrery-max-cost: 0.001` (or `max_cost` from MCP), or start the router with `--max-cost` to give every request one, and only providers whose worst case fits are used; if none fits, the router says what the cheapest could cost.' },
   { who: 'router', text: '`orrery channels --wallet` lists every channel your wallet has on chain, including ones your router has no record of, and says which it will pick back up and which to close.' },
 ];
 
