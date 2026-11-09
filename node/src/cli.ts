@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
-import { decodeChannel, decodeConfig, decodeProvider, ins, pda } from './chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { perMillion, usd } from './pricing.ts';
@@ -51,7 +51,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} providers               every listed provider and what the chain says about it
-  ${CLI} channels                your router's channels and what the chain says about each
+  ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
   ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
   ${CLI} provider init    find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json
@@ -112,17 +112,47 @@ async function listChannels() {
   const conn = new Connection(rpc(), 'confirmed');
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const local = new Channels(conn, null, session, mint(), home('router', 'channels.json'), { deposit: 0n, topUpBelow: 0n, dailyCap: 0n }).list();
-  if (!local.length) return console.log('No channels yet. The first request to a provider opens one.');
+  const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+  const address = flag('address') ?? (walletPath ? loadKeypair(expand(walletPath)).publicKey.toBase58() : null);
+  const rows = new Map<string, { a: ReturnType<typeof decodeChannel> | null; signed: bigint | null }>();
   for (const c of local) {
     const info = await conn.getAccountInfo(new PublicKey(c.channel));
-    if (!info) {
-      console.log(`${c.channel}  closed`);
+    rows.set(c.channel, { a: info ? decodeChannel(info.data) : null, signed: c.cumulative });
+  }
+  if (address) {
+    // The chain also knows the channels this router has no record of (a new machine, a wiped home folder).
+    const found = await conn.getProgramAccounts(programId(), {
+      filters: [
+        { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } },
+        { memcmp: { offset: 8, bytes: new PublicKey(address).toBase58() } },
+      ],
+    });
+    for (const f of found) if (!rows.has(f.pubkey.toBase58())) rows.set(f.pubkey.toBase58(), { a: decodeChannel(f.account.data), signed: null });
+  }
+  if (!rows.size) {
+    console.log(`No channels yet. The first request to a provider opens one.${address ? '' : ` Add --wallet <keypair.json> or --address <pubkey> to look on chain as well as in ${home('router', 'channels.json')}.`}`);
+    return;
+  }
+  for (const [channel, { a, signed }] of rows) {
+    if (!a) {
+      console.log(`${channel}  closed`);
       continue;
     }
-    const a = decodeChannel(info.data);
     const state = a.closingAt === 0n ? 'open' : `closing, ready after ${new Date(Number(a.closingAt) * 1000).toISOString()}`;
-    console.log(`${c.channel}  provider ${c.provider.slice(0, 8)}…  deposit $${usd(a.deposit, 2)}  you signed $${usd(c.cumulative)}  redeemed $${usd(a.redeemed)}  ${state}`);
+    const head = `${channel}  provider ${a.provider.toBase58().slice(0, 8)}…  deposit $${usd(a.deposit, 2)}  redeemed $${usd(a.redeemed)}  ${state}`;
+    if (signed !== null) {
+      console.log(`${head}  you signed $${usd(signed)}`);
+      continue;
+    }
+    const mine = a.sessionKey.equals(session.publicKey);
+    const note = a.closingAt !== 0n
+      ? 'not in your records'
+      : mine
+        ? 'not in your records; the router picks it back up on its next request to this provider'
+        : `not in your records and signed by another session key; to get the deposit back: ${CLI} close ${channel} --wallet <keypair.json>`;
+    console.log(`${head}  ${note}`);
   }
+  if (!address) console.log(`Add --wallet <keypair.json> or --address <pubkey> to include channels this router has no record of.`);
 }
 
 async function provider(sub: string) {

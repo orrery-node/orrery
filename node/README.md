@@ -139,7 +139,7 @@ The router tries the top three providers in order, so a slow or dead one is skip
 
 - **One signature opens a channel.** Your wallet locks a small USDC deposit (`--deposit`, default 2) in an account only the channel controls.
 - **Every answer is a signed running total.** A session key on your computer signs an 88-byte ed25519 voucher. The router prices each answer from the provider's published list and pays the smaller of its number and the provider's.
-- **A router that loses its records picks its channels back up.** Keep `~/.orrery/router/session.json` and the rest can go: on first contact the router finds its open channel to that provider on chain, asks the node for the last voucher it holds (`GET /orrery/channel`), checks the signature is its own and that nothing beyond it is owed, and carries on from that total. Anything else and it opens a new channel.
+- **A router that loses its records picks its channels back up.** Keep `~/.orrery/router/session.json` and the rest can go (`orrery channels --wallet <keypair.json>` lists what the chain holds for you, including channels you have no record of): on first contact the router finds its open channel to that provider on chain, asks the node for the last voucher it holds (`GET /orrery/channel`), checks the signature is its own and that nothing beyond it is owed, and carries on from that total. Anything else and it opens a new channel.
 - **Nobody is ever owed more than one answer.** A provider serves the next request only once the last is paid.
 - **The rest comes back.** `orrery close <channel> --wallet <keypair>`, then `--finish` after the grace period.
 - **`--daily-cap`** (default $5) stops all spending for the day.
