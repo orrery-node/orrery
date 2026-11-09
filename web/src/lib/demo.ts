@@ -110,11 +110,22 @@ async function start(): Promise<Demo | null> {
   });
   await router.start();
   const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
+  // Clean up before opening a new channel: every channel on chain belongs to an earlier run, and closing the ones past
+  // their grace period returns the deposit this run's first channel needs.
+  sweeper = async () => {
+    lastSweep = Date.now();
+    await tidy(d, conn, wallet).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
+  };
+  await sweeper();
   await warm(d);
-  const sweep = () => void tidy(d, conn, wallet).catch((e) => console.log(`[demo] tidy: ${(e as Error).message.split('\n')[0]}`));
-  setTimeout(() => {
-    sweep();
-    setInterval(sweep, 15 * 60_000).unref();
-  }, 10 * 60_000).unref();
+  setInterval(() => void sweeper?.(), 15 * 60_000).unref();
   return d;
+}
+
+let sweeper: (() => Promise<void>) | null = null;
+let lastSweep = 0;
+
+/** The sweep also runs on the back of requests, in case the server's timers were paused between them. */
+export function sweepIfDue(): void {
+  if (sweeper && Date.now() - lastSweep > 15 * 60_000) void sweeper();
 }

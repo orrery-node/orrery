@@ -1,6 +1,6 @@
 // POST /api/try — one question, answered by a provider on Solana mainnet and paid per answer by the site's router.
 // GET  /api/try — whether the demo router is up, how many providers it sees, and what it has spent today.
-import { DEMO_MODELS, DEMO_PORT, demo, warm } from '@/lib/demo';
+import { DEMO_MODELS, DEMO_PORT, demo, sweepIfDue, warm } from '@/lib/demo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,6 +33,7 @@ function allow(ip: string): string | null {
 export async function GET() {
   const d = await demo();
   if (!d) return json(200, { online: false });
+  sweepIfDue();
   return json(200, { online: true, providers: d.registry.usable().length, wallet: d.wallet, spentToday: usd(d.channels.todaySpent()), cap: '0.500000' });
 }
 
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
   if (refused) return json(429, { error: refused });
   const d = await demo();
   if (!d) return json(503, { error: 'The demo router is offline right now.' });
+  sweepIfDue();
 
   const ask = () =>
     fetch(`http://127.0.0.1:${DEMO_PORT}/v1/chat/completions`, {

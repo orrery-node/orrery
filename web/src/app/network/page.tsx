@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { Mark } from '@/components/Mark';
 import Elsewhere from '@/components/Elsewhere';
 import NetworkTerminal from '@/components/NetworkTerminal';
+import WalletLookup from '@/components/WalletLookup';
 import { CopyButton } from '@/components/parts';
 import { NAME, PROGRAM_ID } from '@/brand';
 import { mainnet } from '@/lib/chain';
 import { usd } from '@/lib/rehearsal';
 import '../docs/docs.css';
 import './network.css';
+import '../address/address.css';
 
 export const revalidate = 300;
 
@@ -61,6 +63,12 @@ export default async function Network() {
               <span className="num">read from the program every five minutes</span>
             )}
           </p>
+          <div className="netp__look">
+            <WalletLookup />
+            <p>
+              Real accounts on mainnet, read live: the site&apos;s <Link href="/address/A8umk6FF7TgWyAG4GdX8PgEsBL5WhhiTYve9YKzBJqvK">demo router</Link> and the <Link href="/address/76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8">seed node</Link>.
+            </p>
+          </div>
         </div>
 
         <NetworkTerminal />

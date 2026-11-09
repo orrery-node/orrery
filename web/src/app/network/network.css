@@ -65,6 +65,18 @@
   color: var(--fg-2);
 }
 
+.netp__look {
+  margin-top: 26px;
+}
+.netp__look p {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--fg-3);
+}
+.netp__look a {
+  color: var(--fg-2);
+}
+
 /* the terminal: one product screen, hairlines inside */
 .nt {
   margin-top: 44px;
