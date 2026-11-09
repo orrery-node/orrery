@@ -263,6 +263,14 @@ await capped.text();
 const overCap = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-price': '0.20/1.00' }, body: JSON.stringify({ model: 'deepseek-v3', messages: [{ role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
 const overCapJ = (await overCap.json()) as { error?: { code?: string; message?: string } };
 check('a price ceiling keeps the router under it, counting the holder discount, and says so when nothing fits', capped.status === 200 && nameOf(capped.headers.get('x-orrery-provider')) === 'Halo Compute' && overCap.status === 404 && overCapJ.error?.code === 'over_price_ceiling', `gemma under $0.15/$0.60 → ${nameOf(capped.headers.get('x-orrery-provider'))} (lists $0.20/$0.80, holder −35%) · deepseek under $0.20/$1.00 → ${overCap.status} ${overCapJ.error?.code}: ${overCapJ.error?.message}`);
+const budgetAsk = (cost: string) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-cost': cost }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 64, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const tight = await budgetAsk('0.000001');
+const tightJ = (await tight.json()) as { error?: { code?: string; message?: string } };
+const roomy = await budgetAsk('0.0005');
+await roomy.json();
+const roomyCost = Number(roomy.headers.get('x-orrery-cost'));
+check('a dollar budget per request: only providers whose worst case fits are used, and a request that cannot fit is refused with the cheapest worst case', tight.status === 404 && tightJ.error?.code === 'over_budget' && /could cost up to \$0\.\d{6}/.test(tightJ.error?.message ?? '') && roomy.status === 200 && roomyCost > 0 && roomyCost <= 0.0005,
+  `$0.000001 → ${tight.status} ${tightJ.error?.code} · $0.0005 → ${roomy.status}, paid $${roomy.headers.get('x-orrery-cost')} via ${nameOf(roomy.headers.get('x-orrery-provider'))}`);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const fb1 = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'no-such-model|llama-3.3-70b', messages: [{ role: 'user', content: 'Say hello.' }], max_tokens: 32 }) });
 const fb1j = (await fb1.json()) as { model?: string };
@@ -381,7 +389,7 @@ const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
 check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
-check('router logged every answered request', trips.length === 39 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 40 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

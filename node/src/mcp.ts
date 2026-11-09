@@ -18,6 +18,7 @@ const TOOLS = [
         system: { type: 'string', description: 'optional system prompt' },
         max_tokens: { type: 'number', description: 'cap on the answer length (default 1024)' },
         max_price: { type: 'string', description: 'optional price ceiling in dollars per million tokens, input/output, e.g. 0.50/1.50; no provider above it is used' },
+        max_cost: { type: 'number', description: 'optional budget in dollars for this one answer, e.g. 0.001; only providers whose worst case fits are used' },
       },
       required: ['model', 'prompt'],
     },
@@ -89,7 +90,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     if (name === 'ask') {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
-      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
       const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
       const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);

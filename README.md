@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-43%2F43%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="43 of 43 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-44%2F44%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="44 of 44 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -450,7 +450,7 @@ assets/    brand and README media
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
 cd node && pnpm install && pnpm test                            # 70 tests
-pnpm e2e                                                        # full local rehearsal, 43 checks
+pnpm e2e                                                        # full local rehearsal, 44 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
@@ -525,7 +525,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal on the real program, 43 of 43 checks (every API, quotes before paying, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
+- [x] Local end-to-end rehearsal on the real program, 44 of 44 checks (every API, quotes before paying, per-request budgets, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)

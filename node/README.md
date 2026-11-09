@@ -84,7 +84,7 @@ codex --profile orrery
 
 A request can name fallbacks: `"model": "deepseek-v3|qwen3-32b"` or an OpenRouter-style `"models": [...]` (up to four). When no provider of one model can answer (none lists it, none fits the price ceiling, all cooling down or all failed before the first token) the router moves to the next, and logs why. The daily cap and bad requests still stop the request.
 
-Three limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never route above a price per million tokens, after holder discounts; a request can set its own with `x-orrery-max-price`), `--daily-cap` (refuse requests once the day's spending would pass it) and the channel deposit itself (a session key cannot sign past it).
+Four limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never route above a price per million tokens, after holder discounts; a request can set its own with `x-orrery-max-price`), `x-orrery-max-cost: 0.001` (a dollar budget for one request: only providers whose worst case, the full prompt plus every output token allowed, fits it are used), `--daily-cap` (refuse requests once the day's spending would pass it) and the channel deposit itself (a session key cannot sign past it).
 
 On the provider side, `orrery provider earnings --config provider.json --since 24h` sums what the node billed, by model or by channel, from the log it keeps of every answer it serves (`served.jsonl` in its data directory). Routers sign the lower of a bill and their own math, so the console's signed total is the number that redeems.
 

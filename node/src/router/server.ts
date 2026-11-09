@@ -264,7 +264,7 @@ export class Router {
         return await this.serveOne({ ...rest, model: m }, req, res, anth);
       } catch (e) {
         const u = e as Unserved;
-        if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'no_provider', 'all_failed'].includes(u.code)) throw e;
+        if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'over_budget', 'no_provider', 'all_failed'].includes(u.code)) throw e;
         last = u;
         if (list.length > 1) this.log(`${m}: ${u.message}; trying the next model`);
       }
@@ -298,6 +298,22 @@ export class Router {
         throw new Unserved(`no provider serves ${model} under your price ceiling of ${d(ceiling.input)}/${d(ceiling.output)} per million; the lowest listing is ${d(low.input)}/${d(low.output)}`, 404, 'over_price_ceiling');
       }
       offers = within;
+    }
+    // A dollar budget for this one request. Each provider caps what it bills at the cost of the full prompt plus the
+    // most output it may write, and the router never signs past that cap either, so a listing whose cap fits the
+    // budget cannot cost more.
+    const budgetHeader = req.headers['x-orrery-max-cost'];
+    if (budgetHeader !== undefined) {
+      const dollars = Number(String(budgetHeader).replace(/^\$/, ''));
+      if (!Number.isFinite(dollars) || dollars <= 0) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
+      const budget = BigInt(Math.floor(dollars * 1e6));
+      const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
+      const fits = offers.filter((o) => worst(o) <= budget);
+      if (!fits.length) {
+        const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
+        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)`, 404, 'over_budget');
+      }
+      offers = fits;
     }
     const keys = prefixes(model, body.messages);
     const sticky = this.affinity.find(keys);
