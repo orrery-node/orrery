@@ -33,6 +33,7 @@ export default function Try() {
         <nav className="d-nav__links" aria-label="Pages">
           <Link href="/network">Network</Link>
           <Link href="/prices">Prices</Link>
+          <Link href="/integrations">Integrations</Link>
           <Link href="/changelog">Changelog</Link>
           <Link href="/docs">Docs</Link>
         </nav>
