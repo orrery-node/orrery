@@ -30,6 +30,7 @@ export default function Try() {
         </Link>
         <span className="d-nav__here">Try it</span>
         <nav className="d-nav__links" aria-label="Pages">
+          <Link href="/network">Network</Link>
           <Link href="/docs">Docs</Link>
         </nav>
         <Link href="/" className="d-nav__back">Back to the network</Link>
