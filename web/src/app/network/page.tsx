@@ -33,6 +33,7 @@ export default async function Network() {
         <span className="d-nav__here">Network</span>
         <nav className="d-nav__links" aria-label="Pages">
           <Link href="/try">Try it</Link>
+          <Link href="/prices">Prices</Link>
           <Link href="/changelog">Changelog</Link>
           <Link href="/docs">Docs</Link>
         </nav>
