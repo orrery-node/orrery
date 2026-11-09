@@ -544,6 +544,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Router and provider consoles, `orrery doctor` (0.1.4)
 - [x] Embeddings (`/v1/embeddings`), routed and paid like chat, priced on input tokens (0.1.5)
 - [x] Model fallbacks (`"a|b"` or a `models` array), `orrery bench`, `orrery spend` and `orrery provider earnings`, MCP prices and `max_price` (0.1.5)
+- [x] Billed usage in OpenAI's shape with `usage.cost`, benches for embedding models, and routers that pick their channels back up after losing their records (0.1.6)
+- [x] Wallet and node pages read live from the program, with share cards; the network terminal (preview on sample data)
 - [ ] Built-in hardware attestation verifier
 - [ ] $OREY bonds live on mainnet
 
