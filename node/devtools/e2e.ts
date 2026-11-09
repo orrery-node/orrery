@@ -147,6 +147,15 @@ let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
 r = await ask('deepseek-v3', { stream: true });
 check('streaming works and only Ironbridge has deepseek', nameOf(r.provider) === 'Ironbridge Compute' && r.content.includes('Solana'), `${r.content.slice(0, 40)}…`);
+const usageNone = ((r as { raw?: string }).raw ?? '').split('\n').filter((l) => l.startsWith('data: {')).map((l) => JSON.parse(l.slice(6)));
+const su = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v3', stream: true, stream_options: { include_usage: true }, max_tokens: 64, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const suFrames = (await su.text()).split('\n').filter((l) => l.startsWith('data: {')).map((l) => JSON.parse(l.slice(6)));
+const suLast = suFrames[suFrames.length - 1];
+const suTrip = router.trips[router.trips.length - 1];
+const nsj = await ask('deepseek-v3');
+check('a stream ends with the billed usage and its cost only when the client asks (stream_options.include_usage)',
+  !usageNone.some((f) => f.usage !== undefined || !f.choices?.length) && suFrames.filter((f) => f.usage).length === 1 && suLast.choices?.length === 0 && suLast.usage.prompt_tokens === suTrip.inputTokens && suLast.usage.completion_tokens === suTrip.outputTokens && suLast.usage.cost === Number(suTrip.cost) && (nsj as { body?: { usage?: { cost?: number } } }).body?.usage?.cost === Number((nsj as { cost?: string }).cost),
+  `${suLast.usage?.prompt_tokens}+${suLast.usage?.completion_tokens} tok, cost ${suLast.usage?.cost} = signed $${suTrip.cost}; without the option, no usage chunk`);
 r = await ask('qwen3-32b:private');
 check('privacy route seals the request to the only enclave', nameOf(r.provider) === 'Vault Nine' && r.content.length > 20);
 r = await ask('llama-3.3-70b', { header: { 'x-orrery-route': 'privacy' } });
@@ -362,7 +371,7 @@ const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
 check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
-check('router logged every answered request', trips.length === 35 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 37 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };

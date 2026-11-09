@@ -61,7 +61,7 @@ reply = client.chat.completions.create(
 )
 ```
 
-Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the **OpenAI SDKs**. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost`.
+Works unchanged with **Cursor, Continue, Aider, Open WebUI, LangChain** and the **OpenAI SDKs**. Every answer comes back with `x-orrery-provider`, `x-orrery-route` and `x-orrery-cost`, and its `usage` carries the tokens the router paid for and `cost` in USDC (the field OpenRouter calls `usage.cost`). A stream ends with that usage chunk when the request sets `stream_options.include_usage`, as OpenAI's does, and has no usage chunk otherwise.
 
 Embeddings work the same way: the router serves `/v1/embeddings`, routed to a provider that lists the embedding model and paid from the same channel, priced on input tokens (a provider lists an input price and an output price of 0).
 

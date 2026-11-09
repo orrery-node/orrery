@@ -49,7 +49,7 @@
     "orrery": "tsx src/cli.ts",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "e2e": "bash devtools/e2e.sh",
+    "e2e": "tsx devtools/e2e.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli.js",
     "prepublishOnly": "pnpm run build && pnpm test"
   },

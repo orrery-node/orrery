@@ -37,7 +37,7 @@ export type RouterOptions = {
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
-type StreamState = { started: boolean; stream: AnthropicStream | ResponsesStream | null; text: string; tools: boolean };
+type StreamState = { started: boolean; stream: AnthropicStream | ResponsesStream | null; text: string; tools: boolean; id?: string; created?: number };
 
 export type Trip = {
   at: number;
@@ -395,7 +395,14 @@ export class Router {
           if (ch.delta?.tool_calls?.length) state.tools = true;
         }
         if (state.stream) state.stream.chunk(parsed);
-        else res.write(sseFrame(data));
+        else {
+          // The provider's own usage numbers stay here: the client gets the billed ones at the end, and only if it asked.
+          const { usage, ...rest } = parsed as Chunk & { usage?: unknown; id?: string; created?: number };
+          state.id ??= rest.id;
+          state.created ??= rest.created;
+          if (usage === undefined) res.write(sseFrame(data));
+          else if (rest.choices?.length) res.write(sseFrame(JSON.stringify(rest)));
+        }
       } else {
         chunks.push(JSON.parse(data));
       }
@@ -426,19 +433,30 @@ export class Router {
     const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
-      else res.write(sseFrame('[DONE]'));
+      else {
+        if ((body.stream_options as { include_usage?: boolean } | undefined)?.include_usage === true) {
+          res.write(sseFrame(JSON.stringify({ id: state.id ?? `chatcmpl-${trip.at}`, object: 'chat.completion.chunk', created: state.created ?? Math.floor(trip.at / 1000), model: cand.offer.id, choices: [], usage: billedUsage(record.inputTokens, record.outputTokens, trip.cost) })));
+        }
+        res.write(sseFrame('[DONE]'));
+      }
       res.end();
       return;
     }
     if (anth?.kind === 'anthropic') return send(res, 200, toMessage(chunks, anth.id, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
-    if (anth?.kind === 'embeddings') return send(res, 200, { ...(chunks[0] ?? {}), model: cand.offer.id, usage: { prompt_tokens: record.inputTokens, total_tokens: record.inputTokens } }, orreryHeaders);
+    if (anth?.kind === 'embeddings') return send(res, 200, { ...(chunks[0] ?? {}), model: cand.offer.id, usage: { prompt_tokens: record.inputTokens, total_tokens: record.inputTokens, cost: Number(trip.cost) } }, orreryHeaders);
     if (anth?.kind === 'responses') {
       const r = new ResponsesStream(null, anth.id, cand.offer.id);
       for (const c of chunks) r.chunk(c as Chunk);
       return send(res, 200, r.finish(record.inputTokens, record.outputTokens), orreryHeaders);
     }
-    send(res, 200, assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
+    send(res, 200, { ...assemble(chunks, cand.offer.id, record.inputTokens, record.outputTokens), usage: billedUsage(record.inputTokens, record.outputTokens, trip.cost) }, orreryHeaders);
   }
+}
+
+/** OpenAI's usage object with the tokens this router paid for, plus what the answer cost in USDC (the field OpenRouter
+ * calls usage.cost, so tools that already read it show the bill). */
+export function billedUsage(prompt: number, completion: number, cost: string) {
+  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion, cost: Number(cost) };
 }
 
 /** Turn a provider's stream back into the single object a non-streaming OpenAI client expects. */
