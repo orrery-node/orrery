@@ -9,6 +9,13 @@ const PER_IP = 5;
 const WINDOW_MS = 10 * 60_000;
 const PER_DAY = 2000;
 const MAX_PROMPT = 400;
+// The model answering runs on a provider's machine and knows nothing about Orrery, so questions about Orrery get the
+// facts it would otherwise make up.
+const ORRERY_FACTS = [
+  'Answer plainly in under 90 words.',
+  'If asked about Orrery: it is a peer-to-peer AI inference network on Solana. A router on the user\'s computer picks a provider listed on chain, pays it per answer through a USDC payment channel with signed running totals, and the provider redeems on chain. The settlement program takes no fee (0%); providers set their own per-token prices. The code is MIT-licensed and installs with npx -y orrery-node.',
+  'Do not state any other Orrery fee, price, token detail, partnership or date. If unsure, say you do not know and point to orrerynode.com/docs.',
+].join(' ');
 
 const hits = new Map<string, number[]>();
 let day = { key: '', n: 0 };
@@ -59,7 +66,7 @@ export async function POST(req: Request) {
         model,
         max_tokens: 220,
         messages: [
-          { role: 'system', content: 'Answer plainly in under 90 words.' },
+          { role: 'system', content: ORRERY_FACTS },
           { role: 'user', content: prompt },
         ],
       }),
