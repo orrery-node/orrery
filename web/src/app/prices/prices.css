@@ -181,3 +181,52 @@
     display: none;
   }
 }
+
+/* "I run a node": your own prices dropped into the table */
+.pc__sell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 20px 0;
+}
+.pc__preset.is-on {
+  border-color: rgba(95, 143, 242, 0.6);
+  color: var(--fg);
+}
+.pc__mine {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 13px;
+  color: var(--fg-3);
+}
+.pc__mine label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pc__mine input {
+  width: 74px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--fg);
+  font-size: 13px;
+}
+.pc__rank {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(95, 143, 242, 0.14);
+  color: #b9cdf8;
+  font-weight: 400;
+}
+.pc__table tr.pc__you td {
+  background: rgba(95, 143, 242, 0.08);
+}
+.pc__table tr.pc__you .pc__node {
+  color: #b9cdf8;
+}

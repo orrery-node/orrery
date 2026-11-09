@@ -23,10 +23,16 @@ export default function PriceCalc({ listings }: { listings: Listing[] }) {
   const [inTok, setIn] = useState(12_000);
   const [outTok, setOut] = useState(800);
   const [cached, setCached] = useState(0.8);
-  const rows = listings
-    .filter((l) => l.model === model)
+  const [sell, setSell] = useState(false);
+  const [myIn, setMyIn] = useState('0.030');
+  const [myOut, setMyOut] = useState('0.12');
+  const mine: Listing | null = sell && Number(myIn) >= 0 && Number(myOut) >= 0
+    ? { provider: 'You', address: 'you', model, input: Math.round(Number(myIn) * 1e6), output: Math.round(Number(myOut) * 1e6), cachedInput: null, context: 0, enclave: false }
+    : null;
+  const rows = [...listings.filter((l) => l.model === model), ...(mine ? [mine] : [])]
     .map((l) => ({ l, one: cost(l, inTok, outTok, cached) }))
-    .sort((a, b) => a.one - b.one);
+    .sort((a, b) => a.one - b.one || (a.l.address === 'you' ? -1 : b.l.address === 'you' ? 1 : 0));
+  const myRank = mine ? rows.findIndex((r) => r.l.address === 'you') + 1 : 0;
   const n = (x: number) => x.toLocaleString('en-US');
 
   if (!listings.length) return <p className="pc__empty">The chain could not be read just now. Try again in a minute.</p>;
@@ -38,6 +44,19 @@ export default function PriceCalc({ listings }: { listings: Listing[] }) {
             {m}
           </button>
         ))}
+      </div>
+      <div className="pc__sell">
+        <button type="button" className={`pc__preset${sell ? ' is-on' : ''}`} aria-pressed={sell} onClick={() => setSell(!sell)}>
+          {sell ? 'Selling on Orrery: on' : 'I run a node: price mine'}
+        </button>
+        {sell ? (
+          <span className="pc__mine">
+            <label>in $<input className="num" inputMode="decimal" value={myIn} onChange={(e) => setMyIn(e.target.value)} aria-label="Your input price per million tokens" /></label>
+            <label>out $<input className="num" inputMode="decimal" value={myOut} onChange={(e) => setMyOut(e.target.value)} aria-label="Your output price per million tokens" /></label>
+            <span>per million</span>
+            {mine ? <b className="pc__rank num">{myRank === 1 ? `cheapest of ${rows.length}` : `#${myRank} of ${rows.length}`}</b> : null}
+          </span>
+        ) : null}
       </div>
       <div className="pc__presets">
         {PRESETS.map((p) => (
@@ -73,7 +92,7 @@ export default function PriceCalc({ listings }: { listings: Listing[] }) {
           </thead>
           <tbody>
             {rows.map(({ l, one }) => (
-              <tr key={l.address + l.model}>
+              <tr key={l.address + l.model} className={l.address === 'you' ? 'pc__you' : undefined}>
                 <td>
                   <span className="pc__node">{l.provider}</span>
                   {l.enclave ? <span className="pc__tag">enclave</span> : null}
