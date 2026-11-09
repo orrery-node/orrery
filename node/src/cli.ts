@@ -19,6 +19,7 @@ import { doctor, render } from './doctor.ts';
 import { readTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
+import { compare, renderCompare } from './provider/compare.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -63,6 +64,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
   ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
+  ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
 
   --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
 `;
@@ -163,6 +165,14 @@ async function provider(sub: string) {
   const cfg = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
   cfg.rpcUrl = flag('rpc', process.env.ORRERY_RPC_URL ?? cfg.rpcUrl) ?? cfg.rpcUrl;
   cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
+  if (sub === 'compare') {
+    const registry = new Registry(new Connection(cfg.rpcUrl ?? rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    await registry.refresh();
+    const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : null;
+    const rows = compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), registry.usable(), self);
+    if (has('json')) return console.log(JSON.stringify(rows.map((r) => ({ ...r, myCost: usd(r.myCost), lowestCost: r.lowestCost === null ? null : usd(r.lowestCost) })), null, 2));
+    return console.log(renderCompare(cfg.name, rows));
+  }
   if (sub === 'earnings') {
     const by = flag('by', 'model') === 'channel' ? 'provider' : 'model';
     const since = flag('since', '24h')!;

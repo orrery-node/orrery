@@ -449,7 +449,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 70 tests
+cd node && pnpm install && pnpm test                            # 72 tests
 pnpm e2e                                                        # full local rehearsal, 44 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
