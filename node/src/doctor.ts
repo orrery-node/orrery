@@ -1,7 +1,7 @@
 // `orrery doctor`: reads everything a router needs and says what is ready. It only reads: the RPC, the program's config,
 // every listing and the manifest it points to, your wallet's balances and the local router, if one is running.
 import { Connection, PublicKey } from '@solana/web3.js';
-import { decodeConfig, pda } from './chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeConfig, pda, programId } from './chain/program.ts';
 import { usd } from './pricing.ts';
 import { Registry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
@@ -12,7 +12,7 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string }): Promise<Check[]> {
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
     const latest = await fetchWithTimeout('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
@@ -60,6 +60,25 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const usdc = await conn.getTokenAccountBalance(pda.ata(o.wallet, o.mint)).then((b) => BigInt(b.value.amount)).catch(() => 0n);
     out.push({ ok: sol >= 5_000_000, what: 'wallet SOL', detail: `${(sol / 1e9).toFixed(4)} SOL${sol >= 5_000_000 ? '' : ' · opening a channel needs about 0.005 for rent and fees'}` });
     out.push({ ok: usdc >= o.deposit, what: 'wallet USDC', detail: `$${usd(usdc, 2)}${usdc >= o.deposit ? '' : ` · one channel locks $${usd(o.deposit, 2)}`}` });
+    // The wallet's channels on chain, and how many this computer's router can pick back up (same session key).
+    const found = await conn
+      .getProgramAccounts(programId(), {
+        filters: [
+          { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } },
+          { memcmp: { offset: 8, bytes: o.wallet.toBase58() } },
+        ],
+      })
+      .then((a) => a.map((x) => decodeChannel(x.account.data)))
+      .catch(() => null);
+    if (found === null) out.push({ ok: null, what: 'channels', detail: 'this RPC would not list program accounts; orrery channels --wallet tries again' });
+    else if (!found.length) out.push({ ok: true, what: 'channels', detail: 'none on chain yet · the first request to a provider opens one' });
+    else {
+      const open = found.filter((c) => c.closingAt === 0n);
+      const locked = open.reduce((s, c) => s + (c.deposit - c.redeemed), 0n);
+      const mine = o.session ? open.filter((c) => c.sessionKey.equals(o.session!)).length : 0;
+      const closing = found.length - open.length;
+      out.push({ ok: true, what: 'channels', detail: `${n(open.length, 'open channel')}, $${usd(locked)} still on deposit${o.session ? ` · ${mine} under this computer's session key, picked back up on first use` : ''}${closing ? ` · ${closing} closing` : ''}` });
+    }
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();

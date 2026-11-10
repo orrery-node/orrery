@@ -273,7 +273,8 @@ async function main() {
   if (cmd === 'doctor') {
     const walletPath = flag('wallet', process.env.ORRERY_WALLET);
     const address = flag('address');
-    const lines = await doctor({ rpc: rpc(), mint: mint(), wallet: address ? new PublicKey(address) : walletPath ? loadKeypair(expand(walletPath)).publicKey : undefined, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, deposit: dollars(flag('deposit', '2')!), allowDev: has('allow-dev-enclaves'), version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
+    const sessionPath = home('router', 'session.json');
+    const lines = await doctor({ rpc: rpc(), mint: mint(), session: existsSync(sessionPath) ? loadKeypair(sessionPath).publicKey : undefined, wallet: address ? new PublicKey(address) : walletPath ? loadKeypair(expand(walletPath)).publicKey : undefined, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, deposit: dollars(flag('deposit', '2')!), allowDev: has('allow-dev-enclaves'), version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
     console.log(has('json') ? JSON.stringify(lines.map((l) => ({ ...l, what: l.what.trim() })), null, 2) : render(lines));
     if (lines.some((l) => l.ok === false)) process.exitCode = 1;
     return;
