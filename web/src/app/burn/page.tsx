@@ -63,7 +63,7 @@ export default async function Burn() {
           No treasury and no team wallet sits in this loop, and the settlement program still has no fee. A node chooses to pledge a share of what it earns; routers verify every burn on chain and send more work to the nodes that keep their word. The more the network is used, the more is burned.
         </p>
 
-        <p className="brn__stage"><b>Where this stands.</b> The whole loop runs in the rehearsal on the real settlement program, 50 of 50 checks. It is in main and ships in the next release; nodes on mainnet start pledging after that, the seed node first. This page reads mainnet and fills in as they do.</p>
+        <p className="brn__stage"><b>Where this stands.</b> The whole loop runs in the rehearsal on the real settlement program, 50 of 50 checks. Routers verify pledges and serve the :burn route as of orrery-node 0.1.8; the market buy that lets a node keep a pledge on mainnet comes next, then the seed node pledges first. This page reads mainnet and fills in as they do.</p>
 
         <dl className="brn__stats">
           <div><dt>{TICKER} supply now</dt><dd className="num">{b.supply === null ? '—' : n(b.supply)}</dd></div>
@@ -122,7 +122,7 @@ export default async function Burn() {
         ) : <p className="brn__empty">Burns are listed here once this page has checked both transactions on chain: the node’s wallet bought, and the node’s wallet burned.</p>}
 
         <p className="brn__foot">
-          Holder prices are set by a wallet’s share of {TICKER}’s supply, read from chain, so every burn moves every holder toward the next tier. Token: <a href={`https://solscan.io/token/${CA}`} target="_blank" rel="noopener noreferrer" className="num">{CA ? short(CA) : ''}</a>. Ask only burning nodes by adding <code>:burn</code> to a model name once the release is out.
+          Holder prices are set by a wallet’s share of {TICKER}’s supply, read from chain, so every burn moves every holder toward the next tier. Token: <a href={`https://solscan.io/token/${CA}`} target="_blank" rel="noopener noreferrer" className="num">{CA ? short(CA) : ''}</a>. Ask only burning nodes by adding <code>:burn</code> to a model name.
         </p>
       </main>
     </div>
