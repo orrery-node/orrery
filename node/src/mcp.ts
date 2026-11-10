@@ -58,7 +58,7 @@ const TOOLS = [
   },
   {
     name: 'status',
-    description: 'What the local router has spent today, the payment channels it has open, and the last 24 hours of spend by model from its own log.',
+    description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), and the last 24 hours of spend by model from its own log.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -128,11 +128,12 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'status') {
       const r = await fetchFn(`${router}/orrery/status`);
-      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[] };
+      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[]; providers?: { address: string; name: string | null; modelServer?: string | null; healthMs?: number | null }[] };
       const ch = (j.channels ?? []).map((c) => `${c.provider.slice(0, 6)}…  spent $${c.spent}, $${c.left} left`);
+      const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down').map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}`);
       const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[] } | null;
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
-      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}`);
+      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {
