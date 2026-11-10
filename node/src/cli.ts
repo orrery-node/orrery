@@ -21,6 +21,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseSnpReport, verifySnp } from './tee/snp.ts';
+import { parseTdxQuote, verifyTdx } from './tee/tdx.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
 import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
 
@@ -57,7 +58,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
-  ${CLI} enclave verify --report <file> --vcek <file> [--allow-debug]   check an AMD SEV-SNP report here, against AMD’s roots
+  ${CLI} enclave verify --report <file> --vcek <file> | --quote <file>   check an AMD SEV-SNP report or an Intel TDX quote here, against the chip maker’s roots
   ${CLI} providers               every listed provider, what the chain says about it, and whether its model server answers
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
@@ -340,12 +341,25 @@ async function main() {
     return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows));
   }
   if (cmd === 'enclave') {
-    // orrery enclave verify --report <file> --vcek <file>: check an AMD SEV-SNP report on your own machine.
-    const reportPath = flag('report'), vcekPath = flag('vcek');
-    if (argv[1] !== 'verify' || !reportPath || !vcekPath) throw new Error('usage: orrery enclave verify --report <report.bin> --vcek <vcek.der> [--measurement <hex>] [--key <hex>] [--allow-debug]');
-    const report = readFileSync(expand(reportPath)), vcek = readFileSync(expand(vcekPath));
+    // orrery enclave verify: check an AMD SEV-SNP report (--report, --vcek) or an Intel TDX quote (--quote) on your own machine.
+    const reportPath = flag('report'), vcekPath = flag('vcek'), quotePath = flag('quote');
+    if (argv[1] !== 'verify' || !(quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug]');
+    const want = (own: Buffer, name: string) => (flag(name) ? Buffer.from(flag(name)!, 'hex') : Buffer.from(own));
+    if (quotePath) {
+      const quote = readFileSync(expand(quotePath));
+      const parsed = parseTdxQuote(quote);
+      const v = verifyTdx({ quote, measurement: want(parsed.mrtd, 'measurement'), enclaveKey: want(parsed.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') });
+      console.log(`${v.ok ? '✓' : '✗'} ${v.reason}`);
+      console.log(`  image booted       ${parsed.mrtd.toString('hex').slice(0, 32)}…${flag('measurement') ? '' : '  (pass --measurement to require one)'}`);
+      console.log(`  encryption key     ${parsed.reportData.subarray(0, 32).toString('hex').slice(0, 32)}…`);
+      console.log(`  debugging          ${parsed.debug ? 'allowed: the host could read this VM’s memory' : 'off'}`);
+      console.log('  checked on this computer with Intel’s public root; no attestation service was asked.');
+      process.exitCode = v.ok ? 0 : 1;
+      return;
+    }
+    const report = readFileSync(expand(reportPath!)), vcek = readFileSync(expand(vcekPath!));
     const parsed = parseSnpReport(report);
-    const v = verifySnp({ report, vcek, measurement: flag('measurement') ? Buffer.from(flag('measurement')!, 'hex') : Buffer.from(parsed.measurement), enclaveKey: flag('key') ? Buffer.from(flag('key')!, 'hex') : Buffer.from(parsed.reportData.subarray(0, 32)), allowDebug: has('allow-debug') });
+    const v = verifySnp({ report, vcek, measurement: want(parsed.measurement, 'measurement'), enclaveKey: want(parsed.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') });
     console.log(`${v.ok ? '✓' : '✗'} ${v.reason}`);
     console.log(`  chip certificate   ${v.family ? `chains to AMD’s ${v.family} root (pinned)` : 'not AMD’s'}`);
     console.log(`  image booted       ${parsed.measurement.toString('hex').slice(0, 32)}…${flag('measurement') ? '' : '  (pass --measurement to require one)'}`);

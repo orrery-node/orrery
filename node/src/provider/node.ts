@@ -7,6 +7,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { decodeChannel, decodeProvider, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
 import { snpClaim } from '../tee/snp.ts';
+import { tdxClaim } from '../tee/tdx.ts';
 import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from '../burn.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
@@ -39,7 +40,7 @@ export type ProviderConfig = {
   models: ProviderOffer[];
   /** `dev` is a software stand-in for local testing. `snp` serves the report this machine's AMD CPU signed for the
    * node's encryption key (`report`, raw bytes) and the chip's certificate (`vcek`, DER), which routers verify themselves. */
-  tee?: { mode: 'dev'; kind?: number } | { mode: 'snp'; report: string; vcek: string };
+  tee?: { mode: 'dev'; kind?: number } | { mode: 'snp'; report: string; vcek: string } | { mode: 'tdx'; quote: string };
   redeem?: { everySecs?: number; minUnits?: number };
   /** Holder pricing: hold `share` basis points of the network token's supply, pay `off` basis points less. */
   holder?: { tiers: HolderTier[] };
@@ -143,6 +144,11 @@ export class ProviderNode {
         if (debug) throw new Error('this VM was launched with debugging allowed; routers refuse it. Launch it with the debug policy bit off.');
         this.vcek = readFileSync(expand(cfg.tee.vcek));
         this.attestation = { kind: 2, measurement, report, reportHash: createHash('sha256').update(report).digest() };
+      } else if (cfg.tee.mode === 'tdx') {
+        const quote = readFileSync(expand(cfg.tee.quote));
+        const { measurement, debug } = tdxClaim(quote, this.enclave.publicKey);
+        if (debug) throw new Error('this VM was launched with debugging allowed; routers refuse it.');
+        this.attestation = { kind: 1, measurement, report: quote, reportHash: createHash('sha256').update(quote).digest() };
       } else {
         const kind = cfg.tee.kind ?? 1;
         const measurement = createHash('sha384').update(`orrery-dev-image:${this.node.publicKey.toBase58()}`).digest();

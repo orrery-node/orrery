@@ -469,7 +469,7 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (90 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (51 of 51 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (93 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (51 of 51 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
             <li>New in 0.1.8: a built-in verifier for AMD SEV-SNP enclaves (your router checks the chip&apos;s report against AMD&apos;s roots itself; <code>orrery enclave verify</code>), private nodes on SEV-SNP (<code>tee.mode: snp</code>), burn pledges that routers verify on chain with a <code>:burn</code> route and <code>x-orrery-burn</code> on answers, and each node&apos;s model server in the console, <code>/orrery/status</code>, MCP and <code>orrery providers</code>.</li>
@@ -477,7 +477,7 @@ export default function Docs() {
             <li>New in 0.1.6: answers carry the billed usage in OpenAI&apos;s shape with <code>usage.cost</code> in USDC (streams end with it when you set <code>stream_options.include_usage</code>), <code>orrery bench</code> measures embedding models too, and a router that loses its records picks its open channels back up from the node&apos;s last voucher.</li>
             <li>New in 0.1.5: embeddings, model fallbacks, <code>orrery bench</code>, <code>orrery spend</code> and <code>orrery provider earnings</code>, MCP prices with <code>max_price</code> and an <code>embed</code> tool, last-24-hours tables in both consoles, a Host check against DNS rebinding, and <code>--json</code> output.</li>
             <li>New in 0.1.4: the OpenAI Responses API, MCP, model aliases, resumed streams, <code>orrery connect</code> for Codex and Claude Code, cached-input prices and cache affinity, parallel lanes, <code>--max-price</code>, router and provider consoles, <code>orrery doctor</code> and <code>orrery provider init</code>.</li>
-            <li>Not yet: a built-in verifier for Intel TDX, and the market buy that lets a node keep a burn pledge on mainnet.</li>
+            <li>In main for the next release: a built-in verifier for Intel TDX, task budgets, and the market buy that lets a node keep a burn pledge on mainnet. Not yet: revocation lists and firmware status in the built-in verifiers, and NVIDIA GPU attestation.</li>
           </ul>
         </article>
       </div>
