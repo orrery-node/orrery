@@ -232,7 +232,13 @@ async function main() {
     const emb = found.models.filter(isEmbeddingModel);
     if (emb.length) console.log(`${emb.join(', ')} ${emb.length === 1 ? 'is an embedding model' : 'are embedding models'}: listed for /v1/embeddings, priced on input tokens only ($0.02 per million to start)`);
     if (CACHE_REPORTING[found.name]) console.log(`each model also has a cached-input price (a quarter of input) for prompt-cache hits; start ${found.name} with ${CACHE_REPORTING[found.name]} so it reports them`);
-    console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  3. ${CLI} provider start --config ${out}`);
+    // Where the draft prices would stand against what is already listed, so the first edit is an informed one.
+    if (!has('offline')) {
+      const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: false, measurements: [] });
+      const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
+      if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
+    }
+    console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider compare --config ${out} to see where new prices would stand\n  3. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  4. ${CLI} provider start --config ${out}`);
     return;
   }
   if (cmd === 'connect') {
