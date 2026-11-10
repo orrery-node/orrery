@@ -37,6 +37,8 @@ export type RouterOptions = {
   maxPrice?: Ceiling;
   /** A dollar budget for every request that does not send its own x-orrery-max-cost. */
   maxCost?: string;
+  /** How often to ask each node whether its model server answers (default 30 seconds). */
+  healthSecs?: number;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -97,6 +99,7 @@ export class Router {
   readonly trips: Trip[] = [];
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
+  private healthTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
   /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
   private lanes = new Map<string, Promise<void>>();
@@ -127,6 +130,8 @@ export class Router {
   async start(): Promise<Server> {
     await this.o.registry.refresh().catch((e) => this.log(`registry refresh failed: ${(e as Error).message}`));
     this.timer = setInterval(() => void this.o.registry.refresh().catch(() => undefined), (this.o.refreshSecs ?? 60) * 1000);
+    void this.o.registry.checkHealth().catch(() => undefined);
+    this.healthTimer = setInterval(() => void this.o.registry.checkHealth().catch(() => undefined), (this.o.healthSecs ?? 30) * 1000);
     this.server = createServer((req, res) => void this.handle(req, res));
     await new Promise<void>((r) => this.server!.listen(this.o.port, this.o.host ?? '127.0.0.1', () => r()));
     return this.server;
@@ -151,6 +156,7 @@ export class Router {
 
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    if (this.healthTimer) clearInterval(this.healthTimer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 
@@ -285,6 +291,9 @@ export class Router {
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
+    const answering = offers.filter((o) => o.entry.upstream !== 'down');
+    if (!answering.length) throw new Unserved(`every provider of ${model} reports its model server down right now`, 503, 'no_provider');
+    offers = answering;
     let ceiling: Ceiling | undefined;
     try {
       ceiling = req.headers['x-orrery-max-price'] ? parseCeiling(String(req.headers['x-orrery-max-price'])) : this.o.maxPrice;

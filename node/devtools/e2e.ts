@@ -412,6 +412,12 @@ await sleep(16_000);
 const haloHealth = (await (await fetch(`http://127.0.0.1:${providerSpecs[3].port}/health`)).json()) as { upstream?: string };
 const ibHealth = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/health`)).json()) as { upstream?: string };
 check('a node says on /health when its model server is down, before any router pays for a request it cannot serve', haloHealth.upstream === 'down' && ibHealth.upstream === 'up', `Halo with its model server stopped: ${haloHealth.upstream} · Ironbridge: ${ibHealth.upstream}`);
+await registry.checkHealth();
+const signedBefore = channels.list().reduce((a, c) => a + c.cumulative, 0n);
+const skipped = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma-3-27b', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const skippedJ = (await skipped.json()) as { error?: { code?: string; message?: string } };
+const signedAfter = channels.list().reduce((a, c) => a + c.cumulative, 0n);
+check('the router skips a node whose model server is down before sending or paying anything', skipped.status === 503 && /model server down/.test(skippedJ.error?.message ?? '') && signedAfter === signedBefore, `gemma (only Halo lists it) → ${skipped.status}: ${skippedJ.error?.message} · signed total unchanged`);
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
   await sleep(Number(process.env.E2E_HOLD) * 1000);

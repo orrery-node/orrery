@@ -16,6 +16,8 @@ export type ProviderEntry = {
   problem: string | null;
   checkedAt: number;
   tee: { verified: boolean; dev: boolean; reason: string; enclaveKey: Buffer } | null;
+  /** What the node's /health last said about its model server; unset until checked or for nodes that do not say. */
+  upstream?: 'up' | 'down';
 };
 
 export type TeePolicy = { allowDev: boolean; measurements: string[]; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
@@ -90,6 +92,18 @@ export class Registry {
     } catch (err) {
       return { verified: false, dev: false, reason: `attestation fetch failed: ${(err as Error).message}`, enclaveKey };
     }
+  }
+
+  /** Asks every usable node's /health whether its model server answers, so the router can skip a node that is up
+   * while its model is not, before paying for a request it cannot serve. A node that does not answer keeps its last
+   * state; the router's own failure cool-down covers nodes that are down altogether. */
+  async checkHealth(): Promise<void> {
+    await Promise.all(
+      this.usable().map(async (e) => {
+        const h = (await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { upstream?: string } | null;
+        if (h?.upstream === 'up' || h?.upstream === 'down') e.upstream = h.upstream;
+      }),
+    );
   }
 
   usable(): ProviderEntry[] {
