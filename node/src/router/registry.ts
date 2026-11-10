@@ -18,6 +18,9 @@ export type ProviderEntry = {
   tee: { verified: boolean; dev: boolean; reason: string; enclaveKey: Buffer } | null;
   /** What the node's /health last said about its model server; unset until checked or for nodes that do not say. */
   upstream?: 'up' | 'down';
+  /** How long the node's /health took to answer, and when, at the last check that got an answer. */
+  healthMs?: number;
+  healthAt?: number;
 };
 
 export type TeePolicy = { allowDev: boolean; measurements: string[]; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
@@ -100,8 +103,12 @@ export class Registry {
   async checkHealth(): Promise<void> {
     await Promise.all(
       this.usable().map(async (e) => {
+        const t0 = Date.now();
         const h = (await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { upstream?: string } | null;
-        if (h?.upstream === 'up' || h?.upstream === 'down') e.upstream = h.upstream;
+        if (!h) return;
+        e.healthMs = Date.now() - t0;
+        e.healthAt = Date.now();
+        if (h.upstream === 'up' || h.upstream === 'down') e.upstream = h.upstream;
       }),
     );
   }

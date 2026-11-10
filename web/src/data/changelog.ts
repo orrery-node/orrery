@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The router’s status (`GET /orrery/status`) and its console show each node’s model server: up with the time its `/health` took, or down and skipped.' },
+];
 
 export const RELEASES: Release[] = [
   {

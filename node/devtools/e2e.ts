@@ -418,6 +418,9 @@ const skipped = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', h
 const skippedJ = (await skipped.json()) as { error?: { code?: string; message?: string } };
 const signedAfter = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 check('the router skips a node whose model server is down before sending or paying anything', skipped.status === 503 && /model server down/.test(skippedJ.error?.message ?? '') && signedAfter === signedBefore, `gemma (only Halo lists it) → ${skipped.status}: ${skippedJ.error?.message} · signed total unchanged`);
+const statusNow = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { name: string | null; modelServer: string | null; healthMs: number | null }[] };
+const stateOf = (n: string) => statusNow.providers.find((p) => p.name === n);
+check('the router reports each node’s model server in its status and console', stateOf('Halo Compute')?.modelServer === 'down' && stateOf('Ironbridge Compute')?.modelServer === 'up' && typeof stateOf('Ironbridge Compute')?.healthMs === 'number', `/orrery/status · Halo ${stateOf('Halo Compute')?.modelServer} · Ironbridge ${stateOf('Ironbridge Compute')?.modelServer} in ${stateOf('Ironbridge Compute')?.healthMs} ms`);
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
   await sleep(Number(process.env.E2E_HOLD) * 1000);
