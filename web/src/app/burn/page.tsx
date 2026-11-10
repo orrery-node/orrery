@@ -39,6 +39,7 @@ export default async function Burn() {
         <nav className="d-nav__links" aria-label="Pages">
           <Link href="/network">Network</Link>
           <Link href="/try">Try it</Link>
+          <Link href="/private">Private</Link>
           <Link href="/prices">Prices</Link>
           <Link href="/changelog">Changelog</Link>
           <Link href="/docs">Docs</Link>

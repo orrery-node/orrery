@@ -1,0 +1,115 @@
+/* /private — who can read what, and the five checks */
+.prv .d-lead code,
+.prv .brn__empty code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--ground-3);
+  color: var(--fg);
+  font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+.prv__who td {
+  white-space: normal;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.prv__who td:first-child {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.prv__tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--fg-2);
+}
+.prv__tag--yes {
+  border-color: rgba(20, 241, 149, 0.45);
+  color: var(--green);
+}
+.prv__tag--part {
+  border-color: rgba(185, 180, 255, 0.4);
+  color: var(--violet);
+}
+.prv__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ground-2);
+}
+.prv__checks li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 18px;
+  border-top: 1px solid var(--line);
+}
+.prv__checks li:first-child {
+  border-top: 0;
+}
+.prv__checks li > span {
+  font-size: 13px;
+  color: var(--green);
+  padding-top: 2px;
+}
+.prv__checks h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.prv__checks p {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+.prv__fail {
+  margin: 14px 0 0;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-3);
+}
+.prv__bar {
+  margin: 0;
+  max-width: 100%;
+}
+.prv__bar code {
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.prv__out {
+  margin: 14px 0 0;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ground-2);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--fg-2);
+  overflow-x: auto;
+}
+@media (max-width: 760px) {
+  .prv__who thead {
+    display: none;
+  }
+  .prv__who tr {
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .prv__who tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .prv__who td {
+    padding: 0;
+    border: 0;
+  }
+}
