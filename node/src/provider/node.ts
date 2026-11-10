@@ -5,7 +5,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { decodeChannel, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
+import { decodeChannel, decodeProvider, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
+import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from '../burn.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, writePrivate } from '../keys.ts';
@@ -41,6 +42,9 @@ export type ProviderConfig = {
   holder?: { tiers: HolderTier[] };
   /** Set when the upstream continues a final assistant message (assistant prefill), so routers may resume through this node. */
   resume?: boolean;
+  /** Burn on every answer: spend `share` basis points of every USDC this node redeems on buying the network token and
+   * burning it. `minUnits` is the smallest buy worth its fee, in USDC base units (default 10,000 = one cent). */
+  burn?: { share: number; minUnits?: number };
 };
 
 type Entry = {
@@ -146,6 +150,7 @@ export class ProviderNode {
       models: cfg.models.map(({ upstreamModel: _u, ...o }) => o),
       tee: this.enclave ? { kind: this.attestation!.kind, enclaveKey: this.enclave.publicKey.toString('hex') } : undefined,
       holder: cfg.holder ? { tiers: checkTiers(cfg.holder.tiers) } : undefined,
+      burn: cfg.burn ? { share: cfg.burn.share } : undefined,
       resume: cfg.resume ? true : undefined,
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
@@ -263,6 +268,11 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/health') {
         const upstream = await this.upstreamUp();
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
+      }
+      if (req.method === 'GET' && url.pathname === '/orrery/burns') {
+        // What this node pledged and every buy-and-burn it has made, with the transactions a router can check on chain.
+        const book = loadBook(this.burnPath());
+        return json(res, 200, { provider: this.pda.toBase58(), share: this.cfg.burn?.share ?? 0, spent: book.spent, burned: book.burned, receipts: book.receipts });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/channel') {
         // Where a channel stands on this node: the latest total its router signed (the voucher itself, so a router that
@@ -480,6 +490,29 @@ export class ProviderNode {
     }
   }
 
+  /** How this node buys the network token and burns it. Unset, a pledge is listed but nothing runs. */
+  burnHooks: { swap: Swapper; burn: Burner } | null = null;
+
+  private burnPath() {
+    return `${this.dir}/burns.json`;
+  }
+
+  /** Buys and burns what the pledge owes on everything redeemed so far, read from the provider's account on chain. */
+  async burnDue(): Promise<BurnReceipt | null> {
+    if (!this.cfg.burn || !this.burnHooks) return null;
+    const info = await this.conn.getAccountInfo(this.pda);
+    if (!info) return null;
+    const redeemed = decodeProvider(info.data).settled;
+    try {
+      const r = await burnOnce({ path: this.burnPath(), redeemed, shareBps: this.cfg.burn.share, minUnits: BigInt(this.cfg.burn.minUnits ?? 10_000), ...this.burnHooks });
+      if (r) this.log(`burned ${r.burned} token units bought with $${usd(BigInt(r.usdc))}  swap ${r.swapTx.slice(0, 12)}…  burn ${r.burnTx.slice(0, 12)}…`);
+      return r;
+    } catch (err) {
+      this.log(`burn failed: ${(err as Error).message.split('\n')[0]}`);
+      return null;
+    }
+  }
+
   registerInstruction(wallet: PublicKey) {
     return ins.registerProvider(wallet, this.node.publicKey, this.cfg.publicUrl, this.manifestHash);
   }
@@ -504,7 +537,7 @@ export class ProviderNode {
       this.server = createServer((req, res) => void this.handle(req, res));
       this.server.listen(this.cfg.listen, this.cfg.host ?? '0.0.0.0', () => resolve(this.server!));
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
-      this.timer = setInterval(() => void this.redeemDue(), every);
+      this.timer = setInterval(() => void this.redeemDue().then(() => this.burnDue()).catch(() => undefined), every);
     });
   }
 

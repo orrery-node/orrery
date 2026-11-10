@@ -3,6 +3,9 @@
 // the pledge is the provider's own, and anyone can check it: redeemed USDC is on the provider's account, and each burn
 // is a token burn signed by the provider's wallet.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
+import { createBurnCheckedInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { sendFresh } from './chain/send.ts';
 
 /** One buy-and-burn: USDC spent (base units), tokens burned (base units), and the two transactions that prove it. */
 export type BurnReceipt = { at: number; usdc: string; burned: string; swapTx: string; burnTx: string };
@@ -54,4 +57,12 @@ export async function burnOnce(o: { path: string; redeemed: bigint; shareBps: nu
   book.receipts.push(receipt);
   saveBook(o.path, book);
   return receipt;
+}
+
+/** A token burn from the wallet's own token account: the supply goes down by exactly that much, on chain. */
+export function splBurner(conn: Connection, wallet: Keypair, mint: PublicKey, decimals: number, tokenProgram?: PublicKey): Burner {
+  return async (tokens) => {
+    const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey, false, tokenProgram);
+    return sendFresh(conn, () => new Transaction().add(createBurnCheckedInstruction(ata, mint, wallet.publicKey, tokens, decimals, [], tokenProgram)), [wallet]);
+  };
 }

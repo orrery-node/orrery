@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'Burn on every answer: a node can pledge, in the price list it pins on chain, a share of every USDC it redeems (`burn: { share }` in provider.json). After redeeming it buys the network token with that share, burns it, and lists every buy-and-burn with its transactions at `GET /orrery/burns`. The settlement program is not involved and still takes nothing.' },
   { who: 'router', text: 'The router’s status (`GET /orrery/status`) and its console show each node’s model server: up with the time its `/health` took, or down and skipped.' },
   { who: 'router', text: 'The MCP `status` tool tells an agent the same thing, node by node, so it knows why a model has nowhere to go before it asks.' },
   { who: 'everyone', text: '`orrery providers` asks every listed node whether its model server answers and prints up with the time it took, or down.' },

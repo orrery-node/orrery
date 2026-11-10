@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · Burn on every answer: a node can pledge, in the price list it pins on chain, a share of every USDC it redeems (`burn: { share }` in provider.json). After redeeming it buys the network token with that share, burns it, and lists every buy-and-burn with its transactions at `GET /orrery/burns`. The settlement program is not involved and still takes nothing.
 - **Router** · The router’s status (`GET /orrery/status`) and its console show each node’s model server: up with the time its `/health` took, or down and skipped.
 - **Router** · The MCP `status` tool tells an agent the same thing, node by node, so it knows why a model has nowhere to go before it asks.
 - **Everyone** · `orrery providers` asks every listed node whether its model server answers and prints up with the time it took, or down.

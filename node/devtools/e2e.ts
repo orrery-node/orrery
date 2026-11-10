@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
-import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount } from '@solana/spl-token';
+import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, createTransferInstruction } from '@solana/spl-token';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const WORK = join(ROOT, '.local/e2e');
@@ -18,6 +18,7 @@ process.env.ORRERY_HOME = join(WORK, 'home');
 
 const { PROGRAM_ID } = await import('../src/brand.ts');
 const { decodeChannel, decodeConfig, decodeProvider, ins, pda } = await import('../src/chain/program.ts');
+const { splBurner } = await import('../src/burn.ts');
 const { loadOrCreateKeypair } = await import('../src/keys.ts');
 const { ProviderNode } = await import('../src/provider/node.ts');
 const { Channels } = await import('../src/router/channels.ts');
@@ -84,7 +85,7 @@ await sleep(1_500);
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -103,6 +104,7 @@ for (const s of providerSpecs) {
     models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) } }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
+    burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
   });
   node.log = (l) => console.log(`    [${s.name.split(' ')[0]}] ${l}`);
   await fund(wallet.publicKey);
@@ -484,6 +486,30 @@ for (let i = 0; i < 3; i++) {
 await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(vaultNode.node.publicKey, wallets[2].publicKey, new PublicKey(extraChannels[0]), (decodeChannel((await conn.getAccountInfo(new PublicKey(extraChannels[0])))!.data)).payer, usdc)), [vaultNode.node]);
 const extraRedeemed = await vaultNode.redeemDue(1n);
 check('a provider with many channels redeems them in transactions that fit, skipping one that closed', extraRedeemed.length === 2 && extraRedeemed.every((d) => d.amount === 5n) && new Set(extraRedeemed.map((d) => d.tx)).size === 1, `${extraRedeemed.length} channels in ${new Set(extraRedeemed.map((d) => d.tx)).size} tx`);
+
+// Burn on every answer: Ironbridge pledged 25% of what it redeems. A local desk stands in for the market (the admin
+// sells the stand-in token at 2,500 per USDC in one transaction both sign); the burn itself is a real token burn.
+const ironWallet = wallets[1];
+const ironOrey = await getOrCreateAssociatedTokenAccount(conn, admin, orey, ironWallet.publicKey);
+const ironUsdc = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, ironWallet.publicKey);
+const adminUsdc = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, admin.publicKey);
+iron.burnHooks = {
+  swap: async (u) => {
+    const tokens = u * 2_500n;
+    const tx = await sendAndConfirmTransaction(conn, new Transaction().add(createTransferInstruction(ironUsdc.address, adminUsdc.address, ironWallet.publicKey, u), createTransferInstruction(adminOrey.address, ironOrey.address, admin.publicKey, tokens)), [ironWallet, admin]);
+    return { tx, tokens };
+  },
+  burn: splBurner(conn, ironWallet, orey, 6),
+};
+const supplyBefore = BigInt((await conn.getTokenSupply(orey)).value.amount);
+const ironSettled = decodeProvider((await conn.getAccountInfo(iron.pda))!.data).settled;
+const burnReceipt = await iron.burnDue();
+const supplyAfter = BigInt((await conn.getTokenSupply(orey)).value.amount);
+const burnsServed = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/burns`)).json()) as { share: number; spent: string; burned: string; receipts: { burnTx: string }[] };
+const burnTxInfo = burnReceipt ? await conn.getParsedTransaction(burnReceipt.burnTx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }) : null;
+const burnIx = burnTxInfo?.transaction.message.instructions.find((i) => 'parsed' in i && i.parsed?.type === 'burnChecked') as { parsed: { info: { mint: string; authority: string; tokenAmount: { amount: string } } } } | undefined;
+const pledged = (ironSettled * 2_500n) / 10_000n;
+check('a node that pledged a share of what it redeems buys the network token and burns it, and the supply on chain drops by exactly that', !!burnReceipt && BigInt(burnReceipt.usdc) === pledged && supplyBefore - supplyAfter === BigInt(burnReceipt.burned) && burnIx?.parsed.info.mint === orey.toBase58() && burnIx.parsed.info.authority === ironWallet.publicKey.toBase58() && BigInt(burnIx.parsed.info.tokenAmount.amount) === BigInt(burnReceipt.burned) && burnsServed.share === 2_500 && burnsServed.receipts.length === 1 && (await iron.burnDue()) === null, burnReceipt ? `Ironbridge redeemed $${usd(ironSettled)}, pledged 25% → spent $${usd(pledged)}, burned ${(Number(burnReceipt.burned) / 1e6).toLocaleString('en-US')} tokens · supply ${(Number(supplyBefore) / 1e6).toLocaleString('en-US')} → ${(Number(supplyAfter) / 1e6).toLocaleString('en-US')} · burn tx ${burnReceipt.burnTx.slice(0, 12)}…` : 'no burn');
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
