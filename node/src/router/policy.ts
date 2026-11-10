@@ -5,7 +5,7 @@ import { discounted } from '../holder.ts';
 import { costOf } from '../pricing.ts';
 import type { ProviderEntry } from './registry.ts';
 
-export const ROUTES = ['auto', 'price', 'speed', 'reputation', 'privacy'] as const;
+export const ROUTES = ['auto', 'price', 'speed', 'reputation', 'privacy', 'burn'] as const;
 export type Route = (typeof ROUTES)[number];
 
 const SUFFIX: Record<string, Route> = { cheap: 'price', floor: 'price', fast: 'speed', trusted: 'reputation', private: 'privacy' };
@@ -82,8 +82,18 @@ export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): numb
   const bond = maxBond > 0n ? Math.sqrt(Number((a.bonded * 1_000_000n) / maxBond) / 1_000_000) : 0;
   const seen = o.ok + o.fail;
   const local = seen === 0 ? 0.6 : o.ok / seen;
-  return 0.35 * settled + 0.15 * redeems + 0.15 * age + 0.1 * bond + 0.25 * local;
+  return Math.min(1, 0.35 * settled + 0.15 * redeems + 0.15 * age + 0.1 * bond + 0.25 * local + 0.1 * burnScore(e));
 }
+
+/** 0..1 for a burn pledge this router verified on chain: how much of the pledge was kept, times the square root of the
+ * pledged share, so a kept 25% counts for half of a kept 100%. An unverified or unkept pledge counts for nothing. */
+export function burnScore(e: ProviderEntry): number {
+  if (!e.manifest?.burn || !e.burn) return 0;
+  return e.burn.kept * Math.sqrt(Math.min(10_000, e.burn.share) / 10_000);
+}
+
+/** A node counts as burning once this router has verified it kept at least 90% of what its pledge owes. */
+export const burning = (e: ProviderEntry) => !!e.manifest?.burn && !!e.burn && e.burn.kept >= 0.9;
 
 export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number; cached: number };
 
@@ -110,6 +120,7 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
       };
     });
   if (route === 'privacy') c = c.filter((x) => x.entry.tee?.verified);
+  if (route === 'burn') c = c.filter((x) => burning(x.entry));
   const byCost = (a: Candidate, b: Candidate) => (a.expected === b.expected ? b.reputation - a.reputation : a.expected < b.expected ? -1 : 1);
   const ttft = (x: Candidate) => x.ttftMs ?? 1_500;
   switch (route) {
@@ -118,6 +129,8 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
       return c.sort(byCost);
     case 'speed':
       return c.sort((a, b) => ttft(a) - ttft(b) || byCost(a, b));
+    case 'burn':
+      return c.sort((a, b) => (b.entry.burn?.share ?? 0) - (a.entry.burn?.share ?? 0) || byCost(a, b));
     case 'reputation':
       return c.sort((a, b) => b.reputation - a.reputation || byCost(a, b));
     case 'auto': {

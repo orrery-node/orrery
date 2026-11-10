@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../burn.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { ACCOUNT, decodeProvider, programId, type ProviderAccount } from '../chain/program.ts';
+import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, type ProviderAccount } from '../chain/program.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchWithTimeout } from '../sse.ts';
 
@@ -146,6 +146,20 @@ export class Registry {
         e.burn = { share, spent, burned, receipts: n, kept: pledgeKept(e.account.settled, share, spent), checkedAt: Date.now() };
       }),
     );
+  }
+
+  private mints: { usdc: PublicKey; token: PublicKey } | null = null;
+
+  /** `checkBurns` with the two mints read from the program's own config (the settlement mint and the network token). */
+  async checkBurnsFromConfig(): Promise<void> {
+    if (!this.mints) {
+      const info = await this.conn.getAccountInfo(pda.config());
+      if (!info) return;
+      const c = decodeConfig(info.data);
+      if (c.bondMint.equals(PublicKey.default)) return;
+      this.mints = { usdc: c.settleMint, token: c.bondMint };
+    }
+    await this.checkBurns(this.mints.usdc, this.mints.token);
   }
 
   usable(): ProviderEntry[] {

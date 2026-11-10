@@ -59,3 +59,25 @@ describe('burn on every answer', () => {
     assert.deepEqual(verifyReceipt(r, swap, null, U, T, W), { usdc: 0n, burned: 0n });
   });
 });
+
+import { burnScore, burning, rank, Stats } from '../src/router/policy.ts';
+import type { ProviderEntry } from '../src/router/registry.ts';
+
+describe('routing to nodes that burn', () => {
+  const entry = (address: string, share: number | null, kept: number | null, price: number): { entry: ProviderEntry; offer: { id: string; context: number; maxOutput: number; price: { input: number; output: number } } } => {
+    const offer = { id: 'm', context: 8000, maxOutput: 1000, price: { input: price, output: price } };
+    const e = { address, account: { settled: 0n, redeems: 0n, registeredAt: BigInt(Math.floor(Date.now() / 1000)), bonded: 0n }, manifest: { models: [offer], ...(share ? { burn: { share } } : {}) }, problem: null, tee: null, ...(share && kept !== null ? { burn: { share, spent: 0n, burned: 0n, receipts: 1, kept, checkedAt: 0 } } : {}) } as unknown as ProviderEntry;
+    return { entry: e, offer };
+  };
+  it('scores a verified pledge by how much was kept and how large it is, and nothing unverified', () => {
+    assert.equal(burnScore(entry('a', 10_000, 1, 1).entry), 1);
+    assert.equal(burnScore(entry('b', 2_500, 1, 1).entry), 0.5);
+    assert.equal(burnScore(entry('c', 10_000, null, 1).entry), 0);
+    assert.equal(burning(entry('d', 10_000, 0.5, 1).entry), false);
+  });
+  it(':burn keeps only verified burners, largest pledge first; other routes keep everyone', () => {
+    const offers = [entry('cheap', null, null, 1), entry('quarter', 2_500, 1, 3), entry('all', 10_000, 1, 5), entry('claims', 10_000, null, 2)];
+    assert.deepEqual(rank(offers, 'burn', 100, 100, new Stats()).map((c) => c.entry.address), ['all', 'quarter']);
+    assert.equal(rank(offers, 'price', 100, 100, new Stats()).length, 4);
+  });
+});

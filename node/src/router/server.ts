@@ -8,7 +8,7 @@ import { decrypt, sealRequest } from '../seal.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
-import { applyAlias, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
+import { applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
@@ -100,6 +100,7 @@ export class Router {
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private healthTimer: NodeJS.Timeout | null = null;
+  private burnTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
   /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
   private lanes = new Map<string, Promise<void>>();
@@ -131,6 +132,8 @@ export class Router {
     await this.o.registry.refresh().catch((e) => this.log(`registry refresh failed: ${(e as Error).message}`));
     this.timer = setInterval(() => void this.o.registry.refresh().catch(() => undefined), (this.o.refreshSecs ?? 60) * 1000);
     void this.o.registry.checkHealth().catch(() => undefined);
+    void this.o.registry.checkBurnsFromConfig().catch(() => undefined);
+    this.burnTimer = setInterval(() => void this.o.registry.checkBurnsFromConfig().catch(() => undefined), 5 * 60_000);
     this.healthTimer = setInterval(() => void this.o.registry.checkHealth().catch(() => undefined), (this.o.healthSecs ?? 30) * 1000);
     this.server = createServer((req, res) => void this.handle(req, res));
     await new Promise<void>((r) => this.server!.listen(this.o.port, this.o.host ?? '127.0.0.1', () => r()));
@@ -157,6 +160,7 @@ export class Router {
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     if (this.healthTimer) clearInterval(this.healthTimer);
+    if (this.burnTimer) clearInterval(this.burnTimer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 
@@ -331,7 +335,7 @@ export class Router {
     const keys = prefixes(model, body.messages);
     const sticky = this.affinity.find(keys);
     const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, offOf, (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
-    if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : `every provider for ${model} is cooling down`, 503, 'no_provider');
+    if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : route === 'burn' ? `no provider of ${model} has a burn pledge this router has verified on chain` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
     const tried: string[] = [];
@@ -475,7 +479,10 @@ export class Router {
     appendTrip(home('router', 'trips.jsonl'), trip);
     this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
 
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft) };
+    // What this answer sends to the burn: the node's pledged share of what it was just paid, shown only once this router
+    // has verified on chain that the node keeps its pledge.
+    const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

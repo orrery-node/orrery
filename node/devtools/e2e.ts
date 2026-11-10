@@ -515,6 +515,14 @@ await registry.refresh();
 await registry.checkBurns(usdc, orey);
 const ironSeen = registry.entries.get(iron.pda.toBase58())?.burn;
 check('the router verifies a node’s burns on chain itself and scores the pledge as kept', !!ironSeen && !!burnReceipt && ironSeen.share === 2_500 && ironSeen.burned === BigInt(burnReceipt.burned) && ironSeen.spent === pledged && ironSeen.kept === 1 && ironSeen.receipts === 1, ironSeen ? `router read 1 receipt, checked the buy and the burn on chain: $${usd(ironSeen.spent)} spent of $${usd(pledged)} pledged, ${ironSeen.burned} token units burned, pledge kept ${(ironSeen.kept * 100).toFixed(0)}%` : 'nothing verified');
+const burnAsk = (model: string) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const viaBurn = await burnAsk('llama-3.3-70b:burn');
+const viaBurnJ = (await viaBurn.json()) as { error?: { message?: string } };
+const noBurn = await burnAsk('qwen3-32b:burn');
+const noBurnJ = (await noBurn.json()) as { error?: { message?: string } };
+const burnCost = Number(viaBurn.headers.get('x-orrery-cost'));
+check('the :burn route sends a request only to nodes whose burns the router verified, and the answer says what it sends to the burn', viaBurn.status === 200 && viaBurn.headers.get('x-orrery-provider') === iron.pda.toBase58() && viaBurn.headers.get('x-orrery-burn-share') === '2500' && Math.abs(Number(viaBurn.headers.get('x-orrery-burn')) - burnCost / 4) < 0.0000011 && noBurn.status === 503 && /burn pledge/.test(noBurnJ.error?.message ?? ''), `llama-3.3-70b:burn → Ironbridge · x-orrery-cost ${viaBurn.headers.get('x-orrery-cost')} · x-orrery-burn ${viaBurn.headers.get('x-orrery-burn')} (25%) · qwen3-32b:burn → ${noBurn.status}: ${noBurnJ.error?.message ?? viaBurnJ.error?.message}`);
+
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),
