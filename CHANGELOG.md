@@ -7,6 +7,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 ## Unreleased (in main)
 
 - **Router** · `orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.
+- **Router** · When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.
 
 ## 0.1.8 · 2026-11-10 15:20 UTC
 

@@ -6,6 +6,7 @@ export type Release = { version: string; at: string; headline: string; changes: 
 
 export const UNRELEASED: Change[] = [
   { who: 'router', text: '`orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.' },
+  { who: 'router', text: 'When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.' },
 ];
 
 export const RELEASES: Release[] = [

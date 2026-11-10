@@ -335,7 +335,7 @@ export class Router {
     const keys = prefixes(model, body.messages);
     const sticky = this.affinity.find(keys);
     const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, offOf, (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
-    if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}` : route === 'burn' ? `no provider of ${model} has a burn pledge this router has verified on chain` : `every provider for ${model} is cooling down`, 503, 'no_provider');
+    if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}${whyNotPrivate(offers)}` : route === 'burn' ? `no provider of ${model} has a burn pledge this router has verified on chain` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
     const tried: string[] = [];
@@ -543,3 +543,8 @@ function assemble(chunks: Record<string, unknown>[], model: string, prompt: numb
   };
 }
 
+/** Why the private route had nowhere to go: each node that claims an enclave, and the check that stopped it. */
+function whyNotPrivate(offers: { entry: { manifest: { name: string } | null; address: string; tee: { verified: boolean; reason: string } | null } }[]): string {
+  const claims = offers.filter((o) => o.entry.tee && !o.entry.tee.verified).slice(0, 3).map((o) => `${o.entry.manifest?.name ?? o.entry.address.slice(0, 6)}: ${o.entry.tee!.reason}`);
+  return claims.length ? ` (${claims.join('; ')})` : '';
+}
