@@ -21,6 +21,8 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseSnpReport, verifySnp } from './tee/snp.ts';
+import { burnDue, loadBook, splBurner } from './burn.ts';
+import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
 
 const argv = process.argv.slice(2);
 const flag = (name: string, fallback?: string): string | undefined => {
@@ -62,6 +64,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
   ${CLI} provider init    find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json
       --upstream <url> --name <name> --public-url <url> --out <file> --force
+  ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider start   --config provider.json
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
@@ -188,8 +191,38 @@ async function provider(sub: string) {
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
     return;
   }
-  if (cfg.burn) throw new Error('a burn pledge in provider.json needs the market buy, which ships in the next release; remove "burn" for now so you do not list a pledge this node cannot keep');
   const node = new ProviderNode(cfg);
+  if (cfg.burn) {
+    // A pledge needs the wallet on this machine: the buy and the burn are the wallet's own transactions.
+    if (!cfg.wallet && !flag('wallet')) throw new Error('a burn pledge needs the provider wallet on this machine ("wallet" in provider.json or --wallet): the buy and the burn are signed by it');
+    const w = loadKeypair(expand(flag('wallet', cfg.wallet)!));
+    const conn = new Connection(cfg.rpcUrl ?? rpc(), 'confirmed');
+    const cfgInfo = await conn.getAccountInfo(pda.config());
+    const token = cfgInfo ? decodeConfig(cfgInfo.data).bondMint : PublicKey.default;
+    if (token.equals(PublicKey.default)) throw new Error('the network token is not set on this program yet, so there is nothing to buy and burn');
+    const tokenInfo = await conn.getParsedAccountInfo(token);
+    const decimals = (tokenInfo.value?.data as { parsed?: { info?: { decimals?: number } } } | undefined)?.parsed?.info?.decimals ?? 6;
+    const tokenProgram = tokenInfo.value?.owner;
+    node.burnHooks = { swap: jupiterSwapper(conn, w, new PublicKey(cfg.settleMint), token, { tokenProgram }), burn: splBurner(conn, w, token, decimals, tokenProgram) };
+    if (sub === 'burn') {
+      // orrery provider burn --config provider.json [--yes]: what the pledge owes now, and with --yes, buy and burn it.
+      const acct = await conn.getAccountInfo(node.pda);
+      const redeemed = acct ? decodeProvider(acct.data).settled : 0n;
+      const book = loadBook(`${expand(cfg.dataDir ?? home('provider'))}/burns.json`);
+      const due = burnDue(redeemed, cfg.burn.share, book.spent);
+      console.log(`"${cfg.name}" pledged ${cfg.burn.share / 100}% of what it redeems`);
+      console.log(`  redeemed on chain   $${usd(redeemed)}`);
+      console.log(`  spent on burns      $${usd(book.spent)} in ${book.receipts.length} buy${book.receipts.length === 1 ? '' : 's'}`);
+      console.log(`  due now             $${usd(due)}${due < BigInt(cfg.burn.minUnits ?? 10_000) ? `  (below the smallest buy, $${usd(BigInt(cfg.burn.minUnits ?? 10_000))}; it waits)` : ''}`);
+      if (due > 0n) {
+        const q = await jupQuote(cfg.settleMint, token.toBase58(), due).catch((e: Error) => e);
+        console.log(q instanceof Error ? `  market              ${q.message}` : `  market              a route with ${q.routePlan.length} hop${q.routePlan.length === 1 ? '' : 's'} is open for that amount`);
+      }
+      if (!has('yes')) return console.log('  nothing was sent. Run again with --yes to buy and burn what is due.');
+      const r = await node.burnDue();
+      return console.log(r ? `  bought and burned ${r.burned} token units for $${usd(BigInt(r.usdc))}\n  buy  ${r.swapTx}\n  burn ${r.burnTx}` : '  nothing was burned.');
+    }
+  } else if (sub === 'burn') throw new Error('this provider.json has no "burn": { "share": … } pledge');
   if (sub === 'start') {
     await node.listen();
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
