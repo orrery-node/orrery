@@ -368,7 +368,7 @@ WantedBy=multi-user.target
 </details>
 
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
-- **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`. In main, next release.
+- **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`.
 - **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.
 - **Holder prices (optional).** Add `holder.tiers` to give wallets that hold $OREY a lower price. See [Holder pricing](#holder-pricing).
 - **Change anything** by editing the file and running `register` again: it updates the listing, and routers check the new price list against the hash on chain.
@@ -548,7 +548,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Billed usage in OpenAI's shape with `usage.cost`, benches for embedding models, and routers that pick their channels back up after losing their records (0.1.6)
 - [x] Quotes before paying (`orrery quote`, MCP `quote`), a dollar budget per request (`x-orrery-max-cost`, `--max-cost`), `orrery provider compare`, the wallet's channels in `doctor` and `orrery channels`, and nodes that report their model server on `/health`, which routers check every 30 seconds and route around (0.1.7)
 - [x] Wallet and node pages read live from the program, with share cards; the network terminal (preview on sample data)
-- [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`; in main, next release)
+- [x] Routers show each node's model server (console, status, MCP, `orrery providers`); a built-in AMD SEV-SNP verifier and `orrery enclave verify`; private nodes on SEV-SNP; routers verify burn pledges on chain, a `:burn` route and `x-orrery-burn` (0.1.8)
+- [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`, 0.1.8)
 - [ ] Built-in verifier for Intel TDX
 - [ ] $OREY bonds live on mainnet
 

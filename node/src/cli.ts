@@ -188,6 +188,7 @@ async function provider(sub: string) {
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
     return;
   }
+  if (cfg.burn) throw new Error('a burn pledge in provider.json needs the market buy, which ships in the next release; remove "burn" for now so you do not list a pledge this node cannot keep');
   const node = new ProviderNode(cfg);
   if (sub === 'start') {
     await node.listen();
