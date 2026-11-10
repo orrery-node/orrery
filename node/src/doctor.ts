@@ -1,7 +1,7 @@
 // `orrery doctor`: reads everything a router needs and says what is ready. It only reads: the RPC, the program's config,
 // every listing and the manifest it points to, your wallet's balances and the local router, if one is running.
 import { Connection, PublicKey } from '@solana/web3.js';
-import { ACCOUNT, decodeChannel, decodeConfig, pda, programId } from './chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from './chain/program.ts';
 import { usd } from './pricing.ts';
 import { Registry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
@@ -55,6 +55,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const took = ms(t0);
     const detail = !h ? 'did not answer /health' : h.upstream === 'down' ? `answered /health in ${took}, but its model server is down` : `answered /health in ${took}${h.upstream === 'up' ? ', model server up' : ''}`;
     out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, ${detail}` });
+    // A node that claims an enclave: say whether this computer could verify it, and if not, which check stopped it.
+    if (e.tee) out.push({ ok: e.tee.verified ? true : e.tee.dev ? null : false, what: '    enclave', detail: `${TEE_KINDS[e.account.teeKind] ?? 'enclave'} · ${e.tee.verified ? `${e.tee.reason}; :private can use this node` : `not verified: ${e.tee.reason}`}` });
   }
 
   if (o.wallet) {
