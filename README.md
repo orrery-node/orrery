@@ -552,7 +552,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Wallet and node pages read live from the program, with share cards; the network terminal (preview on sample data)
 - [x] Routers show each node's model server (console, status, MCP, `orrery providers`); a built-in AMD SEV-SNP verifier and `orrery enclave verify`; private nodes on SEV-SNP; routers verify burn pledges on chain, a `:burn` route and `x-orrery-burn` (0.1.8)
 - [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`, 0.1.8)
-- [x] Built-in verifier for Intel TDX, checked against a real quote (`orrery enclave verify --quote`; in main, next release)
+- [x] Built-in verifier for Intel TDX, checked against a real quote (`orrery enclave verify --quote`), TDX nodes, task budgets for agents, burn pledges that buy on mainnet through Jupiter (`orrery provider burn`), enclave verdicts in `doctor` (0.1.9)
 - [ ] Revocation lists and firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
 - [ ] $OREY bonds live on mainnet
 
