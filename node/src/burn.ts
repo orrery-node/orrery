@@ -66,3 +66,40 @@ export function splBurner(conn: Connection, wallet: Keypair, mint: PublicKey, de
     return sendFresh(conn, () => new Transaction().add(createBurnCheckedInstruction(ata, mint, wallet.publicKey, tokens, decimals, [], tokenProgram)), [wallet]);
   };
 }
+
+type Bal = { mint: string; owner?: string; uiTokenAmount: { amount: string } };
+type ParsedIx = { parsed?: { type?: string; info?: { mint?: string; authority?: string; amount?: string; tokenAmount?: { amount: string } } } };
+export type ParsedTx = { meta: { err: unknown; preTokenBalances?: Bal[] | null; postTokenBalances?: Bal[] | null; innerInstructions?: { instructions: ParsedIx[] }[] | null } | null; transaction: { message: { instructions: ParsedIx[] } } } | null;
+
+const held = (list: Bal[] | null | undefined, owner: string, mint: string) => (list ?? []).filter((b) => b.owner === owner && b.mint === mint).reduce((n, b) => n + BigInt(b.uiTokenAmount.amount), 0n);
+
+/** Tokens a transaction burned from `owner`'s account of `mint`: 0 unless it succeeded and the wallet itself signed the burn. */
+export function burnedIn(tx: ParsedTx, mint: string, owner: string): bigint {
+  if (!tx?.meta || tx.meta.err) return 0n;
+  const all = [...tx.transaction.message.instructions, ...(tx.meta.innerInstructions ?? []).flatMap((x) => x.instructions)];
+  let n = 0n;
+  for (const i of all) {
+    const p = i.parsed;
+    if ((p?.type === 'burnChecked' || p?.type === 'burn') && p.info?.mint === mint && p.info.authority === owner) n += BigInt(p.info.tokenAmount?.amount ?? p.info.amount ?? '0');
+  }
+  return n;
+}
+
+/** What a buy did to `owner`'s balances: settlement tokens that left and network tokens that arrived. */
+export function boughtIn(tx: ParsedTx, usdcMint: string, mint: string, owner: string): { usdc: bigint; tokens: bigint } {
+  if (!tx?.meta || tx.meta.err) return { usdc: 0n, tokens: 0n };
+  const usdc = held(tx.meta.preTokenBalances, owner, usdcMint) - held(tx.meta.postTokenBalances, owner, usdcMint);
+  const tokens = held(tx.meta.postTokenBalances, owner, mint) - held(tx.meta.preTokenBalances, owner, mint);
+  return { usdc: usdc > 0n ? usdc : 0n, tokens: tokens > 0n ? tokens : 0n };
+}
+
+/** A receipt counts for what the chain shows, never for what it claims: the burn must be the wallet's own burn of the
+ * network token, and the spend is the USDC that left the wallet in the buy, as long as the buy brought in at least
+ * the tokens that were burned. */
+export function verifyReceipt(r: BurnReceipt, swap: ParsedTx, burn: ParsedTx, usdcMint: string, mint: string, owner: string): { usdc: bigint; burned: bigint } {
+  const burned = burnedIn(burn, mint, owner);
+  const b = boughtIn(swap, usdcMint, mint, owner);
+  if (burned === 0n || r.swapTx === r.burnTx || b.tokens < burned) return { usdc: 0n, burned: 0n };
+  const claimed = BigInt(r.usdc);
+  return { usdc: b.usdc < claimed ? b.usdc : claimed, burned };
+}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { burnDue, burnOnce, loadBook, pledgeKept } from '../src/burn.ts';
+import { burnDue, burnOnce, loadBook, pledgeKept, verifyReceipt, type ParsedTx } from '../src/burn.ts';
 import { checkManifest } from '../src/manifest.ts';
 
 const base = { v: 1, name: 'n', authority: 'a', nodeKey: 'k', models: [{ id: 'm', context: 8000, maxOutput: 1000, price: { input: 1, output: 1 } }] };
@@ -42,5 +42,20 @@ describe('burn on every answer', () => {
     assert.equal(book.spent, 40_000n);
     assert.equal(book.burned, 1_600_000n);
     assert.equal(book.receipts.length, 1);
+  });
+
+  it('a router counts a receipt only for what the chain shows', () => {
+    const W = 'WALLET', U = 'USDC', T = 'TOKEN';
+    const bal = (mint: string, amount: string, owner = W) => ({ mint, owner, uiTokenAmount: { amount } });
+    const swap: ParsedTx = { meta: { err: null, preTokenBalances: [bal(U, '1000'), bal(T, '0')], postTokenBalances: [bal(U, '895'), bal(T, '262500')] }, transaction: { message: { instructions: [] } } };
+    const burnOf = (authority: string, mint = T, amount = '262500'): ParsedTx => ({ meta: { err: null }, transaction: { message: { instructions: [{ parsed: { type: 'burnChecked', info: { mint, authority, tokenAmount: { amount } } } }] } } });
+    const r = { at: 1, usdc: '105', burned: '262500', swapTx: 'S', burnTx: 'B' };
+    assert.deepEqual(verifyReceipt(r, swap, burnOf(W), U, T, W), { usdc: 105n, burned: 262500n });
+    assert.deepEqual(verifyReceipt({ ...r, usdc: '9999' }, swap, burnOf(W), U, T, W), { usdc: 105n, burned: 262500n });
+    assert.deepEqual(verifyReceipt(r, swap, burnOf('SOMEONE_ELSE'), U, T, W), { usdc: 0n, burned: 0n });
+    assert.deepEqual(verifyReceipt(r, swap, burnOf(W, 'OTHER_MINT'), U, T, W), { usdc: 0n, burned: 0n });
+    assert.deepEqual(verifyReceipt(r, swap, burnOf(W, T, '999999999'), U, T, W), { usdc: 0n, burned: 0n });
+    assert.deepEqual(verifyReceipt(r, { ...swap!, meta: { ...swap!.meta!, err: {} } }, burnOf(W), U, T, W), { usdc: 0n, burned: 0n });
+    assert.deepEqual(verifyReceipt(r, swap, null, U, T, W), { usdc: 0n, burned: 0n });
   });
 });

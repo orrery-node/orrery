@@ -511,6 +511,10 @@ const burnIx = burnTxInfo?.transaction.message.instructions.find((i) => 'parsed'
 const pledged = (ironSettled * 2_500n) / 10_000n;
 check('a node that pledged a share of what it redeems buys the network token and burns it, and the supply on chain drops by exactly that', !!burnReceipt && BigInt(burnReceipt.usdc) === pledged && supplyBefore - supplyAfter === BigInt(burnReceipt.burned) && burnIx?.parsed.info.mint === orey.toBase58() && burnIx.parsed.info.authority === ironWallet.publicKey.toBase58() && BigInt(burnIx.parsed.info.tokenAmount.amount) === BigInt(burnReceipt.burned) && burnsServed.share === 2_500 && burnsServed.receipts.length === 1 && (await iron.burnDue()) === null, burnReceipt ? `Ironbridge redeemed $${usd(ironSettled)}, pledged 25% → spent $${usd(pledged)}, burned ${(Number(burnReceipt.burned) / 1e6).toLocaleString('en-US')} tokens · supply ${(Number(supplyBefore) / 1e6).toLocaleString('en-US')} → ${(Number(supplyAfter) / 1e6).toLocaleString('en-US')} · burn tx ${burnReceipt.burnTx.slice(0, 12)}…` : 'no burn');
 
+await registry.refresh();
+await registry.checkBurns(usdc, orey);
+const ironSeen = registry.entries.get(iron.pda.toBase58())?.burn;
+check('the router verifies a node’s burns on chain itself and scores the pledge as kept', !!ironSeen && !!burnReceipt && ironSeen.share === 2_500 && ironSeen.burned === BigInt(burnReceipt.burned) && ironSeen.spent === pledged && ironSeen.kept === 1 && ironSeen.receipts === 1, ironSeen ? `router read 1 receipt, checked the buy and the burn on chain: $${usd(ironSeen.spent)} spent of $${usd(pledged)} pledged, ${ironSeen.burned} token units burned, pledge kept ${(ironSeen.kept * 100).toFixed(0)}%` : 'nothing verified');
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),

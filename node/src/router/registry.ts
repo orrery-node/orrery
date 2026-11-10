@@ -1,6 +1,7 @@
 // What the router knows about the network: every Provider account on chain, plus the price manifest each node
 // serves, kept only if its sha256 matches the hash the provider's wallet put on chain.
 import { createHash } from 'node:crypto';
+import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../burn.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { ACCOUNT, decodeProvider, programId, type ProviderAccount } from '../chain/program.ts';
@@ -21,6 +22,8 @@ export type ProviderEntry = {
   /** How long the node's /health took to answer, and when, at the last check that got an answer. */
   healthMs?: number;
   healthAt?: number;
+  /** The node's burn pledge and how much of it this router has verified on chain itself. */
+  burn?: { share: number; spent: bigint; burned: bigint; receipts: number; kept: number; checkedAt: number };
 };
 
 export type TeePolicy = { allowDev: boolean; measurements: string[]; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
@@ -109,6 +112,38 @@ export class Registry {
         e.healthMs = Date.now() - t0;
         e.healthAt = Date.now();
         if (h.upstream === 'up' || h.upstream === 'down') e.upstream = h.upstream;
+      }),
+    );
+  }
+
+  private burnSeen = new Map<string, { usdc: bigint; burned: bigint }>();
+
+  /** For every node that pledged a burn: reads its receipts, then checks each buy and each burn on chain. Only what
+   * the chain shows is counted, each transaction once, and `kept` compares it with what the pledge owes on the USDC
+   * the provider's account says it has redeemed. */
+  async checkBurns(usdcMint: PublicKey, mint: PublicKey): Promise<void> {
+    const usedTx = new Map<string, string>();
+    await Promise.all(
+      this.usable().filter((e) => e.manifest?.burn).map(async (e) => {
+        const share = e.manifest!.burn!.share;
+        const owner = e.account.authority.toBase58();
+        const j = (await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/orrery/burns`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { receipts?: BurnReceipt[] } | null;
+        let spent = 0n, burned = 0n, n = 0;
+        for (const r of (j?.receipts ?? []).slice(-200)) {
+          if (typeof r?.swapTx !== 'string' || typeof r.burnTx !== 'string' || usedTx.has(r.swapTx) || usedTx.has(r.burnTx)) continue;
+          usedTx.set(r.swapTx, e.address);
+          usedTx.set(r.burnTx, e.address);
+          const key = `${e.address}:${r.swapTx}:${r.burnTx}`;
+          let v = this.burnSeen.get(key);
+          if (!v) {
+            const [swap, burn] = await Promise.all([r.swapTx, r.burnTx].map((sig) => this.conn.getParsedTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null)));
+            if (!swap || !burn) continue;
+            v = verifyReceipt(r, swap as ParsedTx, burn as ParsedTx, usdcMint.toBase58(), mint.toBase58(), owner);
+            this.burnSeen.set(key, v);
+          }
+          if (v.burned > 0n) { spent += v.usdc; burned += v.burned; n++; }
+        }
+        e.burn = { share, spent, burned, receipts: n, kept: pledgeKept(e.account.settled, share, spent), checkedAt: Date.now() };
       }),
     );
   }
