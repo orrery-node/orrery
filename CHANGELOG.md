@@ -7,6 +7,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 ## Unreleased (in main)
 
 - **Router** · The router’s status (`GET /orrery/status`) and its console show each node’s model server: up with the time its `/health` took, or down and skipped.
+- **Router** · The MCP `status` tool tells an agent the same thing, node by node, so it knows why a model has nowhere to go before it asks.
 
 ## 0.1.7 · 2026-11-10 04:38 UTC
 
