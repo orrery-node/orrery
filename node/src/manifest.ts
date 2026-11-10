@@ -21,6 +21,9 @@ export type Manifest = {
   models: ModelOffer[];
   tee?: { kind: number; enclaveKey: string };
   holder?: { tiers: HolderTier[] };
+  /** A pledge to spend this share (basis points) of every USDC the node redeems on buying the network token and
+   * burning it. It is part of the list the provider's wallet pinned on chain, and routers check it against the burns. */
+  burn?: { share: number };
   /** The node's upstream continues a partial answer handed to it as a final assistant message, so a router can resume a
    * stream another provider dropped. */
   resume?: boolean;
@@ -55,6 +58,7 @@ export function checkManifest(m: unknown): Manifest {
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
   }
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
+  if (x.burn !== undefined && (!Number.isSafeInteger(x.burn?.share) || x.burn.share < 1 || x.burn.share > 10_000)) throw new Error('manifest: burn.share must be 1 to 10000 basis points');
   if (x.resume !== undefined && typeof x.resume !== 'boolean') throw new Error('manifest: resume must be true or false');
   return x;
 }
