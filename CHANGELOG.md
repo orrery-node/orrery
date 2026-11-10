@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · Task budgets for agents: name a job with `x-orrery-task` and give it a budget once with `x-orrery-task-budget: 0.05` (or `task` and `task_budget` over MCP). Every request under that name draws from it, each answer says what is left, and when it is spent the router refuses the next request before anything is sent. `GET /orrery/tasks` lists them.
 - **Router** · `orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.
 - **Router** · When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.
 

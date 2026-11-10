@@ -8,6 +8,7 @@ import { decrypt, sealRequest } from '../seal.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
+import { TaskBook } from './tasks.ts';
 import { applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
@@ -100,6 +101,8 @@ export class Router {
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private healthTimer: NodeJS.Timeout | null = null;
+  private tasks = new TaskBook();
+  private taskOf = new WeakMap<ServerResponse, string>();
   private burnTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
   /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
@@ -180,6 +183,7 @@ export class Router {
       if (req.method === 'POST' && (url.pathname === '/v1/embeddings' || url.pathname === '/embeddings')) return await this.embeddings(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
+      if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {
         // What one request would cost at every provider of a model, from the lists on chain; nothing is sent or paid.
         const model = url.searchParams.get('model') ?? '';
@@ -319,16 +323,33 @@ export class Router {
     // A dollar budget for this one request. Each provider caps what it bills at the cost of the full prompt plus the
     // most output it may write, and the router never signs past that cap either, so a listing whose cap fits the
     // budget cannot cost more.
+    // A task budget: every request that names the same task draws from one budget, so an agent's whole job has a
+    // ceiling. What is left of it becomes this request's budget, which is how the total can never be passed.
+    let taskLeft: bigint | null = null;
+    const taskName = req.headers['x-orrery-task'] ? String(req.headers['x-orrery-task']) : null;
+    if (taskName) {
+      const tb = req.headers['x-orrery-task-budget'];
+      const tDollars = tb === undefined ? null : Number(String(tb).replace(/^\$/, ''));
+      if (tDollars !== null && (!Number.isFinite(tDollars) || tDollars <= 0)) throw new Unserved('x-orrery-task-budget must be a dollar amount such as 0.05', 400, 'bad_request');
+      try {
+        taskLeft = this.tasks.open(taskName, tDollars === null ? null : BigInt(Math.floor(tDollars * 1e6))).left;
+      } catch (e) {
+        throw new Unserved((e as Error).message, 400, 'bad_request');
+      }
+      if (taskLeft <= 0n) throw new Unserved(`task ${taskName} has spent its budget; nothing more is sent or paid under it`, 402, 'task_budget_spent');
+      this.taskOf.set(res, taskName);
+    }
     const budgetHeader = req.headers['x-orrery-max-cost'] ?? this.o.maxCost;
-    if (budgetHeader !== undefined) {
-      const dollars = Number(String(budgetHeader).replace(/^\$/, ''));
-      if (!Number.isFinite(dollars) || dollars <= 0) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
-      const budget = BigInt(Math.floor(dollars * 1e6));
+    if (budgetHeader !== undefined || taskLeft !== null) {
+      const dollars = budgetHeader === undefined ? Infinity : Number(String(budgetHeader).replace(/^\$/, ''));
+      if (budgetHeader !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
+      const own = budgetHeader === undefined ? null : BigInt(Math.floor(dollars * 1e6));
+      const budget = own === null ? taskLeft! : taskLeft !== null && taskLeft < own ? taskLeft : own;
       const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
       const fits = offers.filter((o) => worst(o) <= budget);
       if (!fits.length) {
         const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
-        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)`, 404, 'over_budget');
+        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : ''}`, 404, 'over_budget');
       }
       offers = fits;
     }
@@ -482,7 +503,9 @@ export class Router {
     // What this answer sends to the burn: the node's pledged share of what it was just paid, shown only once this router
     // has verified on chain that the node keeps its pledge.
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const taskName = this.taskOf.get(res);
+    const task = taskName ? this.tasks.spend(taskName, fair) : null;
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

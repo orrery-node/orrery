@@ -523,6 +523,20 @@ const noBurnJ = (await noBurn.json()) as { error?: { message?: string } };
 const burnCost = Number(viaBurn.headers.get('x-orrery-cost'));
 check('the :burn route sends a request only to nodes whose burns the router verified, and the answer says what it sends to the burn', viaBurn.status === 200 && viaBurn.headers.get('x-orrery-provider') === iron.pda.toBase58() && viaBurn.headers.get('x-orrery-burn-share') === '2500' && Math.abs(Number(viaBurn.headers.get('x-orrery-burn')) - burnCost / 4) < 0.0000011 && noBurn.status === 503 && /burn pledge/.test(noBurnJ.error?.message ?? ''), `llama-3.3-70b:burn → Ironbridge · x-orrery-cost ${viaBurn.headers.get('x-orrery-cost')} · x-orrery-burn ${viaBurn.headers.get('x-orrery-burn')} (25%) · qwen3-32b:burn → ${noBurn.status}: ${noBurnJ.error?.message ?? viaBurnJ.error?.message}`);
 
+// Task budgets: an agent gives a job one budget, and every request under that name draws from it.
+const taskAsk = (first: boolean) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-task': 'rehearsal-job', ...(first ? { 'x-orrery-task-budget': '0.00003' } : {}) }, body: JSON.stringify({ model: 'llama-3.3-70b:cheap', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const taskRuns: { status: number; left: string | null; code?: string }[] = [];
+for (let i = 0; i < 6; i++) {
+  const r = await taskAsk(i === 0);
+  const j = (await r.json()) as { error?: { code?: string } };
+  taskRuns.push({ status: r.status, left: r.headers.get('x-orrery-task-left'), code: j.error?.code });
+  if (r.status !== 200) break;
+}
+const taskList = (await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] };
+const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
+const lastRun = taskRuns[taskRuns.length - 1];
+check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status !== 200 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1, job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
+
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),
