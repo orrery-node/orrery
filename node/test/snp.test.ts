@@ -31,3 +31,15 @@ describe('built-in AMD SEV-SNP verifier', () => {
     assert.match(verifySnp({ ...base, now: new Date('2031-01-01') }).reason, /does not chain/);
   });
 });
+
+import { reportDataFor, snpClaim } from '../src/tee/snp.ts';
+
+describe('a node listing its SEV-SNP enclave', () => {
+  it('takes the image from the report, and refuses a report made for another key with the data to ask for', () => {
+    const key = Buffer.from(parsed.reportData.subarray(0, 32));
+    assert.equal(snpClaim(report, key).measurement.toString('hex'), parsed.measurement.toString('hex'));
+    assert.equal(snpClaim(report, key).debug, true);
+    const other = Buffer.alloc(32, 9);
+    assert.throws(() => snpClaim(report, other), new RegExp(reportDataFor(other).toString('hex')));
+  });
+});

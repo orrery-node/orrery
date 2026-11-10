@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { decodeChannel, decodeProvider, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
+import { snpClaim } from '../tee/snp.ts';
 import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from '../burn.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
@@ -36,7 +37,9 @@ export type ProviderConfig = {
   dataDir?: string;
   upstream: { baseUrl: string; apiKey?: string; apiKeyEnv?: string; headers?: Record<string, string>; body?: Record<string, unknown> };
   models: ProviderOffer[];
-  tee?: { mode: 'dev'; kind?: number };
+  /** `dev` is a software stand-in for local testing. `snp` serves the report this machine's AMD CPU signed for the
+   * node's encryption key (`report`, raw bytes) and the chip's certificate (`vcek`, DER), which routers verify themselves. */
+  tee?: { mode: 'dev'; kind?: number } | { mode: 'snp'; report: string; vcek: string };
   redeem?: { everySecs?: number; minUnits?: number };
   /** Holder pricing: hold `share` basis points of the network token's supply, pay `off` basis points less. */
   holder?: { tiers: HolderTier[] };
@@ -106,6 +109,7 @@ export class ProviderNode {
   readonly mint: PublicKey;
   readonly manifest: Manifest;
   readonly manifestBytes: Buffer;
+  private vcek: Buffer | null = null;
   readonly enclave: EnclaveKey | null;
   readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
   private readonly apiKey: string | undefined;
@@ -133,10 +137,18 @@ export class ProviderNode {
       const keyPath = `${this.dir}/enclave.key`;
       this.enclave = existsSync(keyPath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'hex')) : newEnclaveKey();
       if (!existsSync(keyPath)) writePrivate(keyPath, this.enclave.secret.toString('hex'));
-      const kind = cfg.tee.kind ?? 1;
-      const measurement = createHash('sha384').update(`orrery-dev-image:${this.node.publicKey.toBase58()}`).digest();
-      const report = Buffer.from(JSON.stringify({ dev: true, note: 'software stand-in for a hardware quote; routers must not treat it as verified', kind, measurement: measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), node: this.node.publicKey.toBase58() }));
-      this.attestation = { kind, measurement, report, reportHash: createHash('sha256').update(report).digest() };
+      if (cfg.tee.mode === 'snp') {
+        const report = readFileSync(expand(cfg.tee.report));
+        const { measurement, debug } = snpClaim(report, this.enclave.publicKey);
+        if (debug) throw new Error('this VM was launched with debugging allowed; routers refuse it. Launch it with the debug policy bit off.');
+        this.vcek = readFileSync(expand(cfg.tee.vcek));
+        this.attestation = { kind: 2, measurement, report, reportHash: createHash('sha256').update(report).digest() };
+      } else {
+        const kind = cfg.tee.kind ?? 1;
+        const measurement = createHash('sha384').update(`orrery-dev-image:${this.node.publicKey.toBase58()}`).digest();
+        const report = Buffer.from(JSON.stringify({ dev: true, note: 'software stand-in for a hardware quote; routers must not treat it as verified', kind, measurement: measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), node: this.node.publicKey.toBase58() }));
+        this.attestation = { kind, measurement, report, reportHash: createHash('sha256').update(report).digest() };
+      }
     } else {
       this.enclave = null;
       this.attestation = null;
@@ -248,7 +260,7 @@ export class ProviderNode {
       }
       if (req.method === 'GET' && url.pathname === '/v1/attestation') {
         if (!this.attestation || !this.enclave) return fail(res, 404, 'no_tee', 'this node does not run in an enclave');
-        return json(res, 200, { kind: this.attestation.kind, measurement: this.attestation.measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), report: this.attestation.report.toString('base64'), reportHash: this.attestation.reportHash.toString('hex') });
+        return json(res, 200, { kind: this.attestation.kind, measurement: this.attestation.measurement.toString('hex'), enclaveKey: this.enclave.publicKey.toString('hex'), report: this.attestation.report.toString('base64'), reportHash: this.attestation.reportHash.toString('hex') , ...(this.vcek ? { vcek: this.vcek.toString('base64') } : {}) });
       }
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/orrery/status')) {
         if (!isLocal(req)) return fail(res, 404, 'not_found', 'no such route');

@@ -74,3 +74,13 @@ export function verifySnp(o: { report: Buffer; vcek: Buffer; measurement: Buffer
   if (!report.reportData.subarray(0, 32).equals(o.enclaveKey)) return { ok: false, reason: 'the report does not name this encryption key', family, report };
   return { ok: true, reason: `AMD SEV-SNP report verified (${family})`, family, report };
 }
+
+/** The 64 bytes a node asks its CPU to put in the report (`snpguest report --request-data`): its encryption key, then zeros. */
+export const reportDataFor = (enclaveKey: Buffer) => Buffer.concat([enclaveKey, Buffer.alloc(32)]);
+
+/** What a node lists on chain from the report its CPU signed: the image it booted. Refuses a report made for another key. */
+export function snpClaim(report: Buffer, enclaveKey: Buffer): { measurement: Buffer; debug: boolean } {
+  const r = parseSnpReport(report);
+  if (!r.reportData.subarray(0, 32).equals(enclaveKey)) throw new Error(`this report was not made for this node's encryption key; ask the CPU for one with report data ${reportDataFor(enclaveKey).toString('hex')}`);
+  return { measurement: Buffer.from(r.measurement), debug: r.debug };
+}

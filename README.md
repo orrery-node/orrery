@@ -368,6 +368,7 @@ WantedBy=multi-user.target
 </details>
 
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
+- **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`. In main, next release.
 - **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.
 - **Holder prices (optional).** Add `holder.tiers` to give wallets that hold $OREY a lower price. See [Holder pricing](#holder-pricing).
 - **Change anything** by editing the file and running `register` again: it updates the listing, and routers check the new price list against the hash on chain.
@@ -449,7 +450,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 84 tests
+cd node && pnpm install && pnpm test                            # 85 tests
 pnpm e2e                                                        # full local rehearsal, 50 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
