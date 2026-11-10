@@ -420,7 +420,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 |---|---|
 | `orrery router --wallet <keypair> --rpc <url>` | run the router on `127.0.0.1:7171` |
 | `orrery models` | every model on the network, cheapest price, provider count |
-| `orrery providers` | every listing and what the chain says about it |
+| `orrery providers` | every listing, what the chain says about it and whether its model server answers |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed |
 | `orrery close <channel> --wallet <keypair>` | start closing (the provider gets a grace period to redeem) |
 | `orrery close <channel> --wallet <keypair> --finish` | after the grace period, the rest comes back to you |

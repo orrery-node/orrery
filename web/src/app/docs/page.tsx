@@ -328,7 +328,7 @@ export default function Docs() {
           <Code lang="bash" copy>{EMBED}</Code>
 
           <H2 id="routes" n={n('routes')}>Models and routes</H2>
-          <p>Model names are the ones providers list. <code>orrery models</code> prints every model on the network with its cheapest price and how many providers serve it; <code>orrery providers</code> prints every listing with what the chain says about it.</p>
+          <p>Model names are the ones providers list. <code>orrery models</code> prints every model on the network with its cheapest price and how many providers serve it; <code>orrery providers</code> prints every listing with what the chain says about it and whether its model server answers.</p>
           <Code lang="bash">{MODELS}</Code>
           <p>Add one word after the model name, or send the header <code>x-orrery-route</code>:</p>
           <table className="d-table">

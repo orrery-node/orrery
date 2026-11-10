@@ -188,7 +188,7 @@ Providers can publish holder prices: hold a share of the network token's supply 
 | `orrery mcp` | an MCP server on stdio for agents, in front of your running router (`--router`) |
 | `orrery router` | run the router on `127.0.0.1:7171` (`--wallet`, `--rpc`, `--route`, `--deposit`, `--daily-cap`, `--alias`, `--port`) |
 | `orrery models` | every model on the network, cheapest price, provider count |
-| `orrery providers` | every listing and what the chain says about it |
+| `orrery providers` | every listing, what the chain says about it and whether its model server answers |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed |
 | `orrery close <channel> [--finish]` | close a channel; the rest comes back to you |
 | `orrery provider init \| register \| show \| start \| attest \| redeem` | run a provider (`init` finds a local model server and writes provider.json) |

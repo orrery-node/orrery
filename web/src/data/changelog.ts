@@ -7,6 +7,7 @@ export type Release = { version: string; at: string; headline: string; changes: 
 export const UNRELEASED: Change[] = [
   { who: 'router', text: 'The router’s status (`GET /orrery/status`) and its console show each node’s model server: up with the time its `/health` took, or down and skipped.' },
   { who: 'router', text: 'The MCP `status` tool tells an agent the same thing, node by node, so it knows why a model has nowhere to go before it asks.' },
+  { who: 'everyone', text: '`orrery providers` asks every listed node whether its model server answers and prints up with the time it took, or down.' },
 ];
 
 export const RELEASES: Release[] = [
