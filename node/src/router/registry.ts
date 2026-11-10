@@ -4,11 +4,13 @@ import { createHash } from 'node:crypto';
 import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../burn.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
-import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, type ProviderAccount } from '../chain/program.ts';
+import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
+import { verifySnp } from '../tee/snp.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchWithTimeout } from '../sse.ts';
 
-export type Attestation = { kind: number; measurement: string; enclaveKey: string; report: string; reportHash: string };
+/** `vcek` is the chip's certificate (DER, base64) that an AMD SEV-SNP node serves next to its report. */
+export type Attestation = { kind: number; measurement: string; enclaveKey: string; report: string; reportHash: string; vcek?: string };
 
 export type ProviderEntry = {
   address: string;
@@ -92,7 +94,13 @@ export class Registry {
         dev = false;
       }
       if (dev) return { verified: this.tee.allowDev, dev: true, reason: this.tee.allowDev ? 'dev report accepted (local testing)' : 'dev report, not hardware', enclaveKey };
-      if (!this.tee.verifier) return { verified: false, dev: false, reason: 'no hardware verifier configured', enclaveKey };
+      if (!this.tee.verifier) {
+        // The built-in verifier: AMD SEV-SNP reports are checked here against AMD's own roots, with no outside service.
+        if (p.teeKind !== 2) return { verified: false, dev: false, reason: `no built-in verifier for ${TEE_KINDS[p.teeKind] ?? 'this enclave kind'} yet`, enclaveKey };
+        if (!a.vcek) return { verified: false, dev: false, reason: 'the node did not serve its chip certificate', enclaveKey };
+        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey });
+        return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
+      }
       const ok = await this.tee.verifier(a, p);
       return { verified: ok, dev: false, reason: ok ? 'hardware report verified' : 'hardware verifier rejected the report', enclaveKey };
     } catch (err) {

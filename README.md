@@ -449,7 +449,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 80 tests
+cd node && pnpm install && pnpm test                            # 84 tests
 pnpm e2e                                                        # full local rehearsal, 50 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
@@ -547,7 +547,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Billed usage in OpenAI's shape with `usage.cost`, benches for embedding models, and routers that pick their channels back up after losing their records (0.1.6)
 - [x] Quotes before paying (`orrery quote`, MCP `quote`), a dollar budget per request (`x-orrery-max-cost`, `--max-cost`), `orrery provider compare`, the wallet's channels in `doctor` and `orrery channels`, and nodes that report their model server on `/health`, which routers check every 30 seconds and route around (0.1.7)
 - [x] Wallet and node pages read live from the program, with share cards; the network terminal (preview on sample data)
-- [ ] Built-in hardware attestation verifier
+- [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`; in main, next release)
+- [ ] Built-in verifier for Intel TDX
 - [ ] $OREY bonds live on mainnet
 
 ## Contributing
