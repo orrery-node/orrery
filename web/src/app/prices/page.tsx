@@ -31,6 +31,7 @@ export default async function Prices() {
           <Link href="/network">Network</Link>
           <Link href="/try">Try it</Link>
           <Link href="/integrations">Integrations</Link>
+          <Link href="/burn">Burn</Link>
           <Link href="/changelog">Changelog</Link>
           <Link href="/docs">Docs</Link>
         </nav>

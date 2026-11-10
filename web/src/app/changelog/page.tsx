@@ -50,6 +50,7 @@ export default function Changelog() {
         <nav className="d-nav__links" aria-label="Pages">
           <Link href="/network">Network</Link>
           <Link href="/try">Try it</Link>
+          <Link href="/burn">Burn</Link>
           <Link href="/prices">Prices</Link>
           <Link href="/integrations">Integrations</Link>
           <Link href="/docs">Docs</Link>

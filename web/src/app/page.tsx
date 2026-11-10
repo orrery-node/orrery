@@ -145,6 +145,7 @@ export default async function Home() {
           <a href="#provide">Providers</a>
           <a href="#token">${TICKER}</a>
           <Link href="/network">Network</Link>
+          <Link href="/burn">Burn</Link>
           <Link href="/changelog">Changelog</Link>
           <Link href="/try">Try it</Link>
           <Link href="/docs">Docs</Link>
