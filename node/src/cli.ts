@@ -116,7 +116,7 @@ async function listProviders() {
   const serverText = (e: { upstream?: 'up' | 'down'; healthMs?: number }) => (e.upstream === 'up' ? `model server up (${e.healthMs} ms)  ` : e.upstream === 'down' ? 'model server down, routers skip it  ' : '');
   for (const e of registry.entries.values()) {
     const a = e.account;
-    console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${serverText(e)}${tiersText(e.manifest?.holder?.tiers)}${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
+    console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${serverText(e)}${e.manifest?.burn ? `pledges ${e.manifest.burn.share / 100}% to the burn  ` : ''}${tiersText(e.manifest?.holder?.tiers)}${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
   }
 }
 
