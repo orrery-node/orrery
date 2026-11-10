@@ -74,8 +74,11 @@ console.log(`network token ${orey.toBase58()} set as the bond mint`);
 const HOLDER_TIERS = [{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
 
 const upstreams: [number, number, string][] = [[19101, 220, 'kestrel'], [19102, 40, 'ironbridge'], [19103, 90, 'vault-nine'], [19104, 70, 'halo']];
+const mockOf: Record<string, ChildProcess> = {};
 for (const [port, delay, label] of upstreams) {
-  procs.push(spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), String(port), String(delay), label], { stdio: 'ignore' }));
+  const m = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), String(port), String(delay), label], { stdio: 'ignore' });
+  mockOf[label] = m;
+  procs.push(m);
 }
 await sleep(1_500);
 
@@ -404,6 +407,11 @@ const strangerFound = await (stranger as unknown as { recover(p: string): Promis
 check('a router that lost its channel records picks its channel back up from the node’s last voucher, and only with its own session key',
   picked.channel === ibBefore.channel && picked.cumulative === ibBefore.cumulative && picked.usageHash.equals(ibBefore.usageHash) && strangerFound === null,
   `Ironbridge channel ${picked.channel.slice(0, 6)}… resumed at $${usd(picked.cumulative)} signed · another session key: ${strangerFound === null ? 'not resumed' : 'resumed'}`);
+mockOf.halo.kill();
+await sleep(16_000);
+const haloHealth = (await (await fetch(`http://127.0.0.1:${providerSpecs[3].port}/health`)).json()) as { upstream?: string };
+const ibHealth = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/health`)).json()) as { upstream?: string };
+check('a node says on /health when its model server is down, before any router pays for a request it cannot serve', haloHealth.upstream === 'down' && ibHealth.upstream === 'up', `Halo with its model server stopped: ${haloHealth.upstream} · Ironbridge: ${ibHealth.upstream}`);
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
   await sleep(Number(process.env.E2E_HOLD) * 1000);

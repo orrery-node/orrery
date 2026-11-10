@@ -261,7 +261,8 @@ export class ProviderNode {
         return json(res, 200, { since, rows: rows.map(out), total: out(total) });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
-        return json(res, 200, { ok: true, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
+        const upstream = await this.upstreamUp();
+        return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/channel') {
         // Where a channel stands on this node: the latest total its router signed (the voucher itself, so a router that
@@ -395,6 +396,19 @@ export class ProviderNode {
       this.log(`${offer.id} lists a cached-input price but the model server reported no cache hits (usage.prompt_tokens_details); vLLM needs --enable-prompt-tokens-details, SGLang --enable-cache-report`);
     }
     settle(send, inputTokens, outputTokens, usage?.prompt_tokens_details?.cached_tokens ?? 0);
+  }
+
+  private upstreamCheck: { at: number; up: boolean; ms: number } | null = null;
+
+  /** Whether the model server behind this node answers (its /models list), checked at most every 15 seconds, so a node
+   * whose model server is down says so on /health before a router pays for a request that cannot be served. */
+  private async upstreamUp(): Promise<{ up: boolean; ms: number }> {
+    if (this.upstreamCheck && Date.now() - this.upstreamCheck.at < 15_000) return this.upstreamCheck;
+    const t0 = Date.now();
+    const headers = { ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
+    const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/models`, { headers, timeoutMs: 3_000 }).then((r) => r.ok).catch(() => false);
+    this.upstreamCheck = { at: Date.now(), up, ms: Date.now() - t0 };
+    return this.upstreamCheck;
   }
 
   /** Redeem every channel whose best voucher is ahead of what is on chain, a few channels per transaction. */
