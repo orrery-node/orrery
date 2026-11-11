@@ -5,6 +5,7 @@ import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
+import { TEE_KINDS } from '../chain/program.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
@@ -57,6 +58,8 @@ export type Trip = {
   ttftMs: number;
   totalMs: number;
   sealed: boolean;
+  /** For a sealed answer: the hardware this router verified before it encrypted the prompt, and the image it booted. */
+  enclave?: { kind: string; image: string; verdict: string };
   fellThrough: number;
   resumed?: boolean;
   cacheKept?: boolean;
@@ -404,6 +407,10 @@ export class Router {
     const ch = await this.o.channels.ensure(address, maxCost);
     const payload = JSON.stringify({ ...body, model: cand.offer.id, stream: true });
     let wire = payload;
+    // What a sealed answer can say about where it ran: the enclave this router verified before it sealed the prompt.
+    const ascii = (v: string) => v.replace(/[^\x20-\x7e]/g, "'");
+    const enclave = cand.sealed && cand.entry.tee ? { kind: TEE_KINDS[cand.entry.account.teeKind] ?? 'enclave', image: Buffer.from(cand.entry.account.teeMeasurement).toString('hex').slice(0, 32), verdict: ascii(cand.entry.tee.reason) } : null;
+    const enclaveHeaders: Record<string, string> = enclave ? { 'x-orrery-sealed': '1', 'x-orrery-enclave': enclave.kind, 'x-orrery-enclave-image': enclave.image, 'x-orrery-enclave-verdict': enclave.verdict } : {};
     let key: Buffer | null = null;
     if (cand.sealed) {
       if (!cand.entry.tee?.verified) throw new Error('enclave not verified');
@@ -451,7 +458,7 @@ export class Router {
       if (!ttft) ttft = Date.now() - t0;
       if (wantsStream) {
         if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? { 'x-orrery-sealed': '1' } : {}) });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? enclaveHeaders : {}) });
           state.started = true;
           const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
@@ -493,7 +500,7 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, ...(key && enclave ? { enclave } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
@@ -505,7 +512,7 @@ export class Router {
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(key ? enclaveHeaders : {}), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

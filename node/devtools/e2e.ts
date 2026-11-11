@@ -140,7 +140,7 @@ const ask = async (model: string, opts: { stream?: boolean; header?: Record<stri
     return { status: r.status, provider: r.headers.get('x-orrery-provider'), content, raw: text };
   }
   const j = await r.json();
-  return { status: r.status, provider: r.headers.get('x-orrery-provider'), content: j.choices?.[0]?.message?.content ?? '', cost: r.headers.get('x-orrery-cost'), body: j };
+  return { status: r.status, provider: r.headers.get('x-orrery-provider'), content: j.choices?.[0]?.message?.content ?? '', cost: r.headers.get('x-orrery-cost'), body: j, headers: r.headers };
 };
 const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name ?? addr;
 
@@ -163,6 +163,7 @@ check('a stream ends with the billed usage and its cost only when the client ask
   `${suLast.usage?.prompt_tokens}+${suLast.usage?.completion_tokens} tok, cost ${suLast.usage?.cost} = signed $${suTrip.cost}; without the option, no usage chunk`);
 r = await ask('qwen3-32b:private');
 check('privacy route seals the request to the only enclave', nameOf(r.provider) === 'Vault Nine' && r.content.length > 20);
+check('a sealed answer names the enclave the router verified before it encrypted the prompt', r.headers?.get('x-orrery-sealed') === '1' && r.headers.get('x-orrery-enclave') === 'Intel TDX + NVIDIA CC' && /^[0-9a-f]{32}$/.test(r.headers.get('x-orrery-enclave-image') ?? '') && /dev report accepted/.test(r.headers.get('x-orrery-enclave-verdict') ?? ''), `x-orrery-enclave: ${r.headers?.get('x-orrery-enclave')} · image ${r.headers?.get('x-orrery-enclave-image')} · ${r.headers?.get('x-orrery-enclave-verdict')}`);
 r = await ask('llama-3.3-70b', { header: { 'x-orrery-route': 'privacy' } });
 check('route header works too', nameOf(r.provider) === 'Vault Nine');
 for (let i = 0; i < 3; i++) await ask('llama-3.3-70b:fast');

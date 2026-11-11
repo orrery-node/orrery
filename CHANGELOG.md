@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · A sealed answer says where it ran. On `:private`, the response carries `x-orrery-enclave` (the hardware), `x-orrery-enclave-image` (the image it booted) and `x-orrery-enclave-verdict` (what your router verified before it encrypted the prompt). The router’s log and console keep the same record for every sealed request.
+
 ## 0.1.9 · 2026-11-11 01:17 UTC
 
 **Intel TDX joins AMD in the built-in verifier, agents get a budget per job, and node operators get a readiness check.**
