@@ -4,15 +4,21 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
-  { who: 'router', text: 'Private only: start the router with `--private-only` and every request is sealed to an enclave it verified, or refused. A route suffix or header cannot turn it off, so a tool pointed at that router cannot send a prompt in the clear.' },
-  { who: 'router', text: 'An agent’s bill per job: the router’s log now carries the task each answer belonged to, so `orrery spend --by task` (and `GET /orrery/spend?by=task`) adds up what every job cost. Task budgets are kept on disk, so a restarted router still knows what a job has spent.' },
-  { who: 'provider', text: '`orrery provider price --config provider.json` reprices your node against the open market: for each model it finds the cheapest other listing on chain and goes a margin under it (`--beat 5`), never below your own floor (`--floor 0.03/0.12`) and never upward. It shows the plan first and saves it with `--write`.' },
-  { who: 'everyone', text: 'Audit any private node yourself: `orrery enclave verify --node <listing>` reads the node’s enclave claim from Solana, asks the node for the report its CPU signed, and prints every check a router runs, one line each. `--report` and `--quote` print the same check-by-check result, and `--json` gives it to scripts.' },
-  { who: 'router', text: 'A sealed answer says where it ran. On `:private`, the response carries `x-orrery-enclave` (the hardware), `x-orrery-enclave-image` (the image it booted) and `x-orrery-enclave-verdict` (what your router verified before it encrypted the prompt). The router’s log on disk keeps the same record for every sealed request, and `orrery sealed` reads it back: when, which model, which node, which enclave, which image, what was verified.' },
-];
+export const UNRELEASED: Change[] = [];
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.1.10',
+    at: '2026-11-11T07:21:55Z',
+    headline: 'Private answers come with a receipt, a router can be locked to private only, and an agent’s bill adds up per job.',
+    changes: [
+      { who: 'router', text: 'Private only: start the router with `--private-only` and every request is sealed to an enclave it verified, or refused. A route suffix or header cannot turn it off, so a tool pointed at that router cannot send a prompt in the clear.' },
+      { who: 'router', text: 'A sealed answer says where it ran. On `:private`, the response carries `x-orrery-enclave` (the hardware), `x-orrery-enclave-image` (the image it booted) and `x-orrery-enclave-verdict` (what your router verified before it encrypted the prompt). The router’s log on disk keeps the same record for every sealed request, and `orrery sealed` reads it back: when, which model, which node, which enclave, which image, what was verified.' },
+      { who: 'everyone', text: 'Audit any private node yourself: `orrery enclave verify --node <listing>` reads the node’s enclave claim from Solana, asks the node for the report its CPU signed, and prints every check a router runs, one line each. `--report` and `--quote` print the same check-by-check result, and `--json` gives it to scripts.' },
+      { who: 'router', text: 'An agent’s bill per job: the router’s log now carries the task each answer belonged to, so `orrery spend --by task` (and `GET /orrery/spend?by=task`) adds up what every job cost. Task budgets are kept on disk, so a restarted router still knows what a job has spent.' },
+      { who: 'provider', text: '`orrery provider price --config provider.json` reprices your node against the open market: for each model it finds the cheapest other listing on chain and goes a margin under it (`--beat 5`), never below your own floor (`--floor 0.03/0.12`) and never upward. It shows the plan first and saves it with `--write`.' },
+    ],
+  },
   {
     version: '0.1.9',
     at: '2026-11-11T01:17:12Z',
