@@ -534,6 +534,17 @@ const noBurnJ = (await noBurn.json()) as { error?: { message?: string } };
 const burnCost = Number(viaBurn.headers.get('x-orrery-cost'));
 check('the :burn route sends a request only to nodes whose burns the router verified, and the answer says what it sends to the burn', viaBurn.status === 200 && viaBurn.headers.get('x-orrery-provider') === iron.pda.toBase58() && viaBurn.headers.get('x-orrery-burn-share') === '2500' && Math.abs(Number(viaBurn.headers.get('x-orrery-burn')) - burnCost / 4) < 0.0000011 && noBurn.status === 503 && /burn pledge/.test(noBurnJ.error?.message ?? ''), `llama-3.3-70b:burn → Ironbridge · x-orrery-cost ${viaBurn.headers.get('x-orrery-cost')} · x-orrery-burn ${viaBurn.headers.get('x-orrery-burn')} (25%) · qwen3-32b:burn → ${noBurn.status}: ${noBurnJ.error?.message ?? viaBurnJ.error?.message}`);
 
+// Private only: a second router over the same network that seals everything or refuses, whatever the request asks for.
+const lockedRouter = new Router({ port: 17172, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: () => undefined, privateOnly: true });
+await lockedRouter.start();
+const lockedAsk = (model: string, header: Record<string, string> = {}) => fetch('http://127.0.0.1:17172/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', ...header }, body: JSON.stringify({ model, max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const lockedCheap = await lockedAsk('llama-3.3-70b:cheap', { 'x-orrery-route': 'price' });
+await lockedCheap.json();
+const lockedNone = await lockedAsk('deepseek-v3');
+const lockedNoneJ = (await lockedNone.json()) as { error?: { message?: string } };
+await lockedRouter.close();
+check('a private-only router seals every request or refuses it, whatever route the request asks for', lockedCheap.status === 200 && lockedCheap.headers.get('x-orrery-sealed') === '1' && lockedCheap.headers.get('x-orrery-route') === 'privacy' && nameOf(lockedCheap.headers.get('x-orrery-provider')) === 'Vault Nine' && lockedNone.status === 503 && /verified enclave/.test(lockedNoneJ.error?.message ?? ''), `llama-3.3-70b:cheap with x-orrery-route: price → ${nameOf(lockedCheap.headers.get('x-orrery-provider'))}, sealed, route ${lockedCheap.headers.get('x-orrery-route')} · deepseek-v3 (no enclave lists it) → ${lockedNone.status}: ${lockedNoneJ.error?.message}`);
+
 // Task budgets: an agent gives a job one budget, and every request under that name draws from it.
 const taskAsk = (first: boolean) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-task': 'rehearsal-job', ...(first ? { 'x-orrery-task-budget': '0.00003' } : {}) }, body: JSON.stringify({ model: 'llama-3.3-70b:cheap', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
 const taskRuns: { status: number; left: string | null; code?: string }[] = [];

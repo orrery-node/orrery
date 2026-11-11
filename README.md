@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-53%2F53%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="53 of 53 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-54%2F54%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="54 of 54 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -237,7 +237,7 @@ The full guide, with every flag and a troubleshooting table, is at **[orrerynode
 | `:cheap` | price | lowest expected cost for this request |
 | `:fast` | speed | fastest first token this router has measured (EWMA) |
 | `:trusted` | reputation | settled volume 35% · redemptions 15% · age 15% · bonded $OREY 10% · this router's own success rate 25% |
-| `:private` | privacy | only providers whose enclave this router verified; the request is sealed, and the answer names the enclave in `x-orrery-enclave`, `x-orrery-enclave-image` and `x-orrery-enclave-verdict` |
+| `:private` | privacy | only providers whose enclave this router verified; the request is sealed, and the answer names the enclave in `x-orrery-enclave`, `x-orrery-enclave-image` and `x-orrery-enclave-verdict`. Start the router with `--private-only` to make every request take this route, whatever it asks for |
 
 The router tries the top three providers in order and cools a failing one down for 15 seconds up to 5 minutes, so a slow or dead provider is skipped without your tool noticing. If a provider drops a stream mid-answer, the router hands the text so far to the next provider whose manifest says `resume: true` and keeps writing into the same stream; the provider that dropped it is paid nothing for that answer. Pin one with `x-orrery-provider: <address prefix>`, or set the route with `x-orrery-route`.
 
@@ -456,7 +456,7 @@ assets/    brand and README media
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
 cd node && pnpm install && pnpm test                            # 101 tests
-pnpm e2e                                                        # full local rehearsal, 53 checks
+pnpm e2e                                                        # full local rehearsal, 54 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
@@ -531,7 +531,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal on the real program, 53 of 53 checks (task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
+- [x] Local end-to-end rehearsal on the real program, 54 of 54 checks (task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
@@ -556,6 +556,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Routers show each node's model server (console, status, MCP, `orrery providers`); a built-in AMD SEV-SNP verifier and `orrery enclave verify`; private nodes on SEV-SNP; routers verify burn pledges on chain, a `:burn` route and `x-orrery-burn` (0.1.8)
 - [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`, 0.1.8)
 - [x] Built-in verifier for Intel TDX, checked against a real quote (`orrery enclave verify --quote`), TDX nodes, task budgets for agents, burn pledges that buy on mainnet through Jupiter (`orrery provider burn`), enclave verdicts in `doctor` (0.1.9)
+- [x] A receipt on every private answer (`x-orrery-enclave` headers, kept in the router's log, `orrery sealed`), `orrery enclave verify --node` to audit a private node check by check, a `--private-only` router, a bill per job (`orrery spend --by task`, budgets that survive a restart), `orrery provider price` (0.1.10)
 - [ ] Revocation lists and firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
 - [ ] $OREY bonds live on mainnet
 

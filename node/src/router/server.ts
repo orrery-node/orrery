@@ -10,7 +10,7 @@ import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
 import { TaskBook } from './tasks.ts';
-import { applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
+import { ROUTES, applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
@@ -41,6 +41,9 @@ export type RouterOptions = {
   maxCost?: string;
   /** How often to ask each node whether its model server answers (default 30 seconds). */
   healthSecs?: number;
+  /** Private only: every request is sealed to an enclave this router verified, or refused. No route suffix or header
+   * can turn it off, so a tool pointed at this router cannot send a prompt in the clear. */
+  privateOnly?: boolean;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -244,7 +247,7 @@ export class Router {
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
     const s = await this.standing();
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s) } : null;
-    send(res, 200, { route: this.o.route, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
+    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
@@ -299,7 +302,8 @@ export class Router {
   private async serveOne(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     const header = String(req.headers['x-orrery-route'] ?? '');
-    const { model, route } = parseModel(applyAlias(body.model, this.o.aliases), (['auto', 'price', 'speed', 'reputation', 'privacy'] as Route[]).includes(header as Route) ? (header as Route) : this.o.route);
+    const asked = parseModel(applyAlias(body.model, this.o.aliases), (ROUTES as readonly string[]).includes(header) ? (header as Route) : this.o.route);
+    const model = asked.model, route: Route = this.o.privateOnly ? 'privacy' : asked.route;
     const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
     const estIn = estimateInputTokens(body);
