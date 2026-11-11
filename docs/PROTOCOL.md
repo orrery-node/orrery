@@ -84,6 +84,10 @@ Reputation (0 to 1) = settled volume 35% (log, saturating at $1,000) + redemptio
 
 The router makes an ephemeral X25519 key, does ECDH with the provider's enclave key, derives with HKDF-SHA256 (salt = ephemeral public key ‖ enclave public key, info `orrery/seal/1`) and encrypts with AES-256-GCM. The body becomes `{sealed: 1, epk, box}`; response SSE frames are sealed with the same key. Outside the enclave (the operator's host, the network) only ciphertext is visible. That the enclave key was generated inside the enclave is vouched for by the hardware report, which the router fetches and checks against the on-chain claim before sealing anything.
 
+### Wire sealing (every other route)
+
+A node without an enclave still holds an X25519 key of its own (`wire.key` in its data folder). It serves `GET /v1/wire` → `{ key, sig, node }`, where `sig` is the node key's ed25519 signature over `orrery/wire/1 ‖ key`; the node key is the one on the provider's account, so a router accepts the wire key only from the node that is listed. The router then sends `{wire: 1, epk, box}` built exactly like a sealed body, and the node answers in sealed SSE frames. The operator can read the prompt (only an enclave prevents that); nothing between the router and the node process can, which matters because a hosting platform ends TLS in front of the node and may inspect, log or refuse what it sees. A node with no `/v1/wire` (older than this) is sent plain JSON, and a node accepts plain JSON from older routers.
+
 ## 8. What the admin cannot do
 
 List or delist providers, move channel deposits, move bonds, or charge a fee. The admin can tune the grace period, the unbonding delay and the minimum deposit within the bounds above, set the bond mint once, and hand over the admin role in two steps.
