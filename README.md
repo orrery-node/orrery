@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-55%2F55%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="55 of 55 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-56%2F56%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="56 of 56 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -214,7 +214,21 @@ and the body's `usage` has the same bill: `{"prompt_tokens": 91, "completion_tok
 <details>
 <summary><b>Claude Code and Codex CLI</b></summary>
 
-Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it:
+With the router running, one command starts Claude Code on it as one job and prints the job's bill when you quit (from 0.1.12):
+
+```bash
+orrery run claude --budget 0.05
+```
+
+```
+orrery · claude-todo-app-1111-0834
+  7 answers · 95,727 tokens (91,156 in, 4,571 out) · $0.004062 of $0.05 budget
+  each answer paid from your wallet to the node that served it
+```
+
+It names the network model outright (`gpt-oss-120b` unless you pass `--model`), tags every request with the job and its budget, and hands Claude Code a placeholder key. A key or token already in your environment is not passed on. Arguments after `--` go to Claude Code.
+
+By hand, on any version: Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it:
 
 ```bash
 orrery router --wallet ~/.config/solana/orrery.json --alias 'claude-*=gpt-oss-120b'
@@ -470,8 +484,8 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 110 tests
-pnpm e2e                                                        # full local rehearsal, 55 checks
+cd node && pnpm install && pnpm test                            # 117 tests
+pnpm e2e                                                        # full local rehearsal, 56 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
@@ -546,7 +560,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal on the real program, 55 of 55 checks (requests encrypted to the node's own key, task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
+- [x] Local end-to-end rehearsal on the real program, 56 of 56 checks (a client started with `orrery run` and billed as one job, requests encrypted to the node's own key, task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)

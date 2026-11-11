@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery run claude` starts Claude Code on your router as one job. It names the network model outright, tags every request with the job and the budget you give it (`--budget 0.25`), and prints the job’s bill when Claude Code exits: answers, tokens, dollars. A key or token already in your environment is not passed on.' },
+];
 
 export const RELEASES: Release[] = [
   {

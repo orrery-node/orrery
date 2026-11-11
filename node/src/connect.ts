@@ -28,7 +28,7 @@ export function instructions(client: Client, router: string, model: string, code
     case 'codex':
       return `Save as ${codexProfilePath} (or run ${CLI} connect codex --write):\n\n${codexProfile(base, model)}\nThen: codex --profile orrery`;
     case 'claude':
-      return `ANTHROPIC_BASE_URL=${base} ANTHROPIC_API_KEY=orrery claude\nRun the router with --alias 'claude-*=${model}' so Claude Code's model names are answered by ${model} on the network.`;
+      return `ANTHROPIC_BASE_URL=${base} ANTHROPIC_API_KEY=orrery claude\nRun the router with --alias 'claude-*=${model}' so Claude Code's model names are answered by ${model} on the network.\nOr let ${CLI} start it as one job with a budget and a bill at the end: ${CLI} run claude --budget 0.25`;
     case 'openai':
       return `OPENAI_BASE_URL=${base}/v1\nOPENAI_API_KEY=orrery   # any value; the router has no key\nmodel: ${model}   (Chat Completions and Responses both work)`;
     case 'anthropic':

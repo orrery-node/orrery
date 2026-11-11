@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · `orrery run claude` starts Claude Code on your router as one job. It names the network model outright, tags every request with the job and the budget you give it (`--budget 0.25`), and prints the job’s bill when Claude Code exits: answers, tokens, dollars. A key or token already in your environment is not passed on.
+
 ## 0.1.11 · 2026-11-11 09:19 UTC
 
 **Every request is encrypted to the node itself, and the verifiers read the chip makers’ revocation lists.**

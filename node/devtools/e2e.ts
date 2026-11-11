@@ -575,6 +575,40 @@ const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');
 const lastRun = taskRuns[taskRuns.length - 1];
 check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status !== 200 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1 && jobSpend?.answers === job.answers && jobSpend.usd === job.spent && existsSync(join(process.env.ORRERY_HOME!, 'router', 'tasks.json')), job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
 
+// orrery run: the CLI starts a client wired to this router as one job, and prints the job's bill when the client exits.
+// The client is a stand-in named `claude` that sends one Anthropic request with exactly the environment it was given.
+const stubDir = join(WORK, 'bin');
+mkdirSync(stubDir, { recursive: true });
+writeFileSync(join(stubDir, 'claude'), `#!/usr/bin/env node
+(async () => {
+  const headers = { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY ?? '' };
+  for (const l of (process.env.ANTHROPIC_CUSTOM_HEADERS ?? '').split('\\n')) { const i = l.indexOf(':'); if (i > 0) headers[l.slice(0, i).trim()] = l.slice(i + 1).trim(); }
+  const model = process.argv[process.argv.indexOf('--model') + 1];
+  const r = await fetch(process.env.ANTHROPIC_BASE_URL + '/v1/messages', { method: 'POST', headers, body: JSON.stringify({ model, max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+  await r.json();
+  console.log(JSON.stringify({ status: r.status, model, key: process.env.ANTHROPIC_API_KEY, token: process.env.ANTHROPIC_AUTH_TOKEN ?? null, args: process.argv.slice(2) }));
+  process.exit(r.status === 200 ? 0 : 1);
+})();
+`, { mode: 0o755 });
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const ran = await new Promise<{ code: number | null; out: string; err: string }>((done) => {
+  let out = '', err = '';
+  const pr = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'run', 'claude', '--router', ROUTER, '--model', 'llama-3.3-70b', '--budget', '0.001', '--task', 'rehearsal-run', '--', '-p', 'hello'],
+    { cwd: join(ROOT, 'node'), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, ANTHROPIC_API_KEY: 'sk-ant-not-passed-on', ANTHROPIC_AUTH_TOKEN: 'not-passed-on' } });
+  pr.stdout!.on('data', (d) => (out += d));
+  pr.stderr!.on('data', (d) => (err += d));
+  const timer = setTimeout(() => pr.kill('SIGTERM'), 60_000);
+  pr.on('exit', (code) => { clearTimeout(timer); done({ code, out, err }); });
+});
+let stubSaid: { status?: number; model?: string; key?: string; token?: string | null; args?: string[] } = {};
+try { stubSaid = JSON.parse(ran.out.trim().split('\n').pop() ?? '{}'); } catch { /* the check below reports it */ }
+const runTask = ((await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] }).tasks.find((t) => t.name === 'rehearsal-run');
+const billLine = ran.err.split('\n').find((l) => l.includes('answer')) ?? '';
+check('orrery run starts a client on the router as one job, hands it no key of yours, and prints the job’s bill when it exits',
+  ran.code === 0 && stubSaid.status === 200 && stubSaid.key === 'orrery' && stubSaid.token === null && (stubSaid.args ?? []).join(' ') === '--model llama-3.3-70b -p hello'
+  && !!runTask && runTask.answers === 1 && Number(runTask.budget) === 0.001 && ran.err.includes('orrery · rehearsal-run') && /1 answer · [\d,]+ tokens/.test(billLine) && billLine.includes(`$${runTask.spent} of $0.001 budget`),
+  `exit ${ran.code} · ${billLine.trim()}`);
+
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
   trips: trips.map((t) => ({ route: t.route, model: t.model, provider: t.providerName, tokens: `${t.inputTokens}+${t.outputTokens}`, cost: t.cost, ttftMs: t.ttftMs, sealed: t.sealed, fellThrough: t.fellThrough, holderOff: t.off })),

@@ -15,6 +15,8 @@ import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
+import { spawn } from 'node:child_process';
+import { pickModel, plan, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
 import { readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
@@ -58,6 +60,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
+  ${CLI} run claude [--budget <usd>] [--task <name>] [--model <id>] [-- <its own arguments>]   start Claude Code on your router as one job, and print the job's bill when it exits
   ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
   ${CLI} spend [--since 24h|7d] [--by model|provider|task] [--json]   what your router paid, from its own log of answers
   ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
@@ -294,7 +297,9 @@ async function provider(sub: string) {
 
 async function main() {
   const [cmd, sub] = argv;
-  if (!cmd || cmd === 'help' || has('help')) return console.log(HELP);
+  // After `--` the arguments are the client's (orrery run claude -- --help asks Claude Code, not this CLI).
+  const ownArgs = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv;
+  if (!cmd || cmd === 'help' || ownArgs.includes('--help')) return console.log(HELP);
   if (cmd === 'provider' && sub === 'init') {
     const out = flag('out', 'provider.json')!;
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
@@ -326,6 +331,33 @@ async function main() {
     const ctx = await contextFromRouter(routerUrl, model);
     writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
     return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
+  }
+  if (cmd === 'run') {
+    // orrery run claude [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <the client's own arguments>]
+    const cut = argv.indexOf('--');
+    const mine = cut >= 0 ? argv.slice(0, cut) : argv;
+    const own = (name: string, fallback?: string) => { const i = mine.indexOf(`--${name}`); return i >= 0 ? mine[i + 1] : fallback; };
+    if (!sub || !(RUNNABLE as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} run <${RUNNABLE.join('|')}> [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <its own arguments>]`);
+    const routerUrl = own('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!;
+    const models = await routerModels(routerUrl);
+    if (!models) throw new Error(`no router answers at ${routerUrl}; start one first: ${CLI} router --wallet <keypair.json>`);
+    const model = own('model') ?? pickModel(models);
+    if (!model) throw new Error(`the router lists no model yet; see ${CLI} models`);
+    const budget = own('budget');
+    if (budget !== undefined && !(Number(budget) > 0)) throw new Error('--budget is a dollar amount such as 0.25');
+    const task = own('task') ?? taskName(sub, process.cwd());
+    if (!/^[A-Za-z0-9._:\-]{1,64}$/.test(task)) throw new Error('--task: letters, digits, . _ : - (at most 64)');
+    const p = plan(sub as Runnable, { router: routerUrl, task, budget, model, args: cut >= 0 ? argv.slice(cut + 1) : [], env: process.env });
+    console.error(`${CLI} · ${task} · ${model}${budget ? ` · budget $${budget}` : ''} · ${routerUrl}`);
+    const code = await new Promise<number>((done) => {
+      const child = spawn(p.command, p.args, { stdio: 'inherit', env: p.env });
+      // Ctrl-C belongs to the client; this process waits for it to finish and then prints the bill.
+      process.on('SIGINT', () => {});
+      child.on('error', (e: NodeJS.ErrnoException) => { console.error(e.code === 'ENOENT' ? `${p.command} is not installed, or not on PATH` : e.message); done(127); });
+      child.on('exit', (c, sig) => done(c ?? (sig ? 130 : 1)));
+    });
+    console.error(`\n${renderBill(await readBill(routerUrl, task), task)}`);
+    process.exit(code);
   }
   if (cmd === 'bench') {
     if (!sub) throw new Error(`usage: ${CLI} bench <model> [--n 3] [--router <url>]`);
