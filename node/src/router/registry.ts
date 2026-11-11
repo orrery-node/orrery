@@ -7,6 +7,8 @@ import bs58 from 'bs58';
 import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
+import { fetchCrls } from '../tee/crl.ts';
+import { home } from '../keys.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchWithTimeout } from '../sse.ts';
 
@@ -97,13 +99,15 @@ export class Registry {
       if (dev) return { verified: this.tee.allowDev, dev: true, reason: this.tee.allowDev ? 'dev report accepted (local testing)' : 'dev report, not hardware', enclaveKey };
       if (!this.tee.verifier) {
         // The built-in verifier: AMD SEV-SNP reports are and Intel TDX quotes are checked here against the chip makers' own roots, with no outside service.
+        // The chip maker's revocation lists are read too (cached on disk for twelve hours); a revoked chip is refused.
+        const crls = p.teeKind === 1 || p.teeKind === 2 ? await fetchCrls(p.teeKind === 2 ? 'amd' : 'intel', home('crl')).catch(() => [] as Buffer[]) : [];
         if (p.teeKind === 1) {
-          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey });
+          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls });
           return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
         }
         if (p.teeKind !== 2) return { verified: false, dev: false, reason: `no built-in verifier for ${TEE_KINDS[p.teeKind] ?? 'this enclave kind'} yet`, enclaveKey };
         if (!a.vcek) return { verified: false, dev: false, reason: 'the node did not serve its chip certificate', enclaveKey };
-        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey });
+        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls });
         return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
       }
       const ok = await this.tee.verifier(a, p);

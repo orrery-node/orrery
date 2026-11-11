@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The built-in verifiers read the chip makers’ revocation lists. AMD and Intel publish signed lists of certificates they have withdrawn; your router now fetches them straight from the chip maker, checks each list’s signature against the same pinned roots, and refuses an enclave whose chip or platform certificate is on one. Lists are kept in `~/.orrery/crl` for twelve hours, and `orrery enclave verify` prints the result as its own line (`--offline` skips it).' },
+];
 
 export const RELEASES: Release[] = [
   {

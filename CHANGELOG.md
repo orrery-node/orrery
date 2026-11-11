@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · The built-in verifiers read the chip makers’ revocation lists. AMD and Intel publish signed lists of certificates they have withdrawn; your router now fetches them straight from the chip maker, checks each list’s signature against the same pinned roots, and refuses an enclave whose chip or platform certificate is on one. Lists are kept in `~/.orrery/crl` for twelve hours, and `orrery enclave verify` prints the result as its own line (`--offline` skips it).
+
 ## 0.1.10 · 2026-11-11 07:21 UTC
 
 **Private answers come with a receipt, a router can be locked to private only, and an agent’s bill adds up per job.**

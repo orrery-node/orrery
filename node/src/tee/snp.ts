@@ -5,6 +5,7 @@
 // encryption key the router is about to seal prompts to.
 import { createHash, verify as verifySig, X509Certificate } from 'node:crypto';
 import { AMD_CHAINS } from './amd-chains.ts';
+import { revocation } from './crl.ts';
 
 /** SHA-256 fingerprints of AMD's root keys (ARK), one per processor family. */
 export const AMD_ROOTS: Record<string, string> = {
@@ -19,7 +20,7 @@ const DEBUG_BIT = 1n << 19n;
 
 export type SnpReport = { version: number; policy: bigint; debug: boolean; reportData: Buffer; measurement: Buffer; chipId: Buffer };
 /** One step of a verification: what was looked at, whether it held, and what was found. */
-export type Check = { name: string; ok: boolean; detail: string };
+export type Check = { name: string; ok: boolean; detail: string; skipped?: boolean };
 export type SnpVerdict = { ok: boolean; reason: string; family?: string; report?: SnpReport; checks?: Check[] };
 
 export function parseSnpReport(raw: Buffer): SnpReport {
@@ -52,7 +53,7 @@ function signatureOf(raw: Buffer): Buffer {
   return Buffer.concat([be(SIGNED), be(SIGNED + 72)]);
 }
 
-export function verifySnp(o: { report: Buffer; vcek: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; chains?: Record<string, string>; roots?: Record<string, string> }): SnpVerdict {
+export function verifySnp(o: { report: Buffer; vcek: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; chains?: Record<string, string>; roots?: Record<string, string>; crls?: Buffer[] }): SnpVerdict {
   let report: SnpReport;
   try {
     report = parseSnpReport(o.report);
@@ -77,6 +78,14 @@ export function verifySnp(o: { report: Buffer; vcek: Buffer; measurement: Buffer
     { name: 'image', ok: report.measurement.equals(o.measurement), detail: report.measurement.equals(o.measurement) ? `booted ${report.measurement.toString('hex').slice(0, 32)}…` : 'the VM booted a different image than the one claimed on chain' },
     { name: 'encryption key', ok: report.reportData.subarray(0, 32).equals(o.enclaveKey), detail: report.reportData.subarray(0, 32).equals(o.enclaveKey) ? `the report names ${o.enclaveKey.toString('hex').slice(0, 32)}…` : 'the report does not name this encryption key' },
   ];
+  // AMD's revocation list for that processor family, when the caller has one: the signing key above the chip, and the chip's own certificate.
+  if (o.crls && family) {
+    const [askPem, arkPem] = pems((o.chains ?? AMD_CHAINS)[family]) as [string, string];
+    const r = revocation([new X509Certificate(askPem), vcek], new X509Certificate(arkPem), o.crls, o.now ?? new Date());
+    checks.splice(1, 0, !r.checked ? { name: 'revocation', ok: true, skipped: true, detail: "AMD's current revocation list could not be read; not checked" }
+      : r.revoked ? { name: 'revocation', ok: false, detail: 'AMD has revoked a certificate in this chip\'s chain' }
+      : { name: 'revocation', ok: true, detail: `not on AMD's revocation list for ${family} (${r.listed} revoked, list of ${r.asOf!.toISOString().slice(0, 10)})` });
+  }
   const failed = checks.find((c) => !c.ok);
   return { ok: !failed, reason: failed ? failed.detail : `AMD SEV-SNP report verified (${family})`, family: family ?? undefined, report, checks };
 }

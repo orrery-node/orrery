@@ -4,6 +4,7 @@
 // the image the provider claimed on chain, and the quote names the key the router is about to seal prompts to.
 import { createHash, createPublicKey, verify as verifySig, X509Certificate, type KeyObject } from 'node:crypto';
 import type { Check } from './snp.ts';
+import { revocation } from './crl.ts';
 
 /** SHA-256 fingerprint of Intel's SGX Root CA, which TDX platform certificates chain to. */
 export const INTEL_ROOT = '44a0196b2b99f889b8e149e95b807a350e7424964399e885a7cbb8ccfab674d3';
@@ -42,7 +43,7 @@ function p256(raw: Buffer): KeyObject {
 
 const current = (c: X509Certificate, now: Date) => new Date(c.validFrom) <= now && now <= new Date(c.validTo);
 
-export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; root?: string }): TdxVerdict {
+export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; root?: string; crls?: Buffer[] }): TdxVerdict {
   let q: TdxQuote;
   try {
     q = parseTdxQuote(o.quote);
@@ -70,6 +71,13 @@ export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: B
     { name: 'image', ok: q.mrtd.equals(o.measurement), detail: q.mrtd.equals(o.measurement) ? `booted ${q.mrtd.toString('hex').slice(0, 32)}…` : 'the VM booted a different image than the one claimed on chain' },
     { name: 'encryption key', ok: q.reportData.subarray(0, 32).equals(o.enclaveKey), detail: q.reportData.subarray(0, 32).equals(o.enclaveKey) ? `the quote names ${o.enclaveKey.toString('hex').slice(0, 32)}…` : 'the quote does not name this encryption key' },
   ];
+  // Intel's revocation lists, when the caller has them: the platform's certificate, and the CA that issued it.
+  if (o.crls) {
+    const leaf = revocation([pck], mid, o.crls, now), ca = revocation([mid], root, o.crls, now);
+    checks.splice(1, 0, leaf.revoked || ca.revoked ? { name: 'revocation', ok: false, detail: leaf.revoked ? 'Intel has revoked this platform’s certificate' : 'Intel has revoked the CA that issued this platform’s certificate' }
+      : !leaf.checked ? { name: 'revocation', ok: true, skipped: true, detail: "Intel's current revocation list could not be read; not checked" }
+      : { name: 'revocation', ok: true, detail: `not on Intel's revocation list (${leaf.listed} platforms revoked, list of ${leaf.asOf!.toISOString().slice(0, 10)})` });
+  }
   const failed = checks.find((c) => !c.ok);
   return { ok: !failed, reason: failed ? failed.detail : 'Intel TDX quote verified', quote: q, checks };
 }

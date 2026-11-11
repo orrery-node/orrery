@@ -455,7 +455,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 101 tests
+cd node && pnpm install && pnpm test                            # 107 tests
 pnpm e2e                                                        # full local rehearsal, 54 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
@@ -557,7 +557,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`, 0.1.8)
 - [x] Built-in verifier for Intel TDX, checked against a real quote (`orrery enclave verify --quote`), TDX nodes, task budgets for agents, burn pledges that buy on mainnet through Jupiter (`orrery provider burn`), enclave verdicts in `doctor` (0.1.9)
 - [x] A receipt on every private answer (`x-orrery-enclave` headers, kept in the router's log, `orrery sealed`), `orrery enclave verify --node` to audit a private node check by check, a `--private-only` router, a bill per job (`orrery spend --by task`, budgets that survive a restart), `orrery provider price` (0.1.10)
-- [ ] Revocation lists and firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
+- [x] Revocation lists in the built-in verifiers: AMD's and Intel's signed lists are fetched from the chip maker, verified against the pinned roots and checked for the chip's certificates (in main, next release)
+- [ ] Firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
 - [ ] $OREY bonds live on mainnet
 
 ## Contributing

@@ -25,6 +25,7 @@ import { providerCheck, renderCheck } from './provider/check.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
+import { fetchCrls } from './tee/crl.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
 import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
 
@@ -390,13 +391,14 @@ async function main() {
     //   --report <f> --vcek <f>     an AMD SEV-SNP report and the chip's certificate
     //   --quote <f>                 an Intel TDX quote
     const reportPath = flag('report'), vcekPath = flag('vcek'), quotePath = flag('quote'), nodeAddr = flag('node');
-    if (argv[1] !== 'verify' || !(nodeAddr || quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --node <listing address> | --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug]');
+    if (argv[1] !== 'verify' || !(nodeAddr || quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --node <listing address> | --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug] [--offline]');
     const want = (own: Buffer, name: string) => (flag(name) ? Buffer.from(flag(name)!, 'hex') : Buffer.from(own));
     if (nodeAddr) {
       const info = await new Connection(rpc(), 'confirmed').getAccountInfo(new PublicKey(nodeAddr));
       if (!info) throw new Error(`no listing at ${nodeAddr}; orrery providers prints every listing's address`);
       const p = decodeProvider(info.data);
-      const audit = await auditEnclave(p, { allowDebug: has('allow-debug') });
+      const crls = has('offline') || (p.teeKind !== 1 && p.teeKind !== 2) ? undefined : await fetchCrls(p.teeKind === 2 ? 'amd' : 'intel', home('crl'));
+      const audit = await auditEnclave(p, { allowDebug: has('allow-debug'), crls });
       if (has('json')) console.log(JSON.stringify(audit, null, 2));
       else {
         console.log(`${nodeAddr} · ${p.endpoint}`);
@@ -407,15 +409,17 @@ async function main() {
       process.exitCode = audit.ok ? 0 : 1;
       return;
     }
+    // The chip maker's revocation lists are read too, unless --offline: fetched from AMD or Intel, kept in ~/.orrery/crl.
+    const crls = has('offline') ? undefined : await fetchCrls(quotePath ? 'intel' : 'amd', home('crl'));
     const v = quotePath
-      ? (() => { const quote = readFileSync(expand(quotePath)); const q = parseTdxQuote(quote); return verifyTdx({ quote, measurement: want(q.mrtd, 'measurement'), enclaveKey: want(q.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') }); })()
-      : (() => { const report = readFileSync(expand(reportPath!)); const r = parseSnpReport(report); return verifySnp({ report, vcek: readFileSync(expand(vcekPath!)), measurement: want(r.measurement, 'measurement'), enclaveKey: want(r.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') }); })();
+      ? (() => { const quote = readFileSync(expand(quotePath)); const q = parseTdxQuote(quote); return verifyTdx({ quote, measurement: want(q.mrtd, 'measurement'), enclaveKey: want(q.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug'), crls }); })()
+      : (() => { const report = readFileSync(expand(reportPath!)); const r = parseSnpReport(report); return verifySnp({ report, vcek: readFileSync(expand(vcekPath!)), measurement: want(r.measurement, 'measurement'), enclaveKey: want(r.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug'), crls }); })();
     if (has('json')) console.log(JSON.stringify({ ok: v.ok, reason: v.reason, checks: v.checks ?? [] }, null, 2));
     else {
       console.log(v.checks?.length ? renderChecks(v.checks) : `✗ ${v.reason}`);
       console.log(v.ok ? `\n${v.reason}.` : `\nNot verified: ${v.reason}.`);
       if (!flag('measurement')) console.log('The image is taken from the report itself; pass --measurement <hex> to require the one you expect.');
-      console.log(`Checked on this computer with ${quotePath ? 'Intel’s public root' : 'AMD’s public roots'}; no attestation service was asked.`);
+      console.log(`Checked on this computer with ${quotePath ? 'Intel’s public root' : 'AMD’s public roots'}${crls ? ' and revocation list' : ''}; no attestation service was asked.`);
     }
     process.exitCode = v.ok ? 0 : 1;
     return;

@@ -469,7 +469,7 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (101 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (54 of 54 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (107 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (54 of 54 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
             <li>New in 0.1.10: a receipt on every private answer (<code>x-orrery-enclave</code> headers, kept in the router&apos;s log, <code>orrery sealed</code>), <code>orrery enclave verify --node</code> to audit a private node check by check, a <code>--private-only</code> router, a bill per job (<code>orrery spend --by task</code>, budgets that survive a restart), and <code>orrery provider price</code>.</li>
@@ -479,7 +479,7 @@ export default function Docs() {
             <li>New in 0.1.6: answers carry the billed usage in OpenAI&apos;s shape with <code>usage.cost</code> in USDC (streams end with it when you set <code>stream_options.include_usage</code>), <code>orrery bench</code> measures embedding models too, and a router that loses its records picks its open channels back up from the node&apos;s last voucher.</li>
             <li>New in 0.1.5: embeddings, model fallbacks, <code>orrery bench</code>, <code>orrery spend</code> and <code>orrery provider earnings</code>, MCP prices with <code>max_price</code> and an <code>embed</code> tool, last-24-hours tables in both consoles, a Host check against DNS rebinding, and <code>--json</code> output.</li>
             <li>New in 0.1.4: the OpenAI Responses API, MCP, model aliases, resumed streams, <code>orrery connect</code> for Codex and Claude Code, cached-input prices and cache affinity, parallel lanes, <code>--max-price</code>, router and provider consoles, <code>orrery doctor</code> and <code>orrery provider init</code>.</li>
-            <li>Not yet: revocation lists and firmware status in the built-in verifiers, and NVIDIA GPU attestation.</li>
+            <li>In main for the next release: the built-in verifiers read AMD&apos;s and Intel&apos;s revocation lists. Not yet: firmware (TCB) status in the verifiers, and NVIDIA GPU attestation.</li>
           </ul>
         </article>
       </div>
