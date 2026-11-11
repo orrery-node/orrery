@@ -648,6 +648,19 @@ check('orrery run starts a client on the router as one job with a budget (a doll
   && anyRan.code === 0 && anySaid.status === 200 && anySaid.key === 'orrery/rehearsal-any/0.002' && !!anyTask && anyTask.answers === 1 && Number(anyTask.budget) === 0.002 && anyRan.err.includes('of $0.002 budget'),
   `exit ${ran.code} · ${billLine.trim()} · a tool that only takes a key: ${(anyRan.err.split('\n').find((l) => l.includes('answer')) ?? '').trim()}`);
 
+// Where the time went: every answer says it in a standard header, and the router's record keeps the stages.
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const timed = await ask('llama-3.3-70b');
+const timedTrip = router.trips[router.trips.length - 1];
+const timedHeader = String((timed as { headers?: Headers }).headers?.get('server-timing') ?? '');
+const timedStream = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', stream: true, max_tokens: 32, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+await timedStream.text();
+const timedStreamHeader = String(timedStream.headers.get('server-timing') ?? '');
+check('an answer says where its time went (Server-Timing): choosing the node, the channel, sealing, the wait for the node, and signing the payment',
+  /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+, sign;dur=[\d.]+$/.test(timedHeader) && /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+$/.test(timedStreamHeader)
+  && !!timedTrip.ms && timedTrip.ms.node > 0 && timedTrip.ms.route + timedTrip.ms.seal + timedTrip.ms.sign < timedTrip.ms.node,
+  timedHeader);
+
 // Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
 // is gone the request fails instead of going out directly.
 const proxied: { url: string; body: string }[] = [];
