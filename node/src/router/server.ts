@@ -7,7 +7,8 @@ import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
-import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
+import { readSse, sseFrame } from '../sse.ts';
+import { fetchNode, nodeProxy } from '../proxy.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
 import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
@@ -252,7 +253,7 @@ export class Router {
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
     const s = await this.standing();
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s) } : null;
-    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
+    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
@@ -448,7 +449,7 @@ export class Router {
     if (ch.voucher) headers['x-orrery-voucher'] = ch.voucher;
     const t0 = Date.now();
     this.inflight.set(address, maxCost);
-    const r = await fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
+    const r = await fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
     if (r.status === 409 && wired && !retried) {
       // The node restarted with a new wire key: read it again (signature checked as before) and send once more.
       await this.o.registry.refreshWire(address);
@@ -525,7 +526,7 @@ export class Router {
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
     const voucher = this.o.channels.settle(address, { ...record, cost: fair });
     this.inflight.delete(address);
-    void fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
+    void fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
     }).catch(() => undefined);
     this.stats.ok(address, ttft);

@@ -596,7 +596,9 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Wire sealing: every request is encrypted to the node's own key (signed by the node key on chain), so a host, load balancer or firewall in front of a node sees ciphertext (in main, next release)
 - [x] Intel's patch level (TCB) in the TDX verifier: the platform's microcode and TDX module versions are read from the quote, Intel's signed TCB list for that platform family is fetched and verified against the pinned root, and a platform Intel lists as out of date, revoked or unsupported is refused (`--allow-outdated` to look anyway; in main, next release)
 - [x] AMD's firmware level in the SEV-SNP verifier: the level the report states must be the one the chip key was issued for (AMD derives a different key per level) and the certificate must be for that very chip; `--min-firmware 3.0.8.115` or `ORRERY_SNP_MIN_FIRMWARE` holds it to a minimum of yours (AMD publishes no signed list of current levels; in main, next release)
+- [x] A proxy for the hop to nodes (`orrery router --proxy http://host:port`): a node sees the proxy's address and not yours, the proxy carries requests it cannot read, and a proxy that is down fails the request instead of letting it out directly (in main, next release)
 - [ ] AMD firmware on Turin (its level is laid out differently); NVIDIA GPU attestation
+- [ ] The Solana RPC through the same proxy, SOCKS, and tunnels kept open between requests
 - [ ] $OREY bonds live on mainnet
 
 ## Contributing

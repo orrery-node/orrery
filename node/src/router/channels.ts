@@ -6,7 +6,7 @@ import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
 import { ACCOUNT, decodeChannel, decodeProvider, ins, pda, programId } from '../chain/program.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, encodeVoucher, signVoucher, verifyVoucher } from '../chain/voucher.ts';
-import { fetchWithTimeout } from '../sse.ts';
+import { fetchNode } from '../proxy.ts';
 import { signerOf, writePrivate, type Sign } from '../keys.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 
@@ -137,7 +137,7 @@ export class Channels {
     if (!info) return null;
     const endpoint = decodeProvider(info.data).endpoint.replace(/\/$/, '');
     for (const { address, ch } of mine) {
-      const r = await fetchWithTimeout(`${endpoint}/orrery/channel?address=${address.toBase58()}`, { timeoutMs: 5_000 }).catch(() => null);
+      const r = await fetchNode(`${endpoint}/orrery/channel?address=${address.toBase58()}`, { timeoutMs: 5_000 }).catch(() => null);
       if (!r?.ok) continue;
       const j = (await r.json()) as { voucher: string | null; owed: string };
       const v = j.voucher ? decodeVoucher(j.voucher) : null;

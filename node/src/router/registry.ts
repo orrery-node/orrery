@@ -12,7 +12,7 @@ import { fetchTcbInfo } from '../tee/tcb.ts';
 import { ed25519Verify, home } from '../keys.ts';
 import { wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
-import { fetchWithTimeout } from '../sse.ts';
+import { fetchNode } from '../proxy.ts';
 
 /** `vcek` is the chip's certificate (DER, base64) that an AMD SEV-SNP node serves next to its report. */
 export type Attestation = { kind: number; measurement: string; enclaveKey: string; report: string; reportHash: string; vcek?: string };
@@ -64,7 +64,7 @@ export class Registry {
         const entry: ProviderEntry = same ? { ...prev!, account: p } : { address, account: p, manifest: null, problem: null, checkedAt: Date.now(), tee: null };
         if (!same && p.active) {
           try {
-            const r = await fetchWithTimeout(`${p.endpoint.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 4_000 });
+            const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 4_000 });
             const bytes = Buffer.from(await r.arrayBuffer());
             if (!manifestHash(bytes).equals(p.manifestHash)) throw new Error('manifest does not match the hash on chain');
             const m = checkManifest(JSON.parse(bytes.toString('utf8')));
@@ -92,7 +92,7 @@ export class Registry {
 
   private async wireKey(p: ProviderAccount): Promise<Buffer | null> {
     try {
-      const r = await fetchWithTimeout(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
+      const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
       if (!r.ok) return null;
       const j = (await r.json()) as { key?: string; sig?: string };
       const key = Buffer.from(j.key ?? '', 'hex'), sig = Buffer.from(j.sig ?? '', 'hex');
@@ -111,7 +111,7 @@ export class Registry {
     const enclaveKey = Buffer.from(p.teeKey);
     if (BigInt(Math.floor(Date.now() / 1000)) >= p.teeExpiresAt) return { verified: false, dev: false, reason: 'attestation expired', enclaveKey };
     try {
-      const r = await fetchWithTimeout(`${p.endpoint.replace(/\/$/, '')}/v1/attestation`, { timeoutMs: 4_000 });
+      const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/attestation`, { timeoutMs: 4_000 });
       const a = (await r.json()) as Attestation;
       const report = Buffer.from(a.report, 'base64');
       if (!createHash('sha256').update(report).digest().equals(p.teeReportHash)) return { verified: false, dev: false, reason: 'report does not match the on-chain hash', enclaveKey };
@@ -154,7 +154,7 @@ export class Registry {
     await Promise.all(
       this.usable().map(async (e) => {
         const t0 = Date.now();
-        const h = (await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { upstream?: string } | null;
+        const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { upstream?: string } | null;
         if (!h) return;
         e.healthMs = Date.now() - t0;
         e.healthAt = Date.now();
@@ -174,7 +174,7 @@ export class Registry {
       this.usable().filter((e) => e.manifest?.burn).map(async (e) => {
         const share = e.manifest!.burn!.share;
         const owner = e.account.authority.toBase58();
-        const j = (await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/orrery/burns`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { receipts?: BurnReceipt[] } | null;
+        const j = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/orrery/burns`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { receipts?: BurnReceipt[] } | null;
         let spent = 0n, burned = 0n, n = 0;
         for (const r of (j?.receipts ?? []).slice(-200)) {
           if (typeof r?.swapTx !== 'string' || typeof r.burnTx !== 'string' || usedTx.has(r.swapTx) || usedTx.has(r.burnTx)) continue;

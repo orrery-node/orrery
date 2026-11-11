@@ -28,6 +28,7 @@ import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
 import { fetchCrls } from './tee/crl.ts';
+import { nodeProxy, parseProxy, proxyAnswers, setNodeProxy } from './proxy.ts';
 import { fetchTcbInfo } from './tee/tcb.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
 import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
@@ -53,6 +54,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --max-price <in/out>      never route above this price, dollars per million tokens, e.g. 0.50/1.50 (per request: x-orrery-max-price)
       --max-cost <usd>          a dollar budget for each request, e.g. 0.002 (per request: x-orrery-max-cost)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
+      --proxy <http://host:port> reach nodes through this HTTP proxy, so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
       --enclave-images <hex,...> only seal prompts to enclaves that booted one of these images
@@ -93,6 +95,8 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
 `;
 
 async function router() {
+  const proxy = nodeProxy();
+  if (proxy && !(await proxyAnswers(proxy))) throw new Error(`nothing answers at the proxy ${proxy.label}; start it first. The router does not fall back to reaching nodes directly`);
   const conn = new Connection(rpc(), 'confirmed');
   const walletPath = flag('wallet', process.env.ORRERY_WALLET);
   const wallet = walletPath ? loadKeypair(expand(walletPath)) : null;
@@ -109,6 +113,7 @@ async function router() {
   const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), holders: new HolderBook(conn), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1' });
   await r.start();
   const usable = registry.usable().length;
+  if (proxy) console.log(`nodes are reached through the proxy at ${proxy.label}: they see its address, not yours (your Solana RPC still sees yours)`);
   if (has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1') console.log('private only: every request is sealed to an enclave this router verified, or refused');
   console.log(`${NAME} router on http://127.0.0.1:${port}/v1  ·  ${usable} providers  ·  route ${route}  ·  ${wallet ? `wallet ${wallet.publicKey.toBase58().slice(0, 6)}…` : 'no wallet (read-only)'}`);
   console.log(`session key ${session.publicKey.toBase58()} signs vouchers; console at http://127.0.0.1:${port}/`);
@@ -307,6 +312,12 @@ async function main() {
   // After `--` the arguments are the client's (orrery run claude -- --help asks Claude Code, not this CLI).
   const ownArgs = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv;
   if (!cmd || cmd === 'help' || ownArgs.includes('--help')) return console.log(HELP);
+  // --proxy (or ORRERY_PROXY) sends every request this command makes to a node through that proxy, never around it.
+  const proxyAt = ownArgs.indexOf('--proxy');
+  const proxyText = proxyAt >= 0 ? ownArgs[proxyAt + 1] : process.env.ORRERY_PROXY;
+  // A privacy flag that was typed without its address must stop here, not run without a proxy.
+  if (proxyAt >= 0 && (!proxyText || proxyText.startsWith('--'))) throw new Error('--proxy needs an address, e.g. --proxy http://127.0.0.1:8118');
+  if (proxyText) setNodeProxy(parseProxy(proxyText));
   if (cmd === 'provider' && sub === 'init') {
     const out = flag('out', 'provider.json')!;
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);

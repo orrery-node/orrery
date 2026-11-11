@@ -88,6 +88,10 @@ The router makes an ephemeral X25519 key, does ECDH with the provider's enclave 
 
 A node without an enclave still holds an X25519 key of its own (`wire.key` in its data folder). It serves `GET /v1/wire` → `{ key, sig, node }`, where `sig` is the node key's ed25519 signature over `orrery/wire/1 ‖ key`; the node key is the one on the provider's account, so a router accepts the wire key only from the node that is listed. The router then sends `{wire: 1, epk, box}` built exactly like a sealed body, and the node answers in sealed SSE frames. The operator can read the prompt (only an enclave prevents that); nothing between the router and the node process can, which matters because a hosting platform ends TLS in front of the node and may inspect, log or refuse what it sees. A node with no `/v1/wire` (older than this) is sent plain JSON, and a node accepts plain JSON from older routers.
 
+### The address a node sees
+
+A node learns the wallet that pays it, the request, and the address the request came from. A router started with `--proxy http://host:port` (or `ORRERY_PROXY`) sends everything it sends to nodes through that HTTP proxy: `CONNECT host:443` and TLS to the node inside the tunnel for an https endpoint, a forwarded request for an http one. The node sees the proxy's address. The proxy sees which node, when and how many bytes; the body is already sealed to the node's key (above), so it reads none of it. The router never goes around a proxy that is set: if it does not answer, the request fails. Chain reads and transactions do not go through it, so the RPC a router uses still sees the router's address.
+
 ## 8. What the admin cannot do
 
 List or delist providers, move channel deposits, move bonds, or charge a fee. The admin can tune the grace period, the unbonding delay and the minimum deposit within the bounds above, set the bond mint once, and hand over the admin role in two steps.

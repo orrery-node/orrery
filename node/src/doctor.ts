@@ -5,6 +5,7 @@ import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from 
 import { usd } from './pricing.ts';
 import { Registry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
+import { fetchNode } from './proxy.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -51,7 +52,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
       continue;
     }
     t0 = Date.now();
-    const h = await fetchWithTimeout(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { upstream?: 'up' | 'down' } | null;
+    const h = await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { upstream?: 'up' | 'down' } | null;
     const took = ms(t0);
     const detail = !h ? 'did not answer /health' : h.upstream === 'down' ? `answered /health in ${took}, but its model server is down` : `answered /health in ${took}${h.upstream === 'up' ? ', model server up' : ''}`;
     out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, ${detail}` });

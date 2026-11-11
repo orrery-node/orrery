@@ -6,8 +6,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { request as httpRequest } from 'node:http';
+import { createServer as createHttpServer, request as httpRequest } from 'node:http';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { parseProxy, setNodeProxy } from '../src/proxy.ts';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, createTransferInstruction } from '@solana/spl-token';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
@@ -646,6 +647,44 @@ check('orrery run starts a client on the router as one job with a budget (a doll
   && !!runTask && runTask.answers === 1 && Number(runTask.budget) === 1 && ran.err.includes('budget $1 (default') && ran.err.includes('orrery · rehearsal-run') && /1 answer · [\d,]+ tokens/.test(billLine) && billLine.includes(`$${runTask.spent} of $1.00 budget`)
   && anyRan.code === 0 && anySaid.status === 200 && anySaid.key === 'orrery/rehearsal-any/0.002' && !!anyTask && anyTask.answers === 1 && Number(anyTask.budget) === 0.002 && anyRan.err.includes('of $0.002 budget'),
   `exit ${ran.code} · ${billLine.trim()} · a tool that only takes a key: ${(anyRan.err.split('\n').find((l) => l.includes('answer')) ?? '').trim()}`);
+
+// Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
+// is gone the request fails instead of going out directly.
+const proxied: { url: string; body: string }[] = [];
+const recorder = createHttpServer((req, res) => {
+  let body = '';
+  req.on('data', (d) => (body += d));
+  req.on('end', () => {
+    proxied.push({ url: req.url ?? '', body });
+    const u = new URL(req.url ?? '');
+    const out = httpRequest({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: req.method, headers: req.headers }, (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    });
+    out.on('error', () => res.writeHead(502).end());
+    out.end(body);
+  });
+});
+await new Promise<void>((done) => recorder.listen(0, '127.0.0.1', () => done()));
+setNodeProxy(parseProxy(`127.0.0.1:${(recorder.address() as { port: number }).port}`));
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const tripsBeforeProxy = router.trips.length;
+const throughProxy = await ask('llama-3.3-70b');
+const proxyTrip = router.trips[router.trips.length - 1];
+const proxyCarried = proxied.filter((x) => x.url.includes('/v1/chat/completions'));
+const statusWithProxy = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { proxy: string | null };
+const proxyRead = proxied.some((x) => x.body.includes('payment channel') || x.body.includes('In one sentence'));
+await new Promise<void>((done) => { recorder.closeAllConnections(); recorder.close(() => done()); });
+const tripsWithProxy = router.trips.length;
+const proxyGone = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+await proxyGone.text();
+setNodeProxy(null);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+check('with a proxy set the router reaches nodes only through it: the proxy carries a request it cannot read, and with the proxy gone the request fails instead of going out directly',
+  throughProxy.status === 200 && throughProxy.content.length > 20 && tripsWithProxy === tripsBeforeProxy + 1 && proxyCarried.length >= 1 && proxyCarried.every((x) => x.body.length > 100) && !proxyRead
+  && proxyGone.status >= 500 && router.trips.length === tripsWithProxy && /^127\.0\.0\.1:\d+$/.test(statusWithProxy.proxy ?? ''),
+  `${proxied.length} request${proxied.length === 1 ? '' : 's'} through the proxy, ${proxyCarried[0]?.body.length ?? 0} sealed bytes for the prompt (${nameOf(proxyTrip?.provider ?? null)}); proxy gone → ${proxyGone.status}`);
+
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
