@@ -339,7 +339,13 @@ export class ProviderNode {
     if (body.wire) {
       // Sealed to this node's own key: the request and the answer are ciphertext to everything between the router and
       // this process.
-      const opened = openRequest(this.wire, body as unknown as { epk: string; box: string });
+      let opened: { plaintext: Buffer; key: Buffer };
+      try {
+        opened = openRequest(this.wire, body as unknown as { epk: string; box: string });
+      } catch {
+        // Encrypted to a key this node no longer holds (it restarted with a new one): the router fetches /v1/wire again.
+        return fail(res, 409, 'wire_key', 'this request was encrypted to another key; read /v1/wire again');
+      }
       body = JSON.parse(opened.plaintext.toString('utf8'));
       sealKey = opened.key;
       wired = true;

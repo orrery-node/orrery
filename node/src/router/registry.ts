@@ -81,6 +81,12 @@ export class Registry {
   }
 
   /** The key a node wants requests encrypted to, accepted only with a signature from the node key on its listing. */
+  /** Reads a node's wire key again, after the node said a request was encrypted to a key it no longer holds. */
+  async refreshWire(address: string): Promise<void> {
+    const e = this.entries.get(address);
+    if (e) e.wire = await this.wireKey(e.account);
+  }
+
   private async wireKey(p: ProviderAccount): Promise<Buffer | null> {
     try {
       const r = await fetchWithTimeout(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });

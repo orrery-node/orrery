@@ -440,6 +440,11 @@ export class Router {
     const t0 = Date.now();
     this.inflight.set(address, maxCost);
     const r = await fetchWithTimeout(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
+    if (r.status === 409 && wired && !retried) {
+      // The node restarted with a new wire key: read it again (signature checked as before) and send once more.
+      await this.o.registry.refreshWire(address);
+      return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
+    }
     if (r.status === 402 && !retried) {
       const j = (await r.json()) as { error: { code: string; unpaid?: { requestId: string; model: string; inputTokens: number; outputTokens: number; cost: string }[]; need?: string } };
       if (j.error.code === 'payment_required' && j.error.unpaid?.length === 1) {
