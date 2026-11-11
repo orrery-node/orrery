@@ -63,7 +63,7 @@ export default async function Burn() {
           No treasury and no team wallet sits in this loop, and the settlement program still has no fee. A node chooses to pledge a share of what it earns; routers verify every burn on chain and send more work to the nodes that keep their word. The more the network is used, the more is burned.
         </p>
 
-        <p className="brn__stage"><b>Where this stands.</b> The whole loop runs in the rehearsal on the real settlement program, 50 of 50 checks. Routers verify pledges and serve the :burn route as of orrery-node 0.1.8; the market buy that lets a node keep a pledge on mainnet comes next, then the seed node pledges first. This page reads mainnet and fills in as they do.</p>
+        <p className="brn__stage"><b>Where this stands.</b> The whole loop runs in the rehearsal on the real settlement program, 50 of 50 checks. Routers verify pledges and serve the :burn route, and as of orrery-node 0.1.9 a node can keep a pledge on mainnet by buying through Jupiter. The seed node pledges first; this page fills in when it does. This page reads mainnet and fills in as they do.</p>
 
         <dl className="brn__stats">
           <div><dt>{TICKER} supply now</dt><dd className="num">{b.supply === null ? '—' : n(b.supply)}</dd></div>

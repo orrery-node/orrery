@@ -4,15 +4,19 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.9 · 2026-11-11 01:17 UTC
 
-- **Node** · `orrery provider check --config provider.json` tells you whether your node is ready to earn: the model server answers, routers can reach your address, the listing on chain matches your price list, the node key has SOL for redeem fees, what you have earned and redeemed, and whether a router would accept your enclave.
+**Intel TDX joins AMD in the built-in verifier, agents get a budget per job, and node operators get a readiness check.**
+
 - **Router** · A built-in verifier for Intel TDX, next to the one for AMD SEV-SNP. Your router checks a TDX quote itself: the platform’s certificate chains to Intel’s root (pinned), Intel’s quoting enclave vouches for the key that signed the quote, the quote carries that signature, debugging is off, and the image and encryption key match. `orrery enclave verify --quote` runs it on any quote, and `"tee": { "mode": "tdx", "quote" }` lists a TDX node.
-- **Node** · Burn pledges work on mainnet: a node with `"burn": { "share": … }` in provider.json buys the network token through Jupiter from its own wallet after each redeem and burns it. `orrery provider burn --config provider.json` shows what the pledge owes and whether the market has a route, and sends nothing without `--yes`. A buy that would move the price more than 5% waits for the next redeem.
-- **Everyone** · `orrery providers` shows each node’s burn pledge next to its prices.
-- **Router** · Task budgets for agents: name a job with `x-orrery-task` and give it a budget once with `x-orrery-task-budget: 0.05` (or `task` and `task_budget` over MCP). Every request under that name draws from it, each answer says what is left, and when it is spent the router refuses the next request before anything is sent. `GET /orrery/tasks` lists them.
 - **Router** · `orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.
 - **Router** · When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.
+- **Router** · Task budgets for agents: name a job with `x-orrery-task` and give it a budget once with `x-orrery-task-budget: 0.05` (or `task` and `task_budget` over MCP). Every request under that name draws from it, each answer says what is left, and when it is spent the router refuses the next request before anything is sent. `GET /orrery/tasks` lists them.
+- **Node** · `orrery provider check --config provider.json` tells you whether your node is ready to earn: the model server answers, routers can reach your address, the listing on chain matches your price list, the node key has SOL for redeem fees, what you have earned and redeemed, and whether a router would accept your enclave.
+- **Node** · Burn pledges work on mainnet: a node with `"burn": { "share": … }` in provider.json buys the network token through Jupiter from its own wallet after each redeem and burns it. `orrery provider burn --config provider.json` shows what the pledge owes and whether the market has a route, and sends nothing without `--yes`. A buy that would move the price more than 5% waits for the next redeem.
+- **Everyone** · `orrery providers` shows each node’s burn pledge next to its prices.
+
+`npx -y orrery-node@0.1.9`
 
 ## 0.1.8 · 2026-11-10 15:20 UTC
 

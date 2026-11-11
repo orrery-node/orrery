@@ -18,8 +18,8 @@ importers:
         specifier: 16.3.8
         version: 16.3.8(@types/node@22.20.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       orrery-node:
-        specifier: 0.1.8
-        version: 0.1.8(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@6.0.3)(utf-8-validate@6.0.6)
+        specifier: 0.1.9
+        version: 0.1.9(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@6.0.3)(utf-8-validate@6.0.6)
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -583,8 +583,8 @@ packages:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
 
-  orrery-node@0.1.8:
-    resolution: {integrity: sha512-E9GvFKGDOjv7X9UotOKjlLpJOenS30WiHDtq3NS29OgoA/1ZbxYe9PaQju+DmN+/g+/67jcKnYvulXtOQyapPg==}
+  orrery-node@0.1.9:
+    resolution: {integrity: sha512-RKWgHwX4zd+XKh3W8fnHtjyLGOMfvRnea9hCDQWj+12wteGJYpUe3M9xTKxVcV7fcUE2fTg398XhTKtcFodIgQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -1215,7 +1215,7 @@ snapshots:
   node-gyp-build@4.8.4:
     optional: true
 
-  orrery-node@0.1.8(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@6.0.3)(utf-8-validate@6.0.6):
+  orrery-node@0.1.9(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@6.0.3)(utf-8-validate@6.0.6):
     dependencies:
       '@solana/spl-token': 0.4.14(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@6.0.3)(utf-8-validate@6.0.6)
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)

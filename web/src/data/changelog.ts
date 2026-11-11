@@ -4,17 +4,23 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
-  { who: 'provider', text: '`orrery provider check --config provider.json` tells you whether your node is ready to earn: the model server answers, routers can reach your address, the listing on chain matches your price list, the node key has SOL for redeem fees, what you have earned and redeemed, and whether a router would accept your enclave.' },
-  { who: 'router', text: 'A built-in verifier for Intel TDX, next to the one for AMD SEV-SNP. Your router checks a TDX quote itself: the platform’s certificate chains to Intel’s root (pinned), Intel’s quoting enclave vouches for the key that signed the quote, the quote carries that signature, debugging is off, and the image and encryption key match. `orrery enclave verify --quote` runs it on any quote, and `"tee": { "mode": "tdx", "quote" }` lists a TDX node.' },
-  { who: 'provider', text: 'Burn pledges work on mainnet: a node with `"burn": { "share": … }` in provider.json buys the network token through Jupiter from its own wallet after each redeem and burns it. `orrery provider burn --config provider.json` shows what the pledge owes and whether the market has a route, and sends nothing without `--yes`. A buy that would move the price more than 5% waits for the next redeem.' },
-  { who: 'everyone', text: '`orrery providers` shows each node’s burn pledge next to its prices.' },
-  { who: 'router', text: 'Task budgets for agents: name a job with `x-orrery-task` and give it a budget once with `x-orrery-task-budget: 0.05` (or `task` and `task_budget` over MCP). Every request under that name draws from it, each answer says what is left, and when it is spent the router refuses the next request before anything is sent. `GET /orrery/tasks` lists them.' },
-  { who: 'router', text: '`orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.' },
-  { who: 'router', text: 'When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.' },
-];
+export const UNRELEASED: Change[] = [];
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.1.9',
+    at: '2026-11-11T01:17:12Z',
+    headline: 'Intel TDX joins AMD in the built-in verifier, agents get a budget per job, and node operators get a readiness check.',
+    changes: [
+      { who: 'router', text: 'A built-in verifier for Intel TDX, next to the one for AMD SEV-SNP. Your router checks a TDX quote itself: the platform’s certificate chains to Intel’s root (pinned), Intel’s quoting enclave vouches for the key that signed the quote, the quote carries that signature, debugging is off, and the image and encryption key match. `orrery enclave verify --quote` runs it on any quote, and `"tee": { "mode": "tdx", "quote" }` lists a TDX node.' },
+      { who: 'router', text: '`orrery doctor` adds a line for every node that claims an enclave: the hardware, whether this computer verified it, and if not, the check that stopped it.' },
+      { who: 'router', text: 'When `:private` has nowhere to go, the answer names each node that claims an enclave and the check that stopped it.' },
+      { who: 'router', text: 'Task budgets for agents: name a job with `x-orrery-task` and give it a budget once with `x-orrery-task-budget: 0.05` (or `task` and `task_budget` over MCP). Every request under that name draws from it, each answer says what is left, and when it is spent the router refuses the next request before anything is sent. `GET /orrery/tasks` lists them.' },
+      { who: 'provider', text: '`orrery provider check --config provider.json` tells you whether your node is ready to earn: the model server answers, routers can reach your address, the listing on chain matches your price list, the node key has SOL for redeem fees, what you have earned and redeemed, and whether a router would accept your enclave.' },
+      { who: 'provider', text: 'Burn pledges work on mainnet: a node with `"burn": { "share": … }` in provider.json buys the network token through Jupiter from its own wallet after each redeem and burns it. `orrery provider burn --config provider.json` shows what the pledge owes and whether the market has a route, and sends nothing without `--yes`. A buy that would move the price more than 5% waits for the next redeem.' },
+      { who: 'everyone', text: '`orrery providers` shows each node’s burn pledge next to its prices.' },
+    ],
+  },
   {
     version: '0.1.8',
     at: '2026-11-10T15:20:32Z',
