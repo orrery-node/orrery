@@ -608,7 +608,7 @@ writeFileSync(join(stubDir, 'claude'), `#!/usr/bin/env node
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const ran = await new Promise<{ code: number | null; out: string; err: string }>((done) => {
   let out = '', err = '';
-  const pr = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'run', 'claude', '--router', ROUTER, '--model', 'llama-3.3-70b', '--budget', '0.001', '--task', 'rehearsal-run', '--', '-p', 'hello'],
+  const pr = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'run', 'claude', '--router', ROUTER, '--model', 'llama-3.3-70b', '--task', 'rehearsal-run', '--', '-p', 'hello'],
     { cwd: join(ROOT, 'node'), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, ANTHROPIC_API_KEY: 'sk-ant-not-passed-on', ANTHROPIC_AUTH_TOKEN: 'not-passed-on' } });
   pr.stdout!.on('data', (d) => (out += d));
   pr.stderr!.on('data', (d) => (err += d));
@@ -619,10 +619,33 @@ let stubSaid: { status?: number; model?: string; key?: string; token?: string | 
 try { stubSaid = JSON.parse(ran.out.trim().split('\n').pop() ?? '{}'); } catch { /* the check below reports it */ }
 const runTask = ((await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] }).tasks.find((t) => t.name === 'rehearsal-run');
 const billLine = ran.err.split('\n').find((l) => l.includes('answer')) ?? '';
-check('orrery run starts a client on the router as one job, hands it no key of yours, and prints the job’s bill when it exits',
+// The same for a tool that knows nothing of Orrery: it reads OPENAI_BASE_URL and OPENAI_API_KEY, and the key carries the job.
+writeFileSync(join(stubDir, 'some-agent'), `#!/usr/bin/env node
+(async () => {
+  const r = await fetch(process.env.OPENAI_BASE_URL + '/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.OPENAI_API_KEY }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+  await r.json();
+  console.log(JSON.stringify({ status: r.status, key: process.env.OPENAI_API_KEY }));
+  process.exit(r.status === 200 ? 0 : 1);
+})();
+`, { mode: 0o755 });
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const anyRan = await new Promise<{ code: number | null; out: string; err: string }>((done) => {
+  let out = '', err = '';
+  const pr = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'run', '--router', ROUTER, '--budget', '0.002', '--task', 'rehearsal-any', '--', 'some-agent'],
+    { cwd: join(ROOT, 'node'), stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: `${stubDir}:${process.env.PATH}`, OPENAI_API_KEY: 'sk-not-passed-on' } });
+  pr.stdout!.on('data', (d) => (out += d));
+  pr.stderr!.on('data', (d) => (err += d));
+  const timer = setTimeout(() => pr.kill('SIGTERM'), 60_000);
+  pr.on('exit', (code) => { clearTimeout(timer); done({ code, out, err }); });
+});
+let anySaid: { status?: number; key?: string } = {};
+try { anySaid = JSON.parse(anyRan.out.trim().split('\n').pop() ?? '{}'); } catch { /* the check below reports it */ }
+const anyTask = ((await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] }).tasks.find((t) => t.name === 'rehearsal-any');
+check('orrery run starts a client on the router as one job with a budget (a dollar by default), hands it no key of yours, prints the bill when it exits, and does the same for any tool through the API key',
   ran.code === 0 && stubSaid.status === 200 && stubSaid.key === 'orrery' && stubSaid.token === null && (stubSaid.args ?? []).join(' ') === '--model llama-3.3-70b -p hello'
-  && !!runTask && runTask.answers === 1 && Number(runTask.budget) === 0.001 && ran.err.includes('orrery · rehearsal-run') && /1 answer · [\d,]+ tokens/.test(billLine) && billLine.includes(`$${runTask.spent} of $0.001 budget`),
-  `exit ${ran.code} · ${billLine.trim()}`);
+  && !!runTask && runTask.answers === 1 && Number(runTask.budget) === 1 && ran.err.includes('budget $1 (default') && ran.err.includes('orrery · rehearsal-run') && /1 answer · [\d,]+ tokens/.test(billLine) && billLine.includes(`$${runTask.spent} of $1.00 budget`)
+  && anyRan.code === 0 && anySaid.status === 200 && anySaid.key === 'orrery/rehearsal-any/0.002' && !!anyTask && anyTask.answers === 1 && Number(anyTask.budget) === 0.002 && anyRan.err.includes('of $0.002 budget'),
+  `exit ${ran.code} · ${billLine.trim()} · a tool that only takes a key: ${(anyRan.err.split('\n').find((l) => l.includes('answer')) ?? '').trim()}`);
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),

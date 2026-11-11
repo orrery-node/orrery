@@ -16,7 +16,7 @@ import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
-import { pickModel, plan, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
+import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
 import { readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
@@ -62,6 +62,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
   ${CLI} run claude [--budget <usd>] [--task <name>] [--model <id>] [-- <its own arguments>]   start Claude Code on your router as one job, and print the job's bill when it exits
+  ${CLI} run [--budget <usd>] [--task <name>] -- <any command>   the same for any tool that reads OPENAI_BASE_URL or ANTHROPIC_BASE_URL: the job and its budget ride in the API key (orrery/<task>/<budget>)
   ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
   ${CLI} spend [--since 24h|7d] [--by model|provider|task] [--json]   what your router paid, from its own log of answers
   ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
@@ -335,21 +336,28 @@ async function main() {
   }
   if (cmd === 'run') {
     // orrery run claude [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <the client's own arguments>]
+    // orrery run [--budget <usd>] [--task <name>] [--router <url>] -- <any command and its arguments>
     const cut = argv.indexOf('--');
     const mine = cut >= 0 ? argv.slice(0, cut) : argv;
+    const rest = cut >= 0 ? argv.slice(cut + 1) : [];
     const own = (name: string, fallback?: string) => { const i = mine.indexOf(`--${name}`); return i >= 0 ? mine[i + 1] : fallback; };
-    if (!sub || !(RUNNABLE as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} run <${RUNNABLE.join('|')}> [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <its own arguments>]`);
+    const client = mine[1] && !mine[1].startsWith('--') ? mine[1] : null;
+    if ((client && !(RUNNABLE as readonly string[]).includes(client)) || (!client && !rest.length)) throw new Error(`usage: ${CLI} run <${RUNNABLE.join('|')}> [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <its own arguments>]\n       ${CLI} run [--budget <usd>] [--task <name>] [--router <url>] -- <any command>`);
     const routerUrl = own('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!;
     const models = await routerModels(routerUrl);
     if (!models) throw new Error(`no router answers at ${routerUrl}; start one first: ${CLI} router --wallet <keypair.json>`);
-    const model = own('model') ?? pickModel(models);
-    if (!model) throw new Error(`the router lists no model yet; see ${CLI} models`);
-    const budget = own('budget');
-    if (budget !== undefined && !(Number(budget) > 0)) throw new Error('--budget is a dollar amount such as 0.25');
-    const task = own('task') ?? taskName(sub, process.cwd());
+    const model = own('model') ?? (client ? pickModel(models) : undefined);
+    if (client && !model) throw new Error(`the router lists no model yet; see ${CLI} models`);
+    // A job needs a budget from its first request, so one is always set: a dollar unless you say otherwise.
+    const budget = own('budget') ?? '1';
+    if (!(Number(budget) > 0)) throw new Error('--budget is a dollar amount such as 0.25');
+    const task = own('task') ?? taskName(client ?? (rest[0].split('/').pop() || 'job'), process.cwd());
     if (!/^[A-Za-z0-9._:\-]{1,64}$/.test(task)) throw new Error('--task: letters, digits, . _ : - (at most 64)');
-    const p = plan(sub as Runnable, { router: routerUrl, task, budget, model, args: cut >= 0 ? argv.slice(cut + 1) : [], env: process.env });
-    console.error(`${CLI} · ${task} · ${model}${budget ? ` · budget $${budget}` : ''} · ${routerUrl}`);
+    const p = client
+      ? plan(client as Runnable, { router: routerUrl, task, budget, model: model!, args: rest, env: process.env })
+      : planCommand({ router: routerUrl, task, budget, command: rest[0], args: rest.slice(1), env: process.env });
+    const listed = models.map((m) => m.id).filter(Boolean).slice(0, 4).join(', ');
+    console.error(`${CLI} · ${task} · ${client ? model : `models: ${listed || 'none listed'}`} · budget $${budget}${own('budget') ? '' : ' (default; --budget changes it)'} · ${routerUrl}`);
     const code = await new Promise<number>((done) => {
       const child = spawn(p.command, p.args, { stdio: 'inherit', env: p.env });
       // Ctrl-C belongs to the client; this process waits for it to finish and then prints the bill.

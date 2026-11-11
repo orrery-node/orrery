@@ -10,7 +10,7 @@ import { TEE_KINDS } from '../chain/program.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
-import { TaskBook } from './tasks.ts';
+import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
 import { ROUTES, applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
@@ -341,9 +341,11 @@ export class Router {
     // A task budget: every request that names the same task draws from one budget, so an agent's whole job has a
     // ceiling. What is left of it becomes this request's budget, which is how the total can never be passed.
     let taskLeft: bigint | null = null;
-    const taskName = req.headers['x-orrery-task'] ? String(req.headers['x-orrery-task']) : null;
+    // The job is named by header, or, for tools that can only set a key, in the key itself (orrery/<task>/<budget>).
+    const keyed = req.headers['x-orrery-task'] ? null : taskFromKey(apiKeyOf(req.headers));
+    const taskName = req.headers['x-orrery-task'] ? String(req.headers['x-orrery-task']) : keyed?.name ?? null;
     if (taskName) {
-      const tb = req.headers['x-orrery-task-budget'];
+      const tb = req.headers['x-orrery-task-budget'] ?? keyed?.budget ?? undefined;
       const tDollars = tb === undefined ? null : Number(String(tb).replace(/^\$/, ''));
       if (tDollars !== null && (!Number.isFinite(tDollars) || tDollars <= 0)) throw new Unserved('x-orrery-task-budget must be a dollar amount such as 0.05', 400, 'bad_request');
       try {

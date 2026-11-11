@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickModel, plan, readBill, renderBill, routerModels, taskName } from '../src/run.ts';
+import { pickModel, plan, planCommand, readBill, renderBill, routerModels, taskName } from '../src/run.ts';
 
 test('a task name comes from the client, the folder and the UTC time, and fits the router’s rule', () => {
   const at = new Date('2026-11-11T08:34:05Z');
@@ -71,4 +71,16 @@ test('routerModels reads the list, and returns null when nothing is there', asyn
   assert.deepEqual(await routerModels('http://r', routerStub([], [])), [{ id: 'gpt-oss-120b', context_length: 131072 }]);
   assert.equal(await routerModels('http://r', routerStub([], [], false)), null);
   assert.equal(await routerModels('http://r', async () => { throw new Error('refused'); }), null);
+});
+
+test('any other command gets the router as its endpoint and a key that names the job and its budget', () => {
+  const p = planCommand({ router: 'http://127.0.0.1:7171/', task: 'aider-app-1111-0834', budget: '0.25', command: 'aider', args: ['--model', 'openai/gpt-oss-120b'], env: { PATH: '/bin', OPENAI_API_KEY: 'sk-real', ANTHROPIC_API_KEY: 'sk-ant-real', ANTHROPIC_AUTH_TOKEN: 'tok' } });
+  assert.equal(p.command, 'aider');
+  assert.deepEqual(p.args, ['--model', 'openai/gpt-oss-120b']);
+  assert.equal(p.env.OPENAI_BASE_URL, 'http://127.0.0.1:7171/v1');
+  assert.equal(p.env.OPENAI_API_BASE, 'http://127.0.0.1:7171/v1');
+  assert.equal(p.env.ANTHROPIC_BASE_URL, 'http://127.0.0.1:7171');
+  assert.equal(p.env.OPENAI_API_KEY, 'orrery/aider-app-1111-0834/0.25');
+  assert.equal(p.env.ANTHROPIC_API_KEY, 'orrery/aider-app-1111-0834/0.25');
+  assert.ok(!JSON.stringify(p.env).includes('sk-real') && !JSON.stringify(p.env).includes('sk-ant-real') && !('ANTHROPIC_AUTH_TOKEN' in p.env));
 });

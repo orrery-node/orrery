@@ -6,6 +6,21 @@ import { dirname } from 'node:path';
 export type Task = { budget: bigint; spent: bigint; answers: number; firstAt: number; lastAt: number };
 
 const NAME = /^[A-Za-z0-9._:\-]{1,64}$/;
+
+/** A job named in the API key field, for tools that take a key but cannot add headers (most of them):
+ * `orrery/<task>` or `orrery/<task>/<budget in dollars>`. Any other key means nothing to the router, as before. */
+export function taskFromKey(key: string | null | undefined): { name: string; budget: string | null } | null {
+  const m = /^orrery\/([A-Za-z0-9._:\-]{1,64})(?:\/(\d+(?:\.\d+)?))?$/.exec((key ?? '').trim());
+  return m ? { name: m[1], budget: m[2] ?? null } : null;
+}
+/** The key a client sent, wherever its API puts it: `Authorization: Bearer …` (OpenAI) or `x-api-key` (Anthropic). */
+export function apiKeyOf(headers: Record<string, string | string[] | undefined>): string | null {
+  const a = String(headers.authorization ?? '');
+  if (/^bearer /i.test(a)) return a.slice(7).trim();
+  return headers['x-api-key'] ? String(headers['x-api-key']) : null;
+}
+/** The key that names a job: what `orrery run` hands a tool. */
+export const taskKey = (name: string, budget?: string | null) => `orrery/${name}${budget ? `/${budget}` : ''}`;
 const IDLE_MS = 7 * 86_400_000;
 
 export class TaskBook {
@@ -36,7 +51,7 @@ export class TaskBook {
     if (!NAME.test(name)) throw new Error('a task name is 1 to 64 letters, digits, dots, dashes, colons or underscores');
     let t = this.tasks.get(name);
     if (!t) {
-      if (budget === null) throw new Error(`task ${name} has no budget yet; send x-orrery-task-budget with its first request`);
+      if (budget === null) throw new Error(`task ${name} has no budget yet; send x-orrery-task-budget with its first request, or write it into the API key as orrery/${name}/<dollars>`);
       if (this.tasks.size >= this.max) this.tasks.delete(this.tasks.keys().next().value as string);
       t = { budget, spent: 0n, answers: 0, firstAt: now, lastAt: now };
       this.tasks.set(name, t);

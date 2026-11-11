@@ -1,6 +1,7 @@
 // `orrery run <client>`: start a coding agent wired to your router, bill the whole session as one job, and print the
 // bill when it exits. The agent needs no key of its own: the wallet behind the router is the account.
 import { CLI } from './brand.ts';
+import { taskKey } from './router/tasks.ts';
 
 export const RUNNABLE = ['claude'] as const;
 export type Runnable = (typeof RUNNABLE)[number];
@@ -51,6 +52,16 @@ export function plan(client: Runnable, o: { router: string; task: string; budget
   env.ANTHROPIC_DEFAULT_HAIKU_MODEL = o.model;
   const asksModel = o.args.some((a) => a === '--model' || a.startsWith('--model='));
   return { command: client, args: asksModel ? o.args : ['--model', o.model, ...o.args], env };
+}
+
+/** Any other tool: the router as its OpenAI and Anthropic endpoint, and a key that names the job and its budget, since
+ * a key is the one thing every such tool lets you set. Keys and tokens already in the environment are not passed on. */
+export function planCommand(o: { router: string; task: string; budget?: string; command: string; args: string[]; env: Record<string, string | undefined> }): RunPlan {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(o.env)) if (typeof v === 'string' && !['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'].includes(k)) env[k] = v;
+  const base = o.router.replace(/\/$/, ''), key = taskKey(o.task, o.budget);
+  Object.assign(env, { OPENAI_BASE_URL: `${base}/v1`, OPENAI_API_BASE: `${base}/v1`, OPENAI_API_KEY: key, ANTHROPIC_BASE_URL: base, ANTHROPIC_API_KEY: key });
+  return { command: o.command, args: o.args, env };
 }
 
 export type Bill = { task: string; answers: number; inputTokens: number; outputTokens: number; spent: string; budget?: string };

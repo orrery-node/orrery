@@ -39,3 +39,22 @@ describe('task budgets', () => {
     assert.throws(() => weekLater.open('long-job', null), /no budget yet/);
   });
 });
+
+describe('a job named in the API key', async () => {
+  const { apiKeyOf, taskFromKey, taskKey } = await import('../src/router/tasks.ts');
+  it('reads orrery/<task> and orrery/<task>/<budget>, and nothing else', () => {
+    assert.deepEqual(taskFromKey('orrery/refactor/0.25'), { name: 'refactor', budget: '0.25' });
+    assert.deepEqual(taskFromKey('orrery/nightly-run.2'), { name: 'nightly-run.2', budget: null });
+    assert.deepEqual(taskFromKey(' orrery/a:b/3 '), { name: 'a:b', budget: '3' });
+    for (const k of ['orrery', 'sk-ant-abc', 'unused', '', null, undefined, 'orrery/', 'orrery/bad name/1', 'orrery/x/abc', 'orrery/x/1/2', 'other/x/1']) assert.equal(taskFromKey(k as string), null, String(k));
+  });
+  it('finds the key where each API puts it', () => {
+    assert.equal(apiKeyOf({ authorization: 'Bearer orrery/job/1' }), 'orrery/job/1');
+    assert.equal(apiKeyOf({ authorization: 'bearer  orrery/job/1 ' }), 'orrery/job/1');
+    assert.equal(apiKeyOf({ 'x-api-key': 'orrery/job' }), 'orrery/job');
+    assert.equal(apiKeyOf({}), null);
+    assert.equal(taskKey('job', '0.5'), 'orrery/job/0.5');
+    assert.equal(taskKey('job'), 'orrery/job');
+    assert.deepEqual(taskFromKey(taskKey('claude-app-1111-0834', '0.05')), { name: 'claude-app-1111-0834', budget: '0.05' });
+  });
+});

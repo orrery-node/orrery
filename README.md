@@ -226,7 +226,9 @@ orrery · claude-todo-app-1111-0834
   each answer paid from your wallet to the node that served it
 ```
 
-It names the network model outright (`gpt-oss-120b` unless you pass `--model`), tags every request with the job and its budget, and hands Claude Code a placeholder key. A key or token already in your environment is not passed on. Arguments after `--` go to Claude Code.
+It names the network model outright (`gpt-oss-120b` unless you pass `--model`), tags every request with the job and its budget, and hands Claude Code a placeholder key. A key or token already in your environment is not passed on. Arguments after `--` go to Claude Code. Without `--budget` the job gets a dollar (from 0.1.13; on 0.1.12 always pass `--budget`).
+
+Any other tool that reads `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` runs the same way (from 0.1.13): `orrery run --budget 0.25 -- aider --model openai/gpt-oss-120b`. The job and its budget ride in the API key the tool is handed, `orrery/<task>/<budget>`, because a key is the one thing every tool lets you set. You can write such a key yourself in Cursor, Continue or an SDK and get the same job budget with no wrapper.
 
 By hand, on any version: Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it:
 
@@ -462,7 +464,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 | `orrery provider init` | find a local model server and write a starting provider.json |
 | `orrery provider register \| show \| start \| attest \| redeem --config provider.json` | run a provider |
 
-Task budgets: send `x-orrery-task: <name>` on every request of a job and `x-orrery-task-budget: 0.05` on the first. The router keeps one running total per task, answers with `x-orrery-task-spent` and `x-orrery-task-left`, and refuses the next request once the budget is gone (`GET /orrery/tasks` lists them; over MCP, `task` and `task_budget`). Budgets are kept in `~/.orrery/router/tasks.json`, so they survive a restart, and `orrery spend --by task` adds up what each job cost from the router's own log. `orrery sealed` lists every private answer with the enclave the router had verified.
+Task budgets: send `x-orrery-task: <name>` on every request of a job and `x-orrery-task-budget: 0.05` on the first. A tool that cannot add headers can say the same in its API key: `orrery/<task>/<budget>` (from 0.1.13). The router keeps one running total per task, answers with `x-orrery-task-spent` and `x-orrery-task-left`, and refuses the next request once the budget is gone (`GET /orrery/tasks` lists them; over MCP, `task` and `task_budget`). Budgets are kept in `~/.orrery/router/tasks.json`, so they survive a restart, and `orrery spend --by task` adds up what each job cost from the router's own log. `orrery sealed` lists every private answer with the enclave the router had verified.
 
 Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`, `--alias` (`claude-*=llama-3.3-70b`: answer other model names with a network model). Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`), `ORRERY_ALIASES`.
 
@@ -486,7 +488,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 133 tests
+cd node && pnpm install && pnpm test                            # 136 tests
 pnpm e2e                                                        # full local rehearsal, 57 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
