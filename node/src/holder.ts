@@ -61,8 +61,12 @@ export class HolderBook {
   private tokenProgram: PublicKey | null = null;
   private supply = { v: 0n, at: 0 };
   private balances = new Map<string, { v: bigint; at: number }>();
+  private reading = new Map<string, Promise<void>>();
 
-  constructor(private conn: Connection, private ttlMs = 60_000, private config = pda.config()) {}
+  /** `serveStale` is for a router: a standing past its minute is answered from memory while a new read runs in the
+   * background, so no request waits on the RPC for it. Past ten times that age it is read before answering. A node
+   * leaves it off: what it bills is decided on a fresh read. */
+  constructor(private conn: Connection, private ttlMs = 60_000, private config = pda.config(), private o: { serveStale?: boolean } = {}) {}
 
   async bondMint(): Promise<PublicKey | null> {
     if (this.mint || Date.now() - this.mintAt < this.ttlMs) return this.mint;
@@ -82,6 +86,14 @@ export class HolderBook {
     const mint = await this.bondMint();
     if (!mint) return null;
     const now = Date.now();
+    if (this.o.serveStale) {
+      const key = owner.toBase58();
+      const have = this.balances.get(key);
+      const age = have ? now - Math.min(have.at, this.supply.at) : Infinity;
+      if (force || !have || age > this.ttlMs * 10) await this.read(owner, mint);
+      else if (age > this.ttlMs) void this.read(owner, mint).catch(() => undefined);
+      return { mint: mint.toBase58(), balance: this.balances.get(key)!.v, supply: this.supply.v };
+    }
     if (force || now - this.supply.at > this.ttlMs) {
       this.supply = { v: BigInt((await this.conn.getTokenSupply(mint)).value.amount), at: now };
     }
@@ -95,6 +107,24 @@ export class HolderBook {
       this.balances.set(key, b);
     }
     return { mint: mint.toBase58(), balance: b.v, supply: this.supply.v };
+  }
+
+  /** One read of the supply and one wallet's balance, shared by everyone who asks while it is in flight. */
+  private read(owner: PublicKey, mint: PublicKey): Promise<void> {
+    const key = owner.toBase58();
+    let p = this.reading.get(key);
+    if (!p) {
+      const ata = PublicKey.findProgramAddressSync([owner.toBuffer(), this.tokenProgram!.toBuffer(), mint.toBuffer()], ATA_PROGRAM)[0];
+      p = Promise.all([this.conn.getTokenSupply(mint), this.conn.getAccountInfo(ata)])
+        .then(([supply, info]) => {
+          const at = Date.now();
+          this.supply = { v: BigInt(supply.value.amount), at };
+          this.balances.set(key, { v: info && info.data.length >= 72 ? info.data.readBigUInt64LE(64) : 0n, at });
+        })
+        .finally(() => this.reading.delete(key));
+      this.reading.set(key, p);
+    }
+    return p;
   }
 
   async off(tiers: HolderTier[] | undefined, owner: PublicKey): Promise<number> {

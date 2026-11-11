@@ -150,7 +150,11 @@ export class Router {
 
   async start(): Promise<Server> {
     await this.o.registry.refresh().catch((e) => this.log(`registry refresh failed: ${(e as Error).message}`));
-    this.timer = setInterval(() => void this.o.registry.refresh().catch(() => undefined), (this.o.refreshSecs ?? 60) * 1000);
+    // The same tick reads this wallet's holder standing again, so a request finds it in memory and never waits for it.
+    this.timer = setInterval(() => {
+      void this.o.registry.refresh().catch(() => undefined);
+      void this.standing(true);
+    }, (this.o.refreshSecs ?? 60) * 1000);
     void this.o.registry.checkHealth().catch(() => undefined);
     void this.o.registry.checkBurnsFromConfig().catch(() => undefined);
     this.burnTimer = setInterval(() => void this.o.registry.checkBurnsFromConfig().catch(() => undefined), 5 * 60_000);

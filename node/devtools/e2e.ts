@@ -128,7 +128,7 @@ await mintTo(conn, admin, orey, userOrey.address, admin, 20_000_000n * TOKEN);
 const session = loadOrCreateKeypair(join(WORK, 'home/router/session.json'));
 const registry = new Registry(conn, { allowDev: true, measurements: [] });
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn), aliases: parseAliases('claude-*=llama-3.3-70b') });
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b') });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
