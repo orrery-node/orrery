@@ -46,8 +46,7 @@ export function toOpenAI(a: Json): Json {
   if (a.temperature !== undefined) out.temperature = a.temperature;
   if (a.top_p !== undefined) out.top_p = a.top_p;
   if (Array.isArray(a.stop_sequences) && a.stop_sequences.length) out.stop = a.stop_sequences;
-  const userId = (a.metadata as { user_id?: string } | undefined)?.user_id;
-  if (userId) out.user = userId;
+  // metadata.user_id (Claude Code: account, device and session) is not carried over: see identity.ts.
   const tools = (a.tools as { name: string; description?: string; input_schema?: Json }[] | undefined) ?? [];
   if (tools.length) out.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description ?? '', parameters: t.input_schema ?? { type: 'object' } } }));
   const choice = a.tool_choice as { type?: string; name?: string } | undefined;

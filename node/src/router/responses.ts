@@ -40,7 +40,6 @@ export function responsesToChat(a: Json): Json {
   const out: Json = { model: a.model, messages, stream: a.stream === true, max_tokens: a.max_output_tokens ?? 1024 };
   if (a.temperature !== undefined) out.temperature = a.temperature;
   if (a.top_p !== undefined) out.top_p = a.top_p;
-  if (typeof a.user === 'string') out.user = a.user;
   const tools = ((a.tools as Json[] | undefined) ?? []).filter((t) => t.type === 'function');
   if (tools.length) out.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description ?? '', parameters: t.parameters ?? { type: 'object' } } }));
   const choice = a.tool_choice as string | { type?: string; name?: string } | undefined;

@@ -5,6 +5,7 @@ import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
+import { withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
@@ -414,7 +415,8 @@ export class Router {
     const maxOut = anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
     const ch = await this.o.channels.ensure(address, maxCost);
-    const payload = JSON.stringify({ ...body, model: cand.offer.id, stream: true });
+    // Ids a client attached to say who is asking are dropped here, before anything leaves this machine.
+    const payload = JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true });
     let wire = payload;
     // What a sealed answer can say about where it ran: the enclave this router verified before it sealed the prompt.
     const ascii = (v: string) => v.replace(/[^\x20-\x7e]/g, "'");

@@ -84,10 +84,11 @@ const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
 
 // Only standard chat fields reach the upstream. A gateway upstream (OpenRouter and the like) reads extra fields such
 // as fallback model lists, plugins or provider routing, any of which would let a caller spend the operator's key on
-// something the price list does not cover. `n` is dropped for the same reason: it multiplies the output.
+// something the price list does not cover. `n` is dropped for the same reason: it multiplies the output. `user` is
+// not passed on either: a caller's end-user id is nobody's business upstream, even when an older router sends one.
 const UPSTREAM_FIELDS = [
   'messages', 'temperature', 'top_p', 'stop', 'seed', 'presence_penalty', 'frequency_penalty', 'response_format',
-  'tools', 'tool_choice', 'parallel_tool_calls', 'logit_bias', 'logprobs', 'top_logprobs', 'user',
+  'tools', 'tool_choice', 'parallel_tool_calls', 'logit_bias', 'logprobs', 'top_logprobs',
 ] as const;
 
 export function upstreamBody(body: Record<string, unknown>, model: string, maxOut: number): Record<string, unknown> {

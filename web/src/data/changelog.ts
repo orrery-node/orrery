@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'everyone', text: 'Who is asking stays on your machine. Clients attach ids to their requests for an API company’s abuse checks: OpenAI’s `user` and `safety_identifier`, a cache key, and Anthropic’s `metadata.user_id`, which Claude Code fills with an account, device and session id. Your router now drops them before a request leaves, and a node no longer passes `user` on to its model server, whichever router sent it. The wallet is the account; a node is paid either way and has no use for a name.' },
   { who: 'router', text: '`orrery run claude` starts Claude Code on your router as one job. It names the network model outright, tags every request with the job and the budget you give it (`--budget 0.25`), and prints the job’s bill when Claude Code exits: answers, tokens, dollars. A key or token already in your environment is not passed on.' },
 ];
 

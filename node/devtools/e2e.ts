@@ -575,6 +575,19 @@ const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');
 const lastRun = taskRuns[taskRuns.length - 1];
 check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status !== 200 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1 && jobSpend?.answers === job.answers && jobSpend.usd === job.spent && existsSync(join(process.env.ORRERY_HOME!, 'router', 'tasks.json')), job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
 
+// Who is asking stays on this machine: ids that clients attach in all three API shapes never reach a model server.
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const idAsks = await Promise.all([
+  fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b:cheap', max_tokens: 16, user: 'alice@example.com', metadata: { account: 'acct_123' }, safety_identifier: 'sid_9', prompt_cache_key: 'alice-4', messages: [{ role: 'user', content: 'Say hello.' }] }) }),
+  fetch(`${ROUTER}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 16, metadata: { user_id: 'user_3f9c_account_6b1e_session_0d5a' }, messages: [{ role: 'user', content: 'Say hello.' }] }) }),
+  fetch(`${ROUTER}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_output_tokens: 16, user: 'u_42', input: 'Say hello.' }) }),
+]);
+for (const r of idAsks) await r.text();
+const sawIdentity = await Promise.all(upstreams.filter(([, , l]) => l !== 'halo').map(async ([port, , l]) => ({ l, fields: ((await (await fetch(`http://127.0.0.1:${port}/v1/seen-identity`)).json()) as { fields: string[] }).fields })));
+check('ids a client attaches to say who is asking (user, metadata.user_id, safety_identifier, a cache key) never reach a model server',
+  idAsks.every((r) => r.status === 200) && sawIdentity.every((s) => s.fields.length === 0),
+  `chat, messages and responses answered ${idAsks.map((r) => r.status).join(' ')} · model servers saw: ${sawIdentity.map((s) => `${s.l} ${s.fields.join('+') || 'none'}`).join(', ')}`);
+
 // orrery run: the CLI starts a client wired to this router as one job, and prints the job's bill when the client exits.
 // The client is a stand-in named `claude` that sends one Anthropic request with exactly the environment it was given.
 const stubDir = join(WORK, 'bin');

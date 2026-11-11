@@ -45,8 +45,8 @@ Usage hash chain: `h_n = sha256(h_{n-1} ‖ "requestId|model|in|out|cost")`, `h_
 ## 4. One request
 
 1. The router ranks candidates (§6). If it has no channel with the chosen provider, the wallet signs `open_channel` (2 USDC by default).
-2. `POST {endpoint}/v1/chat/completions` with `x-orrery-channel` and `x-orrery-voucher` (the total so far). On the private route the body is sealed (§7).
-3. The provider reads the channel from chain and checks that it is its own and in USDC, verifies the voucher signature, refuses with 402 `payment_required` unless **paid ≥ owed so far** (attaching the unpaid records), refuses with 402 `channel_exhausted` unless **owed + this request's maximum cost ≤ deposit**, then streams from its upstream and collects `usage`. Only standard chat fields reach the upstream.
+2. `POST {endpoint}/v1/chat/completions` with `x-orrery-channel` and `x-orrery-voucher` (the total so far), and no other header from the client. Before sending, the router drops the fields that say who the end user is (`user`, `metadata`, `safety_identifier`, `prompt_cache_key`; an Anthropic `metadata.user_id` is not converted into `user`). On the private route the body is sealed (§7).
+3. The provider reads the channel from chain and checks that it is its own and in USDC, verifies the voucher signature, refuses with 402 `payment_required` unless **paid ≥ owed so far** (attaching the unpaid records), refuses with 402 `channel_exhausted` unless **owed + this request's maximum cost ≤ deposit**, then streams from its upstream and collects `usage`. Only standard chat fields reach the upstream, and `user` is not one of them.
 4. At the end the provider computes the cost (capped at the maximum), sends the record as `event: orrery`, then `[DONE]`.
 5. The router recomputes the cost from the same price list and pays **the smaller** of the two: it raises the total, signs a new voucher, and posts it to `/orrery/voucher` at once (it also rides on the next request).
 6. The provider redeems the highest voucher when it chooses (`redeem.everySecs`, minimum amount). Closing channels are redeemed regardless of amount.

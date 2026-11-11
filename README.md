@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/OpenAI-compatible-f7f7f7?style=flat-square&logo=openai&logoColor=white&labelColor=0c0c0c" alt="OpenAI-compatible">
   <img src="https://img.shields.io/badge/node-%E2%89%A522-339933?style=flat-square&logo=nodedotjs&logoColor=white&labelColor=0c0c0c" alt="Node 22+">
   <img src="https://img.shields.io/badge/rust-anchor%201.2-dea584?style=flat-square&logo=rust&logoColor=white&labelColor=0c0c0c" alt="Rust, Anchor 1.2">
-  <img src="https://img.shields.io/badge/rehearsal-56%2F56%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="56 of 56 rehearsal checks">
+  <img src="https://img.shields.io/badge/rehearsal-57%2F57%20checks-14f195?style=flat-square&labelColor=0c0c0c" alt="57 of 57 rehearsal checks">
   <img src="https://img.shields.io/badge/payments-ed25519%20vouchers-9945ff?style=flat-square&labelColor=0c0c0c" alt="ed25519 vouchers">
 </p>
 
@@ -442,6 +442,8 @@ Every router talks to every provider directly. The program never sees a prompt o
 | a provider's node key leaks | nothing of the provider's: redemptions only go to the listing wallet |
 | the admin turns hostile | nothing: the admin cannot move deposits or bonds, list or delist, or add a fee |
 
+What a node learns about you: the prompt (unless you use `:private`, where only a verified enclave can read it), the channel that pays, and the address your router connects from. It does not learn who the end user is: ids that clients attach for an API company's abuse checks (`user`, `safety_identifier`, a cache key, Anthropic `metadata.user_id`, which Claude Code fills with an account, device and session id) are dropped by the router before a request leaves your machine, and a node does not pass `user` on to its model server either (from 0.1.12).
+
 The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for what each key can do and how to report a vulnerability privately.
 
 ## CLI
@@ -484,8 +486,8 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 117 tests
-pnpm e2e                                                        # full local rehearsal, 56 checks
+cd node && pnpm install && pnpm test                            # 121 tests
+pnpm e2e                                                        # full local rehearsal, 57 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
 
@@ -560,7 +562,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 - [x] Settlement program: registry, channels, ed25519 vouchers, enclave claims, bonds
 - [x] Router and provider node, OpenAI-compatible, streaming, fall-through
-- [x] Local end-to-end rehearsal on the real program, 56 of 56 checks (a client started with `orrery run` and billed as one job, requests encrypted to the node's own key, task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
+- [x] Local end-to-end rehearsal on the real program, 57 of 57 checks (end-user ids never reaching a model server, a client started with `orrery run` and billed as one job, requests encrypted to the node's own key, task budgets for agents, a node buying and burning the network token with its pledged share and the router verifying it on chain, every API, quotes before paying, per-request budgets, routers skipping a node whose model server is down and showing it in their status, embeddings, fallbacks, billed usage in streams, bench on chat and embedding models, a router picking its channel back up after losing its records, limits, cache pricing and affinity, 400 parallel answers, Codex CLI and Claude Code, DNS-rebinding refusal, logs that add up to what was signed)
 - [x] Holder pricing: tiers by share of $OREY supply, checked by router and provider
 - [x] npm package [`orrery-node`](https://www.npmjs.com/package/orrery-node)
 - [x] Site and docs at [orrerynode.com](https://orrerynode.com)
