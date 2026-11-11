@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Everyone** · Wire sealing. Every node now holds an encryption key of its own, signed by the node key on its listing, and routers encrypt each request to it (the answer comes back the same way). The operator can still read the prompt, which only an enclave prevents, but nothing between the two machines can: not the node’s hosting platform, a load balancer or a firewall in front of it. This also stops such firewalls from refusing requests whose text looks like an attack, which coding agents send all the time. Answers carry `x-orrery-wire: 1`; older nodes and routers keep working in plain JSON.
 - **Router** · The built-in verifiers read the chip makers’ revocation lists. AMD and Intel publish signed lists of certificates they have withdrawn; your router now fetches them straight from the chip maker, checks each list’s signature against the same pinned roots, and refuses an enclave whose chip or platform certificate is on one. Lists are kept in `~/.orrery/crl` for twelve hours, and `orrery enclave verify` prints the result as its own line (`--offline` skips it).
 
 ## 0.1.10 · 2026-11-11 07:21 UTC

@@ -8,7 +8,8 @@ import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type 
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
 import { fetchCrls } from '../tee/crl.ts';
-import { home } from '../keys.ts';
+import { ed25519Verify, home } from '../keys.ts';
+import { wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchWithTimeout } from '../sse.ts';
 
@@ -27,6 +28,9 @@ export type ProviderEntry = {
   /** How long the node's /health took to answer, and when, at the last check that got an answer. */
   healthMs?: number;
   healthAt?: number;
+  /** The node's own encryption key for requests on the wire, kept only if the node key on chain signed it. Null when
+   * the node has none (an older node); requests to it travel as plain JSON inside TLS. */
+  wire?: Buffer | null;
   /** The node's burn pledge and how much of it this router has verified on chain itself. */
   burn?: { share: number; spent: bigint; burned: bigint; receipts: number; kept: number; checkedAt: number };
 };
@@ -68,11 +72,25 @@ export class Registry {
           }
         }
         entry.tee = await this.checkTee(entry);
+        if (!same && p.active) entry.wire = await this.wireKey(p);
         this.entries.set(address, entry);
       }),
     );
     for (const k of [...this.entries.keys()]) if (!seen.has(k)) this.entries.delete(k);
     this.refreshedAt = Date.now();
+  }
+
+  /** The key a node wants requests encrypted to, accepted only with a signature from the node key on its listing. */
+  private async wireKey(p: ProviderAccount): Promise<Buffer | null> {
+    try {
+      const r = await fetchWithTimeout(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
+      if (!r.ok) return null;
+      const j = (await r.json()) as { key?: string; sig?: string };
+      const key = Buffer.from(j.key ?? '', 'hex'), sig = Buffer.from(j.sig ?? '', 'hex');
+      return key.length === 32 && ed25519Verify(p.nodeKey.toBytes(), wireMessage(key), sig) ? key : null;
+    } catch {
+      return null;
+    }
   }
 
   /** A provider's enclave counts only if the report it serves hashes to the on-chain claim, names the on-chain key,

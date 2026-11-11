@@ -65,6 +65,8 @@ export type Trip = {
   enclave?: { kind: string; image: string; verdict: string };
   /** The job an agent named for this request with x-orrery-task. */
   task?: string;
+  /** The request and answer were encrypted to the node's own key, so nothing between the two machines could read them. */
+  wire?: boolean;
   fellThrough: number;
   resumed?: boolean;
   cacheKept?: boolean;
@@ -419,11 +421,19 @@ export class Router {
     const enclave = cand.sealed && cand.entry.tee ? { kind: TEE_KINDS[cand.entry.account.teeKind] ?? 'enclave', image: Buffer.from(cand.entry.account.teeMeasurement).toString('hex').slice(0, 32), verdict: ascii(cand.entry.tee.reason) } : null;
     const enclaveHeaders: Record<string, string> = enclave ? { 'x-orrery-sealed': '1', 'x-orrery-enclave': enclave.kind, 'x-orrery-enclave-image': enclave.image, 'x-orrery-enclave-verdict': enclave.verdict } : {};
     let key: Buffer | null = null;
+    let wired = false;
     if (cand.sealed) {
       if (!cand.entry.tee?.verified) throw new Error('enclave not verified');
       const s = sealRequest(cand.entry.tee.enclaveKey, Buffer.from(payload));
       wire = s.body;
       key = s.key;
+    } else if (cand.entry.wire) {
+      // Not an enclave, but the node has a key of its own: the request and the answer are ciphertext to everything
+      // between this router and the node process.
+      const s = sealRequest(cand.entry.wire, Buffer.from(payload), 'wire');
+      wire = s.body;
+      key = s.key;
+      wired = true;
     }
     const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-channel': ch.channel };
     if (ch.voucher) headers['x-orrery-voucher'] = ch.voucher;
@@ -465,7 +475,7 @@ export class Router {
       if (!ttft) ttft = Date.now() - t0;
       if (wantsStream) {
         if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? enclaveHeaders : {}) });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}) });
           state.started = true;
           const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
@@ -507,19 +517,19 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
     appendTrip(home('router', 'trips.jsonl'), trip);
-    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
+    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${wired ? '  wire' : key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
 
     // What this answer sends to the burn: the node's pledged share of what it was just paid, shown only once this router
     // has verified on chain that the node keeps its pledge.
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(key ? enclaveHeaders : {}), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

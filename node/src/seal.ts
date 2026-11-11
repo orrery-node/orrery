@@ -42,12 +42,13 @@ export function decrypt(key: Buffer, box: Buffer): Buffer {
   return Buffer.concat([d.update(box.subarray(12, box.length - 16)), d.final()]);
 }
 
-/** Router side: seal a request to an enclave. Returns the wire body and the key that will open the reply. */
-export function sealRequest(enclavePublic: Buffer, plaintext: Buffer): { body: string; key: Buffer } {
+/** Router side: seal a request to a key. Returns the wire body and the key that will open the reply. `tag` says whose
+ * key it is: `sealed` for an enclave's, `wire` for the node process's own (see wireMessage). */
+export function sealRequest(enclavePublic: Buffer, plaintext: Buffer, tag: 'sealed' | 'wire' = 'sealed'): { body: string; key: Buffer } {
   const eph = newEnclaveKey();
   const shared = diffieHellman({ privateKey: eph.privateKey, publicKey: publicFromRaw(enclavePublic) });
   const key = derive(shared, eph.publicKey, enclavePublic);
-  return { body: JSON.stringify({ sealed: 1, epk: eph.publicKey.toString('base64'), box: encrypt(key, plaintext).toString('base64') }), key };
+  return { body: JSON.stringify({ [tag]: 1, epk: eph.publicKey.toString('base64'), box: encrypt(key, plaintext).toString('base64') }), key };
 }
 
 /** Enclave side: open a sealed request. Returns the plaintext and the key to seal the reply with. */
@@ -57,3 +58,9 @@ export function openRequest(enclave: EnclaveKey, wire: { epk: string; box: strin
   const key = derive(shared, epk, enclave.publicKey);
   return { plaintext: decrypt(key, Buffer.from(wire.box, 'base64')), key };
 }
+
+/** Wire sealing. Every node holds an X25519 key of its own and signs it with the node key that is on chain, so a
+ * router can encrypt each request to the node process itself. The operator can still read the prompt (only an enclave
+ * prevents that), but nothing between the two machines can: not the node's hosting platform, its load balancer or a
+ * firewall in front of it, which otherwise see the plain request after TLS ends and may block or log it. */
+export const wireMessage = (key: Buffer) => Buffer.concat([Buffer.from('orrery/wire/1'), key]);

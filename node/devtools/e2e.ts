@@ -545,6 +545,14 @@ const lockedNoneJ = (await lockedNone.json()) as { error?: { message?: string } 
 await lockedRouter.close();
 check('a private-only router seals every request or refuses it, whatever route the request asks for', lockedCheap.status === 200 && lockedCheap.headers.get('x-orrery-sealed') === '1' && lockedCheap.headers.get('x-orrery-route') === 'privacy' && nameOf(lockedCheap.headers.get('x-orrery-provider')) === 'Vault Nine' && lockedNone.status === 503 && /verified enclave/.test(lockedNoneJ.error?.message ?? ''), `llama-3.3-70b:cheap with x-orrery-route: price → ${nameOf(lockedCheap.headers.get('x-orrery-provider'))}, sealed, route ${lockedCheap.headers.get('x-orrery-route')} · deepseek-v3 (no enclave lists it) → ${lockedNone.status}: ${lockedNoneJ.error?.message}`);
 
+// Wire sealing: a request to a node without an enclave still travels encrypted to the node's own key, so a firewall
+// or load balancer in front of the node sees ciphertext. An older router's plain request is still served.
+const wireKeyOf = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/wire`)).json()) as { key: string; sig: string; node: string };
+const wireAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v3', max_tokens: 32, messages: [{ role: 'user', content: "'; DROP TABLE users; -- ../../../../etc/shadow" }] }) });
+const wireAskJ = (await wireAsk.json()) as { choices?: { message?: { content?: string } }[] };
+const wireTrip = trips[trips.length - 1] as { wire?: boolean; sealed?: boolean; providerName?: string };
+check('a request to a node without an enclave travels encrypted to the node’s own key, signed by the node key on chain', wireKeyOf.key.length === 64 && wireKeyOf.node === iron.node.publicKey.toBase58() && registry.entries.get(iron.pda.toBase58())?.wire?.toString('hex') === wireKeyOf.key && wireAsk.status === 200 && wireAsk.headers.get('x-orrery-wire') === '1' && wireAsk.headers.get('x-orrery-sealed') === null && (wireAskJ.choices?.[0]?.message?.content ?? '').length > 5 && wireTrip.wire === true && wireTrip.sealed === false, `deepseek-v3 → ${wireTrip.providerName} · x-orrery-wire ${wireAsk.headers.get('x-orrery-wire')} · wire key ${wireKeyOf.key.slice(0, 16)}… signed by the node key`);
+
 // Task budgets: an agent gives a job one budget, and every request under that name draws from it.
 const taskAsk = (first: boolean) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-task': 'rehearsal-job', ...(first ? { 'x-orrery-task-budget': '0.00003' } : {}) }, body: JSON.stringify({ model: 'llama-3.3-70b:cheap', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
 const taskRuns: { status: number; left: string | null; code?: string }[] = [];

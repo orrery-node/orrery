@@ -11,11 +11,11 @@ import { tdxClaim } from '../tee/tdx.ts';
 import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from '../burn.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
-import { home, loadKeypair, loadOrCreateKeypair, writePrivate } from '../keys.ts';
+import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, type EnclaveKey } from '../seal.ts';
+import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
@@ -112,6 +112,8 @@ export class ProviderNode {
   readonly manifestBytes: Buffer;
   private vcek: Buffer | null = null;
   readonly enclave: EnclaveKey | null;
+  /** The node's own encryption key for requests on the wire, signed with the node key (see seal.ts wireMessage). */
+  readonly wire: EnclaveKey;
   readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
   private readonly apiKey: string | undefined;
   private readonly holders: HolderBook | null;
@@ -134,6 +136,9 @@ export class ProviderNode {
     this.authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${this.dir}/wallet.json`)).publicKey;
     this.pda = pda.provider(this.authority);
     this.mint = new PublicKey(cfg.settleMint);
+    const wirePath = `${this.dir}/wire.key`;
+    this.wire = existsSync(wirePath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(wirePath, 'utf8').trim(), 'hex')) : newEnclaveKey();
+    if (!existsSync(wirePath)) writePrivate(wirePath, this.wire.secret.toString('hex'));
     if (cfg.tee) {
       const keyPath = `${this.dir}/enclave.key`;
       this.enclave = existsSync(keyPath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(keyPath, 'utf8').trim(), 'hex')) : newEnclaveKey();
@@ -287,6 +292,10 @@ export class ProviderNode {
         const upstream = await this.upstreamUp();
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
+      if (req.method === 'GET' && url.pathname === '/v1/wire') {
+        // The key routers encrypt requests to, signed with the node key that this listing carries on chain.
+        return json(res, 200, { key: this.wire.publicKey.toString('hex'), sig: Buffer.from(signerOf(this.node)(wireMessage(this.wire.publicKey))).toString('hex'), node: this.node.publicKey.toBase58() });
+      }
       if (req.method === 'GET' && url.pathname === '/orrery/burns') {
         // What this node pledged and every buy-and-burn it has made, with the transactions a router can check on chain.
         const book = loadBook(this.burnPath());
@@ -326,7 +335,15 @@ export class ProviderNode {
     if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-orrery-channel');
     let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
     let sealKey: Buffer | null = null;
-    if (body.sealed) {
+    let wired = false;
+    if (body.wire) {
+      // Sealed to this node's own key: the request and the answer are ciphertext to everything between the router and
+      // this process.
+      const opened = openRequest(this.wire, body as unknown as { epk: string; box: string });
+      body = JSON.parse(opened.plaintext.toString('utf8'));
+      sealKey = opened.key;
+      wired = true;
+    } else if (body.sealed) {
       if (!this.enclave) return fail(res, 400, 'no_tee', 'sealed request to a node without an enclave');
       const opened = openRequest(this.enclave, body as unknown as { epk: string; box: string });
       body = JSON.parse(opened.plaintext.toString('utf8'));
@@ -366,10 +383,10 @@ export class ProviderNode {
       res.write(sseFrame('[DONE]'));
       res.end();
       this.answers += 1;
-      this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey });
+      this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey && !wired });
       appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost) });
       if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
-      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${sealKey ? '  sealed' : ''}`);
+      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${wired ? '  wire' : sealKey ? '  sealed' : ''}`);
     };
     const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
 
