@@ -658,8 +658,10 @@ const timedHeader = String((timed as { headers?: Headers }).headers?.get('server
 const timedStream = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', stream: true, max_tokens: 32, messages: [{ role: 'user', content: 'Say hi.' }] }) });
 await timedStream.text();
 const timedStreamHeader = String(timedStream.headers.get('server-timing') ?? '');
-check('an answer says where its time went (Server-Timing): choosing the node, the channel, sealing, the wait for the node, and signing the payment',
-  /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+, sign;dur=[\d.]+$/.test(timedHeader) && /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+$/.test(timedStreamHeader)
+check('an answer says where its time went (Server-Timing): choosing the node, the channel, sealing, the wait for the node with the node’s own account of it, and signing the payment',
+  /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+, node-open;dur=[\d.]+, node-check;dur=[\d.]+, node-upstream;dur=[\d.]+, sign;dur=[\d.]+$/.test(timedHeader)
+  && /^route;dur=[\d.]+, channel;dur=[\d.]+, seal;dur=[\d.]+, node;dur=[\d.]+, node-open;dur=[\d.]+, node-check;dur=[\d.]+, node-upstream;dur=[\d.]+$/.test(timedStreamHeader)
+  && (timedTrip.ms?.nodeOpen ?? -1) >= 0 && (timedTrip.ms?.nodeCheck ?? -1) >= 0 && (timedTrip.ms?.nodeUpstream ?? 0) > 0 && (timedTrip.ms?.nodeUpstream ?? 0) <= (timedTrip.ms?.node ?? 0)
   && !!timedTrip.ms && timedTrip.ms.node > 0 && timedTrip.ms.route + timedTrip.ms.seal + timedTrip.ms.sign < timedTrip.ms.node,
   timedHeader);
 

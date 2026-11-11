@@ -18,6 +18,7 @@ import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.t
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
+import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
 import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
@@ -338,6 +339,8 @@ export class ProviderNode {
     let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
     let sealKey: Buffer | null = null;
     let wired = false;
+    // This node's own stages, put on the answer (Server-Timing) so whoever asked can see what the node added.
+    const arrived = performance.now();
     if (body.wire) {
       // Sealed to this node's own key: the request and the answer are ciphertext to everything between the router and
       // this process.
@@ -357,6 +360,7 @@ export class ProviderNode {
       body = JSON.parse(opened.plaintext.toString('utf8'));
       sealKey = opened.key;
     }
+    const afterOpen = performance.now();
     const offer = this.cfg.models.find((m) => m.id === body.model);
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
     const e = await this.entry(address);
@@ -401,6 +405,7 @@ export class ProviderNode {
     if (kind === 'embeddings') {
       // Embeddings ride the same envelope as a chat stream: one data event with the upstream's answer, then the usage
       // record, so a router pays for them exactly like any other answer.
+      const afterChecks = performance.now();
       const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/embeddings`, {
         method: 'POST',
         timeoutMs: 30_000,
@@ -409,13 +414,14 @@ export class ProviderNode {
       });
       if (!up.ok) return fail(res, 502, 'upstream_error', `upstream answered ${up.status}`);
       const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0' });
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
       const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
       sendE(JSON.stringify({ ...j, model: offer.id }));
       settle(sendE, j.usage?.prompt_tokens ?? estimateInputTokens(body), 0, 0);
       return;
     }
 
+    const afterChecks = performance.now();
     const upstream = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       timeoutMs: 30_000,
@@ -424,7 +430,7 @@ export class ProviderNode {
     });
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
 
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0' });
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
     const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
     type Usage = { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     let usage: Usage | null = null;

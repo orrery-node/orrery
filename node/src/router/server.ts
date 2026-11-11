@@ -9,7 +9,7 @@ import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { readSse, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
-import { roundMs, serverTiming, type Timing } from './timing.ts';
+import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
 import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
@@ -486,6 +486,7 @@ export class Router {
       throw new Error(`payment refused: ${j.error.code}`);
     }
     if (!r.ok || !r.body) throw new Error(`provider answered ${r.status}`);
+    const theirs = nodeSaid(r.headers.get('server-timing'));
 
     let ttft = 0;
     let record: (UsageRecord & { owed: string }) | null = null;
@@ -507,7 +508,7 @@ export class Router {
       }
       if (wantsStream) {
         if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs, ...theirs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader });
           state.started = true;
           const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
@@ -543,7 +544,7 @@ export class Router {
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
     const beforeSign = performance.now();
     const voucher = this.o.channels.settle(address, { ...record, cost: fair });
-    const timing: Timing = { route: roundMs(state.routeMs ?? 0), channel: roundMs(channelMs), seal: roundMs(sealMs), node: roundMs(nodeMs), sign: roundMs(performance.now() - beforeSign) };
+    const timing: Timing = { route: roundMs(state.routeMs ?? 0), channel: roundMs(channelMs), seal: roundMs(sealMs), node: roundMs(nodeMs), sign: roundMs(performance.now() - beforeSign), ...theirs };
     this.inflight.delete(address);
     void fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
