@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IDENTITY_FIELDS, withoutIdentity } from '../src/router/identity.ts';
+import { IDENTITY_FIELDS, identityIn, withoutIdentity } from '../src/router/identity.ts';
 import { toOpenAI } from '../src/router/anthropic.ts';
 import { responsesToChat } from '../src/router/responses.ts';
 import { upstreamBody } from '../src/provider/node.ts';
@@ -35,4 +35,10 @@ test('a Responses request’s user id is not carried over', () => {
 test('a node does not pass a user id to its model server, whatever router sent it', () => {
   const out = upstreamBody({ messages: [{ role: 'user', content: 'hi' }], user: 'alice@example.com', metadata: { a: 1 }, safety_identifier: 's' }, 'some/model', 64);
   assert.deepEqual(Object.keys(out).sort(), ['max_tokens', 'messages', 'model', 'stream', 'stream_options']);
+});
+
+test('the names of what a client attached are reported, never the values', () => {
+  assert.deepEqual(identityIn({ model: 'm', user: 'alice@example.com', metadata: { user_id: 'x' }, messages: [] }), ['user', 'metadata']);
+  assert.deepEqual(identityIn({ model: 'm', user: null, messages: [] }), []);
+  assert.deepEqual(identityIn({ model: 'm', messages: [] }), []);
 });

@@ -442,7 +442,7 @@ Every router talks to every provider directly. The program never sees a prompt o
 | a provider's node key leaks | nothing of the provider's: redemptions only go to the listing wallet |
 | the admin turns hostile | nothing: the admin cannot move deposits or bonds, list or delist, or add a fee |
 
-What a node learns about you: the prompt (unless you use `:private`, where only a verified enclave can read it), the channel that pays, and the address your router connects from. It does not learn who the end user is: ids that clients attach for an API company's abuse checks (`user`, `safety_identifier`, a cache key, Anthropic `metadata.user_id`, which Claude Code fills with an account, device and session id) are dropped by the router before a request leaves your machine, and a node does not pass `user` on to its model server either (from 0.1.12).
+What a node learns about you: the prompt (unless you use `:private`, where only a verified enclave can read it), the channel that pays, and the address your router connects from. It does not learn who the end user is: ids that clients attach for an API company's abuse checks (`user`, `safety_identifier`, a cache key, Anthropic `metadata.user_id`, which Claude Code fills with an account, device and session id) are dropped by the router before a request leaves your machine, and a node does not pass `user` on to its model server either (from 0.1.12). The answer then carries `x-orrery-withheld` with the names of what was dropped (never the values), so you can see it happened.
 
 The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for what each key can do and how to report a vulnerability privately.
 
@@ -486,7 +486,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 121 tests
+cd node && pnpm install && pnpm test                            # 122 tests
 pnpm e2e                                                        # full local rehearsal, 57 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```

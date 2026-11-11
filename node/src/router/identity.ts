@@ -4,6 +4,11 @@
 // them, and neither does whatever model server it runs. The router drops them before a request leaves.
 export const IDENTITY_FIELDS = ['user', 'metadata', 'safety_identifier', 'prompt_cache_key'] as const;
 
+/** Which identifying fields a client attached, by name: what the router then withholds and reports back. */
+export function identityIn(body: Record<string, unknown>): string[] {
+  return IDENTITY_FIELDS.filter((k) => body[k] !== undefined && body[k] !== null);
+}
+
 /** The request without the fields that say who the end user is. The prompt itself is untouched. */
 export function withoutIdentity<T extends Record<string, unknown>>(body: T): T {
   const out: Record<string, unknown> = { ...body };

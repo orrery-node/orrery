@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · An answer says what your router withheld. When a client attached ids (`user`, `metadata`, `safety_identifier`, a cache key), the response carries `x-orrery-withheld` with their names, never their values, and the router’s log line and record of the answer say the same.
+
 ## 0.1.12 · 2026-11-11 13:03 UTC
 
 **Who is asking stays on your machine, and one command runs Claude Code on the network with a bill at the end.**

@@ -5,7 +5,7 @@ import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
-import { withoutIdentity } from './identity.ts';
+import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { fetchWithTimeout, readSse, sseFrame } from '../sse.ts';
 import type { UsageRecord } from '../usage.ts';
@@ -22,7 +22,7 @@ import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
-type Shape = { kind: 'anthropic' | 'responses' | 'embeddings'; id: string };
+type Shape = { kind: 'anthropic' | 'responses' | 'embeddings'; id: string; withheld?: string[] };
 
 export type RouterOptions = {
   port: number;
@@ -68,6 +68,8 @@ export type Trip = {
   task?: string;
   /** The request and answer were encrypted to the node's own key, so nothing between the two machines could read them. */
   wire?: boolean;
+  /** Identifying fields the client attached and the router did not send on (names only, never the values). */
+  withheld?: string[];
   fellThrough: number;
   resumed?: boolean;
   cacheKept?: boolean;
@@ -262,7 +264,7 @@ export class Router {
     const a = await readJson(req);
     if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     if (!Array.isArray(a.messages) || !a.messages.length) throw new Unserved('messages is required', 400, 'bad_request');
-    return this.serve(toOpenAI(a), req, res, { kind: 'anthropic', id: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
+    return this.serve(toOpenAI(a), req, res, { kind: 'anthropic', id: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`, withheld: identityIn(a) });
   }
 
   /** The OpenAI Responses API: translated to a chat request, served the same way, answered as a response object. */
@@ -271,14 +273,14 @@ export class Router {
     const a = await readJson(req);
     if (typeof a.model !== 'string' && !Array.isArray(a.models)) throw new Unserved('model is required', 400, 'bad_request');
     if (a.input === undefined || (Array.isArray(a.input) && !a.input.length)) throw new Unserved('input is required', 400, 'bad_request');
-    return this.serve({ ...a, stream: false }, req, res, { kind: 'embeddings', id: '' });
+    return this.serve({ ...a, stream: false }, req, res, { kind: 'embeddings', id: '', withheld: identityIn(a) });
   }
 
   private async responses(req: IncomingMessage, res: ServerResponse) {
     const a = await readJson(req);
     if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     if (a.input === undefined || (Array.isArray(a.input) && !a.input.length)) throw new Unserved('input is required', 400, 'bad_request');
-    return this.serve(responsesToChat(a), req, res, { kind: 'responses', id: `resp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` });
+    return this.serve(responsesToChat(a), req, res, { kind: 'responses', id: `resp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`, withheld: identityIn(a) });
   }
 
   /** A request may name fallbacks, as "a|b" or an OpenRouter-style models array: when no provider of one model can
@@ -415,7 +417,10 @@ export class Router {
     const maxOut = anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
     const ch = await this.o.channels.ensure(address, maxCost);
-    // Ids a client attached to say who is asking are dropped here, before anything leaves this machine.
+    // Ids a client attached to say who is asking are dropped here, before anything leaves this machine, and the
+    // answer names them (x-orrery-withheld) so the caller can see it happened.
+    const withheld = anth?.withheld ?? identityIn(body);
+    const withheldHeader: Record<string, string> = withheld.length ? { 'x-orrery-withheld': withheld.join(',') } : {};
     const payload = JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true });
     let wire = payload;
     // What a sealed answer can say about where it ran: the enclave this router verified before it sealed the prompt.
@@ -482,7 +487,7 @@ export class Router {
       if (!ttft) ttft = Date.now() - t0;
       if (wantsStream) {
         if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}) });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-route': route, ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader });
           state.started = true;
           const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
@@ -524,19 +529,19 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
     appendTrip(home('router', 'trips.jsonl'), trip);
-    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${wired ? '  wire' : key ? '  sealed' : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
+    this.log(`${route.padEnd(10)} ${cand.offer.id} → ${trip.providerName}  ${record.inputTokens}+${record.outputTokens} tok  $${trip.cost}  ttft ${ttft}ms${claimedOff ? `  holder −${claimedOff / 100}%` : ''}${wired ? '  wire' : key ? '  sealed' : ''}${withheld.length ? `  withheld ${withheld.join(',')}` : ''}${resumed ? '  resumed' : ''}${trip.cacheKept ? '  kept for its prompt cache' : ''}`);
 
     // What this answer sends to the burn: the node's pledged share of what it was just paid, shown only once this router
     // has verified on chain that the node keeps its pledge.
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader, ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

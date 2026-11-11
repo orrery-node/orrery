@@ -583,10 +583,12 @@ const idAsks = await Promise.all([
   fetch(`${ROUTER}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_output_tokens: 16, user: 'u_42', input: 'Say hello.' }) }),
 ]);
 for (const r of idAsks) await r.text();
+const withheldSaid = idAsks.map((r) => r.headers.get('x-orrery-withheld'));
 const sawIdentity = await Promise.all(upstreams.filter(([, , l]) => l !== 'halo').map(async ([port, , l]) => ({ l, fields: ((await (await fetch(`http://127.0.0.1:${port}/v1/seen-identity`)).json()) as { fields: string[] }).fields })));
 check('ids a client attaches to say who is asking (user, metadata.user_id, safety_identifier, a cache key) never reach a model server',
-  idAsks.every((r) => r.status === 200) && sawIdentity.every((s) => s.fields.length === 0),
-  `chat, messages and responses answered ${idAsks.map((r) => r.status).join(' ')} · model servers saw: ${sawIdentity.map((s) => `${s.l} ${s.fields.join('+') || 'none'}`).join(', ')}`);
+  idAsks.every((r) => r.status === 200) && sawIdentity.every((s) => s.fields.length === 0)
+  && withheldSaid[0] === 'user,metadata,safety_identifier,prompt_cache_key' && withheldSaid[1] === 'metadata' && withheldSaid[2] === 'user',
+  `chat, messages and responses answered ${idAsks.map((r) => r.status).join(' ')} · model servers saw: ${sawIdentity.map((s) => `${s.l} ${s.fields.join('+') || 'none'}`).join(', ')} · each answer names what was withheld: ${withheldSaid.join(' | ')}`);
 
 // orrery run: the CLI starts a client wired to this router as one job, and prints the job's bill when the client exits.
 // The client is a stand-in named `claude` that sends one Anthropic request with exactly the environment it was given.

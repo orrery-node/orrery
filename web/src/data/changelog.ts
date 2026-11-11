@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'An answer says what your router withheld. When a client attached ids (`user`, `metadata`, `safety_identifier`, a cache key), the response carries `x-orrery-withheld` with their names, never their values, and the router’s log line and record of the answer say the same.' },
+];
 
 export const RELEASES: Release[] = [
   {
