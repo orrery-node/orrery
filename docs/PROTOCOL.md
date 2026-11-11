@@ -53,7 +53,7 @@ Usage hash chain: `h_n = sha256(h_{n-1} ‖ "requestId|model|in|out|cost")`, `h_
 
 Cost = `ceil((input tokens × input price + output tokens × output price) / 1e6)` USDC base units, with prices in base units per million tokens ($0.60/M = 600000). A model may also list `cachedInput`, a price at or below its input price for input tokens the model server served from a prompt cache (the provider reads `usage.prompt_tokens_details.cached_tokens` from its upstream). Those tokens are billed at `cachedInput` and the rest at `input`. The router still signs the lower of the bill and its own full-price figure, so a cache report can only lower what a provider is paid, and the usage record and voucher are unchanged.
 
-The router times this path and says so on every answer: a standard `Server-Timing` header with `route` (choosing the node from listings already read), `channel` (making sure a channel is open: a transaction the first time, a lookup in memory after), `seal`, `node` (from sending to the node's first event) and `sign` (the new voucher). No stage waits on the chain once a channel is open.
+The router times this path and says so on every answer: a standard `Server-Timing` header with `route` (choosing the node from listings already read), `channel` (making sure a channel is open: a transaction the first time, a lookup in memory after), `seal`, `node` (from sending to the node's first event) and `sign` (the new voucher). No stage sends a transaction once a channel is open; the provider's read of the channel in step 3 is kept for 30 seconds, so most requests do not touch the chain at all.
 
 ## 5. What can go wrong
 

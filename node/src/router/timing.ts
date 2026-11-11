@@ -6,7 +6,8 @@
 //   node     from sending until the node's first event came back: the network and the model
 //   sign     signing the new running total once the answer is in
 //
-// Nothing here waits on the chain except opening a channel, which happens once per node.
+// No stage sends a transaction except opening a channel, which happens once per node. The first use of a channel
+// after a start reads it once; a node re-reads a channel from chain at most every 30 seconds, inside `node`.
 export type Timing = { route: number; channel: number; seal: number; node: number; sign: number };
 
 export const STAGES = ['route', 'channel', 'seal', 'node', 'sign'] as const;
