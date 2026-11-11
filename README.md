@@ -212,6 +212,21 @@ and the body's `usage` has the same bill: `{"prompt_tokens": 91, "completion_tok
 </details>
 
 <details>
+<summary><b>Claude Code and Codex CLI</b></summary>
+
+Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it:
+
+```bash
+orrery router --wallet ~/.config/solana/orrery.json --alias 'claude-*=gpt-oss-120b'
+ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
+```
+
+The key is a placeholder: Claude Code will not start without one, and the router ignores it. To bill a job as one and stop it at a limit, add `ANTHROPIC_CUSTOM_HEADERS=$'x-orrery-task: my-job\nx-orrery-task-budget: 0.05'` and read the bill with `orrery spend --by task`.
+
+Codex CLI: `orrery connect codex --write`, then `codex --profile orrery`.
+</details>
+
+<details>
 <summary><b>Cursor, Continue, Aider, Open WebUI, LangChain</b></summary>
 
 | Tool | Setting |
@@ -557,6 +572,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Built-in hardware verifier for AMD SEV-SNP: the router checks an enclave's report itself, against AMD's roots, with no attestation service (`orrery enclave verify`, 0.1.8)
 - [x] Built-in verifier for Intel TDX, checked against a real quote (`orrery enclave verify --quote`), TDX nodes, task budgets for agents, burn pledges that buy on mainnet through Jupiter (`orrery provider burn`), enclave verdicts in `doctor` (0.1.9)
 - [x] A receipt on every private answer (`x-orrery-enclave` headers, kept in the router's log, `orrery sealed`), `orrery enclave verify --node` to audit a private node check by check, a `--private-only` router, a bill per job (`orrery spend --by task`, budgets that survive a restart), `orrery provider price` (0.1.10)
+- [x] Wire sealing: every request encrypted to the node's own key, signed by the node key on its listing (`x-orrery-wire`), and enclave verifiers that read AMD's and Intel's revocation lists (0.1.11)
 - [x] Revocation lists in the built-in verifiers: AMD's and Intel's signed lists are fetched from the chip maker, verified against the pinned roots and checked for the chip's certificates (in main, next release)
 - [x] Wire sealing: every request is encrypted to the node's own key (signed by the node key on chain), so a host, load balancer or firewall in front of a node sees ciphertext (in main, next release)
 - [ ] Firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
