@@ -4,10 +4,14 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.12 · 2026-11-11 13:03 UTC
+
+**Who is asking stays on your machine, and one command runs Claude Code on the network with a bill at the end.**
 
 - **Everyone** · Who is asking stays on your machine. Clients attach ids to their requests for an API company’s abuse checks: OpenAI’s `user` and `safety_identifier`, a cache key, and Anthropic’s `metadata.user_id`, which Claude Code fills with an account, device and session id. Your router now drops them before a request leaves, and a node no longer passes `user` on to its model server, whichever router sent it. The wallet is the account; a node is paid either way and has no use for a name.
 - **Router** · `orrery run claude` starts Claude Code on your router as one job. It names the network model outright, tags every request with the job and the budget you give it (`--budget 0.25`), and prints the job’s bill when Claude Code exits: answers, tokens, dollars. A key or token already in your environment is not passed on.
+
+`npx -y orrery-node@0.1.12`
 
 ## 0.1.11 · 2026-11-11 09:19 UTC
 
