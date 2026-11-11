@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { TaskBook } from '../src/router/tasks.ts';
 
 describe('task budgets', () => {
@@ -24,5 +27,15 @@ describe('task budgets', () => {
     const b = new TaskBook(2);
     b.open('a', 1n); b.open('b', 1n); b.open('c', 1n);
     assert.deepEqual(b.list().map((t) => t.name), ['c', 'b']);
+  });
+  it('with a path, a restarted router still knows what a job has spent, and drops tasks idle for a week', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'orrery-tasks-')), 'router', 'tasks.json');
+    const first = new TaskBook(1_000, path, 1_000);
+    first.open('long-job', 50_000n, 1_000);
+    first.spend('long-job', 20_000n, 2_000);
+    const second = new TaskBook(1_000, path, 3_000);
+    assert.equal(second.open('long-job', null, 3_000).left, 30_000n);
+    const weekLater = new TaskBook(1_000, path, 3_000 + 8 * 86_400_000);
+    assert.throws(() => weekLater.open('long-job', null), /no budget yet/);
   });
 });

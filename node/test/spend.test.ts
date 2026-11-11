@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { appendTrip, readTrips, summarize, windowMs } from '../src/spend.ts';
+import { appendTrip, readTrips, sealedTrips, summarize, windowMs } from '../src/spend.ts';
 
 const t = (at: number, model: string, providerName: string, cost: string, extra = {}) => ({ at, model, provider: providerName.toLowerCase(), providerName, inputTokens: 100, outputTokens: 20, cost, ...extra });
 
@@ -43,5 +43,20 @@ describe('orrery spend', () => {
     for (let i = 0; i < 5; i++) appendTrip(path, t(i, 'm', 'P', '0.000001'), 300);
     assert.equal(readTrips(path).length, 5);
     assert.ok(existsSync(`${path}.1`));
+  });
+
+  it('keeps, for a sealed answer, the enclave the router verified, and the task an agent named', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-sealed-'));
+    const path = join(dir, 'trips.jsonl');
+    const enclave = { kind: 'AMD SEV-SNP', image: 'b07af9620f3b839b47996422ddec6058', verdict: 'AMD SEV-SNP report verified (Milan)' };
+    appendTrip(path, t(1_000, 'qwen3-32b', 'Vault', '0.000011', { sealed: true, enclave, task: 'audit-7' }));
+    appendTrip(path, t(2_000, 'llama-3.3-70b', 'Seed', '0.000020', { task: 'audit-7' }));
+    appendTrip(path, t(3_000, 'llama-3.3-70b', 'Seed', '0.000005'));
+    const back = readTrips(path);
+    assert.deepEqual(back[0].enclave, enclave);
+    assert.equal(back[1].sealed, undefined);
+    assert.deepEqual(sealedTrips(back, Infinity, 5_000).map((x) => [x.providerName, x.enclave?.kind]), [['Vault', 'AMD SEV-SNP']]);
+    const byTask = summarize(back, 'task', Infinity, 5_000);
+    assert.deepEqual(byTask.rows.map((r) => [r.key, r.answers, r.units]), [['audit-7', 2, 31n], ['(no task)', 1, 5n]]);
   });
 });

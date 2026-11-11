@@ -431,7 +431,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 | `orrery provider init` | find a local model server and write a starting provider.json |
 | `orrery provider register \| show \| start \| attest \| redeem --config provider.json` | run a provider |
 
-Task budgets: send `x-orrery-task: <name>` on every request of a job and `x-orrery-task-budget: 0.05` on the first. The router keeps one running total per task, answers with `x-orrery-task-spent` and `x-orrery-task-left`, and refuses the next request once the budget is gone (`GET /orrery/tasks` lists them; over MCP, `task` and `task_budget`).
+Task budgets: send `x-orrery-task: <name>` on every request of a job and `x-orrery-task-budget: 0.05` on the first. The router keeps one running total per task, answers with `x-orrery-task-spent` and `x-orrery-task-left`, and refuses the next request once the budget is gone (`GET /orrery/tasks` lists them; over MCP, `task` and `task_budget`). Budgets are kept in `~/.orrery/router/tasks.json`, so they survive a restart, and `orrery spend --by task` adds up what each job cost from the router's own log. `orrery sealed` lists every private answer with the enclave the router had verified.
 
 Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`, `--alias` (`claude-*=llama-3.3-70b`: answer other model names with a network model). Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`), `ORRERY_ALIASES`.
 
@@ -455,7 +455,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 99 tests
+cd node && pnpm install && pnpm test                            # 101 tests
 pnpm e2e                                                        # full local rehearsal, 53 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```

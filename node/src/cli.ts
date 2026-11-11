@@ -16,7 +16,7 @@ import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { doctor, render } from './doctor.ts';
-import { readTrips, summarize, windowMs } from './spend.ts';
+import { readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -57,7 +57,8 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
   ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
-  ${CLI} spend [--since 24h|7d] [--by model|provider] [--json]   what your router paid, from its own log of answers
+  ${CLI} spend [--since 24h|7d] [--by model|provider|task] [--json]   what your router paid, from its own log of answers
+  ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
@@ -333,8 +334,19 @@ async function main() {
     if (has('json')) return console.log(JSON.stringify({ model: sub, providers: rows.map((r) => ({ name: r.name, address: r.address, asked: r.asked, answered: r.answered, ttftMsMedian: median(r.ttftMs) || null, totalMsMedian: median(r.totalMs) || null, perAnswer: r.units.length ? usd(r.units.reduce((a, b) => a + b, 0n) / BigInt(r.units.length)) : null, listed: r.price, error: r.error ?? null })) }, null, 2));
     return console.log(renderBench(sub, rows));
   }
+  if (cmd === 'sealed') {
+    // orrery sealed [--since 30d] [--json]: every private answer this router paid for, and what it had verified.
+    const since = flag('since', '30d')!;
+    const rows = sealedTrips(readTrips(home('router', 'trips.jsonl')), windowMs(since));
+    if (has('json')) return console.log(JSON.stringify(rows, null, 2));
+    if (!rows.length) return console.log(`No sealed answers in the last ${since}. Add :private to a model name to ask only nodes whose enclave this router verified.`);
+    console.log(`sealed answers, last ${since} · what this router verified before it encrypted each prompt`);
+    for (const t of rows) console.log(`${new Date(t.at).toISOString().slice(0, 16).replace('T', ' ')}  ${t.model.slice(0, 22).padEnd(23)}${t.providerName.slice(0, 20).padEnd(21)}${(t.enclave?.kind ?? 'enclave').padEnd(23)}image ${(t.enclave?.image ?? '').slice(0, 16)}…  ${t.enclave?.verdict ?? ''}`);
+    return;
+  }
   if (cmd === 'spend') {
-    const by = flag('by', 'model') === 'provider' ? 'provider' : 'model';
+    const byFlag = flag('by', 'model');
+    const by = byFlag === 'provider' || byFlag === 'task' ? byFlag : 'model';
     const since = flag('since', '24h')!;
     const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
     if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })) }, null, 2));

@@ -60,6 +60,8 @@ export type Trip = {
   sealed: boolean;
   /** For a sealed answer: the hardware this router verified before it encrypted the prompt, and the image it booted. */
   enclave?: { kind: string; image: string; verdict: string };
+  /** The job an agent named for this request with x-orrery-task. */
+  task?: string;
   fellThrough: number;
   resumed?: boolean;
   cacheKept?: boolean;
@@ -104,7 +106,7 @@ export class Router {
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private healthTimer: NodeJS.Timeout | null = null;
-  private tasks = new TaskBook();
+  private tasks = new TaskBook(1_000, home('router', 'tasks.json'));
   private taskOf = new WeakMap<ServerResponse, string>();
   private burnTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
@@ -204,7 +206,8 @@ export class Router {
       }
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {
         const since = url.searchParams.get('since') ?? '24h';
-        const by = url.searchParams.get('by') === 'provider' ? 'provider' : 'model';
+        const byParam = url.searchParams.get('by');
+        const by = byParam === 'provider' || byParam === 'task' ? byParam : 'model';
         const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
         return send(res, 200, { since, by, rows: rows.map(out), total: out(total) });
@@ -500,7 +503,7 @@ export class Router {
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, ...(key && enclave ? { enclave } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, sealed: !!key, ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);

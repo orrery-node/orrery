@@ -163,7 +163,8 @@ check('a stream ends with the billed usage and its cost only when the client ask
   `${suLast.usage?.prompt_tokens}+${suLast.usage?.completion_tokens} tok, cost ${suLast.usage?.cost} = signed $${suTrip.cost}; without the option, no usage chunk`);
 r = await ask('qwen3-32b:private');
 check('privacy route seals the request to the only enclave', nameOf(r.provider) === 'Vault Nine' && r.content.length > 20);
-check('a sealed answer names the enclave the router verified before it encrypted the prompt', r.headers?.get('x-orrery-sealed') === '1' && r.headers.get('x-orrery-enclave') === 'Intel TDX + NVIDIA CC' && /^[0-9a-f]{32}$/.test(r.headers.get('x-orrery-enclave-image') ?? '') && /dev report accepted/.test(r.headers.get('x-orrery-enclave-verdict') ?? ''), `x-orrery-enclave: ${r.headers?.get('x-orrery-enclave')} · image ${r.headers?.get('x-orrery-enclave-image')} · ${r.headers?.get('x-orrery-enclave-verdict')}`);
+const sealedLogged = readFileSync(join(process.env.ORRERY_HOME!, 'router', 'trips.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { sealed?: boolean; enclave?: { kind: string; verdict: string } }).filter((t) => t.sealed).pop();
+check('a sealed answer names the enclave the router verified before it encrypted the prompt, in its headers and in the router’s log on disk', sealedLogged?.enclave?.kind === 'Intel TDX + NVIDIA CC' && /dev report accepted/.test(sealedLogged.enclave.verdict) && r.headers?.get('x-orrery-sealed') === '1' && r.headers.get('x-orrery-enclave') === 'Intel TDX + NVIDIA CC' && /^[0-9a-f]{32}$/.test(r.headers.get('x-orrery-enclave-image') ?? '') && /dev report accepted/.test(r.headers.get('x-orrery-enclave-verdict') ?? ''), `x-orrery-enclave: ${r.headers?.get('x-orrery-enclave')} · image ${r.headers?.get('x-orrery-enclave-image')} · ${r.headers?.get('x-orrery-enclave-verdict')}`);
 r = await ask('llama-3.3-70b', { header: { 'x-orrery-route': 'privacy' } });
 check('route header works too', nameOf(r.provider) === 'Vault Nine');
 for (let i = 0; i < 3; i++) await ask('llama-3.3-70b:fast');
@@ -544,8 +545,10 @@ for (let i = 0; i < 6; i++) {
 }
 const taskList = (await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] };
 const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
+const spendByTask = (await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
+const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');
 const lastRun = taskRuns[taskRuns.length - 1];
-check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status !== 200 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1, job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
+check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status !== 200 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1 && jobSpend?.answers === job.answers && jobSpend.usd === job.spent && existsSync(join(process.env.ORRERY_HOME!, 'router', 'tasks.json')), job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
