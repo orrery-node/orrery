@@ -487,6 +487,15 @@ await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(vau
 const extraRedeemed = await vaultNode.redeemDue(1n);
 check('a provider with many channels redeems them in transactions that fit, skipping one that closed', extraRedeemed.length === 2 && extraRedeemed.every((d) => d.amount === 5n) && new Set(extraRedeemed.map((d) => d.tx)).size === 1, `${extraRedeemed.length} channels in ${new Set(extraRedeemed.map((d) => d.tx)).size} tx`);
 
+// A node operator's own readiness check, run on two of the rehearsal's nodes.
+const { providerCheck, renderCheck } = await import('../src/provider/check.ts');
+const ironCheck = await providerCheck(iron);
+const haloCheck = await providerCheck(nodes[3]);
+console.log(renderCheck('Ironbridge Compute', ironCheck).split('\n').map((l) => `    ${l}`).join('\n'));
+console.log(renderCheck('Halo Compute', haloCheck).split('\n').map((l) => `    ${l}`).join('\n'));
+const lineOf = (ls: { what: string; ok: boolean | null; detail: string }[], w: string) => ls.find((l) => l.what === w);
+check('orrery provider check tells an operator whether the node is ready to earn', lineOf(ironCheck, 'model server')?.ok !== false && lineOf(ironCheck, 'listing')?.ok === true && lineOf(ironCheck, 'node key')?.ok === true && !!lineOf(ironCheck, 'burn pledge') && lineOf(haloCheck, 'model server')?.ok === false, `Ironbridge: ${ironCheck.filter((l) => l.ok === true).length} ready, ${ironCheck.filter((l) => l.ok === false).length} to fix · Halo (model server stopped): ${lineOf(haloCheck, 'model server')?.detail}`);
+
 // Burn on every answer: Ironbridge pledged 25% of what it redeems. A local desk stands in for the market (the admin
 // sells the stand-in token at 2,500 per USDC in one transaction both sign); the burn itself is a real token burn.
 const ironWallet = wallets[1];

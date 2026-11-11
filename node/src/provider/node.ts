@@ -508,6 +508,11 @@ export class ProviderNode {
     }
   }
 
+  /** The chip certificate an SEV-SNP node serves, if it has one. */
+  vcekDer(): Buffer | null {
+    return this.vcek;
+  }
+
   /** How this node buys the network token and burns it. Unset, a pledge is listed but nothing runs. */
   burnHooks: { swap: Swapper; burn: Burner } | null = null;
 

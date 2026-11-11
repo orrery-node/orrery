@@ -21,6 +21,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseSnpReport, verifySnp } from './tee/snp.ts';
+import { providerCheck, renderCheck } from './provider/check.ts';
 import { parseTdxQuote, verifyTdx } from './tee/tdx.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
 import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
@@ -66,6 +67,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider init    find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json
       --upstream <url> --name <name> --public-url <url> --out <file> --force
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
+  ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
   ${CLI} provider start   --config provider.json
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
@@ -224,6 +226,13 @@ async function provider(sub: string) {
       return console.log(r ? `  bought and burned ${r.burned} token units for $${usd(BigInt(r.usdc))}\n  buy  ${r.swapTx}\n  burn ${r.burnTx}` : '  nothing was burned.');
     }
   } else if (sub === 'burn') throw new Error('this provider.json has no "burn": { "share": … } pledge');
+  if (sub === 'check') {
+    const lines = await providerCheck(node);
+    if (has('json')) return console.log(JSON.stringify(lines, null, 2));
+    console.log(renderCheck(cfg.name, lines));
+    process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
+    return;
+  }
   if (sub === 'start') {
     await node.listen();
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
