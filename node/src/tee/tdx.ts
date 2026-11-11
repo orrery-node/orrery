@@ -3,6 +3,7 @@
 // for the key that signed this quote, that key signed the quote, the VM was not launched in debug mode, it booted
 // the image the provider claimed on chain, and the quote names the key the router is about to seal prompts to.
 import { createHash, createPublicKey, verify as verifySig, X509Certificate, type KeyObject } from 'node:crypto';
+import type { Check } from './snp.ts';
 
 /** SHA-256 fingerprint of Intel's SGX Root CA, which TDX platform certificates chain to. */
 export const INTEL_ROOT = '44a0196b2b99f889b8e149e95b807a350e7424964399e885a7cbb8ccfab674d3';
@@ -10,7 +11,7 @@ export const INTEL_ROOT = '44a0196b2b99f889b8e149e95b807a350e7424964399e885a7cbb
 const BODY = 48, BODY_LEN = 584, SIGNED = BODY + BODY_LEN;
 
 export type TdxQuote = { version: number; debug: boolean; mrtd: Buffer; reportData: Buffer; signature: Buffer; attestKey: Buffer; qeReport: Buffer; qeSignature: Buffer; qeAuth: Buffer; certs: string[] };
-export type TdxVerdict = { ok: boolean; reason: string; quote?: TdxQuote };
+export type TdxVerdict = { ok: boolean; reason: string; quote?: TdxQuote; checks?: Check[] };
 
 export function parseTdxQuote(raw: Buffer): TdxQuote {
   if (raw.length < SIGNED + 4 + 128) throw new Error('too short to be a TDX quote');
@@ -55,17 +56,22 @@ export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: B
   } catch {
     return { ok: false, reason: 'the platform certificate could not be read', quote: q };
   }
+  // Every check runs, so a caller can show all of them; the verdict is the first one that failed.
   const now = o.now ?? new Date();
   const chained = createHash('sha256').update(root.raw).digest('hex') === (o.root ?? INTEL_ROOT) && root.verify(root.publicKey) && mid.verify(root.publicKey) && pck.verify(mid.publicKey) && [root, mid, pck].every((c) => current(c, now));
-  if (!chained) return { ok: false, reason: 'the platform certificate does not chain to Intel’s root', quote: q };
-  if (!verifySig('sha256', q.qeReport, { key: pck.publicKey, dsaEncoding: 'ieee-p1363' }, q.qeSignature)) return { ok: false, reason: 'Intel’s quoting enclave report is not signed by that platform', quote: q };
-  const bound = createHash('sha256').update(q.attestKey).update(q.qeAuth).digest();
-  if (!q.qeReport.subarray(320, 352).equals(bound)) return { ok: false, reason: 'the quoting enclave did not vouch for the key that signed this quote', quote: q };
-  if (!verifySig('sha256', o.quote.subarray(0, SIGNED), { key: p256(q.attestKey), dsaEncoding: 'ieee-p1363' }, q.signature)) return { ok: false, reason: 'the quote is not signed by the attested key', quote: q };
-  if (q.debug && !o.allowDebug) return { ok: false, reason: 'the VM was launched with debugging allowed, so its memory can be read by the host', quote: q };
-  if (!q.mrtd.equals(o.measurement)) return { ok: false, reason: 'the VM booted a different image than the one claimed on chain', quote: q };
-  if (!q.reportData.subarray(0, 32).equals(o.enclaveKey)) return { ok: false, reason: 'the quote does not name this encryption key', quote: q };
-  return { ok: true, reason: 'Intel TDX quote verified', quote: q };
+  const qeSigned = verifySig('sha256', q.qeReport, { key: pck.publicKey, dsaEncoding: 'ieee-p1363' }, q.qeSignature);
+  const vouched = q.qeReport.subarray(320, 352).equals(createHash('sha256').update(q.attestKey).update(q.qeAuth).digest());
+  const signed = verifySig('sha256', o.quote.subarray(0, SIGNED), { key: p256(q.attestKey), dsaEncoding: 'ieee-p1363' }, q.signature);
+  const checks: Check[] = [
+    { name: 'platform certificate', ok: chained, detail: chained ? "chains to Intel's root (pinned)" : 'the platform certificate does not chain to Intel’s root' },
+    { name: 'quoting enclave', ok: qeSigned && vouched, detail: !qeSigned ? 'Intel’s quoting enclave report is not signed by that platform' : !vouched ? 'the quoting enclave did not vouch for the key that signed this quote' : "Intel's quoting enclave vouches for the signing key" },
+    { name: 'signature', ok: signed, detail: signed ? 'that key signed this exact quote' : 'the quote is not signed by the attested key' },
+    { name: 'debugging', ok: !q.debug || !!o.allowDebug, detail: !q.debug ? "off: the host cannot read this VM's memory" : o.allowDebug ? 'allowed (accepted because you said so)' : 'the VM was launched with debugging allowed, so its memory can be read by the host' },
+    { name: 'image', ok: q.mrtd.equals(o.measurement), detail: q.mrtd.equals(o.measurement) ? `booted ${q.mrtd.toString('hex').slice(0, 32)}…` : 'the VM booted a different image than the one claimed on chain' },
+    { name: 'encryption key', ok: q.reportData.subarray(0, 32).equals(o.enclaveKey), detail: q.reportData.subarray(0, 32).equals(o.enclaveKey) ? `the quote names ${o.enclaveKey.toString('hex').slice(0, 32)}…` : 'the quote does not name this encryption key' },
+  ];
+  const failed = checks.find((c) => !c.ok);
+  return { ok: !failed, reason: failed ? failed.detail : 'Intel TDX quote verified', quote: q, checks };
 }
 
 /** What a node lists on chain from its TDX quote: the image it booted. Refuses a quote made for another key. */

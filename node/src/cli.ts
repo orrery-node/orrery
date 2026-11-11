@@ -23,6 +23,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
 import { parseTdxQuote, verifyTdx } from './tee/tdx.ts';
+import { auditEnclave, renderChecks } from './tee/audit.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
 import { jupQuote, jupiterSwapper } from './burn-jupiter.ts';
 
@@ -59,7 +60,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
-  ${CLI} enclave verify --report <file> --vcek <file> | --quote <file>   check an AMD SEV-SNP report or an Intel TDX quote here, against the chip maker’s roots
+  ${CLI} enclave verify --node <listing> | --report <file> --vcek <file> | --quote <file>   audit a private node, or check an AMD SEV-SNP report or Intel TDX quote, here, against the chip maker’s roots
   ${CLI} providers               every listed provider, what the chain says about it, and whether its model server answers
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
@@ -350,31 +351,38 @@ async function main() {
     return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows));
   }
   if (cmd === 'enclave') {
-    // orrery enclave verify: check an AMD SEV-SNP report (--report, --vcek) or an Intel TDX quote (--quote) on your own machine.
-    const reportPath = flag('report'), vcekPath = flag('vcek'), quotePath = flag('quote');
-    if (argv[1] !== 'verify' || !(quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug]');
+    // orrery enclave verify: every check a router runs before it seals a prompt, one line each, on your own machine.
+    //   --node <listing>            a node on the network: its claim from chain, its report from the node itself
+    //   --report <f> --vcek <f>     an AMD SEV-SNP report and the chip's certificate
+    //   --quote <f>                 an Intel TDX quote
+    const reportPath = flag('report'), vcekPath = flag('vcek'), quotePath = flag('quote'), nodeAddr = flag('node');
+    if (argv[1] !== 'verify' || !(nodeAddr || quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --node <listing address> | --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug]');
     const want = (own: Buffer, name: string) => (flag(name) ? Buffer.from(flag(name)!, 'hex') : Buffer.from(own));
-    if (quotePath) {
-      const quote = readFileSync(expand(quotePath));
-      const parsed = parseTdxQuote(quote);
-      const v = verifyTdx({ quote, measurement: want(parsed.mrtd, 'measurement'), enclaveKey: want(parsed.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') });
-      console.log(`${v.ok ? '✓' : '✗'} ${v.reason}`);
-      console.log(`  image booted       ${parsed.mrtd.toString('hex').slice(0, 32)}…${flag('measurement') ? '' : '  (pass --measurement to require one)'}`);
-      console.log(`  encryption key     ${parsed.reportData.subarray(0, 32).toString('hex').slice(0, 32)}…`);
-      console.log(`  debugging          ${parsed.debug ? 'allowed: the host could read this VM’s memory' : 'off'}`);
-      console.log('  checked on this computer with Intel’s public root; no attestation service was asked.');
-      process.exitCode = v.ok ? 0 : 1;
+    if (nodeAddr) {
+      const info = await new Connection(rpc(), 'confirmed').getAccountInfo(new PublicKey(nodeAddr));
+      if (!info) throw new Error(`no listing at ${nodeAddr}; orrery providers prints every listing's address`);
+      const p = decodeProvider(info.data);
+      const audit = await auditEnclave(p, { allowDebug: has('allow-debug') });
+      if (has('json')) console.log(JSON.stringify(audit, null, 2));
+      else {
+        console.log(`${nodeAddr} · ${p.endpoint}`);
+        console.log(renderChecks(audit.checks) || '· this node does not claim an enclave');
+        console.log(audit.ok ? `\n${audit.reason}.` : `\nNot verified: ${audit.reason}. A router sends this node no private prompts.`);
+        if (audit.checks.length) console.log('Checked on this computer against the chip maker’s roots; no attestation service was asked.');
+      }
+      process.exitCode = audit.ok ? 0 : 1;
       return;
     }
-    const report = readFileSync(expand(reportPath!)), vcek = readFileSync(expand(vcekPath!));
-    const parsed = parseSnpReport(report);
-    const v = verifySnp({ report, vcek, measurement: want(parsed.measurement, 'measurement'), enclaveKey: want(parsed.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') });
-    console.log(`${v.ok ? '✓' : '✗'} ${v.reason}`);
-    console.log(`  chip certificate   ${v.family ? `chains to AMD’s ${v.family} root (pinned)` : 'not AMD’s'}`);
-    console.log(`  image booted       ${parsed.measurement.toString('hex').slice(0, 32)}…${flag('measurement') ? '' : '  (pass --measurement to require one)'}`);
-    console.log(`  encryption key     ${parsed.reportData.subarray(0, 32).toString('hex').slice(0, 32)}…`);
-    console.log(`  debugging          ${parsed.debug ? 'allowed by the launch policy: the host could read this VM’s memory' : 'off'}`);
-    console.log('  checked on this computer with AMD’s public roots; no attestation service was asked.');
+    const v = quotePath
+      ? (() => { const quote = readFileSync(expand(quotePath)); const q = parseTdxQuote(quote); return verifyTdx({ quote, measurement: want(q.mrtd, 'measurement'), enclaveKey: want(q.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') }); })()
+      : (() => { const report = readFileSync(expand(reportPath!)); const r = parseSnpReport(report); return verifySnp({ report, vcek: readFileSync(expand(vcekPath!)), measurement: want(r.measurement, 'measurement'), enclaveKey: want(r.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug') }); })();
+    if (has('json')) console.log(JSON.stringify({ ok: v.ok, reason: v.reason, checks: v.checks ?? [] }, null, 2));
+    else {
+      console.log(v.checks?.length ? renderChecks(v.checks) : `✗ ${v.reason}`);
+      console.log(v.ok ? `\n${v.reason}.` : `\nNot verified: ${v.reason}.`);
+      if (!flag('measurement')) console.log('The image is taken from the report itself; pass --measurement <hex> to require the one you expect.');
+      console.log(`Checked on this computer with ${quotePath ? 'Intel’s public root' : 'AMD’s public roots'}; no attestation service was asked.`);
+    }
     process.exitCode = v.ok ? 0 : 1;
     return;
   }

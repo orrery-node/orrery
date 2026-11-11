@@ -18,7 +18,9 @@ const REPORT_LEN = 0x4a0;
 const DEBUG_BIT = 1n << 19n;
 
 export type SnpReport = { version: number; policy: bigint; debug: boolean; reportData: Buffer; measurement: Buffer; chipId: Buffer };
-export type SnpVerdict = { ok: boolean; reason: string; family?: string; report?: SnpReport };
+/** One step of a verification: what was looked at, whether it held, and what was found. */
+export type Check = { name: string; ok: boolean; detail: string };
+export type SnpVerdict = { ok: boolean; reason: string; family?: string; report?: SnpReport; checks?: Check[] };
 
 export function parseSnpReport(raw: Buffer): SnpReport {
   if (raw.length < REPORT_LEN) throw new Error(`a SEV-SNP report is ${REPORT_LEN} bytes, got ${raw.length}`);
@@ -65,14 +67,18 @@ export function verifySnp(o: { report: Buffer; vcek: Buffer; measurement: Buffer
   } catch {
     return { ok: false, reason: 'the chip certificate (VCEK) could not be read' };
   }
+  // Every check runs, so a caller can show all five; the verdict is the first one that failed.
   const family = chainOf(vcek, o.now ?? new Date(), o.chains ?? AMD_CHAINS, o.roots ?? AMD_ROOTS);
-  if (!family) return { ok: false, reason: 'the chip certificate does not chain to an AMD root', report };
   const signed = verifySig('sha384', o.report.subarray(0, SIGNED), { key: vcek.publicKey, dsaEncoding: 'ieee-p1363' }, signatureOf(o.report));
-  if (!signed) return { ok: false, reason: 'the report is not signed by that chip', family, report };
-  if (report.debug && !o.allowDebug) return { ok: false, reason: 'the VM was launched with debugging allowed, so its memory can be read by the host', family, report };
-  if (!report.measurement.equals(o.measurement)) return { ok: false, reason: 'the VM booted a different image than the one claimed on chain', family, report };
-  if (!report.reportData.subarray(0, 32).equals(o.enclaveKey)) return { ok: false, reason: 'the report does not name this encryption key', family, report };
-  return { ok: true, reason: `AMD SEV-SNP report verified (${family})`, family, report };
+  const checks: Check[] = [
+    { name: 'chip certificate', ok: !!family, detail: family ? `chains to AMD's ${family} root (pinned)` : 'the chip certificate does not chain to an AMD root' },
+    { name: 'signature', ok: signed, detail: signed ? 'the report carries that chip\'s signature' : 'the report is not signed by that chip' },
+    { name: 'debugging', ok: !report.debug || !!o.allowDebug, detail: !report.debug ? 'off: the host cannot read this VM\'s memory' : o.allowDebug ? 'allowed by the launch policy (accepted because you said so)' : 'the VM was launched with debugging allowed, so its memory can be read by the host' },
+    { name: 'image', ok: report.measurement.equals(o.measurement), detail: report.measurement.equals(o.measurement) ? `booted ${report.measurement.toString('hex').slice(0, 32)}…` : 'the VM booted a different image than the one claimed on chain' },
+    { name: 'encryption key', ok: report.reportData.subarray(0, 32).equals(o.enclaveKey), detail: report.reportData.subarray(0, 32).equals(o.enclaveKey) ? `the report names ${o.enclaveKey.toString('hex').slice(0, 32)}…` : 'the report does not name this encryption key' },
+  ];
+  const failed = checks.find((c) => !c.ok);
+  return { ok: !failed, reason: failed ? failed.detail : `AMD SEV-SNP report verified (${family})`, family: family ?? undefined, report, checks };
 }
 
 /** The 64 bytes a node asks its CPU to put in the report (`snpguest report --request-data`): its encryption key, then zeros. */

@@ -422,6 +422,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 | `orrery router --wallet <keypair> --rpc <url>` | run the router on `127.0.0.1:7171` |
 | `orrery models` | every model on the network, cheapest price, provider count |
 | `orrery provider check --config provider.json` | is this node ready to earn: model server, public address, listing, fee money, enclave, pledge |
+| `orrery enclave verify --node <listing>` | audit a private node: its claim from chain, its report from the node, every check a router runs (`--report --vcek` and `--quote` check a file) |
 | `orrery providers` | every listing, what the chain says about it and whether its model server answers |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed |
 | `orrery close <channel> --wallet <keypair>` | start closing (the provider gets a grace period to redeem) |
@@ -453,7 +454,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 93 tests
+cd node && pnpm install && pnpm test                            # 96 tests
 pnpm e2e                                                        # full local rehearsal, 53 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
