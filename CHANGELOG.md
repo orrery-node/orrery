@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider price --config provider.json` reprices your node against the open market: for each model it finds the cheapest other listing on chain and goes a margin under it (`--beat 5`), never below your own floor (`--floor 0.03/0.12`) and never upward. It shows the plan first and saves it with `--write`.
 - **Everyone** · Audit any private node yourself: `orrery enclave verify --node <listing>` reads the node’s enclave claim from Solana, asks the node for the report its CPU signed, and prints every check a router runs, one line each. `--report` and `--quote` print the same check-by-check result, and `--json` gives it to scripts.
 - **Router** · A sealed answer says where it ran. On `:private`, the response carries `x-orrery-enclave` (the hardware), `x-orrery-enclave-image` (the image it booted) and `x-orrery-enclave-verdict` (what your router verified before it encrypted the prompt). The router’s log and console keep the same record for every sealed request.
 

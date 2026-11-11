@@ -22,6 +22,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
+import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
@@ -74,6 +75,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
   ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
+  ${CLI} provider price   --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
 
   --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
@@ -184,6 +186,24 @@ async function provider(sub: string) {
     const rows = compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), registry.usable(), self);
     if (has('json')) return console.log(JSON.stringify(rows.map((r) => ({ ...r, myCost: usd(r.myCost), lowestCost: r.lowestCost === null ? null : usd(r.lowestCost) })), null, 2));
     return console.log(renderCompare(cfg.name, rows));
+  }
+  if (sub === 'price') {
+    // orrery provider price --config provider.json [--beat 5] [--floor 0.02/0.08] [--write]
+    const registry = new Registry(new Connection(cfg.rpcUrl ?? rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    await registry.refresh();
+    const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : null;
+    const beatPct = Number(flag('beat', '5'));
+    if (!Number.isFinite(beatPct) || beatPct < 0 || beatPct >= 100) throw new Error('--beat is a percentage under the cheapest listing, 0 to 99');
+    const rows = reprice(cfg.models.map((m) => ({ id: m.id, price: m.price })), registry.usable(), self, { beatPct, floor: parseCeiling(flag('floor')) });
+    if (has('json')) return console.log(JSON.stringify(rows, null, 2));
+    const write = has('write') && rows.some((r) => r.changed);
+    if (write) {
+      // Only the prices change in the file; everything else is written back as it was read.
+      const raw = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
+      for (const r of rows) if (r.changed) raw.models.find((m) => m.id === r.model)!.price = r.to;
+      writeFileSync(expand(cfgPath), `${JSON.stringify(raw, null, 2)}\n`);
+    }
+    return console.log(renderReprice(cfg.name, rows, write));
   }
   if (sub === 'earnings') {
     const by = flag('by', 'model') === 'channel' ? 'provider' : 'model';
