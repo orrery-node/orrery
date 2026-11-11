@@ -6,8 +6,9 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
 import { verifySnp } from '../tee/snp.ts';
-import { verifyTdx } from '../tee/tdx.ts';
+import { tdxFmspc, verifyTdx } from '../tee/tdx.ts';
 import { fetchCrls } from '../tee/crl.ts';
+import { fetchTcbInfo } from '../tee/tcb.ts';
 import { ed25519Verify, home } from '../keys.ts';
 import { wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
@@ -126,7 +127,9 @@ export class Registry {
         // The chip maker's revocation lists are read too (cached on disk for twelve hours); a revoked chip is refused.
         const crls = p.teeKind === 1 || p.teeKind === 2 ? await fetchCrls(p.teeKind === 2 ? 'amd' : 'intel', home('crl')).catch(() => [] as Buffer[]) : [];
         if (p.teeKind === 1) {
-          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls });
+          // Intel's TCB list for the platform family says whether its microcode and TDX module are current; out of date is refused.
+          const tcb = await fetchTcbInfo(tdxFmspc(report) ?? '', home('tcb')).catch(() => null);
+          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, tcb });
           return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
         }
         if (p.teeKind !== 2) return { verified: false, dev: false, reason: `no built-in verifier for ${TEE_KINDS[p.teeKind] ?? 'this enclave kind'} yet`, enclaveKey };

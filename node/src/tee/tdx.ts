@@ -5,6 +5,7 @@
 import { createHash, createPublicKey, verify as verifySig, X509Certificate, type KeyObject } from 'node:crypto';
 import type { Check } from './snp.ts';
 import { revocation } from './crl.ts';
+import { acceptable, platformTcb, readTcbInfo, tcbStatus, type TcbSource } from './tcb.ts';
 
 /** SHA-256 fingerprint of Intel's SGX Root CA, which TDX platform certificates chain to. */
 export const INTEL_ROOT = '44a0196b2b99f889b8e149e95b807a350e7424964399e885a7cbb8ccfab674d3';
@@ -43,7 +44,16 @@ function p256(raw: Buffer): KeyObject {
 
 const current = (c: X509Certificate, now: Date) => new Date(c.validFrom) <= now && now <= new Date(c.validTo);
 
-export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; root?: string; crls?: Buffer[] }): TdxVerdict {
+/** The platform family (FMSPC) in a quote's certificate: what Intel's TCB list is asked for. Null if it cannot be read. */
+export function tdxFmspc(quote: Buffer): string | null {
+  try {
+    return platformTcb(new X509Certificate(parseTdxQuote(quote).certs[0]), quote).fmspc;
+  } catch {
+    return null;
+  }
+}
+
+export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: Buffer; now?: Date; allowDebug?: boolean; root?: string; crls?: Buffer[]; tcb?: TcbSource | null; allowOutdated?: boolean }): TdxVerdict {
   let q: TdxQuote;
   try {
     q = parseTdxQuote(o.quote);
@@ -77,6 +87,28 @@ export function verifyTdx(o: { quote: Buffer; measurement: Buffer; enclaveKey: B
     checks.splice(1, 0, leaf.revoked || ca.revoked ? { name: 'revocation', ok: false, detail: leaf.revoked ? 'Intel has revoked this platform’s certificate' : 'Intel has revoked the CA that issued this platform’s certificate' }
       : !leaf.checked ? { name: 'revocation', ok: true, skipped: true, detail: "Intel's current revocation list could not be read; not checked" }
       : { name: 'revocation', ok: true, detail: `not on Intel's revocation list (${leaf.listed} platforms revoked, list of ${leaf.asOf!.toISOString().slice(0, 10)})` });
+  }
+  // Intel's TCB list for this platform family, when the caller has it: is the microcode and TDX module it runs current?
+  if (o.tcb !== undefined) {
+    const skip = (why: string): Check => ({ name: 'patch level', ok: true, skipped: true, detail: `${why}; not checked` });
+    let level: Check;
+    const read = o.tcb ? readTcbInfo(o.tcb.body, o.tcb.chain, { root: o.root ?? INTEL_ROOT, now }) : null;
+    if (!read) level = skip("Intel's TCB list for this platform could not be read");
+    else if ('problem' in read) level = skip(read.problem);
+    else {
+      try {
+        const v = tcbStatus(platformTcb(pck, o.quote), read.info);
+        const said = `Intel lists this platform as ${v.status}${v.tcbDate ? ` (level of ${v.tcbDate.slice(0, 10)})` : ''}`;
+        const anyway = o.allowOutdated ? ', accepted because you said so' : '';
+        level = v.status === 'Unsupported' ? { name: 'patch level', ok: !!o.allowOutdated, detail: `older than every level Intel supports (${v.module ?? v.platform})${anyway}` }
+          : acceptable(v.status) ? { name: 'patch level', ok: true, detail: `${said}${v.advisories.length ? `, with ${v.advisories.length} ${v.advisories.length === 1 ? 'advisory' : 'advisories'} to read` : ''}` }
+          : { name: 'patch level', ok: !!o.allowOutdated, detail: `${said}: fixes Intel has published are missing${anyway}` };
+      } catch (e) {
+        level = skip((e as Error).message);
+      }
+    }
+    const at = checks.findIndex((c) => c.name === 'revocation');
+    checks.splice(at >= 0 ? at + 1 : 1, 0, level);
   }
   const failed = checks.find((c) => !c.ok);
   return { ok: !failed, reason: failed ? failed.detail : 'Intel TDX quote verified', quote: q, checks };

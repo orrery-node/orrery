@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The Intel TDX verifier checks the chip’s patch level. A quote says which microcode and TDX module the platform runs; Intel publishes a signed list of which versions are current for each platform family. Your router fetches that list from Intel, checks its signature against the same pinned root, and refuses an enclave Intel lists as out of date, revoked or unsupported. `orrery enclave verify` prints it as its own line (`--allow-outdated` to look anyway, `--offline` to skip). On the sample quote we test with, it says what Intel says: older than every level Intel supports.
 - **Router** · An answer says what your router withheld. When a client attached ids (`user`, `metadata`, `safety_identifier`, a cache key), the response carries `x-orrery-withheld` with their names, never their values, and the router’s log line and record of the answer say the same.
 
 ## 0.1.12 · 2026-11-11 13:03 UTC

@@ -4,12 +4,13 @@
 import { createHash } from 'node:crypto';
 import { TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
 import { verifySnp, type Check } from './snp.ts';
-import { verifyTdx } from './tdx.ts';
+import { tdxFmspc, verifyTdx } from './tdx.ts';
+import type { TcbSource } from './tcb.ts';
 
 type Fetch = (url: string) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 export type Audit = { ok: boolean; kind: string; reason: string; checks: Check[] };
 
-export async function auditEnclave(p: ProviderAccount, o: { fetchFn?: Fetch; now?: Date; allowDebug?: boolean; crls?: Buffer[] } = {}): Promise<Audit> {
+export async function auditEnclave(p: ProviderAccount, o: { fetchFn?: Fetch; now?: Date; allowDebug?: boolean; crls?: Buffer[]; tcbFor?: (fmspc: string) => Promise<TcbSource | null>; allowOutdated?: boolean } = {}): Promise<Audit> {
   const kind = TEE_KINDS[p.teeKind] ?? 'enclave';
   if (p.teeKind === 0) return { ok: false, kind: 'none', reason: 'this node does not claim an enclave', checks: [] };
   const now = o.now ?? new Date();
@@ -33,7 +34,7 @@ export async function auditEnclave(p: ProviderAccount, o: { fetchFn?: Fetch; now
   }
   if (dev) checks.push({ name: 'hardware', ok: false, detail: 'a software stand-in for local testing, not a hardware report' });
   else if (p.teeKind === 2) checks.push(...(a.vcek ? verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey: Buffer.from(p.teeKey), now, allowDebug: o.allowDebug, crls: o.crls }).checks ?? [{ name: 'hardware', ok: false, detail: 'the report could not be read' }] : [{ name: 'chip certificate', ok: false, detail: 'the node did not serve its chip certificate' }]));
-  else if (p.teeKind === 1) checks.push(...(verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey: Buffer.from(p.teeKey), now, allowDebug: o.allowDebug, crls: o.crls }).checks ?? [{ name: 'hardware', ok: false, detail: 'the quote could not be read' }]));
+  else if (p.teeKind === 1) checks.push(...(verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey: Buffer.from(p.teeKey), now, allowDebug: o.allowDebug, crls: o.crls, allowOutdated: o.allowOutdated, ...(o.tcbFor ? { tcb: await o.tcbFor(tdxFmspc(report) ?? '').catch(() => null) } : {}) }).checks ?? [{ name: 'hardware', ok: false, detail: 'the quote could not be read' }]));
   else checks.push({ name: 'hardware', ok: false, detail: `no built-in verifier for ${kind} yet` });
   const failed = checks.find((c) => !c.ok);
   return { ok: !failed, kind, reason: failed ? failed.detail : `${kind} verified: a router would seal prompts to this node`, checks };

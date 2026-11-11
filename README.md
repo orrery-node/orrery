@@ -486,7 +486,7 @@ assets/    brand and README media
 
 ```bash
 cd program && anchor build --arch v2 && cargo test -p orrery   # 2 unit + 13 LiteSVM tests on the compiled program
-cd node && pnpm install && pnpm test                            # 122 tests
+cd node && pnpm install && pnpm test                            # 129 tests
 pnpm e2e                                                        # full local rehearsal, 57 checks
 cd web && pnpm install && pnpm dev                              # http://localhost:3870
 ```
@@ -592,7 +592,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] End-user ids dropped by the router before a request leaves (`user`, `safety_identifier`, a cache key, Anthropic `metadata.user_id`), no `user` passed upstream by a node, and `orrery run claude` with a budget and a bill (0.1.12)
 - [x] Revocation lists in the built-in verifiers: AMD's and Intel's signed lists are fetched from the chip maker, verified against the pinned roots and checked for the chip's certificates (in main, next release)
 - [x] Wire sealing: every request is encrypted to the node's own key (signed by the node key on chain), so a host, load balancer or firewall in front of a node sees ciphertext (in main, next release)
-- [ ] Firmware (TCB) status in the built-in verifiers; NVIDIA GPU attestation
+- [x] Intel's patch level (TCB) in the TDX verifier: the platform's microcode and TDX module versions are read from the quote, Intel's signed TCB list for that platform family is fetched and verified against the pinned root, and a platform Intel lists as out of date, revoked or unsupported is refused (`--allow-outdated` to look anyway; in main, next release)
+- [ ] AMD firmware level against a minimum in the SEV-SNP verifier; NVIDIA GPU attestation
 - [ ] $OREY bonds live on mainnet
 
 ## Contributing
