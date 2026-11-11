@@ -84,3 +84,13 @@ describe('AMD firmware level', async () => {
     assert.equal(firmwareCheck({ reported: at, reportChip: parsed.chipId, chip: null, family: 'Milan' }).skipped, true);
   });
 });
+
+it('the firmware floor is the router flag when given, else the environment, else none', async () => {
+  const { firmwareFloor, parseFirmware } = await import('../src/tee/snp.ts');
+  const flag = parseFirmware('4.0.9.120');
+  assert.deepEqual(firmwareFloor(flag, '3.0.8.115'), { bootloader: 4, tee: 0, snp: 9, microcode: 120 });
+  assert.deepEqual(firmwareFloor(null, '3.0.8.115'), { bootloader: 3, tee: 0, snp: 8, microcode: 115 });
+  assert.deepEqual(firmwareFloor(undefined, '3.0.8.115'), { bootloader: 3, tee: 0, snp: 8, microcode: 115 });
+  assert.equal(firmwareFloor(null, undefined), null);
+  assert.equal(firmwareFloor(null, 'not a level'), null);
+});

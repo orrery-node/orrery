@@ -69,6 +69,12 @@ export function chipFirmware(vcek: X509Certificate): { firmware: Firmware; chipI
 const PARTS = ['bootloader', 'tee', 'snp', 'microcode'] as const;
 const level = (f: Firmware) => PARTS.map((p) => `${p === 'bootloader' ? 'boot loader' : p} ${f[p]}`).join(' · ');
 /** `2.0.5.68` → a firmware level; null when it is not four numbers. */
+/** The firmware floor a router enforces: what it was started with (--min-firmware), else ORRERY_SNP_MIN_FIRMWARE,
+ * else none. A floor that does not parse is no floor here; the CLI refuses a bad flag before this is reached. */
+export function firmwareFloor(flag: Firmware | null | undefined, env: string | undefined): Firmware | null {
+  return flag ?? parseFirmware(env ?? '');
+}
+
 export function parseFirmware(s: string): Firmware | null {
   const n = s.split('.').map(Number);
   return n.length === 4 && n.every((v) => Number.isInteger(v) && v >= 0 && v <= 255) ? { bootloader: n[0], tee: n[1], snp: n[2], microcode: n[3] } : null;

@@ -5,7 +5,7 @@ import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../b
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
-import { parseFirmware, verifySnp } from '../tee/snp.ts';
+import { firmwareFloor, verifySnp, type Firmware } from '../tee/snp.ts';
 import { tdxFmspc, verifyTdx } from '../tee/tdx.ts';
 import { fetchCrls } from '../tee/crl.ts';
 import { fetchTcbInfo } from '../tee/tcb.ts';
@@ -36,7 +36,9 @@ export type ProviderEntry = {
   burn?: { share: number; spent: bigint; burned: bigint; receipts: number; kept: number; checkedAt: number };
 };
 
-export type TeePolicy = { allowDev: boolean; measurements: string[]; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
+/** What this router asks of an enclave beyond a valid report: which images, how old the chip's firmware may be
+ * (AMD: a floor you set; Intel: whether a platform Intel lists as out of date is still accepted). */
+export type TeePolicy = { allowDev: boolean; measurements: string[]; minFirmware?: Firmware | null; allowOutdated?: boolean; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
 
 export class Registry {
   entries = new Map<string, ProviderEntry>();
@@ -129,13 +131,13 @@ export class Registry {
         if (p.teeKind === 1) {
           // Intel's TCB list for the platform family says whether its microcode and TDX module are current; out of date is refused.
           const tcb = await fetchTcbInfo(tdxFmspc(report) ?? '', home('tcb')).catch(() => null);
-          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, tcb });
+          const v = verifyTdx({ quote: report, measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, tcb, allowOutdated: this.tee.allowOutdated });
           return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
         }
         if (p.teeKind !== 2) return { verified: false, dev: false, reason: `no built-in verifier for ${TEE_KINDS[p.teeKind] ?? 'this enclave kind'} yet`, enclaveKey };
         if (!a.vcek) return { verified: false, dev: false, reason: 'the node did not serve its chip certificate', enclaveKey };
-        // ORRERY_SNP_MIN_FIRMWARE=3.0.8.115 refuses AMD chips below that level; without it the level only has to be the chip key's own.
-        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, minFirmware: parseFirmware(process.env.ORRERY_SNP_MIN_FIRMWARE ?? '') });
+        // --min-firmware 3.0.8.115 (or ORRERY_SNP_MIN_FIRMWARE) refuses AMD chips below that level; without it the level only has to be the chip key's own.
+        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, minFirmware: firmwareFloor(this.tee.minFirmware, process.env.ORRERY_SNP_MIN_FIRMWARE) });
         return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
       }
       const ok = await this.tee.verifier(a, p);

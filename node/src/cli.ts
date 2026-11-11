@@ -55,6 +55,9 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
+      --enclave-images <hex,...> only seal prompts to enclaves that booted one of these images
+      --min-firmware <b.t.s.m>  refuse AMD enclaves below this firmware level, e.g. 3.0.8.115 (env ORRERY_SNP_MIN_FIRMWARE)
+      --allow-outdated          accept Intel enclaves that Intel lists as out of date (refused by default)
       --allow-dev-enclaves      accept software attestation (local testing only)
   ${CLI} mcp                     an MCP server on stdio for agents, in front of your running router
       --router <url>            the router to use (default http://127.0.0.1:${ROUTER_PORT})
@@ -96,7 +99,9 @@ async function router() {
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const route = (flag('route', 'auto') as Route);
   if (!ROUTES.includes(route)) throw new Error(`unknown route ${route}`);
-  const registry = new Registry(conn, { allowDev: has('allow-dev-enclaves'), measurements: (flag('enclave-images', '') ?? '').split(',').filter(Boolean) });
+  const minFirmware = flag('min-firmware') ? parseFirmware(flag('min-firmware')!) : null;
+  if (flag('min-firmware') && !minFirmware) throw new Error('--min-firmware is four numbers: <boot loader>.<tee>.<snp>.<microcode>, e.g. 3.0.8.115');
+  const registry = new Registry(conn, { allowDev: has('allow-dev-enclaves'), measurements: (flag('enclave-images', '') ?? '').split(',').filter(Boolean), minFirmware, allowOutdated: has('allow-outdated') });
   const channels = new Channels(conn, wallet, session, mint(), home('router', 'channels.json'), {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });
