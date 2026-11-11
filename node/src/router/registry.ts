@@ -5,7 +5,7 @@ import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../b
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { ACCOUNT, decodeConfig, decodeProvider, pda, programId, TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
-import { verifySnp } from '../tee/snp.ts';
+import { parseFirmware, verifySnp } from '../tee/snp.ts';
 import { tdxFmspc, verifyTdx } from '../tee/tdx.ts';
 import { fetchCrls } from '../tee/crl.ts';
 import { fetchTcbInfo } from '../tee/tcb.ts';
@@ -134,7 +134,8 @@ export class Registry {
         }
         if (p.teeKind !== 2) return { verified: false, dev: false, reason: `no built-in verifier for ${TEE_KINDS[p.teeKind] ?? 'this enclave kind'} yet`, enclaveKey };
         if (!a.vcek) return { verified: false, dev: false, reason: 'the node did not serve its chip certificate', enclaveKey };
-        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls });
+        // ORRERY_SNP_MIN_FIRMWARE=3.0.8.115 refuses AMD chips below that level; without it the level only has to be the chip key's own.
+        const v = verifySnp({ report, vcek: Buffer.from(a.vcek, 'base64'), measurement: Buffer.from(p.teeMeasurement), enclaveKey, crls, minFirmware: parseFirmware(process.env.ORRERY_SNP_MIN_FIRMWARE ?? '') });
         return { verified: v.ok, dev: false, reason: v.reason, enclaveKey };
       }
       const ok = await this.tee.verifier(a, p);

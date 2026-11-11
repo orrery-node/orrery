@@ -72,7 +72,7 @@ export default async function Private() {
           Add <code>:private</code> to a model name and your router only uses nodes running inside a hardware enclave. It verifies the enclave itself, against the chip maker’s roots, then encrypts the prompt to a key that never leaves it. No attestation service is asked, and nobody has to be believed.
         </p>
 
-        <p className="brn__stage"><b>Where this stands.</b> The built-in verifier covers AMD SEV-SNP and Intel TDX as of orrery-node 0.1.9, each run against a real report from that hardware. Since 0.1.11 it reads the chip makers’ revocation lists. Intel’s patch-level list is read in main and ships next; an AMD report’s firmware level is not yet held to a minimum. Nodes with a verified enclave appear below as operators list them.</p>
+        <p className="brn__stage"><b>Where this stands.</b> The built-in verifier covers AMD SEV-SNP and Intel TDX as of orrery-node 0.1.9, each run against a real report from that hardware. Since 0.1.11 it reads the chip makers’ revocation lists. In main and shipping next: Intel’s signed patch-level list is read and out-of-date platforms are refused, and an AMD report’s firmware level must be the one its chip key was issued for, with a minimum you can set. Nodes with a verified enclave appear below as operators list them.</p>
 
         <h2 className="brn__h2">Who can read your prompt</h2>
         <div className="brn__wrap">

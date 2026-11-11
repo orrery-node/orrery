@@ -6,38 +6,27 @@
 import { createHash, verify as verifySig, X509Certificate } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { derInt, valueAfter } from './der.ts';
 
 /** What a platform runs, as its PCK certificate and TD report state it. */
 export type PlatformTcb = { fmspc: string; pceSvn: number; cpuSvn: number[]; teeTcbSvn: number[] };
 
 // Intel's SGX extension in a PCK certificate: 1.2.840.113741.1.13.1, with the TCB under .2 and the FMSPC under .4.
 const SGX = '2a864886f84d010d01';
-const oid = (tail: string) => Buffer.from(`06${((SGX.length + tail.length) / 2).toString(16).padStart(2, '0')}${SGX}${tail}`, 'hex');
-
-/** The DER value that follows an OID in a certificate. The certificate is Intel-signed and already verified by the
- * caller, so finding the field by its OID bytes is enough. */
-function after(raw: Buffer, id: Buffer, tag: number): Buffer {
-  const at = raw.indexOf(id);
-  if (at < 0) throw new Error('the platform certificate carries no SGX TCB extension');
-  let o = at + id.length;
-  if (raw[o] !== tag) throw new Error('the platform certificate’s SGX extension is not in the expected form');
-  let len = raw[o + 1];
-  o += 2;
-  if (len & 0x80) {
-    const n = len & 0x7f;
-    len = Number(BigInt(`0x${raw.subarray(o, o + n).toString('hex')}`));
-    o += n;
-  }
-  return raw.subarray(o, o + len);
+/** A field of that extension. The certificate is Intel-signed and already verified by the caller. */
+function after(raw: Buffer, tail: string, tag: number): Buffer {
+  const v = valueAfter(raw, SGX + tail, tag);
+  if (!v) throw new Error('the platform certificate carries no SGX TCB extension in the expected form');
+  return v;
 }
-const int = (b: Buffer) => Number(BigInt(`0x${b.toString('hex') || '0'}`));
+const int = derInt;
 
 export function platformTcb(pck: X509Certificate, quote: Buffer): PlatformTcb {
   const raw = pck.raw;
   return {
-    fmspc: after(raw, oid('04'), 0x04).toString('hex'),
-    pceSvn: int(after(raw, oid('0211'), 0x02)),
-    cpuSvn: Array.from({ length: 16 }, (_, i) => int(after(raw, oid(`02${(i + 1).toString(16).padStart(2, '0')}`), 0x02))),
+    fmspc: after(raw, '04', 0x04).toString('hex'),
+    pceSvn: int(after(raw, '0211', 0x02)),
+    cpuSvn: Array.from({ length: 16 }, (_, i) => int(after(raw, `02${(i + 1).toString(16).padStart(2, '0')}`, 0x02))),
     // TEE_TCB_SVN: the first 16 bytes of the TD report body, which starts 48 bytes into a version 4 quote.
     teeTcbSvn: [...quote.subarray(48, 64)],
   };

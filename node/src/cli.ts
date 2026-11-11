@@ -22,7 +22,7 @@ import { readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
-import { parseSnpReport, verifySnp } from './tee/snp.ts';
+import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
@@ -424,14 +424,17 @@ async function main() {
     //   --report <f> --vcek <f>     an AMD SEV-SNP report and the chip's certificate
     //   --quote <f>                 an Intel TDX quote
     const reportPath = flag('report'), vcekPath = flag('vcek'), quotePath = flag('quote'), nodeAddr = flag('node');
-    if (argv[1] !== 'verify' || !(nodeAddr || quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --node <listing address> | --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug] [--allow-outdated] [--offline]');
+    if (argv[1] !== 'verify' || !(nodeAddr || quotePath || (reportPath && vcekPath))) throw new Error('usage: orrery enclave verify --node <listing address> | --report <report.bin> --vcek <vcek.der> | --quote <tdx-quote.dat>  [--measurement <hex>] [--key <hex>] [--allow-debug] [--allow-outdated] [--min-firmware <b.t.s.m>] [--offline]');
     const want = (own: Buffer, name: string) => (flag(name) ? Buffer.from(flag(name)!, 'hex') : Buffer.from(own));
+    // --min-firmware 3.0.8.115: refuse an AMD chip below this level (boot loader . trusted OS . SNP . microcode).
+    const minFirmware = flag('min-firmware') ? parseFirmware(flag('min-firmware')!) : null;
+    if (flag('min-firmware') && !minFirmware) throw new Error('--min-firmware is four numbers: <boot loader>.<tee>.<snp>.<microcode>, e.g. 3.0.8.115');
     if (nodeAddr) {
       const info = await new Connection(rpc(), 'confirmed').getAccountInfo(new PublicKey(nodeAddr));
       if (!info) throw new Error(`no listing at ${nodeAddr}; orrery providers prints every listing's address`);
       const p = decodeProvider(info.data);
       const crls = has('offline') || (p.teeKind !== 1 && p.teeKind !== 2) ? undefined : await fetchCrls(p.teeKind === 2 ? 'amd' : 'intel', home('crl'));
-      const audit = await auditEnclave(p, { allowDebug: has('allow-debug'), crls, allowOutdated: has('allow-outdated'), ...(has('offline') ? {} : { tcbFor: (fmspc: string) => fetchTcbInfo(fmspc, home('tcb')) }) });
+      const audit = await auditEnclave(p, { allowDebug: has('allow-debug'), crls, minFirmware, allowOutdated: has('allow-outdated'), ...(has('offline') ? {} : { tcbFor: (fmspc: string) => fetchTcbInfo(fmspc, home('tcb')) }) });
       if (has('json')) console.log(JSON.stringify(audit, null, 2));
       else {
         console.log(`${nodeAddr} · ${p.endpoint}`);
@@ -446,7 +449,7 @@ async function main() {
     const crls = has('offline') ? undefined : await fetchCrls(quotePath ? 'intel' : 'amd', home('crl'));
     const v = quotePath
       ? await (async () => { const quote = readFileSync(expand(quotePath)); const q = parseTdxQuote(quote); return verifyTdx({ quote, measurement: want(q.mrtd, 'measurement'), enclaveKey: want(q.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug'), crls, allowOutdated: has('allow-outdated'), ...(has('offline') ? {} : { tcb: await fetchTcbInfo(tdxFmspc(quote) ?? '', home('tcb')) }) }); })()
-      : (() => { const report = readFileSync(expand(reportPath!)); const r = parseSnpReport(report); return verifySnp({ report, vcek: readFileSync(expand(vcekPath!)), measurement: want(r.measurement, 'measurement'), enclaveKey: want(r.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug'), crls }); })();
+      : (() => { const report = readFileSync(expand(reportPath!)); const r = parseSnpReport(report); return verifySnp({ report, vcek: readFileSync(expand(vcekPath!)), measurement: want(r.measurement, 'measurement'), enclaveKey: want(r.reportData.subarray(0, 32), 'key'), allowDebug: has('allow-debug'), crls, minFirmware }); })();
     if (has('json')) console.log(JSON.stringify({ ok: v.ok, reason: v.reason, checks: v.checks ?? [] }, null, 2));
     else {
       console.log(v.checks?.length ? renderChecks(v.checks) : `✗ ${v.reason}`);

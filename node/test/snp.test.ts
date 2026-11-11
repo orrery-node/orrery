@@ -43,3 +43,44 @@ describe('a node listing its SEV-SNP enclave', () => {
     assert.throws(() => snpClaim(report, other), new RegExp(reportDataFor(other).toString('hex')));
   });
 });
+
+describe('AMD firmware level', async () => {
+  const { X509Certificate } = await import('node:crypto');
+  const { chipFirmware, firmwareCheck, parseFirmware } = await import('../src/tee/snp.ts');
+  const chip = chipFirmware(new X509Certificate(vcek))!;
+  const at = { bootloader: 2, tee: 0, snp: 5, microcode: 68 };
+
+  it('reads the same level from the report and from the chip certificate, and the same chip id', () => {
+    assert.deepEqual(parsed.firmware, at);
+    assert.deepEqual(chip.firmware, at);
+    assert.ok(chip.chipId!.equals(parsed.chipId));
+    const fw = verifySnp(base).checks!.find((c) => c.name === 'firmware')!;
+    assert.deepEqual(fw, { name: 'firmware', ok: true, detail: 'boot loader 2 · tee 0 · snp 5 · microcode 68, the level this chip key was issued for' });
+  });
+
+  it('refuses a level the chip key was not issued for, and a certificate for another chip', () => {
+    const newer = firmwareCheck({ reported: { ...at, snp: 9 }, reportChip: parsed.chipId, chip, family: 'Milan' });
+    assert.equal(newer.ok, false);
+    assert.match(newer.detail, /states boot loader 2 · tee 0 · snp 9 · microcode 68, but this chip key was issued for boot loader 2 · tee 0 · snp 5 · microcode 68/);
+    const other = firmwareCheck({ reported: at, reportChip: Buffer.alloc(64, 7), chip, family: 'Milan' });
+    assert.match(other.detail, /different chip/);
+    // A VM launched with its chip id masked reports zeros: the level is still compared, the id is not.
+    assert.equal(firmwareCheck({ reported: at, reportChip: Buffer.alloc(64), chip, family: 'Milan' }).ok, true);
+  });
+
+  it('holds the level to a minimum when the caller sets one', () => {
+    assert.deepEqual(parseFirmware('3.0.8.115'), { bootloader: 3, tee: 0, snp: 8, microcode: 115 });
+    for (const bad of ['', '3.0.8', '3.0.8.x', '3.0.8.999', '1.2.3.4.5']) assert.equal(parseFirmware(bad), null, bad);
+    const low = verifySnp({ ...base, minFirmware: parseFirmware('3.0.8.115') });
+    assert.equal(low.ok, false);
+    assert.equal(low.reason, 'below your minimum: boot loader 2 < 3, snp 5 < 8, microcode 68 < 115');
+    const met = verifySnp({ ...base, minFirmware: parseFirmware('2.0.5.68') });
+    assert.equal(met.ok, true, met.reason);
+    assert.match(met.checks!.find((c) => c.name === 'firmware')!.detail, /at or above your minimum/);
+  });
+
+  it('says so when it cannot compare: Turin’s other layout, or a certificate without the level', () => {
+    assert.deepEqual(firmwareCheck({ reported: at, reportChip: parsed.chipId, chip, family: 'Turin' }), { name: 'firmware', ok: true, skipped: true, detail: 'firmware levels are laid out differently on Turin; not compared yet' });
+    assert.equal(firmwareCheck({ reported: at, reportChip: parsed.chipId, chip: null, family: 'Milan' }).skipped, true);
+  });
+});

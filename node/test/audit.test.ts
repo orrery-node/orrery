@@ -21,7 +21,7 @@ describe('auditing a private node', () => {
     const p = listing(2, r.measurement, r.reportData.subarray(0, 32), snp);
     const a = await auditEnclave(p, { fetchFn: serve({ report: snp.toString('base64'), vcek: vcek.toString('base64') }) });
     assert.equal(a.ok, false);
-    assert.deepEqual(a.checks.map((c) => [c.name, c.ok]), [['claim on chain', true], ['report', true], ['chip certificate', true], ['signature', true], ['debugging', false], ['image', true], ['encryption key', true]]);
+    assert.deepEqual(a.checks.map((c) => [c.name, c.ok]), [['claim on chain', true], ['report', true], ['chip certificate', true], ['signature', true], ['firmware', true], ['debugging', false], ['image', true], ['encryption key', true]]);
     assert.equal((await auditEnclave(p, { allowDebug: true, fetchFn: serve({ report: snp.toString('base64'), vcek: vcek.toString('base64') }) })).ok, true);
   });
   it('verifies an Intel TDX node end to end', async () => {
