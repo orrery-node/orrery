@@ -5,8 +5,9 @@
 // third. Requests to nodes are already encrypted to each node's own key, so the proxy in the middle carries
 // ciphertext: it learns which node you talk to, when, and how much, and nothing of what was said.
 //
-// Only an HTTP proxy is spoken (CONNECT for https nodes, a forwarded request for http ones); no SOCKS. It covers the
-// traffic to nodes and nothing else: your Solana RPC still sees your address.
+// Only an HTTP proxy is spoken (CONNECT for https, a forwarded request for http); no SOCKS. The Solana RPC and the
+// chip makers' certificate lists go the same way (outFetch, chain/connect.ts), so with a proxy set this process
+// opens no connection to anything else. A node operator's own model server is not covered: that is the node's side.
 //
 // There is no fallback. When a proxy is set and it does not answer, the request fails; it never goes out directly.
 import { request as httpRequest, type ClientRequest, type IncomingMessage, type RequestOptions } from 'node:http';
@@ -50,6 +51,14 @@ export function nodeProxy(): Proxy | null {
 export function fetchNode(url: string, init: Init = {}): Promise<Response> {
   return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
 }
+
+/** A drop-in `fetch` for everything else this software asks for (the Solana RPC, the chip makers' certificates and
+ * lists, the package registry): through the proxy when one is set, plain fetch when not. */
+export const outFetch: typeof fetch = (input, init) => {
+  if (!current) return fetch(input, init);
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  return viaProxy(current, url, { timeoutMs: 30_000, ...(init ?? {}) } as Init, testTls);
+};
 
 /** Whether anything accepts a connection at the proxy's address. */
 export function proxyAnswers(p: Proxy, timeoutMs = 3_000): Promise<boolean> {

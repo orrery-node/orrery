@@ -1,5 +1,6 @@
 // `orrery doctor`: reads everything a router needs and says what is ready. It only reads: the RPC, the program's config,
 // every listing and the manifest it points to, your wallet's balances and the local router, if one is running.
+import { rpcConnection } from './chain/connect.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from './chain/program.ts';
 import { usd } from './pricing.ts';
@@ -16,10 +17,10 @@ const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(
 export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
-    const latest = await fetchWithTimeout('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
+    const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
     out.push(versionCheck(o.version, latest));
   }
-  const conn = new Connection(o.rpc, 'confirmed');
+  const conn = rpcConnection(o.rpc);
   let t0 = Date.now();
   try {
     const slot = await conn.getSlot();

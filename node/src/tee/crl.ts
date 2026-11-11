@@ -2,6 +2,7 @@
 // key leaked, or an intermediate that should no longer be trusted. A report can pass every other check and still come
 // from hardware its maker has revoked, so the verifiers read these lists too. The lists come straight from the chip
 // maker, are checked against the same pinned roots, and are cached on disk; no attestation service is involved.
+import { outFetch } from '../proxy.ts';
 import { constants, verify as verifySig, type X509Certificate } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -117,7 +118,7 @@ export async function fetchCrls(maker: 'amd' | 'intel', dir: string | null, o: {
   const now = o.now ?? Date.now(), maxAge = o.maxAgeMs ?? 12 * 3_600_000;
   const hit = fresh.get(`${maker}:${dir}`);
   if (hit && now - hit.at < maxAge) return hit.lists;
-  const f = o.fetchFn ?? (fetch as unknown as Fetch);
+  const f = o.fetchFn ?? (outFetch as unknown as Fetch);
   const lists: Buffer[] = [];
   await Promise.all(CRL_URLS[maker].map(async (url, i) => {
     const path = dir ? join(dir, `${maker}-${i}.crl`) : null;

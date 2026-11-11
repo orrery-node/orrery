@@ -1,6 +1,7 @@
 // A provider node: sells inference from any OpenAI-compatible upstream (vLLM, SGLang, Ollama, llama.cpp, or an API
 // you hold capacity on) to routers on the network. It never sees a wallet signature per request: it checks the
 // router's running-total voucher, serves, meters, and redeems the highest voucher on chain when it chooses.
+import { rpcConnection } from '../chain/connect.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -128,7 +129,7 @@ export class ProviderNode {
   log: (line: string) => void = (l) => console.log(l);
 
   constructor(readonly cfg: ProviderConfig) {
-    this.conn = new Connection(cfg.rpcUrl, 'confirmed');
+    this.conn = rpcConnection(cfg.rpcUrl);
     this.dir = expand(cfg.dataDir ?? home('provider'));
     this.node = cfg.nodeKeyEnv
       ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretFromEnv(cfg.nodeKeyEnv, 'node key'))))

@@ -8,6 +8,9 @@ import { connect, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, viaProxy } from '../src/proxy.ts';
+import { Keypair, SystemProgram, Transaction, type Connection } from '@solana/web3.js';
+import { NO_WEBSOCKET, rpcConnection } from '../src/chain/connect.ts';
+import { pollStatus, sendOne } from '../src/chain/send.ts';
 
 const SECRET = 'the-prompt-nobody-in-the-middle-should-read';
 const portOf = (s: Server) => (s.address() as AddressInfo).port;
@@ -199,6 +202,99 @@ describe('reaching nodes through a proxy', () => {
       const src = readFileSync(new URL(f, dir), 'utf8');
       assert.ok(!src.includes('fetchWithTimeout('), `${f} calls fetchWithTimeout; requests to nodes go through fetchNode`);
       assert.ok(!/[^a-zA-Z.'`]fetch\(`\$\{/.test(src), `${f} calls fetch on a built address; requests to nodes go through fetchNode`);
+    }
+  });
+});
+
+describe('the Solana RPC behind the proxy', () => {
+  const rpcSeen: string[] = [];
+  const rpc = createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => (body += d));
+    req.on('end', () => {
+      const call = JSON.parse(body) as { id: unknown; method: string };
+      rpcSeen.push(call.method);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: call.id, result: 4242 }));
+    });
+  });
+  before(() => listen(rpc));
+  after(() => {
+    rpc.close();
+    rpc.closeAllConnections();
+  });
+
+  it('RPC calls go through the proxy, and the websocket is pointed at nothing', async () => {
+    const url = `http://127.0.0.1:${portOf(rpc)}`;
+    const direct = rpcConnection(url);
+    assert.notEqual((direct as unknown as { _rpcWsEndpoint: string })._rpcWsEndpoint, NO_WEBSOCKET);
+    setNodeProxy(parseProxy(`127.0.0.1:${portOf(proxyServer)}`));
+    try {
+      const before = forwarded.length;
+      const conn = rpcConnection(url);
+      assert.equal((conn as unknown as { _rpcWsEndpoint: string })._rpcWsEndpoint, NO_WEBSOCKET);
+      assert.equal(await conn.getSlot(), 4242);
+      assert.equal(forwarded.length, before + 1);
+      assert.ok(forwarded.at(-1)!.url.startsWith(url) && forwarded.at(-1)!.body.includes('"getSlot"'));
+      assert.equal(rpcSeen.at(-1), 'getSlot');
+    } finally {
+      setNodeProxy(null);
+    }
+  });
+
+  it('with the proxy gone the RPC hears nothing', async () => {
+    const dead = createServer();
+    await listen(dead);
+    const port = portOf(dead);
+    await new Promise<void>((r) => dead.close(() => r()));
+    setNodeProxy(parseProxy(`127.0.0.1:${port}`));
+    try {
+      const heard = rpcSeen.length;
+      await assert.rejects(rpcConnection(`http://127.0.0.1:${portOf(rpc)}`).getSlot());
+      assert.equal(rpcSeen.length, heard);
+    } finally {
+      setNodeProxy(null);
+    }
+  });
+
+  it('a transaction is confirmed by asking for its status: confirmed, failed, or too old', async () => {
+    const source = (statuses: unknown[], height = 10) => {
+      let i = 0;
+      return { getSignatureStatuses: async () => ({ context: { slot: 1 }, value: [statuses[Math.min(i++, statuses.length - 1)]] }), getBlockHeight: async () => height } as unknown as Parameters<typeof pollStatus>[0];
+    };
+    assert.equal(await pollStatus(source([null, { confirmationStatus: 'processed', err: null }, { confirmationStatus: 'confirmed', err: null }]), 'sig', 100, 1), null);
+    assert.deepEqual(await pollStatus(source([null, { confirmationStatus: 'confirmed', err: { InstructionError: [0, 'Custom'] } }]), 'sig', 100, 1), { InstructionError: [0, 'Custom'] });
+    await assert.rejects(pollStatus(source([null], 101), 'sig', 100, 1), /block height exceeded: sig expired/);
+  });
+
+  it('behind a proxy a transaction is sent and polled, never subscribed to', async () => {
+    const payer = Keypair.generate();
+    const calls: string[] = [];
+    const conn = {
+      getLatestBlockhash: async () => (calls.push('getLatestBlockhash'), { blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 50 }),
+      sendRawTransaction: async (raw: Buffer) => (calls.push('sendRawTransaction'), assert.ok(raw.length > 64), 'the-signature'),
+      getSignatureStatuses: async () => (calls.push('getSignatureStatuses'), { value: [{ confirmationStatus: 'confirmed', err: null }] }),
+      getBlockHeight: async () => 1,
+      confirmTransaction: async () => { throw new Error('a subscription was opened'); },
+    } as unknown as Connection;
+    const tx = () => new Transaction().add(SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: Keypair.generate().publicKey, lamports: 1 }));
+    setNodeProxy(parseProxy('127.0.0.1:9'));
+    try {
+      assert.equal(await sendOne(conn, tx(), [payer]), 'the-signature');
+      assert.deepEqual(calls, ['getLatestBlockhash', 'sendRawTransaction', 'getSignatureStatuses']);
+    } finally {
+      setNodeProxy(null);
+    }
+  });
+
+  it('nothing opens its own RPC connection, subscribes for a confirmation, or fetches on its own', () => {
+    const dir = new URL('../src/', import.meta.url);
+    const local = ['sse.ts', 'proxy.ts', 'mcp.ts', 'bench.ts', 'connect.ts', 'run.ts', 'provider/init.ts', 'router/console.ts', 'provider/console.ts'];
+    for (const f of (readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith('.ts'))) {
+      const src = readFileSync(new URL(f, dir), 'utf8');
+      if (f !== 'chain/connect.ts') assert.ok(!src.includes('new Connection('), `${f} opens its own RPC connection; use rpcConnection`);
+      if (f !== 'chain/send.ts') assert.ok(!/sendAndConfirmTransaction\(|\.confirmTransaction\(/.test(src), `${f} confirms by subscription; use sendOne or confirmed`);
+      if (!local.includes(f)) assert.ok(!/(^|[^.\w])fetch\(|fetch as unknown/m.test(src), `${f} calls fetch itself; use fetchNode or outFetch`);
     }
   });
 });

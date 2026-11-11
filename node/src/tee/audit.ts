@@ -1,6 +1,7 @@
 // `orrery enclave verify --node <listing>`: audit a private node yourself. Reads the node's enclave claim from its
 // account on Solana, asks the node for the report its CPU signed, and runs every check a router runs before it
 // seals a prompt, one line per check.
+import { outFetch } from '../proxy.ts';
 import { createHash } from 'node:crypto';
 import { TEE_KINDS, type ProviderAccount } from '../chain/program.ts';
 import { verifySnp, type Check, type Firmware } from './snp.ts';
@@ -17,7 +18,7 @@ export async function auditEnclave(p: ProviderAccount, o: { fetchFn?: Fetch; now
   const checks: Check[] = [];
   const live = BigInt(Math.floor(now.getTime() / 1000)) < p.teeExpiresAt;
   checks.push({ name: 'claim on chain', ok: live, detail: live ? `${kind}, valid until ${new Date(Number(p.teeExpiresAt) * 1000).toISOString().slice(0, 10)}` : 'the claim on chain has expired' });
-  const f = o.fetchFn ?? (fetch as unknown as Fetch);
+  const f = o.fetchFn ?? (outFetch as unknown as Fetch);
   const a = (await f(`${p.endpoint.replace(/\/$/, '')}/v1/attestation`).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { report?: string; enclaveKey?: string; vcek?: string } | null;
   if (!a?.report) {
     checks.push({ name: 'report', ok: false, detail: 'the node did not serve a report at /v1/attestation' });

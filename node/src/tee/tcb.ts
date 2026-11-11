@@ -3,6 +3,7 @@
 // the platform runs (in its certificate and in the TD report); this file reads both and finds the level, following
 // the steps in Intel's PCS documentation ("Get TDX TCB Info", API v4). The list is checked against the same pinned
 // Intel root as the platform certificate, so nobody in between can hand the router a kinder one.
+import { outFetch } from '../proxy.ts';
 import { createHash, verify as verifySig, X509Certificate } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -120,7 +121,7 @@ export async function fetchTcbInfo(fmspc: string, dir: string | null, o: { fetch
   let got: TcbSource | null = path && existsSync(path) && now - statSync(path).mtimeMs < maxAge ? disk() : null;
   if (!got) {
     try {
-      const r = await (o.fetchFn ?? (fetch as unknown as Fetch))(TCB_URL(fmspc));
+      const r = await (o.fetchFn ?? (outFetch as unknown as Fetch))(TCB_URL(fmspc));
       if (!r.ok) throw new Error('not ok');
       got = { body: await r.text(), chain: decodeURIComponent(r.headers.get('TCB-Info-Issuer-Chain') ?? '') };
       if (path) {

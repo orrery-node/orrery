@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { rpcConnection } from './chain/connect.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { Connection, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { sendOne } from './chain/send.ts';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
 import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
@@ -54,7 +56,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --max-price <in/out>      never route above this price, dollars per million tokens, e.g. 0.50/1.50 (per request: x-orrery-max-price)
       --max-cost <usd>          a dollar budget for each request, e.g. 0.002 (per request: x-orrery-max-cost)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
-      --proxy <http://host:port> reach nodes through this HTTP proxy, so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
+      --proxy <http://host:port> reach nodes and the Solana RPC through this HTTP proxy, so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
       --enclave-images <hex,...> only seal prompts to enclaves that booted one of these images
@@ -97,7 +99,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
 async function router() {
   const proxy = nodeProxy();
   if (proxy && !(await proxyAnswers(proxy))) throw new Error(`nothing answers at the proxy ${proxy.label}; start it first. The router does not fall back to reaching nodes directly`);
-  const conn = new Connection(rpc(), 'confirmed');
+  const conn = rpcConnection(rpc());
   const walletPath = flag('wallet', process.env.ORRERY_WALLET);
   const wallet = walletPath ? loadKeypair(expand(walletPath)) : null;
   const session = loadOrCreateKeypair(home('router', 'session.json'));
@@ -113,7 +115,7 @@ async function router() {
   const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), holders: new HolderBook(conn), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1' });
   await r.start();
   const usable = registry.usable().length;
-  if (proxy) console.log(`nodes are reached through the proxy at ${proxy.label}: they see its address, not yours (your Solana RPC still sees yours)`);
+  if (proxy) console.log(`nodes and the Solana RPC are reached through the proxy at ${proxy.label}: they see its address, not yours`);
   if (has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1') console.log('private only: every request is sealed to an enclave this router verified, or refused');
   console.log(`${NAME} router on http://127.0.0.1:${port}/v1  ·  ${usable} providers  ·  route ${route}  ·  ${wallet ? `wallet ${wallet.publicKey.toBase58().slice(0, 6)}…` : 'no wallet (read-only)'}`);
   console.log(`session key ${session.publicKey.toBase58()} signs vouchers; console at http://127.0.0.1:${port}/`);
@@ -125,7 +127,7 @@ async function router() {
 }
 
 async function listModels() {
-  const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+  const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
   await registry.refresh();
   const rows = registry.catalog();
   if (!rows.length) return console.log('No models listed yet.');
@@ -135,7 +137,7 @@ async function listModels() {
 const tiersText = (t?: HolderTier[]) => (t?.length ? `holders ${t.map((x) => `${x.share / 100}%→−${x.off / 100}%`).join(' ')}  ` : '');
 
 async function listProviders() {
-  const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+  const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
   await registry.refresh();
   await registry.checkHealth();
   const serverText = (e: { upstream?: 'up' | 'down'; healthMs?: number }) => (e.upstream === 'up' ? `model server up (${e.healthMs} ms)  ` : e.upstream === 'down' ? 'model server down, routers skip it  ' : '');
@@ -146,7 +148,7 @@ async function listProviders() {
 }
 
 async function listChannels() {
-  const conn = new Connection(rpc(), 'confirmed');
+  const conn = rpcConnection(rpc());
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const local = new Channels(conn, null, session, mint(), home('router', 'channels.json'), { deposit: 0n, topUpBelow: 0n, dailyCap: 0n }).list();
   const walletPath = flag('wallet', process.env.ORRERY_WALLET);
@@ -199,7 +201,7 @@ async function provider(sub: string) {
   cfg.rpcUrl = flag('rpc', process.env.ORRERY_RPC_URL ?? cfg.rpcUrl) ?? cfg.rpcUrl;
   cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
   if (sub === 'compare') {
-    const registry = new Registry(new Connection(cfg.rpcUrl ?? rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    const registry = new Registry(rpcConnection(cfg.rpcUrl ?? rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
     const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : null;
     const rows = compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), registry.usable(), self);
@@ -208,7 +210,7 @@ async function provider(sub: string) {
   }
   if (sub === 'price') {
     // orrery provider price --config provider.json [--beat 5] [--floor 0.02/0.08] [--write]
-    const registry = new Registry(new Connection(cfg.rpcUrl ?? rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    const registry = new Registry(rpcConnection(cfg.rpcUrl ?? rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
     const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : null;
     const beatPct = Number(flag('beat', '5'));
@@ -239,7 +241,7 @@ async function provider(sub: string) {
     // A pledge needs the wallet on this machine: the buy and the burn are the wallet's own transactions.
     if (!cfg.wallet && !flag('wallet')) throw new Error('a burn pledge needs the provider wallet on this machine ("wallet" in provider.json or --wallet): the buy and the burn are signed by it');
     const w = loadKeypair(expand(flag('wallet', cfg.wallet)!));
-    const conn = new Connection(cfg.rpcUrl ?? rpc(), 'confirmed');
+    const conn = rpcConnection(cfg.rpcUrl ?? rpc());
     const cfgInfo = await conn.getAccountInfo(pda.config());
     const token = cfgInfo ? decodeConfig(cfgInfo.data).bondMint : PublicKey.default;
     if (token.equals(PublicKey.default)) throw new Error('the network token is not set on this program yet, so there is nothing to buy and burn');
@@ -283,12 +285,12 @@ async function provider(sub: string) {
     if (!w.publicKey.equals(node.authority)) throw new Error('the wallet does not match the config authority');
     const exists = await node.conn.getAccountInfo(node.pda);
     const ix = exists ? node.updateInstruction(w.publicKey) : node.registerInstruction(w.publicKey);
-    const sig = await sendAndConfirmTransaction(node.conn, new Transaction().add(ix), [w], { commitment: 'confirmed' });
+    const sig = await sendOne(node.conn, new Transaction().add(ix), [w]);
     console.log(`${exists ? 'updated' : 'listed'} ${node.pda.toBase58()}  tx ${sig}`);
     return;
   }
   if (sub === 'attest') {
-    const sig = await sendAndConfirmTransaction(node.conn, new Transaction().add(node.attestInstruction()), [node.node], { commitment: 'confirmed' });
+    const sig = await sendOne(node.conn, new Transaction().add(node.attestInstruction()), [node.node]);
     console.log(`enclave claim posted  tx ${sig}`);
     return;
   }
@@ -312,7 +314,8 @@ async function main() {
   // After `--` the arguments are the client's (orrery run claude -- --help asks Claude Code, not this CLI).
   const ownArgs = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv;
   if (!cmd || cmd === 'help' || ownArgs.includes('--help')) return console.log(HELP);
-  // --proxy (or ORRERY_PROXY) sends every request this command makes to a node through that proxy, never around it.
+  // --proxy (or ORRERY_PROXY) sends every request this command makes to a node or to the RPC through that proxy,
+  // never around it.
   const proxyAt = ownArgs.indexOf('--proxy');
   const proxyText = proxyAt >= 0 ? ownArgs[proxyAt + 1] : process.env.ORRERY_PROXY;
   // A privacy flag that was typed without its address must stop here, not run without a proxy.
@@ -330,7 +333,7 @@ async function main() {
     if (CACHE_REPORTING[found.name]) console.log(`each model also has a cached-input price (a quarter of input) for prompt-cache hits; start ${found.name} with ${CACHE_REPORTING[found.name]} so it reports them`);
     // Where the draft prices would stand against what is already listed, so the first edit is an informed one.
     if (!has('offline')) {
-      const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: false, measurements: [] });
+      const registry = new Registry(rpcConnection(rpc()), { allowDev: false, measurements: [] });
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
@@ -386,7 +389,7 @@ async function main() {
   }
   if (cmd === 'bench') {
     if (!sub) throw new Error(`usage: ${CLI} bench <model> [--n 3] [--router <url>]`);
-    const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
     const providers = registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === sub));
     if (!providers.length) throw new Error(`no provider on the network lists ${sub}; see ${CLI} models`);
@@ -436,7 +439,7 @@ async function main() {
     const inTokens = prompt ? estimateInputTokens({ messages: [{ role: 'user', content: prompt }] }) : Number(flag('in', '2000'));
     const outTokens = Number(flag('out', '500'));
     const cachedShare = Math.max(0, Math.min(1, Number(flag('cached', '0.8'))));
-    const registry = new Registry(new Connection(rpc(), 'confirmed'), { allowDev: has('allow-dev-enclaves'), measurements: [] });
+    const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
     const rows = quote(registry.usable(), model, inTokens, outTokens, cachedShare);
     if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached) })) }, null, 2));
@@ -454,7 +457,7 @@ async function main() {
     const minFirmware = flag('min-firmware') ? parseFirmware(flag('min-firmware')!) : null;
     if (flag('min-firmware') && !minFirmware) throw new Error('--min-firmware is four numbers: <boot loader>.<tee>.<snp>.<microcode>, e.g. 3.0.8.115');
     if (nodeAddr) {
-      const info = await new Connection(rpc(), 'confirmed').getAccountInfo(new PublicKey(nodeAddr));
+      const info = await rpcConnection(rpc()).getAccountInfo(new PublicKey(nodeAddr));
       if (!info) throw new Error(`no listing at ${nodeAddr}; orrery providers prints every listing's address`);
       const p = decodeProvider(info.data);
       const crls = has('offline') || (p.teeKind !== 1 && p.teeKind !== 2) ? undefined : await fetchCrls(p.teeKind === 2 ? 'amd' : 'intel', home('crl'));
@@ -492,14 +495,14 @@ async function main() {
     if (!sub || !walletPath) throw new Error(`usage: ${CLI} close <channel> --wallet <keypair.json> [--finish]`);
     const w = loadKeypair(expand(walletPath));
     const ch = new PublicKey(sub);
-    const conn = new Connection(rpc(), 'confirmed');
+    const conn = rpcConnection(rpc());
     const info = await conn.getAccountInfo(ch);
     if (!info) return console.log(`${ch.toBase58()} is already closed`);
     const c = decodeChannel(info.data);
     if (!c.payer.equals(w.publicKey)) throw new Error('this wallet did not open that channel');
     if (!has('finish')) {
       if (c.closingAt !== 0n) return console.log(`already closing; the rest can come back after ${new Date(Number(c.closingAt) * 1000).toISOString()} with --finish`);
-      await sendAndConfirmTransaction(conn, new Transaction().add(ins.requestClose(w.publicKey, ch)), [w]);
+      await sendOne(conn, new Transaction().add(ins.requestClose(w.publicKey, ch)), [w]);
       const cfg = decodeConfig((await conn.getAccountInfo(pda.config()))!.data);
       return console.log(`closing ${ch.toBase58()}; the provider has ${cfg.closeGraceSecs}s to redeem, then run: ${CLI} close ${ch.toBase58()} --wallet ${walletPath} --finish`);
     }
@@ -507,7 +510,7 @@ async function main() {
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (now < c.closingAt) throw new Error(`the grace period ends at ${new Date(Number(c.closingAt) * 1000).toISOString()}`);
     const prov = decodeProvider((await conn.getAccountInfo(c.provider))!.data);
-    const sig = await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(w.publicKey, prov.authority, ch, w.publicKey, c.mint)), [w]);
+    const sig = await sendOne(conn, new Transaction().add(ins.closeChannel(w.publicKey, prov.authority, ch, w.publicKey, c.mint)), [w]);
     return console.log(`closed ${ch.toBase58()}; $${usd(c.deposit - c.redeemed)} and the account rent are back in your wallet  tx ${sig}`);
   }
   console.log(HELP);
