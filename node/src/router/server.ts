@@ -9,6 +9,7 @@ import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
+import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
@@ -126,6 +127,8 @@ export class Router {
   private healthTimer: NodeJS.Timeout | null = null;
   private tasks = new TaskBook(1_000, home('router', 'tasks.json'));
   private taskOf = new WeakMap<ServerResponse, string>();
+  /** What a node last said it sees of this router, asked through the proxy. Null with no proxy, or before asking. */
+  private farSide: { node: string; address: string; also: string[]; givenAway: string | null; line: string; checkedAt: number } | null = null;
   private burnTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
   /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
@@ -160,6 +163,8 @@ export class Router {
     this.timer = setInterval(() => {
       void this.o.registry.refresh().catch(() => undefined);
       void this.standing(true);
+      // The proxy is asked about again on the same tick: what it does to a request can change while the router runs.
+      if (nodeProxy()) void this.checkProxy().catch(() => undefined);
     }, (this.o.refreshSecs ?? 60) * 1000);
     void this.o.registry.checkHealth().catch(() => undefined);
     void this.o.registry.checkBurnsFromConfig().catch(() => undefined);
@@ -168,6 +173,24 @@ export class Router {
     this.server = createServer((req, res) => void this.handle(req, res));
     await new Promise<void>((r) => this.server!.listen(this.o.port, this.o.host ?? '127.0.0.1', () => r()));
     return this.server;
+  }
+
+  /** With a proxy set, asks a node what address it sees of this router and keeps the answer for the status page.
+   * `givenAway` is this computer's own public address when the node saw it anyway; while it is set nothing is sent.
+   * A check that no node answers changes nothing: what was last learned stands. */
+  async checkProxy(own: string[] = ownAddresses(), counts: (a: string) => boolean = isPublic): Promise<{ line: string; givenAway: string | null } | null> {
+    const proxy = nodeProxy();
+    if (!proxy) {
+      this.farSide = null;
+      return null;
+    }
+    const said = await askSeen(this.o.registry.usable().filter((e) => e.manifest).map((e) => ({ name: e.manifest!.name, endpoint: e.account.endpoint })));
+    if (!said) return { line: seenSays(null, null, proxy, own).detail, givenAway: this.farSide?.givenAway ?? null };
+    const away = givenAway(said.seen, own, counts);
+    const line = seenSays(said.name, said.seen, proxy, own).detail;
+    if (away && this.farSide?.givenAway !== away) this.log(`${said.name} sees ${away}, this computer's own address, through the proxy at ${proxy.label}: nothing is sent until that stops`);
+    this.farSide = { node: said.name, address: said.seen.address, also: seenAddresses(said.seen).filter((a) => a !== said.seen.address), givenAway: away, line, checkedAt: Date.now() };
+    return { line, givenAway: away };
   }
 
   /** This router's wallet's share of the network token, or null when there is no wallet, no token yet, or no RPC. */
@@ -266,7 +289,7 @@ export class Router {
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
     const s = await this.standing();
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s) } : null;
-    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
+    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
@@ -321,6 +344,8 @@ export class Router {
   private async serveOne(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
     const began = performance.now();
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
+    // A proxy that is set and gives this computer's address to a node hides nothing: the request stays here.
+    if (this.farSide?.givenAway && nodeProxy()) throw new Unserved(`${this.farSide.node} sees ${this.farSide.givenAway}, this computer's own address, through the proxy; nothing is sent until the proxy stops giving it away`, 503, 'proxy_gives_address_away');
     const header = String(req.headers['x-orrery-route'] ?? '');
     const asked = parseModel(applyAlias(body.model, this.o.aliases), (ROUTES as readonly string[]).includes(header) ? (header as Route) : this.o.route);
     const model = asked.model, route: Route = this.o.privateOnly ? 'privacy' : asked.route;

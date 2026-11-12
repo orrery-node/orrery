@@ -709,6 +709,7 @@ setNodeProxy(parseProxy(`127.0.0.1:${(recorder.address() as { port: number }).po
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const tripsBeforeProxy = router.trips.length;
 const throughProxy = await ask('llama-3.3-70b');
+const tripsAfterThrough = router.trips.length;
 const proxyTrip = router.trips[router.trips.length - 1];
 const proxyCarried = proxied.filter((x) => x.url.includes('/v1/chat/completions'));
 const statusWithProxy = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { proxy: string | null };
@@ -719,6 +720,20 @@ const proxiedTransfer = await sendOne(proxiedRpc, new Transaction().add(SystemPr
 const proxiedAfter = await proxiedRpc.getBalance(user.publicKey);
 const rpcCalls = proxied.slice(rpcBefore).filter((x) => x.url.startsWith(RPC)).map((x) => (JSON.parse(x.body) as { method: string }).method);
 const proxyRead = proxied.some((x) => x.body.includes('payment channel') || x.body.includes('In one sentence'));
+// The far side of the proxy: the router asks a node what address it sees, shows it on its status, and stops sending
+// when what the node saw is this computer's own public address. Loopback is never public, so the rig says it counts.
+type FarSide = { checkProxy?: (own?: string[], counts?: (a: string) => boolean) => Promise<{ line: string; givenAway: string | null } | null> };
+const farSide = router as unknown as FarSide;
+const farSaid = (await farSide.checkProxy?.()) ?? null;
+const farStatus = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { proxySeen?: { node: string | null; address: string | null; givenAway: string | null } | null };
+const farLeak = (await farSide.checkProxy?.(['127.0.0.1'], () => true)) ?? null;
+const tripsBeforeLeak = router.trips.length;
+const leakAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const leakSaid = ((await leakAsk.json()) as { error?: { code?: string } }).error?.code;
+const leakPaid = router.trips.length - tripsBeforeLeak;
+await farSide.checkProxy?.();
+const afterLeak = await ask('llama-3.3-70b');
+check('behind a proxy the router asks a node what address it sees and shows it; when the node saw this computer’s own address the router stops sending, and starts again once it does not', !!farSaid && farSaid.givenAway === null && /sees 127\.0\.0\.1/.test(farSaid.line) && farStatus.proxySeen?.address === '127.0.0.1' && !!farStatus.proxySeen?.node && farLeak?.givenAway === '127.0.0.1' && leakAsk.status === 503 && leakSaid === 'proxy_gives_address_away' && leakPaid === 0 && afterLeak.status === 200, farSaid ? `${farSaid.line} · told the node saw its own address: ${leakAsk.status} ${leakSaid}, ${leakPaid} paid · asked again: ${afterLeak.status}` : 'the router has no far-side check');
 await new Promise<void>((done) => { recorder.closeAllConnections(); recorder.close(() => done()); });
 const tripsWithProxy = router.trips.length;
 const proxyGone = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
@@ -727,7 +742,7 @@ const rpcGone = await proxiedRpc.getSlot().then(() => 'answered', () => 'refused
 setNodeProxy(null);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 check('with a proxy set the router reaches nodes only through it: the proxy carries a request it cannot read, and with the proxy gone the request fails instead of going out directly',
-  throughProxy.status === 200 && throughProxy.content.length > 20 && tripsWithProxy === tripsBeforeProxy + 1 && proxyCarried.length >= 1 && proxyCarried.every((x) => x.body.length > 100) && !proxyRead
+  throughProxy.status === 200 && throughProxy.content.length > 20 && tripsAfterThrough === tripsBeforeProxy + 1 && proxyCarried.length >= 1 && proxyCarried.every((x) => x.body.length > 100) && !proxyRead
   && proxyGone.status >= 500 && router.trips.length === tripsWithProxy && /^127\.0\.0\.1:\d+$/.test(statusWithProxy.proxy ?? ''),
   `${proxyCarried.length} request${proxyCarried.length === 1 ? '' : 's'} to a node through the proxy, ${proxyCarried[0]?.body.length ?? 0} sealed bytes for the prompt (${nameOf(proxyTrip?.provider ?? null)}); proxy gone → ${proxyGone.status}`);
 check('the Solana RPC goes through the same proxy: reads, and a transaction sent and confirmed by asking for its status with no websocket; with the proxy gone the RPC is not reached',

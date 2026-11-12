@@ -484,7 +484,7 @@ export default function Docs() {
             <li>New in 0.1.6: answers carry the billed usage in OpenAI&apos;s shape with <code>usage.cost</code> in USDC (streams end with it when you set <code>stream_options.include_usage</code>), <code>orrery bench</code> measures embedding models too, and a router that loses its records picks its open channels back up from the node&apos;s last voucher.</li>
             <li>New in 0.1.5: embeddings, model fallbacks, <code>orrery bench</code>, <code>orrery spend</code> and <code>orrery provider earnings</code>, MCP prices with <code>max_price</code> and an <code>embed</code> tool, last-24-hours tables in both consoles, a Host check against DNS rebinding, and <code>--json</code> output.</li>
             <li>New in 0.1.4: the OpenAI Responses API, MCP, model aliases, resumed streams, <code>orrery connect</code> for Codex and Claude Code, cached-input prices and cache affinity, parallel lanes, <code>--max-price</code>, router and provider consoles, <code>orrery doctor</code> and <code>orrery provider init</code>.</li>
-            <li>Not yet: AMD firmware on Turin, NVIDIA GPU attestation, a run through Tor itself.</li>
+            <li>In main for the next release: a router started with <code>--proxy</code> asks a node what address it sees before it pays for anything, and does not send while the node sees this computer&apos;s own public address. Not yet: AMD firmware on Turin, NVIDIA GPU attestation, a run through Tor itself.</li>
           </ul>
         </article>
       </div>

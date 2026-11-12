@@ -114,8 +114,14 @@ async function router() {
   const port = Number(flag('port', String(ROUTER_PORT)));
   const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1' });
   await r.start();
+  // The proxy is checked from the far side before anything is paid for: a node says what address it saw.
+  const far = await r.checkProxy();
+  if (far?.givenAway) {
+    await r.close();
+    throw new Error(`${far.line}. The router does not run behind a proxy that gives this computer's address away`);
+  }
   const usable = registry.usable().length;
-  if (proxy) console.log(`nodes and the Solana RPC are reached through the proxy at ${proxy.label}: they see its address, not yours`);
+  if (proxy) console.log(`nodes and the Solana RPC are reached through the proxy at ${proxy.label}. ${far ? far.line[0].toUpperCase() + far.line.slice(1) : ''}`);
   if (has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1') console.log('private only: every request is sealed to an enclave this router verified, or refused');
   console.log(`${NAME} router on http://127.0.0.1:${port}/v1  ·  ${usable} providers  ·  route ${route}  ·  ${wallet ? `wallet ${wallet.publicKey.toBase58().slice(0, 6)}…` : 'no wallet (read-only)'}`);
   console.log(`session key ${session.publicKey.toBase58()} signs vouchers; console at http://127.0.0.1:${port}/`);

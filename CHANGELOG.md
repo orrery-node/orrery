@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · A router behind a proxy checks it from the far side before it pays for anything. 0.1.15 let `orrery doctor` ask a node what address it sees; now the router asks at start-up, prints the answer in its first lines, shows it on `/orrery/status` as `proxySeen`, and asks again on every registry refresh. When the node saw one of this computer’s own public addresses the proxy hides nothing: `orrery router` does not start, and a running router answers 503 `proxy_gives_address_away` and sends nothing until a later check comes back clean. A matching private address does not stop a router (a node’s own balancer may use the same one). Still true: a computer behind a home router does not know its public address, so there the line is for you to read.
+
 ## 0.1.15 · 2026-11-12 08:35 UTC
 
 **Ask a node what address it sees of you, one connection carries answer after answer, and a job refused for its budget is told what is left.**

@@ -7,7 +7,7 @@ import { usd } from './pricing.ts';
 import { Registry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
-import { ownAddresses, readSeen, seenAddresses, type Seen } from './seen.ts';
+import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -65,13 +65,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   }
   // What a node sees of this computer: the first node that says is asked, through the proxy when one is set.
   if (up.length) {
-    let said: { name: string; seen: Seen } | null = null;
-    for (const node of up.slice(0, 3)) {
-      const seen = readSeen(await fetchNode(`${node.endpoint}/v1/seen`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
-      if (!seen) continue;
-      said = { name: node.name, seen };
-      break;
-    }
+    const said = await askSeen(up);
     out.push(seenCheck(said?.name ?? null, said?.seen ?? null, nodeProxy(), ownAddresses()));
   }
 
@@ -111,17 +105,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
 /** One line on what a node sees of this computer. It fails only when a proxy is set and an address the node saw is
  * one of this computer's own; an address it cannot place is printed for the reader to compare. */
 export function seenCheck(name: string | null, seen: Seen | null, proxy: Proxy | null, own: string[]): Check {
-  const what = 'seen as';
-  if (!name || !seen) return { ok: null, what, detail: 'no node here answers GET /v1/seen, so none could say what address it sees (older nodes do not)' };
-  const all = seenAddresses(seen);
-  const rest = all.filter((a) => a !== seen.address);
-  const also = rest.length ? ` (also in what reached it: ${rest.join(', ')})` : '';
-  if (!proxy) return { ok: null, what, detail: `${name} sees ${seen.address}${also}; no proxy is set, so that is the address this computer's requests leave from (--proxy hides it)` };
-  const mine = all.find((a) => own.includes(a));
-  if (mine && seen.socket !== mine) return { ok: false, what, detail: `${name} sees ${mine}, which is this computer's own address: the proxy at ${proxy.label} passes it on in a header. A SOCKS5 proxy cannot add one` };
-  if (mine) return { ok: false, what, detail: `${name} sees ${mine}, which is this computer's own address: the proxy at ${proxy.label} sends from this computer, so it hides nothing` };
-  if (seen.address === proxy.host && !rest.length) return { ok: true, what, detail: `${name} sees ${seen.address}, the address of the proxy at ${proxy.label}` };
-  return { ok: null, what, detail: `${name} sees ${seen.address}${also}, through the proxy at ${proxy.label}; if that is not your own address, nodes do not learn yours` };
+  return { what: 'seen as', ...seenSays(name, seen, proxy, own) };
 }
 
 export function newer(a: string, b: string): boolean {

@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A router behind a proxy checks it from the far side before it pays for anything. 0.1.15 let `orrery doctor` ask a node what address it sees; now the router asks at start-up, prints the answer in its first lines, shows it on `/orrery/status` as `proxySeen`, and asks again on every registry refresh. When the node saw one of this computer’s own public addresses the proxy hides nothing: `orrery router` does not start, and a running router answers 503 `proxy_gives_address_away` and sends nothing until a later check comes back clean. A matching private address does not stop a router (a node’s own balancer may use the same one). Still true: a computer behind a home router does not know its public address, so there the line is for you to read.' },
 ];
 
 export const RELEASES: Release[] = [

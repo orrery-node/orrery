@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { readSeen, seenAddresses, seenFrom } from '../src/seen.ts';
+import { givenAway, isPublic, readSeen, seenAddresses, seenFrom } from '../src/seen.ts';
 import { render, seenCheck } from '../src/doctor.ts';
 import { parseProxy, viaProxy } from '../src/proxy.ts';
 
@@ -34,6 +34,20 @@ describe('what a node sees of the caller', () => {
     assert.equal(leak.ok, false);
     assert.match(leak.detail, /192\.168\.1\.5, which is this computer's own address: the proxy at 203\.0\.113\.9:3128 passes it on in a header/);
     assert.match(render([seenCheck(null, null, null, [])]), /^· seen as\s+no node here answers GET \/v1\/seen/);
+  });
+
+  it('a router refuses to send only when the address given away is its own and one the internet routes to', () => {
+    for (const a of ['203.0.113.9', '8.8.8.8', '2001:db8::1', '100.63.255.255', '172.32.0.1']) assert.equal(isPublic(a), true, a);
+    for (const a of ['127.0.0.1', '10.201.3.4', '172.16.0.1', '172.31.255.255', '192.168.1.5', '169.254.10.1', '100.64.0.1', '::1', 'fe80::1', 'fd12:3456::1', 'not an address', '']) assert.equal(isPublic(a), false, a);
+    const own = ['198.51.100.7', '192.168.1.5'];
+    // The proxy wrote this computer's public address into a header.
+    assert.equal(givenAway({ address: '198.51.100.7', socket: '203.0.113.9', forwarded: ['198.51.100.7'] }, own), '198.51.100.7');
+    // The proxy sends from this computer.
+    assert.equal(givenAway({ address: '198.51.100.7', socket: '198.51.100.7', forwarded: [] }, own), '198.51.100.7');
+    // The node saw only the proxy.
+    assert.equal(givenAway({ address: '203.0.113.9', socket: '203.0.113.9', forwarded: [] }, own), null);
+    // A private address that matches is not enough to stop a router: the node's own balancer may use the same one.
+    assert.equal(givenAway({ address: '203.0.113.9', socket: '192.168.1.5', forwarded: ['203.0.113.9'] }, own), null);
   });
 
   it('over real sockets: a node reached through a proxy sees the proxy, and a forwarding proxy that adds the caller is caught', async (t) => {
