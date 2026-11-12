@@ -20,7 +20,7 @@ mkdirSync(WORK, { recursive: true });
 process.env.ORRERY_HOME = join(WORK, 'home');
 
 const { PROGRAM_ID } = await import('../src/brand.ts');
-const { decodeChannel, decodeConfig, decodeProvider, ins, pda } = await import('../src/chain/program.ts');
+const { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda } = await import('../src/chain/program.ts');
 const { splBurner } = await import('../src/burn.ts');
 const { loadOrCreateKeypair } = await import('../src/keys.ts');
 const { ProviderNode } = await import('../src/provider/node.ts');
@@ -418,6 +418,17 @@ const strangerFound = await (stranger as unknown as { recover(p: string): Promis
 check('a router that lost its channel records picks its channel back up from the node’s last voucher, and only with its own session key',
   picked.channel === ibBefore.channel && picked.cumulative === ibBefore.cumulative && picked.usageHash.equals(ibBefore.usageHash) && strangerFound === null,
   `Ironbridge channel ${picked.channel.slice(0, 6)}… resumed at $${usd(picked.cumulative)} signed · another session key: ${strangerFound === null ? 'not resumed' : 'resumed'}`);
+// The node that went dark earlier still has this router's channel open on chain. A router that lost its records
+// finds that channel, cannot ask the node where it stands, and must not open (and fund) a second one on a guess.
+const dark = nodes[0].pda;
+const channelsTo = async (provider: PublicKey) => (await conn.getProgramAccounts(new PublicKey(PROGRAM_ID), { filters: [
+  { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } }, { memcmp: { offset: 8, bytes: user.publicKey.toBase58() } }, { memcmp: { offset: 40, bytes: provider.toBase58() } },
+] })).length;
+const darkBefore = await channelsTo(dark);
+const blind = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-blind.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+const blindSaid = await blind.ensure(dark.toBase58(), 1n).then((c) => `opened or resumed ${c.channel.slice(0, 6)}…`, (e: Error) => `refused: ${e.message}`);
+const darkAfter = await channelsTo(dark);
+check('a router that lost its records and cannot reach the node does not open a second channel to it', darkBefore === 1 && darkAfter === 1 && blindSaid.startsWith('refused') && /did not say where it stands/.test(blindSaid), `channels on chain to the dark node: ${darkBefore} before, ${darkAfter} after · ${blindSaid.slice(0, 150)}`);
 mockOf.halo.kill();
 await sleep(16_000);
 const haloHealth = (await (await fetch(`http://127.0.0.1:${providerSpecs[3].port}/health`)).json()) as { upstream?: string };

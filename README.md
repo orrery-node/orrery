@@ -602,6 +602,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Tunnels through the proxy are kept and reused between requests (0.1.14)
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
+- [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
 - [x] A router behind a proxy asks a node what it sees before it pays for anything, shows it on `/orrery/status`, and does not send while the node sees this computer's own public address (in main, next release)
 - [x] A node does not redeem dust: with no `redeem.minUnits` set, a channel is redeemed once five cents are waiting on it (0.1.15)
 - [ ] A run through Tor itself

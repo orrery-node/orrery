@@ -24,6 +24,11 @@ export type ChannelState = {
 
 export type Spend = { day: string; units: bigint };
 
+/** There is an open channel from this wallet to the node on chain, under this session key, but where it stands could
+ * not be learned: the node did not answer. Opening a second channel on that guess would lock another deposit beside
+ * the first, so the request fails for this node and the next one asks again. */
+export class ChannelUnknown extends Error {}
+
 export class Channels {
   private map = new Map<string, ChannelState>();
   private opening = new Map<string, Promise<ChannelState>>();
@@ -103,7 +108,11 @@ export class Channels {
     const pending = this.opening.get(provider);
     if (pending) return pending;
     const p = this.recover(provider)
-      .catch(() => null)
+      // Not knowing is not the same as there being none: only a search that found nothing leads to a new channel.
+      .catch((e) => {
+        if (e instanceof ChannelUnknown) throw e;
+        return null;
+      })
       .then(async (found) => {
         if (!found) return this.open(provider, need > this.opts.deposit ? need : this.opts.deposit);
         if (found.deposit - found.cumulative < need) await this.topUp(provider, need);
@@ -121,12 +130,18 @@ export class Channels {
    * new channel as before. */
   private async recover(provider: string): Promise<ChannelState | null> {
     if (!this.wallet) return null;
-    const accounts = await this.conn.getProgramAccounts(programId(), {
+    const wallet = this.wallet.publicKey.toBase58();
+    const list = () => this.conn.getProgramAccounts(programId(), {
       filters: [
         { memcmp: { offset: 0, bytes: Buffer.from(ACCOUNT.Channel).toString('base64'), encoding: 'base64' } },
-        { memcmp: { offset: 8, bytes: this.wallet.publicKey.toBase58() } },
+        { memcmp: { offset: 8, bytes: wallet } },
         { memcmp: { offset: 40, bytes: provider } },
       ],
+    });
+    // One more try before giving up on the search: an RPC that hiccups once should not cost a second deposit.
+    const accounts = await list().catch(async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      return list();
     });
     const mine = accounts
       .map((a) => ({ address: a.pubkey, ch: decodeChannel(a.account.data) }))
@@ -136,9 +151,13 @@ export class Channels {
     const info = await this.conn.getAccountInfo(new PublicKey(provider));
     if (!info) return null;
     const endpoint = decodeProvider(info.data).endpoint.replace(/\/$/, '');
+    let silent: string | null = null;
     for (const { address, ch } of mine) {
       const r = await fetchNode(`${endpoint}/orrery/channel?address=${address.toBase58()}`, { timeoutMs: 5_000 }).catch(() => null);
-      if (!r?.ok) continue;
+      if (!r?.ok) {
+        silent ??= address.toBase58();
+        continue;
+      }
       const j = (await r.json()) as { voucher: string | null; owed: string };
       const v = j.voucher ? decodeVoucher(j.voucher) : null;
       if (v && !verifyVoucher(this.session.publicKey, address, v)) continue;
@@ -152,6 +171,7 @@ export class Channels {
       this.save();
       return state;
     }
+    if (silent) throw new ChannelUnknown(`an open channel to this node is on chain (${silent.slice(0, 6)}…), but the node did not say where it stands; a second one is not opened on a guess`);
     return null;
   }
 
