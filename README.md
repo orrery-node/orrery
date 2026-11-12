@@ -398,6 +398,7 @@ WantedBy=multi-user.target
 ```
 </details>
 
+- **Keep the data folder.** Between redemptions, what routers signed to you exists only in the ledger in `dataDir` (default `~/.orrery/provider`): up to `redeem.minUnits` per channel. In a container, mount a disk there. `orrery provider check` flags a temporary folder or a container's own disk, and the node says so when it starts (in main, next release).
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
 - **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`.
 - **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.

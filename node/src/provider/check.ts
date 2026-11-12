@@ -6,6 +6,7 @@ import { usd } from '../pricing.ts';
 import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
+import { folderRisk, folderWarning } from './folder.ts';
 import type { ProviderNode } from './node.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
@@ -46,6 +47,10 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   const earned = node.status();
   out.push({ ok: null, what: 'earnings', detail: `$${earned.signed} signed to this node, $${earned.redeemed} redeemed, $${earned.waiting} waiting` });
+  // What is waiting exists only in the ledger file in the data folder, so the folder has to outlive a restart.
+  const risk = folderRisk(node.dir);
+  out.push(risk ? { ok: risk === 'temporary' ? false : null, what: 'data folder', detail: folderWarning(node.dir, earned.waiting)! }
+    : { ok: true, what: 'data folder', detail: `${node.dir} keeps what routers signed to you; $${earned.waiting} waiting there to be redeemed` });
 
   if (node.attestation && node.enclave && cfg.tee && cfg.tee.mode !== 'dev') {
     const v = cfg.tee.mode === 'snp'

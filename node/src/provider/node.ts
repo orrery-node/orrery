@@ -22,6 +22,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
 import { seenFrom } from '../seen.ts';
+import { folderWarning } from './folder.ts';
 import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
@@ -139,7 +140,8 @@ export class ProviderNode {
   private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
-  private dir: string;
+  /** Where this node keeps its keys and its ledger of what routers signed to it. */
+  readonly dir: string;
   log: (line: string) => void = (l) => console.log(l);
 
   constructor(readonly cfg: ProviderConfig) {
@@ -608,6 +610,9 @@ export class ProviderNode {
     return new Promise((resolve) => {
       this.server = createServer((req, res) => void this.handle(req, res));
       this.server.listen(this.cfg.listen, this.cfg.host ?? '0.0.0.0', () => resolve(this.server!));
+      // What is waiting to be redeemed exists only in the ledger file: say so once when the folder may not stay.
+      const warning = folderWarning(this.dir, this.status().waiting);
+      if (warning) this.log(warning);
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
       this.timer = setInterval(() => void this.redeemDue().then(() => this.burnDue()).catch(() => undefined), every);
     });
