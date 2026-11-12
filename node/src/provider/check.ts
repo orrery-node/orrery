@@ -40,6 +40,10 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const sol = (await node.conn.getBalance(node.node.publicKey)) / LAMPORTS_PER_SOL;
   out.push({ ok: sol >= 0.002, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${sol >= 0.002 ? '' : `; send a little to ${node.node.publicKey.toBase58()}`}` });
 
+  // A redemption costs its transaction fee whatever it moves; a minimum under a cent means paying more than is collected.
+  const min = cfg.redeem?.minUnits;
+  if (min !== undefined && min < 10_000) out.push({ ok: null, what: 'redeem', detail: `redeem.minUnits is ${min} ($${(min / 1e6).toFixed(6)}): each redemption costs a transaction fee, usually more than that. 50000 (five cents) is the default` });
+
   const earned = node.status();
   out.push({ ok: null, what: 'earnings', detail: `$${earned.signed} signed to this node, $${earned.redeemed} redeemed, $${earned.waiting} waiting` });
 

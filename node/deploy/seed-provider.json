@@ -20,6 +20,6 @@
     { "id": "qwen3-235b", "upstreamModel": "qwen/qwen3-235b-a22b-2507", "context": 262144, "maxOutput": 8192, "price": { "input": 210000, "output": 1200000 } },
     { "id": "gpt-oss-120b", "upstreamModel": "openai/gpt-oss-120b", "context": 131072, "maxOutput": 8192, "price": { "input": 37500, "output": 140000 } }
   ],
-  "redeem": { "everySecs": 120, "minUnits": 1 },
+  "redeem": { "everySecs": 300, "minUnits": 50000 },
   "holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }
 }

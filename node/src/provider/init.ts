@@ -58,6 +58,6 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     dataDir: '~/.orrery/provider',
     upstream: { baseUrl: found.baseUrl },
     models: found.models.map((id) => (isEmbeddingModel(id) ? { id: networkId(id), upstreamModel: id, context: 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } } : { id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
-    redeem: { everySecs: 300, minUnits: 1_000 },
+    redeem: { everySecs: 300, minUnits: 50_000 },
   };
 }

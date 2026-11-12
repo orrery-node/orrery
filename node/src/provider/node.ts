@@ -43,6 +43,9 @@ export type ProviderConfig = {
   /** `dev` is a software stand-in for local testing. `snp` serves the report this machine's AMD CPU signed for the
    * node's encryption key (`report`, raw bytes) and the chip's certificate (`vcek`, DER), which routers verify themselves. */
   tee?: { mode: 'dev'; kind?: number } | { mode: 'snp'; report: string; vcek: string } | { mode: 'tdx'; quote: string };
+  /** How often to redeem, and the smallest amount on a channel worth redeeming, in USDC base units. A redemption is a
+   * transaction and costs its fee whatever it moves, so small amounts wait (default 50,000 = five cents). A channel
+   * that is closing is redeemed whatever it holds. */
   redeem?: { everySecs?: number; minUnits?: number };
   /** Holder pricing: hold `share` basis points of the network token's supply, pay `off` basis points less. */
   holder?: { tiers: HolderTier[] };
@@ -103,6 +106,15 @@ function secretFromEnv(name: string, what: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${what}: environment variable ${name} is not set`);
   return v;
+}
+
+/** The smallest amount worth a redemption's fee when the operator names none: five cents. */
+export const REDEEM_MIN_UNITS = 50_000;
+
+/** Whether a channel is redeemed now: it has something waiting, and either enough to be worth the fee or the user is
+ * closing it (after the grace period what was not redeemed goes back to them). */
+export function worthRedeeming(pending: bigint, minUnits: bigint, closing: boolean): boolean {
+  return pending > 0n && (pending >= minUnits || closing);
 }
 
 export class ProviderNode {
@@ -474,7 +486,7 @@ export class ProviderNode {
   /** Redeems every channel whose signed total is ahead of what is redeemed. Channels are re-read from chain first
    * (a closed one leaves the ledger), packed into transactions that fit Solana's 1232-byte limit, and a batch that
    * fails is retried one channel at a time so one bad channel never holds up the rest. */
-  async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? 1)): Promise<{ channel: string; amount: bigint; tx: string }[]> {
+  async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS)): Promise<{ channel: string; amount: bigint; tx: string }[]> {
     const due: [string, Entry][] = [];
     for (const [k, e] of [...this.ledger]) {
       if (!e.best || e.best.cumulative <= e.redeemed) continue;
@@ -491,7 +503,7 @@ export class ProviderNode {
       }
       const pending = (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) - e.redeemed;
       const closing = e.channel.closingAt !== 0n;
-      if (pending > 0n && (pending >= minUnits || closing)) due.push([k, e]);
+      if (worthRedeeming(pending, minUnits, closing)) due.push([k, e]);
     }
     const ixs = (batch: [string, Entry][]) => batch.flatMap(([k, e]) => redeemInstructions({ caller: this.node.publicKey, providerAuthority: this.authority, channel: new PublicKey(k), mint: this.mint, sessionKey: e.channel.sessionKey, voucher: e.best! }));
     const fits = (batch: [string, Entry][]) => {
