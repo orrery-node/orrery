@@ -11,10 +11,10 @@
 // else. A node operator's own model server is not covered: that is the node's side.
 //
 // There is no fallback. When a proxy is set and it does not answer, the request fails; it never goes out directly.
-import { request as httpRequest, type ClientRequest, type IncomingMessage, type RequestOptions } from 'node:http';
+import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage, type RequestOptions } from 'node:http';
 import { connect as netConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, type ConnectionOptions } from 'node:tls';
-import { Readable } from 'node:stream';
+import { Readable, type Duplex } from 'node:stream';
 import { fetchWithTimeout } from './sse.ts';
 
 export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string };
@@ -96,11 +96,92 @@ export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?:
   });
 }
 
+/** Asks an HTTP proxy for a tunnel (CONNECT) to host:port. The proxy resolves the name. */
+export function httpTunnel(proxy: Proxy, host: string, port: number): Promise<Socket> {
+  return new Promise((done, fail) => {
+    const ask = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${host}:${port}`, agent: false, headers: { host: `${host}:${port}`, ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
+    ask.on('error', (err) => fail(new Error(`the proxy at ${proxy.label} did not answer: ${err.message}`)));
+    ask.once('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy();
+        return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${host}:${port} (${res.statusCode})`));
+      }
+      done(socket as Socket);
+    });
+    ask.end();
+  });
+}
+
+/** A tunnel that carries nothing for this long is closed, whether it is waiting for its next request or holding an
+ * answer nobody is reading. */
+const QUIET_MS = 120_000;
+
+/** Keeps tunnels open between requests: the next request to the same host rides the one already there instead of
+ * paying for a new connection, a new tunnel and a new TLS handshake. One request at a time on each. */
+class TunnelAgent extends Agent {
+  constructor(private open: (host: string, port: number) => Promise<Duplex>) {
+    super({ keepAlive: true, maxFreeSockets: 8 });
+  }
+
+  override createConnection(options: { host?: string | null; port?: number | string | null }, done?: (err: Error | null, stream: Duplex) => void): Duplex {
+    this.open(String(options.host), Number(options.port)).then(
+      (stream) => {
+        (stream as Socket).setTimeout?.(QUIET_MS);
+        done?.(null, stream);
+      },
+      (err: Error) => done?.(err, undefined as never),
+    );
+    return undefined as never;
+  }
+}
+
+type Pool = { secure: Agent; plain: Agent; forward: Agent };
+const NO_TLS: ConnectionOptions = {};
+const pools = new Map<string, { tls: ConnectionOptions; pool: Pool }>();
+const closePool = (p: Pool) => [p.secure, p.plain, p.forward].forEach((a) => a.destroy());
+
+/** The kept tunnels for one proxy. A different set of TLS options gets its own tunnels: one opened under looser
+ * rules is never handed to a request that asked for stricter ones. */
+function poolFor(proxy: Proxy, tls: ConnectionOptions): Pool {
+  const key = `${proxy.kind}|${proxy.host}|${proxy.port}|${proxy.auth ?? ''}`;
+  const have = pools.get(key);
+  if (have && have.tls === tls) return have.pool;
+  if (have) closePool(have.pool);
+  const tunnel = (host: string, port: number) => (proxy.kind === 'socks5' ? socksTunnel(proxy, host, port) : httpTunnel(proxy, host, port));
+  const pool: Pool = {
+    // An https host: TLS to the host itself inside the tunnel, checked before the first request is written.
+    secure: new TunnelAgent(async (host, port) => {
+      const socket = await tunnel(host, port);
+      return await new Promise<Duplex>((done, fail) => {
+        const secure = tlsConnect({ ...tls, socket, ...(isIP(host) ? {} : { servername: host }), ALPNProtocols: ['http/1.1'] });
+        const bad = (err: Error) => {
+          secure.destroy();
+          fail(new Error(`TLS to ${host} through the proxy: ${err.message}`));
+        };
+        secure.once('error', bad);
+        secure.once('secureConnect', () => {
+          secure.off('error', bad);
+          done(secure);
+        });
+      });
+    }),
+    // A plain-http host through SOCKS5: the tunnel itself.
+    plain: new TunnelAgent(tunnel),
+    // A plain-http host through an HTTP proxy: the proxy is asked for the whole address, over a kept connection to it.
+    forward: new Agent({ keepAlive: true, maxFreeSockets: 8, timeout: QUIET_MS }),
+  };
+  pools.set(key, { tls, pool });
+  return pool;
+}
+
 let current: Proxy | null = null;
-let testTls: ConnectionOptions = {};
+let testTls: ConnectionOptions = NO_TLS;
 
 /** Sets (or clears) the proxy every request to a node goes through, for this process. */
-export function setNodeProxy(p: Proxy | null, tls: ConnectionOptions = {}): void {
+export function setNodeProxy(p: Proxy | null, tls: ConnectionOptions = NO_TLS): void {
+  // Tunnels kept for the proxy being left are closed, so nothing rides an old route after a change.
+  for (const { pool } of pools.values()) closePool(pool);
+  pools.clear();
   current = p;
   testTls = tls;
 }
@@ -146,7 +227,7 @@ function bodyOf(body: Init['body']): Buffer | null {
 
 /** One request through the proxy, answered as a fetch Response. Same timing rule as fetchWithTimeout: the timeout
  * covers the time until the answer's headers, and a caller's own signal replaces it. */
-export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: ConnectionOptions = {}): Promise<Response> {
+export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: ConnectionOptions = NO_TLS): Promise<Response> {
   const target = new URL(url);
   if (target.protocol !== 'http:' && target.protocol !== 'https:') return Promise.reject(new Error(`cannot reach ${target.protocol} through the proxy`));
   const method = (init.method ?? 'GET').toUpperCase();
@@ -183,7 +264,7 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
     if (signal.aborted) return void onAbort();
     signal.addEventListener('abort', onAbort, { once: true });
 
-    const send = (opts: RequestOptions) => {
+    const send = (opts: RequestOptions, again = false) => {
       const req: ClientRequest = httpRequest({ ...opts, method, headers: { ...headers, ...(opts.headers as Record<string, string> | undefined) } }, (res: IncomingMessage) => {
         const status = res.statusCode ?? 0;
         if (status < 200 || status > 599) {
@@ -201,48 +282,28 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
         resolve(new Response(empty ? null : (Readable.toWeb(res) as ReadableStream<Uint8Array>), { status, statusText: res.statusMessage ?? '', headers: out }));
       });
       live = req;
-      req.on('error', (err) => fail(new Error(`through the proxy at ${proxy.label}: ${err.message}`)));
+      req.on('error', (err) => {
+        // A tunnel kept from an earlier request may have been closed at the far end since. That is not this request's
+        // failure: it gets one fresh tunnel.
+        if (req.reusedSocket && !again && !settled && !signal.aborted) return send(opts, true);
+        fail(/the proxy at |through the proxy|SOCKS/.test(err.message) ? err : new Error(`through the proxy at ${proxy.label}: ${err.message}`));
+      });
+      req.on('timeout', () => req.destroy(new Error(`through the proxy at ${proxy.label}: nothing arrived for ${QUIET_MS / 1000} seconds`)));
       req.end(body ?? undefined);
     };
 
-    const secureOver = (socket: Socket) => {
-      const secure = tlsConnect({ ...tls, socket, ...(isIP(target.hostname) ? {} : { servername: target.hostname }), ALPNProtocols: ['http/1.1'] });
-      live = secure;
-      secure.on('error', (err) => fail(new Error(`TLS to ${target.hostname} through the proxy: ${err.message}`)));
-      return secure;
-    };
-    if (proxy.kind === 'socks5') {
-      // A SOCKS5 proxy gives a tunnel to anything: TLS to an https node inside it, plain HTTP to an http one.
-      const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
-      socksTunnel(proxy, target.hostname, port, (s) => (live = s)).then((socket) => {
-        if (settled) return void socket.destroy();
-        socket.on('error', (err) => fail(new Error(`through the proxy at ${proxy.label}: ${err.message}`)));
-        const stream = target.protocol === 'https:' ? secureOver(socket) : socket;
-        live = stream;
-        send({ createConnection: () => stream, host: target.hostname, port, path: `${target.pathname}${target.search}`, headers: { host: target.host } });
-      }, fail);
-      return;
+    const pool = poolFor(proxy, tls);
+    const path = `${target.pathname}${target.search}`;
+    if (target.protocol === 'https:') {
+      // An https host: a tunnel through the proxy (CONNECT, or SOCKS5), and TLS to the host itself inside it. The proxy
+      // resolves the name, so this machine does not look the host up itself.
+      send({ agent: pool.secure, host: target.hostname, port: Number(target.port || 443), path, headers: { host: target.host } });
+    } else if (proxy.kind === 'socks5') {
+      send({ agent: pool.plain, host: target.hostname, port: Number(target.port || 80), path, headers: { host: target.host } });
+    } else {
+      // A plain-http host through an HTTP proxy: the proxy is asked for the whole address. What it forwards is already
+      // sealed to the node.
+      send({ agent: pool.forward, host: proxy.host, port: proxy.port, path: target.href, headers: { host: target.host, ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
     }
-    const proxyAuth: Record<string, string> = proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {};
-    if (target.protocol === 'http:') {
-      // A plain-http node: the proxy is asked for the whole address. What it forwards is already sealed to the node.
-      send({ host: proxy.host, port: proxy.port, path: target.href, agent: false, headers: { host: target.host, ...proxyAuth } });
-      return;
-    }
-    // An https node: ask the proxy for a tunnel to it, then speak TLS to the node itself through that tunnel. The
-    // proxy resolves the name, so this machine does not look the node up itself.
-    const port = Number(target.port || 443);
-    const tunnel = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${target.hostname}:${port}`, agent: false, headers: { host: `${target.hostname}:${port}`, ...proxyAuth } });
-    live = tunnel;
-    tunnel.on('error', (err) => fail(new Error(`the proxy at ${proxy.label} did not answer: ${err.message}`)));
-    tunnel.once('connect', (res, socket) => {
-      if (res.statusCode !== 200) {
-        socket.destroy();
-        return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${target.hostname}:${port} (${res.statusCode})`));
-      }
-      const secure = secureOver(socket as Socket);
-      send({ createConnection: () => secure, host: target.hostname, port, path: `${target.pathname}${target.search}`, headers: { host: target.host } });
-    });
-    tunnel.end();
   });
 }

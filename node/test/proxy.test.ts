@@ -58,6 +58,8 @@ const proxyServer = createServer((req, res) => {
     out.end(body);
   });
 });
+let proxyConnections = 0;
+proxyServer.on('connection', () => proxyConnections++);
 proxyServer.on('connect', (req, client) => {
   if (refuseTunnels) return void client.end('HTTP/1.1 403 Forbidden\r\n\r\n');
   const [host, port] = (req.url ?? '').split(':');
@@ -450,5 +452,65 @@ describe('a SOCKS5 proxy', () => {
       rpc.close();
       rpc.closeAllConnections();
     }
+  });
+});
+
+describe('tunnels kept between requests', () => {
+  it('three requests to one https host ride one tunnel', async (t) => {
+    if (!secure || !ca) return t.skip('openssl is not here to make a certificate');
+    const tls = { ca };
+    const url = `https://localhost:${portOf(secure)}/v1/models`;
+    const http = parseProxy(`127.0.0.1:${portOf(proxyServer)}`);
+    const before = tunnels.length;
+    for (let i = 0; i < 3; i++) assert.equal((await (await viaProxy(http, url, {}, tls)).json() as { url: string }).url, '/v1/models');
+    assert.equal(tunnels.length, before + 1);
+  });
+
+  it('a kept tunnel the far end has closed is replaced once, and the request still answers', async (t) => {
+    if (!secure || !ca) return t.skip('openssl is not here to make a certificate');
+    const tls = { ca };
+    const url = `https://localhost:${portOf(secure)}/v1/models`;
+    const proxy = parseProxy(`127.0.0.1:${portOf(proxyServer)}`);
+    const before = tunnels.length;
+    assert.equal((await viaProxy(proxy, url, {}, tls)).status, 200);
+    secure.closeIdleConnections();
+    await new Promise((r) => setTimeout(r, 30));
+    const again = await viaProxy(proxy, url, {}, tls);
+    assert.equal(again.status, 200);
+    await again.text();
+    assert.equal(tunnels.length, before + 2);
+  });
+
+  it('plain-http requests share one connection to an HTTP proxy', async () => {
+    const proxy = parseProxy(`127.0.0.1:${portOf(proxyServer)}`);
+    const first = await viaProxy(proxy, `http://127.0.0.1:${portOf(plain)}/v1/models`);
+    await first.text();
+    const opened = proxyConnections;
+    for (let i = 0; i < 3; i++) await (await viaProxy(proxy, `http://127.0.0.1:${portOf(plain)}/v1/models`)).text();
+    assert.equal(proxyConnections, opened);
+  });
+
+  it('an answer nobody reads holds its own tunnel and does not block the next request', async (t) => {
+    if (!secure || !ca) return t.skip('openssl is not here to make a certificate');
+    const tls = { ca };
+    const proxy = parseProxy(`127.0.0.1:${portOf(proxyServer)}`);
+    const before = tunnels.length;
+    const unread = await viaProxy(proxy, `https://localhost:${portOf(secure)}/v1/models`, {}, tls);
+    const next = await viaProxy(proxy, `https://localhost:${portOf(secure)}/v1/models`, {}, tls);
+    assert.equal(next.status, 200);
+    await next.text();
+    assert.equal(tunnels.length, before + 2);
+    await unread.body?.cancel();
+  });
+
+  it('changing the proxy closes the tunnels kept for the old one', async () => {
+    const proxy = parseProxy(`127.0.0.1:${portOf(proxyServer)}`);
+    setNodeProxy(proxy);
+    await (await fetchNode(`http://127.0.0.1:${portOf(plain)}/v1/models`)).text();
+    const live = () => new Promise<number>((r) => proxyServer.getConnections((_e, n) => r(n)));
+    assert.ok((await live()) >= 1);
+    setNodeProxy(null);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await live(), 0);
   });
 });

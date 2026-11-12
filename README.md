@@ -599,7 +599,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] A proxy for everything a router sends (`orrery router --proxy http://host:port`): nodes and the Solana RPC see the proxy's address and not yours, the proxy carries requests it cannot read, transactions are confirmed without the RPC's websocket, and a proxy that is down fails the request instead of letting it out directly (0.1.13)
 - [ ] AMD firmware on Turin (its level is laid out differently); NVIDIA GPU attestation
 - [x] SOCKS5 proxies (`--proxy socks5://host:port`, with a name and password when given): the proxy is sent the host's name, so the lookup happens there (in main, next release)
-- [ ] A run through Tor itself, and tunnels kept open between requests
+- [x] Tunnels through the proxy are kept and reused between requests (in main, next release)
+- [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
 
 ## Contributing
