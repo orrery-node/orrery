@@ -778,6 +778,11 @@ const asOld = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', hea
 await asOld.text();
 ibEntry.wireInside = hadInside;
 const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/completions'));
+// What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
+const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
+await sleep(400);
+const oldPay = proxied.slice(beforeOld).find((x) => x.url === `http://127.0.0.1:${providerSpecs[1].port}/orrery/voucher` && !x.body.startsWith('{"wire"'));
+writeFileSync(join(WORK, 'front.json'), JSON.stringify({ channel: ibChannel, node: 'Ironbridge Compute', inside: { ask: frontOf(askIb.at(-1)), pay: frontOf(payIb.filter((x) => x.body.startsWith('{"wire"')).at(-1)) }, headers: { ask: frontOf(oldAsk), pay: frontOf(oldPay) } }, null, 1));
 check('to a node that reads payment inside the seal, the proxy and the node’s own front see no channel; an older node still gets it as headers', !!ibChannel && askIb.length >= 2 && payIb.length >= 1 && named.length === 0 && asOld.status === 200 && oldAsk?.headers?.['x-orrery-channel'] === ibChannel, `${askIb.length} requests and ${payIb.length} voucher hand-overs to Ironbridge through the proxy, ${named.length} naming the channel · as an older node: ${asOld.status}, channel header ${oldAsk?.headers?.['x-orrery-channel'] === ibChannel ? 'sent' : 'missing'}`);
 check('a request is the same length on the wire whatever the prompt’s length within a size class, so a proxy learns the class and not the prompt’s length', shortSent.length === 1 && longSent.length === 1 && shortSent[0] === longSent[0], `bodies the proxy carried: ${shortSent.join(',')} bytes for 'Say hi.', ${longSent.join(',')} bytes for a prompt of ${28 + 44 * 14} characters`);
 // The far side of the proxy: the router asks a node what address it sees, shows it on its status, and stops sending
