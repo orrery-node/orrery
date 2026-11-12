@@ -4,11 +4,15 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.14 · 2026-11-12 04:02 UTC
+
+**Behind a proxy the router speaks SOCKS5 and keeps its tunnels open, and a job that is out of budget is told so with a 402.**
 
 - **Router** · `--proxy` speaks SOCKS5 as well as HTTP. `orrery router --proxy socks5://127.0.0.1:9050` sends everything the router sends, to nodes and to the Solana RPC, through a SOCKS5 proxy, with a name and password if the address carries them. The proxy is given the host’s name, so the lookup happens there and not on your machine, and TLS to the node runs inside the tunnel. As with an HTTP proxy there is no fallback: a proxy that is down, refuses or is not SOCKS5 fails the request. Checked on mainnet through a local SOCKS5 server (18 tunnels, every one asked for by name) and against curl as a second client of the same server; not yet run through Tor itself.
+- **Router** · Behind a proxy, tunnels are kept and reused. In 0.1.13 every request to a node and every RPC call opened a new connection to the proxy, a new tunnel and a new TLS handshake. Now the next request to the same host rides the tunnel that is already open, one request at a time on each; a tunnel the far end has closed is replaced once without failing the request, and one that carries nothing for two minutes is shut. The same three mainnet requests that opened 16 tunnels in 0.1.13 open 6 in 0.1.14. Tunnels made under one set of TLS rules are never handed to a request made under another, and changing the proxy closes the old ones.
 - **Router** · A job that cannot afford one more request is answered 402, not 404. When what is left of a task budget could not cover the worst case of the next request, the router refused it as `over_budget` with status 404, which reads like a missing model to a client. It is 402 (payment required) now, with the same message saying what is left. A per-request budget (`x-orrery-max-cost`) that nothing fits is still 404: that one is a search with no result.
-- **Router** · Behind a proxy, tunnels are kept and reused. In 0.1.13 every request to a node and every RPC call opened a new connection to the proxy, a new tunnel and a new TLS handshake. Now the next request to the same host rides the tunnel that is already open, one request at a time on each; a tunnel the far end has closed is replaced once without failing the request, and one that carries nothing for two minutes is shut. The same three mainnet requests that opened 16 tunnels in 0.1.13 open 6. Tunnels made under one set of TLS rules are never handed to a request made under another, and changing the proxy closes the old ones.
+
+`npx -y orrery-node@0.1.14`
 
 ## 0.1.13 · 2026-11-11 23:14 UTC
 
