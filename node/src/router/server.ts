@@ -375,7 +375,10 @@ export class Router {
       const fits = offers.filter((o) => worst(o) <= budget);
       if (!fits.length) {
         const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
-        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : ''}`, 404, 'over_budget');
+        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : ''}`,
+          // A budget the caller set for this one request that nothing fits is a search with no result (404). A job whose
+          // remaining budget cannot cover one more request is out of money (402), which no client mistakes for a missing model.
+          taskLeft !== null && taskLeft === budget ? 402 : 404, 'over_budget');
       }
       offers = fits;
     }
