@@ -485,6 +485,17 @@ const vaultBefore = (await getAccount(conn, pda.ata(new PublicKey(ironCh.channel
 await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(iron.node.publicKey, wallets[1].publicKey, new PublicKey(ironCh.channel), user.publicKey, usdc)), [iron.node]);
 const after = await balance(user.publicKey);
 check('a provider releasing its channel sends the rest straight back to the user', after - before === vaultBefore, `refund $${usd(vaultBefore)}`);
+// The node no longer has that channel. Once its own record of it is past its 30 seconds, it says so; the router's
+// next request to it must go through on a fresh channel, not fail until the router's own check comes round.
+const ironLedger = (iron as unknown as { ledger: Map<string, { checkedAt: number }> }).ledger.get(ironCh.channel);
+if (ironLedger) ironLedger.checkedAt = 0;
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const afterRelease = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': iron.pda.toBase58(), 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const afterReleaseSaid = await afterRelease.text();
+const freshCh = channels.get(iron.pda.toBase58())?.channel ?? '';
+const freshOnChain = freshCh ? !!(await conn.getAccountInfo(new PublicKey(freshCh))) : false;
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+check('after a node releases a router’s channel, the next request to it goes through on a fresh channel', afterRelease.status === 200 && freshCh !== ironCh.channel && freshOnChain, `${afterRelease.status}${afterRelease.status === 200 ? '' : ` (${afterReleaseSaid.slice(0, 120)})`} · channel ${ironCh.channel.slice(0, 6)} released → ${freshCh === ironCh.channel ? 'still the released one' : `${freshCh.slice(0, 6)}, ${freshOnChain ? 'on chain' : 'not on chain'}`}`);
 
 let inVaults = 0n;
 for (const c of channels.list()) {

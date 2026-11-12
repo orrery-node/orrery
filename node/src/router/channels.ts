@@ -69,6 +69,11 @@ export class Channels {
     return [...this.map.values()];
   }
 
+  /** Lets go of the channel to `provider`: the node said it is gone or closing. The next request finds or opens one. */
+  forget(provider: string): void {
+    if (this.map.delete(provider)) this.save();
+  }
+
   get(provider: string): ChannelState | undefined {
     return this.map.get(provider);
   }

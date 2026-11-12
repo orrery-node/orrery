@@ -549,11 +549,21 @@ export class Router {
     let nodeMs = 0;
     this.inflight.set(address, maxCost);
     const r = await fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
-    if (r.status === 409 && wired && !retried) {
-      drop(r);
+    if ((r.status === 404 || r.status === 409) && !retried) {
+      const code = ((await r.json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code;
       // The node restarted with a new wire key: read it again (signature checked as before) and send once more.
-      await this.o.registry.refreshWire(address);
-      return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
+      if (code === 'wire_key' && wired) {
+        await this.o.registry.refreshWire(address);
+        return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
+      }
+      // The channel is gone (the node released it) or closing: let it go and send once more, on a fresh one. Without
+      // this the router kept sending on the old channel, and failing, until its own check came round minutes later.
+      if (code === 'unknown_channel' || code === 'channel_closing') {
+        this.log(`${cand.entry.manifest?.name ?? address.slice(0, 6)} says channel ${ch.channel.slice(0, 6)} is ${code === 'unknown_channel' ? 'gone' : 'closing'}; going again on a fresh one`);
+        this.o.channels.forget(address);
+        return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
+      }
+      throw new Error(`provider answered ${r.status}${code ? ` (${code})` : ''}`);
     }
     if (r.status === 402 && !retried) {
       const j = (await r.json()) as { error: { code: string; unpaid?: { requestId: string; model: string; inputTokens: number; outputTokens: number; cost: string }[]; need?: string } };
