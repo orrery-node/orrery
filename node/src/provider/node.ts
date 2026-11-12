@@ -16,7 +16,7 @@ import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, wireMessage, type EnclaveKey } from '../seal.ts';
+import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
@@ -435,7 +435,7 @@ export class ProviderNode {
       if (!up.ok) return fail(res, 502, 'upstream_error', `upstream answered ${up.status}`);
       const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
-      const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
+      const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
       sendE(JSON.stringify({ ...j, model: offer.id }));
       settle(sendE, j.usage?.prompt_tokens ?? estimateInputTokens(body), 0, 0);
       return;
@@ -451,7 +451,8 @@ export class ProviderNode {
     if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
-    const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, Buffer.from(data)).toString('base64') : data, event));
+    // Each sealed frame is padded to whole blocks: its length on the way says nothing about the token in it.
+    const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
     type Usage = { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     let usage: Usage | null = null;
     let chars = 0;

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { ed25519Verify, signerOf } from '../src/keys.ts';
-import { decrypt, encrypt, newEnclaveKey, openRequest, padRequest, sealRequest, wireMessage } from '../src/seal.ts';
+import { decrypt, encrypt, newEnclaveKey, openRequest, padFrame, padRequest, sealRequest, wireMessage } from '../src/seal.ts';
 import { test } from 'node:test';
 
 describe('wire sealing', () => {
@@ -39,4 +39,12 @@ test('a request is padded to its size class with spaces JSON ignores', () => {
   const padded = padRequest(Buffer.from(body));
   assert.deepEqual(JSON.parse(padded.toString('utf8')), JSON.parse(body), 'a node that parses JSON sees the same request');
   assert.equal(padded.subarray(body.length).toString().trim(), '', 'only spaces were added');
+});
+
+test('an answer frame is padded to a whole number of 256-byte blocks, and still parses', () => {
+  for (const [n, want] of [[1, 256], [180, 256], [256, 256], [257, 512], [900, 1024]]) assert.equal(padFrame('x'.repeat(n)).length, want, `${n} bytes`);
+  const one = JSON.stringify({ choices: [{ index: 0, delta: { content: ' a' } }] });
+  const two = JSON.stringify({ choices: [{ index: 0, delta: { content: ' extraordinarily' } }] });
+  assert.equal(padFrame(one).length, padFrame(two).length, 'a short token and a long one look the same');
+  assert.deepEqual(JSON.parse(padFrame(two).toString('utf8')), JSON.parse(two));
 });

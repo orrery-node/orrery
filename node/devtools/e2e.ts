@@ -705,16 +705,20 @@ check('five answers in a row from one node ride connections already open: the ro
 
 // Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
 // is gone the request fails instead of going out directly.
-const proxied: { url: string; body: string }[] = [];
+const proxied: { url: string; body: string; answer?: string }[] = [];
 let slowVouchers = false;
 const recorder = createHttpServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
   req.on('end', () => {
-    proxied.push({ url: req.url ?? '', body });
+    const rec: { url: string; body: string; answer?: string } = { url: req.url ?? '', body };
+    proxied.push(rec);
     const u = new URL(req.url ?? '');
     const out = httpRequest({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: req.method, headers: req.headers }, (r) => {
       res.writeHead(r.statusCode ?? 502, r.headers);
+      // What came back, as the proxy saw it.
+      rec.answer = '';
+      r.on('data', (c: Buffer) => (rec.answer += c.toString('latin1')));
       r.pipe(res);
     });
     out.on('error', () => res.writeHead(502).end());
@@ -749,6 +753,10 @@ const sized = async (content: string) => {
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const shortSent = await sized('Say hi.');
 const longSent = await sized(`Summarize this in one line: ${'the quick brown fox jumps over the lazy dog '.repeat(14)}`);
+// The answer to the long prompt, as the proxy carried it: its sealed frames, by length.
+const answered = proxied.filter((x) => x.url.includes('/v1/chat/completions')).at(-1)?.answer ?? '';
+const frameLengths = [...answered.matchAll(/^data: ([A-Za-z0-9+/=]+)$/gm)].map((m) => Buffer.from(m[1], 'base64').length);
+check('the frames of a sealed answer are one length, so a proxy cannot read token lengths off them', frameLengths.length >= 4 && new Set(frameLengths).size === 1, `${frameLengths.length} sealed frames, ${new Set(frameLengths).size} distinct length${new Set(frameLengths).size === 1 ? '' : 's'}: ${[...new Set(frameLengths)].slice(0, 6).join(', ')} bytes`);
 check('a request is the same length on the wire whatever the prompt’s length within a size class, so a proxy learns the class and not the prompt’s length', shortSent.length === 1 && longSent.length === 1 && shortSent[0] === longSent[0], `bodies the proxy carried: ${shortSent.join(',')} bytes for 'Say hi.', ${longSent.join(',')} bytes for a prompt of ${28 + 44 * 14} characters`);
 // The far side of the proxy: the router asks a node what address it sees, shows it on its status, and stops sending
 // when what the node saw is this computer's own public address. Loopback is never public, so the rig says it counts.

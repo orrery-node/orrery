@@ -96,7 +96,9 @@ A router that still has its session key but not its channel file looks on chain 
 
 ### Request length
 
-Before a request is sealed (or sent, to a node with neither an enclave nor a wire key) the router pads its JSON with spaces to a size class: 1 KiB, doubling up to 64 KiB, then every 64 KiB. Sealing keeps the length of what it seals, and length is what the network, a proxy and a node's balancer see of a request, so they learn the class and not the length of the prompt. JSON ignores the spaces; a node opens and parses the request as before, and bills by the model server's own token count. Answers are not padded: their length and timing still show.
+Before a request is sealed (or sent, to a node with neither an enclave nor a wire key) the router pads its JSON with spaces to a size class: 1 KiB, doubling up to 64 KiB, then every 64 KiB. Sealing keeps the length of what it seals, and length is what the network, a proxy and a node's balancer see of a request, so they learn the class and not the length of the prompt. JSON ignores the spaces; a node opens and parses the request as before, and bills by the model server's own token count.
+
+A node pads each sealed frame of an answer the same way, to whole 256-byte blocks. A streamed answer goes out about a token per frame, so unpadded frame lengths spell out the length of each token, which is enough to guess at the text. A one-token frame fits one block. A router of any version reads the padded frames, since it parses each one as JSON. What still shows: how many frames an answer has, and when each one goes out.
 
 ### The address a node sees
 

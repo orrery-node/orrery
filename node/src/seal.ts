@@ -60,6 +60,16 @@ export function padRequest(plaintext: Buffer): Buffer {
   return size === n ? plaintext : Buffer.concat([plaintext, Buffer.alloc(size - n, 0x20)]);
 }
 
+/** One frame of an answer padded with spaces to whole 256-byte blocks. A streamed answer goes out about a token per
+ * frame, and the length of each sealed frame is what is visible on the way, so unpadded frames spell out the length
+ * of every token. A frame of one token fits one block, so short and long tokens look the same. JSON ignores the
+ * spaces. What still shows: how many frames, and when. */
+export function padFrame(text: string): Buffer {
+  const b = Buffer.from(text);
+  const size = Math.max(256, Math.ceil(b.length / 256) * 256);
+  return size === b.length ? b : Buffer.concat([b, Buffer.alloc(size - b.length, 0x20)]);
+}
+
 /** Enclave side: open a sealed request. Returns the plaintext and the key to seal the reply with. */
 export function openRequest(enclave: EnclaveKey, wire: { epk: string; box: string }): { plaintext: Buffer; key: Buffer } {
   const epk = Buffer.from(wire.epk, 'base64');

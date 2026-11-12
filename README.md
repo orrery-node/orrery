@@ -603,7 +603,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Tunnels through the proxy are kept and reused between requests (0.1.14)
 - [x] A node listed by an IPv6 address, through either kind of proxy (in main, next release)
 - [x] Requests padded to a size class before sealing, so their length on the wire shows the class and not the prompt's length (in main, next release)
-- [ ] Answers padded the same way (their length and timing still show)
+- [x] Answer frames padded to whole 256-byte blocks, so their lengths do not spell out the tokens (in main, next release)
+- [ ] Hide how many frames an answer has and when they go out
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
