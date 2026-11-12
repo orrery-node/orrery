@@ -564,19 +564,23 @@ check('a request to a node without an enclave travels encrypted to the node’s 
 
 // Task budgets: an agent gives a job one budget, and every request under that name draws from it.
 const taskAsk = (first: boolean) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-task': 'rehearsal-job', ...(first ? { 'x-orrery-task-budget': '0.00003' } : {}) }, body: JSON.stringify({ model: 'llama-3.3-70b:cheap', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
-const taskRuns: { status: number; left: string | null; code?: string }[] = [];
+const taskRuns: { status: number; left: string | null; spent: string | null; code?: string }[] = [];
 for (let i = 0; i < 6; i++) {
   const r = await taskAsk(i === 0);
   const j = (await r.json()) as { error?: { code?: string } };
-  taskRuns.push({ status: r.status, left: r.headers.get('x-orrery-task-left'), code: j.error?.code });
+  taskRuns.push({ status: r.status, left: r.headers.get('x-orrery-task-left'), spent: r.headers.get('x-orrery-task-spent'), code: j.error?.code });
   if (r.status !== 200) break;
 }
-const taskList = (await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; answers: number }[] };
+const taskList = (await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; left: string; answers: number }[] };
 const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
 const spendByTask = (await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
 const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');
 const lastRun = taskRuns[taskRuns.length - 1];
 check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status === 402 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1 && jobSpend?.answers === job.answers && jobSpend.usd === job.spent && existsSync(join(process.env.ORRERY_HOME!, 'router', 'tasks.json')), job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
+// The other refusal: the job's budget is lowered under what it already spent, so nothing at all is left.
+const spentAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-task': 'rehearsal-job', 'x-orrery-task-budget': '0.000001' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'One more.' }] }) });
+const spentSaid = { status: spentAsk.status, code: ((await spentAsk.json()) as { error?: { code?: string } }).error?.code, left: spentAsk.headers.get('x-orrery-task-left'), spent: spentAsk.headers.get('x-orrery-task-spent') };
+check('a request refused for a job’s budget says in headers what the job has spent and has left, so an agent need not read it out of a sentence', lastRun.status === 402 && !!job && lastRun.left !== null && lastRun.left === job.left && lastRun.spent === job.spent && spentSaid.status === 402 && spentSaid.code === 'task_budget_spent' && spentSaid.left === '0.000000' && spentSaid.spent === job.spent, `${lastRun.code}: x-orrery-task-spent ${lastRun.spent} · x-orrery-task-left ${lastRun.left}${job ? ` (the book says $${job.spent} spent, $${job.left} left)` : ''} · ${spentSaid.code}: spent ${spentSaid.spent} · left ${spentSaid.left}`);
 
 // Who is asking stays on this machine: ids that clients attach in all three API shapes never reach a model server.
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;

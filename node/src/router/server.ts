@@ -81,10 +81,16 @@ export type Trip = {
 };
 
 class Unserved extends Error {
-  constructor(message: string, readonly status = 502, readonly code = 'no_provider') {
+  /** Headers that go out with the refusal, for what a caller should be able to read without parsing the message. */
+  constructor(message: string, readonly status = 502, readonly code = 'no_provider', readonly headers: Record<string, string> = {}) {
     super(message);
   }
 }
+
+/** What a job has spent and has left, as the headers every answer and every budget refusal under it carries. */
+const taskHeaders = (t: { budget: bigint; spent: bigint }): Record<string, string> => ({
+  'x-orrery-task-spent': usd(t.spent), 'x-orrery-task-left': usd(t.budget > t.spent ? t.budget - t.spent : 0n),
+});
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
@@ -235,8 +241,8 @@ export class Router {
       return send(res, 404, { error: { code: 'not_found', message: 'no such route' } });
     } catch (err) {
       const e = err as Unserved;
-      if (!res.headersSent && url.pathname.startsWith('/v1/messages')) return send(res, e.status ?? 500, anthropicError(e.status ?? 500, e.message));
-      if (!res.headersSent) return send(res, e.status ?? 500, { error: { code: e.code ?? 'internal', message: e.message } });
+      if (!res.headersSent && url.pathname.startsWith('/v1/messages')) return send(res, e.status ?? 500, anthropicError(e.status ?? 500, e.message), e.headers ?? {});
+      if (!res.headersSent) return send(res, e.status ?? 500, { error: { code: e.code ?? 'internal', message: e.message } }, e.headers ?? {});
       res.end();
     }
   }
@@ -350,6 +356,7 @@ export class Router {
     // A task budget: every request that names the same task draws from one budget, so an agent's whole job has a
     // ceiling. What is left of it becomes this request's budget, which is how the total can never be passed.
     let taskLeft: bigint | null = null;
+    let taskNow: { budget: bigint; spent: bigint } | null = null;
     // The job is named by header, or, for tools that can only set a key, in the key itself (orrery/<task>/<budget>).
     const keyed = req.headers['x-orrery-task'] ? null : taskFromKey(apiKeyOf(req.headers));
     const taskName = req.headers['x-orrery-task'] ? String(req.headers['x-orrery-task']) : keyed?.name ?? null;
@@ -358,11 +365,13 @@ export class Router {
       const tDollars = tb === undefined ? null : Number(String(tb).replace(/^\$/, ''));
       if (tDollars !== null && (!Number.isFinite(tDollars) || tDollars <= 0)) throw new Unserved('x-orrery-task-budget must be a dollar amount such as 0.05', 400, 'bad_request');
       try {
-        taskLeft = this.tasks.open(taskName, tDollars === null ? null : BigInt(Math.floor(tDollars * 1e6))).left;
+        const opened = this.tasks.open(taskName, tDollars === null ? null : BigInt(Math.floor(tDollars * 1e6)));
+        taskLeft = opened.left;
+        taskNow = opened.task;
       } catch (e) {
         throw new Unserved((e as Error).message, 400, 'bad_request');
       }
-      if (taskLeft <= 0n) throw new Unserved(`task ${taskName} has spent its budget; nothing more is sent or paid under it`, 402, 'task_budget_spent');
+      if (taskLeft <= 0n) throw new Unserved(`task ${taskName} has spent its budget; nothing more is sent or paid under it`, 402, 'task_budget_spent', taskHeaders(taskNow!));
       this.taskOf.set(res, taskName);
     }
     const budgetHeader = req.headers['x-orrery-max-cost'] ?? this.o.maxCost;
@@ -378,7 +387,7 @@ export class Router {
         throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : ''}`,
           // A budget the caller set for this one request that nothing fits is a search with no result (404). A job whose
           // remaining budget cannot cover one more request is out of money (402), which no client mistakes for a missing model.
-          taskLeft !== null && taskLeft === budget ? 402 : 404, 'over_budget');
+          taskLeft !== null && taskLeft === budget ? 402 : 404, 'over_budget', taskNow ? taskHeaders(taskNow) : {});
       }
       offers = fits;
     }
@@ -572,7 +581,7 @@ export class Router {
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader, ...(task ? { 'x-orrery-task-spent': usd(task.spent), 'x-orrery-task-left': usd(task.budget > task.spent ? task.budget - task.spent : 0n) } : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {
