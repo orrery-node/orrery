@@ -8,7 +8,7 @@ import { createServer as createTlsServer } from 'node:https';
 import { connect, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, socksTunnel, viaProxy } from '../src/proxy.ts';
+import { fetchNode, httpTunnel, ipv6Bytes, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, socksTunnel, viaProxy } from '../src/proxy.ts';
 import { createServer as createTcpServer, type Socket } from 'node:net';
 import { Keypair, SystemProgram, Transaction, type Connection } from '@solana/web3.js';
 import { NO_WEBSOCKET, rpcConnection } from '../src/chain/connect.ts';
@@ -62,7 +62,8 @@ let proxyConnections = 0;
 proxyServer.on('connection', () => proxyConnections++);
 proxyServer.on('connect', (req, client) => {
   if (refuseTunnels) return void client.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-  const [host, port] = (req.url ?? '').split(':');
+  const m = /^\[?([^\]]*?)\]?:(\d+)$/.exec(req.url ?? '');
+  const [host, port] = m ? [m[1], m[2]] : ['', '0'];
   const t = { to: req.url ?? '', bytes: [] as Buffer[] };
   tunnels.push(t);
   const up = connect(Number(port), host, () => {
@@ -308,11 +309,49 @@ describe('the Solana RPC behind the proxy', () => {
   });
 });
 
+describe('an IPv6 address', () => {
+  it('becomes the 16 bytes SOCKS5 sends, short forms and an IPv4 tail included', () => {
+    assert.equal(ipv6Bytes('::1').toString('hex'), '00000000000000000000000000000001');
+    assert.equal(ipv6Bytes('::').toString('hex'), '0'.repeat(32));
+    assert.equal(ipv6Bytes('2001:db8::5').toString('hex'), '20010db8000000000000000000000005');
+    assert.equal(ipv6Bytes('[fe80::1%en0]').toString('hex'), 'fe800000000000000000000000000001');
+    assert.equal(ipv6Bytes('::ffff:192.0.2.1').toString('hex'), '00000000000000000000ffffc0000201');
+    assert.equal(ipv6Bytes('2001:0db8:0000:0000:0000:ff00:0042:8329').toString('hex'), '20010db8000000000000ff0000428329');
+    assert.throws(() => ipv6Bytes('1:2:3'), /not an IPv6 address/);
+  });
+
+  it('is asked of an HTTP proxy in brackets (CONNECT [::1]:port), and the tunnel works', async (t) => {
+    const six = createServer(handler);
+    try {
+      await new Promise<void>((r, f) => { six.once('error', f); six.listen(0, '::1', () => r()); });
+    } catch {
+      return t.skip('no IPv6 loopback here');
+    }
+    try {
+      const sock = await httpTunnel(parseProxy(`127.0.0.1:${portOf(proxyServer)}`), '::1', portOf(six));
+      assert.equal(tunnels.at(-1)!.to, `[::1]:${portOf(six)}`);
+      const said = await new Promise<string>((done) => {
+        let got = '';
+        sock.on('data', (d) => (got += d));
+        sock.on('end', () => done(got));
+        sock.write(`GET /v1/models HTTP/1.1\r\nhost: [::1]:${portOf(six)}\r\nconnection: close\r\n\r\n`);
+      });
+      assert.match(said, /^HTTP\/1\.1 200/);
+    } finally {
+      six.closeAllConnections();
+      six.close();
+    }
+  });
+});
+
 describe('a SOCKS5 proxy', () => {
   // A small SOCKS5 server (RFC 1928 and 1929): no sign-in, or a name and password. It writes down where each tunnel
   // went and what passed through. curl is run against it first, so the client under test is checked against a server
   // that a reference client also accepts.
   const asked: { to: string; bytes: Buffer[]; user?: string }[] = [];
+  // How each tunnel named its target: 1 an IPv4 address, 3 a name, 4 an IPv6 address.
+  const kinds: number[] = [];
+  const sixOf = (b: Buffer) => new URL(`http://[${[...Array(8)].map((_, i) => b.readUInt16BE(i * 2).toString(16)).join(':')}]/`).hostname.slice(1, -1);
   const cfg = { need: null as { user: string; pass: string } | null, refuse: 0 };
   const socks = createTcpServer((c: Socket) => {
     let buf = Buffer.alloc(0), step = 0, user: string | undefined;
@@ -341,7 +380,8 @@ describe('a SOCKS5 proxy', () => {
           if (buf.length < 5) return;
           const len = buf[3] === 1 ? 4 : buf[3] === 3 ? 1 + buf[4] : 16;
           if (buf.length < 4 + len + 2) return;
-          const host = buf[3] === 1 ? [...buf.subarray(4, 8)].join('.') : buf.subarray(5, 5 + buf[4]).toString();
+          const host = buf[3] === 1 ? [...buf.subarray(4, 8)].join('.') : buf[3] === 4 ? sixOf(buf.subarray(4, 20)) : buf.subarray(5, 5 + buf[4]).toString();
+          kinds.push(buf[3]);
           const port = buf.readUInt16BE(4 + len);
           const rest = buf.subarray(4 + len + 2);
           step = 3;
@@ -433,7 +473,36 @@ describe('a SOCKS5 proxy', () => {
     await new Promise<void>((r) => dead.close(() => r()));
     await assert.rejects(viaProxy(parseProxy(`socks5://127.0.0.1:${port}`), `http://127.0.0.1:${portOf(plain)}/v1/models`), /did not answer/);
     assert.equal(seen.length, heard);
-    await assert.rejects(socksTunnel(parseProxy(`socks5://${at()}`), '::1', 80), /IPv6 address through a SOCKS proxy is not supported yet/);
+  });
+
+  it('a node written as an IPv6 address is reached through it: the proxy is sent the address itself, as curl sends it', async (t) => {
+    const six = createServer(handler);
+    try {
+      await new Promise<void>((r, f) => { six.once('error', f); six.listen(0, '::1', () => r()); });
+    } catch {
+      return t.skip('no IPv6 loopback here');
+    }
+    try {
+      const url = `http://[::1]:${portOf(six)}/v1/models`;
+      try {
+        const out = (await promisify(execFile)('curl', ['-sS', '--max-time', '10', '--socks5', at(), url], { encoding: 'utf8' })).stdout;
+        assert.deepEqual(JSON.parse(out), { method: 'GET', url: '/v1/models', got: 0 });
+        assert.deepEqual([asked.at(-1)!.to, kinds.at(-1)], [`::1:${portOf(six)}`, 4], 'curl names an IPv6 target by its 16 bytes');
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+      }
+      const r = await viaProxy(parseProxy(`socks5://${at()}`), url);
+      assert.equal(r.status, 200);
+      assert.deepEqual(await r.json(), { method: 'GET', url: '/v1/models', got: 0 });
+      assert.deepEqual([asked.at(-1)!.to, kinds.at(-1)], [`::1:${portOf(six)}`, 4], 'so does the router');
+      assert.equal(seen.at(-1)!.headers.host, `[::1]:${portOf(six)}`, 'the node is told its own address in brackets');
+      cfg.refuse = 4;
+      const s6 = await socksTunnel(parseProxy(`socks5://${at()}`), '2001:db8::5', 80).then(() => 'opened', (e: Error) => e.message).finally(() => (cfg.refuse = 0));
+      assert.match(s6, /could not reach \[2001:db8::5\]:80 \(host unreachable\)/, 'an address the proxy cannot reach is named in brackets');
+    } finally {
+      six.closeAllConnections();
+      six.close();
+    }
   });
 
   it('the Solana RPC goes through it too', async () => {

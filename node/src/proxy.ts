@@ -38,13 +38,32 @@ export function parseProxy(text: string): Proxy {
   return { kind, host: u.hostname.replace(/^\[|\]$/g, ''), port, auth, user, pass, label: `${u.hostname}:${port}` };
 }
 
+/** The 16 bytes of an IPv6 address written as text (brackets, a zone and an IPv4 tail allowed), as SOCKS5 sends it. */
+export function ipv6Bytes(text: string): Buffer {
+  let s = text.replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  const four = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(s);
+  if (four) {
+    const [a, b, c, d] = four.slice(1).map(Number);
+    s = `${s.slice(0, four.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = s.split('::');
+  const head = halves[0] ? halves[0].split(':') : [], tail = halves[1] ? halves[1].split(':') : [];
+  const groups = halves.length === 2 ? [...head, ...Array<string>(Math.max(0, 8 - head.length - tail.length)).fill('0'), ...tail] : head;
+  if (halves.length > 2 || groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/i.test(g))) throw new Error(`${text} is not an IPv6 address`);
+  const out = Buffer.alloc(16);
+  groups.forEach((g, i) => out.writeUInt16BE(parseInt(g, 16), i * 2));
+  return out;
+}
+
+/** host:port as a proxy and a Host header expect it: an IPv6 address in brackets. */
+const authority = (host: string, port: number) => (isIP(host) === 6 ? `[${host}]:${port}` : `${host}:${port}`);
+
 const SOCKS_SAID: Record<number, string> = { 1: 'general failure', 2: 'not allowed by its rules', 3: 'network unreachable', 4: 'host unreachable', 5: 'connection refused', 6: 'timed out', 7: 'command not supported', 8: 'address type not supported' };
 
 /** Asks a SOCKS5 proxy (RFC 1928, with RFC 1929 name and password when given) for a tunnel to host:port. The proxy
  * is sent the name itself, so the lookup happens there and not on this machine. */
 export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?: (s: Socket) => void): Promise<Socket> {
   return new Promise((done, fail) => {
-    if (isIP(host) === 6) return void fail(new Error('an IPv6 address through a SOCKS proxy is not supported yet; use a name'));
     const s = netConnect({ host: proxy.host, port: proxy.port });
     onSocket?.(s);
     const bad = (m: string) => {
@@ -79,13 +98,14 @@ export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?:
           s.write(Buffer.concat([Buffer.from([1, u.length]), u, Buffer.from([p.length]), p]));
           if ((await read(2))[1] !== 0) return bad(`the proxy at ${proxy.label} did not accept the name and password`);
         } else if (method !== 0) return bad(`the proxy at ${proxy.label} accepts no way of signing in that this router has`);
-        const name = Buffer.from(host);
-        if (name.length > 255) return bad('that host name is too long for SOCKS');
-        const address = isIP(host) === 4 ? Buffer.from([1, ...host.split('.').map(Number)]) : Buffer.concat([Buffer.from([3, name.length]), name]);
+        // An address goes as itself (IPv4: 1, IPv6: 4); a name goes as the name (3), so the proxy does the lookup.
+        const v = isIP(host), name = Buffer.from(host);
+        if (!v && name.length > 255) return bad('that host name is too long for SOCKS');
+        const address = v === 4 ? Buffer.from([1, ...host.split('.').map(Number)]) : v === 6 ? Buffer.concat([Buffer.from([4]), ipv6Bytes(host)]) : Buffer.concat([Buffer.from([3, name.length]), name]);
         s.write(Buffer.concat([Buffer.from([5, 1, 0]), address, Buffer.from([port >> 8, port & 255])]));
         const reply = await read(4);
         if (reply[0] !== 5) return bad(`${proxy.label} does not speak SOCKS5`);
-        if (reply[1] !== 0) return bad(`the proxy at ${proxy.label} could not reach ${host}:${port} (${SOCKS_SAID[reply[1]] ?? `code ${reply[1]}`})`);
+        if (reply[1] !== 0) return bad(`the proxy at ${proxy.label} could not reach ${authority(host, port)} (${SOCKS_SAID[reply[1]] ?? `code ${reply[1]}`})`);
         const bound = reply[3] === 1 ? 4 : reply[3] === 4 ? 16 : reply[3] === 3 ? (await read(1))[0] : -1;
         if (bound < 0) return bad(`${proxy.label} answered in a way SOCKS5 does not`);
         await read(bound + 2);
@@ -99,12 +119,12 @@ export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?:
 /** Asks an HTTP proxy for a tunnel (CONNECT) to host:port. The proxy resolves the name. */
 export function httpTunnel(proxy: Proxy, host: string, port: number): Promise<Socket> {
   return new Promise((done, fail) => {
-    const ask = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: `${host}:${port}`, agent: false, headers: { host: `${host}:${port}`, ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
+    const ask = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: authority(host, port), agent: false, headers: { host: authority(host, port), ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
     ask.on('error', (err) => fail(new Error(`the proxy at ${proxy.label} did not answer: ${err.message}`)));
     ask.once('connect', (res, socket) => {
       if (res.statusCode !== 200) {
         socket.destroy();
-        return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${host}:${port} (${res.statusCode})`));
+        return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${authority(host, port)} (${res.statusCode})`));
       }
       done(socket as Socket);
     });
@@ -294,12 +314,13 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
 
     const pool = poolFor(proxy, tls);
     const path = `${target.pathname}${target.search}`;
+    const hostname = target.hostname.replace(/^\[|\]$/g, '');
     if (target.protocol === 'https:') {
       // An https host: a tunnel through the proxy (CONNECT, or SOCKS5), and TLS to the host itself inside it. The proxy
       // resolves the name, so this machine does not look the host up itself.
-      send({ agent: pool.secure, host: target.hostname, port: Number(target.port || 443), path, headers: { host: target.host } });
+      send({ agent: pool.secure, host: hostname, port: Number(target.port || 443), path, headers: { host: target.host } });
     } else if (proxy.kind === 'socks5') {
-      send({ agent: pool.plain, host: target.hostname, port: Number(target.port || 80), path, headers: { host: target.host } });
+      send({ agent: pool.plain, host: hostname, port: Number(target.port || 80), path, headers: { host: target.host } });
     } else {
       // A plain-http host through an HTTP proxy: the proxy is asked for the whole address. What it forwards is already
       // sealed to the node.

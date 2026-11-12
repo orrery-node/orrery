@@ -601,6 +601,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [ ] AMD firmware on Turin (its level is laid out differently); NVIDIA GPU attestation
 - [x] SOCKS5 proxies (`--proxy socks5://host:port`, with a name and password when given): the proxy is sent the host's name, so the lookup happens there (0.1.14)
 - [x] Tunnels through the proxy are kept and reused between requests (0.1.14)
+- [x] A node listed by an IPv6 address, through either kind of proxy (in main, next release)
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
