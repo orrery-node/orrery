@@ -56,6 +56,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --max-price <in/out>      never route above this price, dollars per million tokens, e.g. 0.50/1.50 (per request: x-orrery-max-price)
       --max-cost <usd>          a dollar budget for each request, e.g. 0.002 (per request: x-orrery-max-cost)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
+      --patience <seconds>      how long a request waits and asks again when no node can be reached (default 8, 0 fails at once)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
@@ -112,7 +113,7 @@ async function router() {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });
   const port = Number(flag('port', String(ROUTER_PORT)));
-  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1' });
+  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), patienceMs: Math.max(0, Number(flag('patience', '8'))) * 1000, holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1' });
   await r.start();
   // The proxy is checked from the far side before anything is paid for: a node says what address it saw.
   const far = await r.checkProxy();

@@ -10,6 +10,7 @@ import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
+import { away, nextWait } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
@@ -36,6 +37,9 @@ export type RouterOptions = {
   channels: Channels;
   conn: Connection;
   refreshSecs?: number;
+  /** How long a request whose nodes are all away may stay open while the router waits and goes round again (default
+   * 8 seconds; 0 fails at once, as before). */
+  patienceMs?: number;
   log?: (line: string) => void;
   holders?: HolderBook;
   aliases?: Alias[];
@@ -449,33 +453,46 @@ export class Router {
     // three that is free; the price and reputation routes wait their turn.
     const cands = route === 'auto' || route === 'speed' ? [...top.filter((c) => !this.busy(c.entry.address)), ...top.filter((c) => this.busy(c.entry.address))] : top;
     let prefill: string | null = null;
-    for (let i = 0; i < cands.length; i++) {
-      const cand = cands[i];
-      try {
-        const b = prefill === null ? body : { ...body, messages: [...((body.messages as unknown[]) ?? []), { role: 'assistant', content: prefill }] };
-        await this.inLane(cand.entry.address, () => this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null));
-        if (prefill === null) this.affinity.remember(keys, cand.entry.address);
-        return;
-      } catch (err) {
-        tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
-        this.stats.fail(cand.entry.address);
-        if (res.headersSent) {
-          // The client already has part of the answer. Hand that text to the next provider that says it can continue it,
-          // and keep writing into the same stream; a stream that carried a tool call ends here.
-          const next = state.text && !state.tools ? cands.findIndex((c, j) => j > i && c.entry.manifest?.resume === true) : -1;
-          if (next > i) {
-            this.log(`stream from ${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)} dropped after ${state.text.length} chars; resuming with ${cands[next].entry.manifest?.name ?? cands[next].entry.address.slice(0, 6)}`);
-            prefill = state.text;
-            i = next - 1;
-            continue;
-          }
-          const dropped = 'the provider dropped the stream and no other provider could resume it';
-          if (anth?.kind === 'anthropic') res.write(`event: error\ndata: ${JSON.stringify(anthropicError(502, dropped))}\n\n`);
-          if (anth?.kind === 'responses') res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', code: 'provider_dropped', message: dropped })}\n\n`);
-          res.end();
+    const counted = new Set<string>();
+    for (let round = 0; ; round++) {
+      let allAway = true;
+      for (let i = 0; i < cands.length; i++) {
+        const cand = cands[i];
+        try {
+          const b = prefill === null ? body : { ...body, messages: [...((body.messages as unknown[]) ?? []), { role: 'assistant', content: prefill }] };
+          await this.inLane(cand.entry.address, () => this.forward(cand, b, wantsStream, res, route, tried.length, false, anth, state, prefill !== null));
+          if (prefill === null) this.affinity.remember(keys, cand.entry.address);
           return;
+        } catch (err) {
+          if (round === 0) tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
+          if (!away(err)) allAway = false;
+          // One request counts once against a node, however many rounds it took.
+          if (!counted.has(cand.entry.address)) this.stats.fail(cand.entry.address);
+          counted.add(cand.entry.address);
+          if (res.headersSent) {
+            // The client already has part of the answer. Hand that text to the next provider that says it can continue it,
+            // and keep writing into the same stream; a stream that carried a tool call ends here.
+            const next = state.text && !state.tools ? cands.findIndex((c, j) => j > i && c.entry.manifest?.resume === true) : -1;
+            if (next > i) {
+              this.log(`stream from ${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)} dropped after ${state.text.length} chars; resuming with ${cands[next].entry.manifest?.name ?? cands[next].entry.address.slice(0, 6)}`);
+              prefill = state.text;
+              i = next - 1;
+              continue;
+            }
+            const dropped = 'the provider dropped the stream and no other provider could resume it';
+            if (anth?.kind === 'anthropic') res.write(`event: error\ndata: ${JSON.stringify(anthropicError(502, dropped))}\n\n`);
+            if (anth?.kind === 'responses') res.write(`event: error\ndata: ${JSON.stringify({ type: 'error', code: 'provider_dropped', message: dropped })}\n\n`);
+            res.end();
+            return;
+          }
         }
       }
+      // Nothing has reached the client. When every node was away (not there, or something in front of it answered for
+      // it), the router waits a moment and goes round once more: a node that restarts is back in seconds.
+      const wait = allAway && !res.headersSent ? nextWait(round, performance.now() - began, this.o.patienceMs ?? 8_000) : null;
+      if (wait === null) break;
+      this.log(`no node for ${model} could be reached; asking again in ${wait / 1000} s`);
+      await new Promise((r) => setTimeout(r, wait));
     }
     throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed');
   }

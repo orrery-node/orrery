@@ -749,6 +749,25 @@ const leakPaid = router.trips.length - tripsBeforeLeak;
 await farSide.checkProxy?.();
 const afterLeak = await ask('llama-3.3-70b');
 check('behind a proxy the router asks a node what address it sees and shows it; when the node saw this computer’s own address the router stops sending, and starts again once it does not', !!farSaid && farSaid.givenAway === null && /sees 127\.0\.0\.1/.test(farSaid.line) && farStatus.proxySeen?.address === '127.0.0.1' && !!farStatus.proxySeen?.node && farLeak?.givenAway === '127.0.0.1' && leakAsk.status === 503 && leakSaid === 'proxy_gives_address_away' && leakPaid === 0 && afterLeak.status === 200, farSaid ? `${farSaid.line} · told the node saw its own address: ${leakAsk.status} ${leakSaid}, ${leakPaid} paid · asked again: ${afterLeak.status}` : 'the router has no far-side check');
+// A node that restarts is away for a second or two. A request that arrives in that gap, and has no other node to go
+// to, waits a moment and goes round again; before, it failed at once and the node was then refused for 15 seconds more.
+setNodeProxy(null);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const restarting = nodes[1] as unknown as { server: { closeAllConnections(): void } | null; close(): Promise<void>; listen(): Promise<unknown> };
+restarting.server?.closeAllConnections();
+await restarting.close();
+setTimeout(() => void restarting.listen(), 1_200);
+const tripsBeforeGap = router.trips.length;
+const gapAt = Date.now();
+const acrossGap = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const acrossBody = await acrossGap.text();
+const gapMs = Date.now() - gapAt;
+await sleep(1_300);
+const afterGap = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+await afterGap.text();
+check('a node that is away for a second costs the caller a short wait, not an error, and is not refused afterwards', acrossGap.status === 200 && gapMs >= 1_000 && gapMs < 9_000 && afterGap.status === 200 && router.trips.length === tripsBeforeGap + 2, `the only node asked for was away for 1.2 s: ${acrossGap.status} after ${gapMs} ms${acrossGap.status === 200 ? '' : ` (${acrossBody.slice(0, 110)})`} · the next request: ${afterGap.status}`);
+setNodeProxy(parseProxy(`127.0.0.1:${(recorder.address() as { port: number }).port}`));
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Stopping cleanly: right after an answer the voucher for it is still on its way. A router told to stop hands it over
 // first; one that just went away would leave the node owed for an answer it holds no signature for.
 slowVouchers = true;

@@ -102,8 +102,10 @@ export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: big
 export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0, cachedOf: (e: ProviderEntry) => number = () => 0): Candidate[] {
   const now = Date.now();
   const maxBond = offers.reduce((m, o) => (o.entry.account.bonded > m ? o.entry.account.bonded : m), 0n);
-  let c: Candidate[] = offers
-    .filter((o) => stats.get(o.entry.address).cooldownUntil <= now)
+  // A cooldown sends requests to the other nodes of a model. When every one of them is cooling down there is no
+  // other, and refusing would turn one hiccup at the only node into minutes of refusals: they are asked again.
+  const awake = offers.filter((o) => stats.get(o.entry.address).cooldownUntil <= now);
+  let c: Candidate[] = (awake.length ? awake : offers)
     .map(({ entry, offer }) => {
       const o = stats.get(entry.address);
       const off = offOf(entry);
