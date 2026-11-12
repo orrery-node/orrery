@@ -369,6 +369,10 @@ const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
 check('orrery doctor reads the chain, every listing, the wallet and the router, and flags the provider that went dark', docBad.length === 1 && docBad[0] === nodes[0].pda.toBase58().slice(0, 8) && doc.some((l) => l.what === 'router' && l.ok) && doc.some((l) => l.what === 'wallet USDC' && l.ok), `${doc.filter((l) => l.ok).length} ok · flagged: ${docBad.join(', ') || 'none'} (Kestrel, dark: ${doc.find((l) => l.ok === false)?.detail ?? ''})`);
+// What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
+const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };
+const seenLine = doc.find((l) => l.what === 'seen as');
+check('a node says what address it sees a request from, and orrery doctor prints it, so a proxy is checked from the far side', seenSaid.address === '127.0.0.1' && seenSaid.socket === '127.0.0.1' && Array.isArray(seenSaid.forwarded) && seenSaid.forwarded.length === 0 && !!seenLine && /sees 127\.0\.0\.1/.test(seenLine.detail), seenLine?.detail ?? `no line from doctor · the node said ${JSON.stringify(seenSaid)}`);
 let loadTrips = 0;
 if (process.env.E2E_LOAD) {
   const n = Number(process.env.E2E_LOAD), conc = Number(process.env.E2E_LOAD_CONC ?? 1);

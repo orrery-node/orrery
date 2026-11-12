@@ -21,6 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { isLocal, providerConsolePage } from './console.ts';
+import { seenFrom } from '../seen.ts';
 import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
@@ -306,6 +307,11 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/health') {
         const upstream = await this.upstreamUp();
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/seen') {
+        // What this node learned about where the request came from. A router that reaches nodes through a proxy asks,
+        // and so checks the proxy from this end instead of trusting its own setting.
+        return json(res, 200, seenFrom(req), { 'cache-control': 'no-store' });
       }
       if (req.method === 'GET' && url.pathname === '/v1/wire') {
         // The key routers encrypt requests to, signed with the node key that this listing carries on chain.

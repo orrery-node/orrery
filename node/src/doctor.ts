@@ -6,7 +6,8 @@ import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from 
 import { usd } from './pricing.ts';
 import { Registry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
-import { fetchNode } from './proxy.ts';
+import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
+import { ownAddresses, readSeen, seenAddresses, type Seen } from './seen.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -41,6 +42,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   t0 = Date.now();
   await registry.refresh();
   const entries = [...registry.entries.values()];
+  const up: { name: string; endpoint: string }[] = [];
   out.push({ ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: `${entries.length} on chain, read in ${ms(t0)}` });
   for (const e of entries) {
     const name = e.manifest?.name ?? e.address.slice(0, 8);
@@ -55,10 +57,22 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     t0 = Date.now();
     const h = await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { upstream?: 'up' | 'down' } | null;
     const took = ms(t0);
+    if (h) up.push({ name, endpoint: e.account.endpoint.replace(/\/$/, '') });
     const detail = !h ? 'did not answer /health' : h.upstream === 'down' ? `answered /health in ${took}, but its model server is down` : `answered /health in ${took}${h.upstream === 'up' ? ', model server up' : ''}`;
     out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, ${detail}` });
     // A node that claims an enclave: say whether this computer could verify it, and if not, which check stopped it.
     if (e.tee) out.push({ ok: e.tee.verified ? true : e.tee.dev ? null : false, what: '    enclave', detail: `${TEE_KINDS[e.account.teeKind] ?? 'enclave'} · ${e.tee.verified ? `${e.tee.reason}; :private can use this node` : `not verified: ${e.tee.reason}`}` });
+  }
+  // What a node sees of this computer: the first node that says is asked, through the proxy when one is set.
+  if (up.length) {
+    let said: { name: string; seen: Seen } | null = null;
+    for (const node of up.slice(0, 3)) {
+      const seen = readSeen(await fetchNode(`${node.endpoint}/v1/seen`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+      if (!seen) continue;
+      said = { name: node.name, seen };
+      break;
+    }
+    out.push(seenCheck(said?.name ?? null, said?.seen ?? null, nodeProxy(), ownAddresses()));
   }
 
   if (o.wallet) {
@@ -94,6 +108,22 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
 }
 
 /** Compares dotted versions: is b newer than a? */
+/** One line on what a node sees of this computer. It fails only when a proxy is set and an address the node saw is
+ * one of this computer's own; an address it cannot place is printed for the reader to compare. */
+export function seenCheck(name: string | null, seen: Seen | null, proxy: Proxy | null, own: string[]): Check {
+  const what = 'seen as';
+  if (!name || !seen) return { ok: null, what, detail: 'no node here answers GET /v1/seen, so none could say what address it sees (older nodes do not)' };
+  const all = seenAddresses(seen);
+  const rest = all.filter((a) => a !== seen.address);
+  const also = rest.length ? ` (also in what reached it: ${rest.join(', ')})` : '';
+  if (!proxy) return { ok: null, what, detail: `${name} sees ${seen.address}${also}; no proxy is set, so that is the address this computer's requests leave from (--proxy hides it)` };
+  const mine = all.find((a) => own.includes(a));
+  if (mine && seen.socket !== mine) return { ok: false, what, detail: `${name} sees ${mine}, which is this computer's own address: the proxy at ${proxy.label} passes it on in a header. A SOCKS5 proxy cannot add one` };
+  if (mine) return { ok: false, what, detail: `${name} sees ${mine}, which is this computer's own address: the proxy at ${proxy.label} sends from this computer, so it hides nothing` };
+  if (seen.address === proxy.host && !rest.length) return { ok: true, what, detail: `${name} sees ${seen.address}, the address of the proxy at ${proxy.label}` };
+  return { ok: null, what, detail: `${name} sees ${seen.address}${also}, through the proxy at ${proxy.label}; if that is not your own address, nodes do not learn yours` };
+}
+
 export function newer(a: string, b: string): boolean {
   const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
