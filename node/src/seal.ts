@@ -51,6 +51,15 @@ export function sealRequest(enclavePublic: Buffer, plaintext: Buffer, tag: 'seal
   return { body: JSON.stringify({ [tag]: 1, epk: eph.publicKey.toString('base64'), box: encrypt(key, plaintext).toString('base64') }), key };
 }
 
+/** A request padded with spaces to its size class: 1 KiB, doubling up to 64 KiB, then every 64 KiB. A sealed body is
+ * as long as what was sealed, and it is all that the network, a proxy or a node's balancer see of a request, so this
+ * leaves them the class and not the prompt's length. JSON ignores the spaces, so any node opens it as before. */
+export function padRequest(plaintext: Buffer): Buffer {
+  const n = plaintext.length;
+  const size = n <= 1024 ? 1024 : n <= 65_536 ? 2 ** Math.ceil(Math.log2(n)) : Math.ceil(n / 65_536) * 65_536;
+  return size === n ? plaintext : Buffer.concat([plaintext, Buffer.alloc(size - n, 0x20)]);
+}
+
 /** Enclave side: open a sealed request. Returns the plaintext and the key to seal the reply with. */
 export function openRequest(enclave: EnclaveKey, wire: { epk: string; box: string }): { plaintext: Buffer; key: Buffer } {
   const epk = Buffer.from(wire.epk, 'base64');

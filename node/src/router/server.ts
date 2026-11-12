@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { decrypt, sealRequest } from '../seal.ts';
+import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
@@ -516,7 +516,8 @@ export class Router {
     // answer names them (x-orrery-withheld) so the caller can see it happened.
     const withheld = anth?.withheld ?? identityIn(body);
     const withheldHeader: Record<string, string> = withheld.length ? { 'x-orrery-withheld': withheld.join(',') } : {};
-    const payload = JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true });
+    // Padded to its size class before anything else: sealed or not, its length says the class, not the prompt's length.
+    const payload = padRequest(Buffer.from(JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true }))).toString('utf8');
     let wire = payload;
     // What a sealed answer can say about where it ran: the enclave this router verified before it sealed the prompt.
     const ascii = (v: string) => v.replace(/[^\x20-\x7e]/g, "'");

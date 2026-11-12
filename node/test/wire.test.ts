@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { ed25519Verify, signerOf } from '../src/keys.ts';
-import { decrypt, encrypt, newEnclaveKey, openRequest, sealRequest, wireMessage } from '../src/seal.ts';
+import { decrypt, encrypt, newEnclaveKey, openRequest, padRequest, sealRequest, wireMessage } from '../src/seal.ts';
+import { test } from 'node:test';
 
 describe('wire sealing', () => {
   it('a request sealed to the node’s own key opens only with that key, and the reply comes back under the same secret', () => {
@@ -29,4 +30,13 @@ describe('wire sealing', () => {
   it('an enclave request keeps its own tag', () => {
     assert.equal(JSON.parse(sealRequest(newEnclaveKey().publicKey, Buffer.from('{}')).body).sealed, 1);
   });
+});
+
+test('a request is padded to its size class with spaces JSON ignores', () => {
+  const sizes = [[10, 1024], [1024, 1024], [1025, 2048], [5000, 8192], [40_000, 65_536], [65_536, 65_536], [70_000, 131_072], [200_000, 262_144]];
+  for (const [n, want] of sizes) assert.equal(padRequest(Buffer.alloc(n, 0x41)).length, want, `${n} bytes`);
+  const body = JSON.stringify({ model: 'm', messages: [{ role: 'user', content: 'hi' }] });
+  const padded = padRequest(Buffer.from(body));
+  assert.deepEqual(JSON.parse(padded.toString('utf8')), JSON.parse(body), 'a node that parses JSON sees the same request');
+  assert.equal(padded.subarray(body.length).toString().trim(), '', 'only spaces were added');
 });

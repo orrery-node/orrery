@@ -738,6 +738,18 @@ const proxiedTransfer = await sendOne(proxiedRpc, new Transaction().add(SystemPr
 const proxiedAfter = await proxiedRpc.getBalance(user.publicKey);
 const rpcCalls = proxied.slice(rpcBefore).filter((x) => x.url.startsWith(RPC)).map((x) => (JSON.parse(x.body) as { method: string }).method);
 const proxyRead = proxied.some((x) => x.body.includes('payment channel') || x.body.includes('In one sentence'));
+// What the proxy sees of a request is its length. Two prompts of very different lengths, the same model and node:
+// the bodies it carried must be the same length (the size class), not the prompts' lengths.
+const sized = async (content: string) => {
+  const before = proxied.length;
+  const r = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content }] }) });
+  await r.text();
+  return proxied.slice(before).filter((x) => x.url.includes('/v1/chat/completions')).map((x) => x.body.length);
+};
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const shortSent = await sized('Say hi.');
+const longSent = await sized(`Summarize this in one line: ${'the quick brown fox jumps over the lazy dog '.repeat(14)}`);
+check('a request is the same length on the wire whatever the prompt’s length within a size class, so a proxy learns the class and not the prompt’s length', shortSent.length === 1 && longSent.length === 1 && shortSent[0] === longSent[0], `bodies the proxy carried: ${shortSent.join(',')} bytes for 'Say hi.', ${longSent.join(',')} bytes for a prompt of ${28 + 44 * 14} characters`);
 // The far side of the proxy: the router asks a node what address it sees, shows it on its status, and stops sending
 // when what the node saw is this computer's own public address. Loopback is never public, so the rig says it counts.
 type FarSide = { checkProxy?: (own?: string[], counts?: (a: string) => boolean) => Promise<{ line: string; givenAway: string | null } | null> };
