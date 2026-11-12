@@ -711,13 +711,13 @@ check('five answers in a row from one node ride connections already open: the ro
 
 // Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
 // is gone the request fails instead of going out directly.
-const proxied: { url: string; body: string; answer?: string }[] = [];
+const proxied: { url: string; body: string; answer?: string; headers?: Record<string, unknown> }[] = [];
 let slowVouchers = false;
 const recorder = createHttpServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
   req.on('end', () => {
-    const rec: { url: string; body: string; answer?: string } = { url: req.url ?? '', body };
+    const rec: { url: string; body: string; answer?: string; headers?: Record<string, unknown> } = { url: req.url ?? '', body, headers: { ...req.headers } };
     proxied.push(rec);
     const u = new URL(req.url ?? '');
     const out = httpRequest({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: req.method, headers: req.headers }, (r) => {
@@ -763,6 +763,22 @@ const longSent = await sized(`Summarize this in one line: ${'the quick brown fox
 const answered = proxied.filter((x) => x.url.includes('/v1/chat/completions')).at(-1)?.answer ?? '';
 const frameLengths = [...answered.matchAll(/^data: ([A-Za-z0-9+/=]+)$/gm)].map((m) => Buffer.from(m[1], 'base64').length);
 check('the frames of a sealed answer are one length, so a proxy cannot read token lengths off them', frameLengths.length >= 4 && new Set(frameLengths).size === 1, `${frameLengths.length} sealed frames, ${new Set(frameLengths).size} distinct length${new Set(frameLengths).size === 1 ? '' : 's'}: ${[...new Set(frameLengths)].slice(0, 6).join(', ')} bytes`);
+// Which channel a request pays from is between the router and the node process: what the proxy carried to the node
+// names no channel, in headers, in the request or in the voucher handed over after it.
+const ibChannel = channels.get(nodes[1].pda.toBase58())?.channel ?? '';
+const toIb = proxied.filter((x) => x.url.startsWith(`http://127.0.0.1:${providerSpecs[1].port}/`));
+const askIb = toIb.filter((x) => x.url.includes('/v1/chat/completions')), payIb = toIb.filter((x) => x.url.includes('/orrery/voucher'));
+const named = toIb.filter((x) => JSON.stringify(x.headers ?? {}).includes(ibChannel) || x.body.includes(ibChannel));
+// A node that has not said it reads payment inside (an older node) still gets it as headers, and still answers.
+const ibEntry = registry.entries.get(nodes[1].pda.toBase58()) as unknown as { wireInside?: boolean };
+const hadInside = ibEntry.wireInside;
+ibEntry.wireInside = false;
+const beforeOld = proxied.length;
+const asOld = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+await asOld.text();
+ibEntry.wireInside = hadInside;
+const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/completions'));
+check('to a node that reads payment inside the seal, the proxy and the node’s own front see no channel; an older node still gets it as headers', !!ibChannel && askIb.length >= 2 && payIb.length >= 1 && named.length === 0 && asOld.status === 200 && oldAsk?.headers?.['x-orrery-channel'] === ibChannel, `${askIb.length} requests and ${payIb.length} voucher hand-overs to Ironbridge through the proxy, ${named.length} naming the channel · as an older node: ${asOld.status}, channel header ${oldAsk?.headers?.['x-orrery-channel'] === ibChannel ? 'sent' : 'missing'}`);
 check('a request is the same length on the wire whatever the prompt’s length within a size class, so a proxy learns the class and not the prompt’s length', shortSent.length === 1 && longSent.length === 1 && shortSent[0] === longSent[0], `bodies the proxy carried: ${shortSent.join(',')} bytes for 'Say hi.', ${longSent.join(',')} bytes for a prompt of ${28 + 44 * 14} characters`);
 // The far side of the proxy: the router asks a node what address it sees, shows it on its status, and stops sending
 // when what the node saw is this computer's own public address. Loopback is never public, so the rig says it counts.

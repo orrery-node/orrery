@@ -602,6 +602,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] SOCKS5 proxies (`--proxy socks5://host:port`, with a name and password when given): the proxy is sent the host's name, so the lookup happens there (0.1.14)
 - [x] Tunnels through the proxy are kept and reused between requests (0.1.14)
 - [x] A node listed by an IPv6 address, through either kind of proxy (in main, next release)
+- [x] Payment inside the seal: to a node that says it reads it there, the channel and voucher travel sealed, so a hosting platform in front of the node cannot tell which wallet pays (in main, next release)
 - [x] Requests padded to a size class before sealing, so their length on the wire shows the class and not the prompt's length (in main, next release)
 - [x] Answer frames padded to whole 256-byte blocks, so their lengths do not spell out the tokens (in main, next release)
 - [ ] Hide how many frames an answer has and when they go out

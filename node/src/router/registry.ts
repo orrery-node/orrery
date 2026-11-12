@@ -33,6 +33,8 @@ export type ProviderEntry = {
   /** The node's own encryption key for requests on the wire, kept only if the node key on chain signed it. Null when
    * the node has none (an older node); requests to it travel as plain JSON inside TLS. */
   wire?: Buffer | null;
+  /** The node said (on /v1/wire) that it reads the channel and the voucher from inside the sealed body. */
+  wireInside?: boolean;
   /** The node's burn pledge and how much of it this router has verified on chain itself. */
   burn?: { share: number; spent: bigint; burned: bigint; receipts: number; kept: number; checkedAt: number };
 };
@@ -76,7 +78,11 @@ export class Registry {
           }
         }
         entry.tee = await this.checkTee(entry);
-        if (!same && p.active) entry.wire = await this.wireKey(p);
+        if (!same && p.active) {
+          const w = await this.wireKey(p);
+          entry.wire = w?.key ?? null;
+          entry.wireInside = !!w?.inside;
+        }
         this.entries.set(address, entry);
       }),
     );
@@ -88,16 +94,19 @@ export class Registry {
   /** Reads a node's wire key again, after the node said a request was encrypted to a key it no longer holds. */
   async refreshWire(address: string): Promise<void> {
     const e = this.entries.get(address);
-    if (e) e.wire = await this.wireKey(e.account);
+    if (!e) return;
+    const w = await this.wireKey(e.account);
+    e.wire = w?.key ?? null;
+    e.wireInside = !!w?.inside;
   }
 
-  private async wireKey(p: ProviderAccount): Promise<Buffer | null> {
+  private async wireKey(p: ProviderAccount): Promise<{ key: Buffer; inside: boolean } | null> {
     try {
       const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
       if (!r.ok) return null;
-      const j = (await r.json()) as { key?: string; sig?: string };
+      const j = (await r.json()) as { key?: string; sig?: string; inside?: boolean };
       const key = Buffer.from(j.key ?? '', 'hex'), sig = Buffer.from(j.sig ?? '', 'hex');
-      return key.length === 32 && ed25519Verify(p.nodeKey.toBytes(), wireMessage(key), sig) ? key : null;
+      return key.length === 32 && ed25519Verify(p.nodeKey.toBytes(), wireMessage(key), sig) ? { key, inside: j.inside === true } : null;
     } catch {
       return null;
     }

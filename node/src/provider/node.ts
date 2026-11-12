@@ -317,7 +317,9 @@ export class ProviderNode {
       }
       if (req.method === 'GET' && url.pathname === '/v1/wire') {
         // The key routers encrypt requests to, signed with the node key that this listing carries on chain.
-        return json(res, 200, { key: this.wire.publicKey.toString('hex'), sig: Buffer.from(signerOf(this.node)(wireMessage(this.wire.publicKey))).toString('hex'), node: this.node.publicKey.toBase58() });
+        // `inside`: this node reads the channel and the voucher from inside the sealed body, so a router need not send
+        // them where the node's hosting platform can read them.
+        return json(res, 200, { key: this.wire.publicKey.toString('hex'), sig: Buffer.from(signerOf(this.node)(wireMessage(this.wire.publicKey))).toString('hex'), node: this.node.publicKey.toBase58(), inside: true });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/burns') {
         // What this node pledged and every buy-and-burn it has made, with the transactions a router can check on chain.
@@ -337,7 +339,15 @@ export class ProviderNode {
         return json(res, 200, { channel: address, voucher: e.best ? encodeVoucher(e.best) : null, paid: e.best?.cumulative ?? 0n, owed: e.owed });
       }
       if (req.method === 'POST' && url.pathname === '/orrery/voucher') {
-        const b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string };
+        let b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string; wire?: number };
+        // A router that knows this node reads payment inside the seal hands the voucher over sealed as well.
+        if (b.wire) {
+          try {
+            b = JSON.parse(openRequest(this.wire, b as unknown as { epk: string; box: string }).plaintext.toString('utf8'));
+          } catch {
+            return fail(res, 409, 'wire_key', 'this voucher was encrypted to another key; read /v1/wire again');
+          }
+        }
         const e = await this.entry(b.channel);
         this.accept(b.channel, e, decodeVoucher(b.voucher));
         this.save();
@@ -354,8 +364,10 @@ export class ProviderNode {
   }
 
   private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | 'embeddings' = 'chat'): Promise<void> {
-    const address = String(req.headers['x-orrery-channel'] ?? '');
-    if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-orrery-channel');
+    // Which channel pays, and the voucher for what came before: as headers from an older router, or inside the sealed
+    // body, where nothing in front of this process (a hosting platform's balancer) can read them.
+    let address = String(req.headers['x-orrery-channel'] ?? '');
+    let voucherText = req.headers['x-orrery-voucher'] ? String(req.headers['x-orrery-voucher']) : '';
     let body = JSON.parse((await readBody(req)).toString('utf8')) as Record<string, unknown>;
     let sealKey: Buffer | null = null;
     let wired = false;
@@ -380,6 +392,13 @@ export class ProviderNode {
       body = JSON.parse(opened.plaintext.toString('utf8'));
       sealKey = opened.key;
     }
+    const inside = (sealKey && body.orrery && typeof body.orrery === 'object' ? body.orrery : null) as { channel?: unknown; voucher?: unknown } | null;
+    if (inside) {
+      if (typeof inside.channel === 'string') address = inside.channel;
+      if (typeof inside.voucher === 'string') voucherText = inside.voucher;
+      delete body.orrery;
+    }
+    if (!address) return fail(res, 402, 'channel_required', 'open a channel to this provider and send x-orrery-channel');
     const afterOpen = performance.now();
     const offer = this.cfg.models.find((m) => m.id === body.model);
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
@@ -388,9 +407,8 @@ export class ProviderNode {
     const price = discounted(offer.price, off);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (e.channel.closingAt !== 0n && now > e.channel.closingAt - 120n) return fail(res, 409, 'channel_closing', 'channel is closing; open a new one');
-    const vh = req.headers['x-orrery-voucher'];
-    if (vh) {
-      const v = decodeVoucher(String(vh));
+    if (voucherText) {
+      const v = decodeVoucher(voucherText);
       if (v.cumulative > e.channel.deposit) await this.entry(address, true);
       this.accept(address, e, v);
     }

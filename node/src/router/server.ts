@@ -517,7 +517,10 @@ export class Router {
     const withheld = anth?.withheld ?? identityIn(body);
     const withheldHeader: Record<string, string> = withheld.length ? { 'x-orrery-withheld': withheld.join(',') } : {};
     // Padded to its size class before anything else: sealed or not, its length says the class, not the prompt's length.
-    const payload = padRequest(Buffer.from(JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true }))).toString('utf8');
+    // To a node that reads payment inside the seal, the channel and the voucher go there and not in headers, where the
+    // node's hosting platform would read which channel (and so which wallet) each request is paid from.
+    const inside = !!cand.entry.wireInside && (cand.sealed || !!cand.entry.wire);
+    const payload = padRequest(Buffer.from(JSON.stringify({ ...withoutIdentity(body), model: cand.offer.id, stream: true, ...(inside ? { orrery: { channel: ch.channel, ...(ch.voucher ? { voucher: ch.voucher } : {}) } } : {}) }))).toString('utf8');
     let wire = payload;
     // What a sealed answer can say about where it ran: the enclave this router verified before it sealed the prompt.
     const ascii = (v: string) => v.replace(/[^\x20-\x7e]/g, "'");
@@ -539,8 +542,8 @@ export class Router {
       wired = true;
     }
     const sealMs = performance.now() - beforeSeal;
-    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-channel': ch.channel };
-    if (ch.voucher) headers['x-orrery-voucher'] = ch.voucher;
+    const headers: Record<string, string> = { 'content-type': 'application/json', ...(inside ? {} : { 'x-orrery-channel': ch.channel }) };
+    if (ch.voucher && !inside) headers['x-orrery-voucher'] = ch.voucher;
     const t0 = Date.now();
     const sent = performance.now();
     let nodeMs = 0;
@@ -634,7 +637,7 @@ export class Router {
     const timing: Timing = { route: roundMs(state.routeMs ?? 0), channel: roundMs(channelMs), seal: roundMs(sealMs), node: roundMs(nodeMs), sign: roundMs(performance.now() - beforeSign), ...theirs };
     this.inflight.delete(address);
     const handed = fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: inside && cand.entry.wire ? sealRequest(cand.entry.wire, Buffer.from(JSON.stringify({ channel: ch.channel, voucher })), 'wire').body : JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
     }).then(finish).catch(() => undefined);
     this.handing.add(handed);
     void handed.finally(() => this.handing.delete(handed));
