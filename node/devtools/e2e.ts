@@ -701,6 +701,7 @@ check('five answers in a row from one node ride connections already open: the ro
 // Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
 // is gone the request fails instead of going out directly.
 const proxied: { url: string; body: string }[] = [];
+let slowVouchers = false;
 const recorder = createHttpServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
@@ -712,7 +713,8 @@ const recorder = createHttpServer((req, res) => {
       r.pipe(res);
     });
     out.on('error', () => res.writeHead(502).end());
-    out.end(body);
+    // A voucher on its way to the node can be held back here, to look at the moment before it lands.
+    setTimeout(() => out.end(body), slowVouchers && (req.url ?? '').includes('/orrery/voucher') ? 700 : 0);
   });
 });
 await new Promise<void>((done) => recorder.listen(0, '127.0.0.1', () => done()));
@@ -745,6 +747,18 @@ const leakPaid = router.trips.length - tripsBeforeLeak;
 await farSide.checkProxy?.();
 const afterLeak = await ask('llama-3.3-70b');
 check('behind a proxy the router asks a node what address it sees and shows it; when the node saw this computer’s own address the router stops sending, and starts again once it does not', !!farSaid && farSaid.givenAway === null && /sees 127\.0\.0\.1/.test(farSaid.line) && farStatus.proxySeen?.address === '127.0.0.1' && !!farStatus.proxySeen?.node && farLeak?.givenAway === '127.0.0.1' && leakAsk.status === 503 && leakSaid === 'proxy_gives_address_away' && leakPaid === 0 && afterLeak.status === 200, farSaid ? `${farSaid.line} · told the node saw its own address: ${leakAsk.status} ${leakSaid}, ${leakPaid} paid · asked again: ${afterLeak.status}` : 'the router has no far-side check');
+// Stopping cleanly: right after an answer the voucher for it is still on its way. A router told to stop hands it over
+// first; one that just went away would leave the node owed for an answer it holds no signature for.
+slowVouchers = true;
+await ask('llama-3.3-70b');
+const lastPaid = router.trips[router.trips.length - 1];
+const paidNode = nodes.findIndex((n) => n.pda.toBase58() === lastPaid.provider);
+const stands = async () => (await (await fetch(`http://127.0.0.1:${providerSpecs[paidNode].port}/orrery/channel?address=${channels.get(lastPaid.provider)!.channel}`)).json()) as { paid: string; owed: string };
+const onItsWay = await stands();
+const stillOut = await (router as unknown as { drain?: (ms?: number) => Promise<number> }).drain?.(5_000);
+const handedOver = await stands();
+slowVouchers = false;
+check('a router told to stop first hands over the vouchers still on their way, so no node is left owed for an answer it holds no signature for', stillOut === 0 && BigInt(onItsWay.owed) > BigInt(onItsWay.paid) && BigInt(handedOver.owed) === BigInt(handedOver.paid), `right after the answer ${nameOf(lastPaid.provider)} was owed ${onItsWay.owed} and held a voucher for ${onItsWay.paid}; ${stillOut === undefined ? 'this router cannot drain' : `after draining: owed ${handedOver.owed}, holds ${handedOver.paid}`}`);
 await new Promise<void>((done) => { recorder.closeAllConnections(); recorder.close(() => done()); });
 const tripsWithProxy = router.trips.length;
 const proxyGone = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });

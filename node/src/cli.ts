@@ -120,6 +120,21 @@ async function router() {
     await r.close();
     throw new Error(`${far.line}. The router does not run behind a proxy that gives this computer's address away`);
   }
+  // Told to stop (Ctrl-C, or a container being replaced), the router lets answers in flight finish and hands over the
+  // vouchers still on their way before it goes. Asked again a moment later, it stops at once. (A launcher such as
+  // npx passes the same signal on, so one that arrives within a second of the first is the first.)
+  let stopping = 0;
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      if (stopping && Date.now() - stopping > 1_000) process.exit(130);
+      if (stopping) return;
+      stopping = Date.now();
+      void r.drain(20_000).then((left) => {
+        if (left) console.log(`stopped with ${left} still in flight; a node may be owed for an answer it has no voucher for yet (the next request to it pays)`);
+        process.exit(0);
+      });
+    });
+  }
   const usable = registry.usable().length;
   if (proxy) console.log(`nodes and the Solana RPC are reached through the proxy at ${proxy.label}. ${far ? far.line[0].toUpperCase() + far.line.slice(1) : ''}`);
   if (has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1') console.log('private only: every request is sealed to an enclave this router verified, or refused');

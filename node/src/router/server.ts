@@ -131,6 +131,10 @@ export class Router {
   private farSide: { node: string; address: string; also: string[]; givenAway: string | null; line: string; checkedAt: number } | null = null;
   private burnTimer: NodeJS.Timeout | null = null;
   private inflight = new Map<string, bigint>();
+  /** Vouchers on their way to nodes: each is handed over right after its answer, without holding the answer up. */
+  private handing = new Set<Promise<unknown>>();
+  /** Requests for an answer that are being served now. */
+  private answering = 0;
   /** One request at a time per provider: its gate needs every earlier answer on the channel signed first. */
   private lanes = new Map<string, Promise<void>>();
 
@@ -210,6 +214,18 @@ export class Router {
     return (e) => tierOff(e.manifest?.holder?.tiers, s.balance, s.supply);
   }
 
+  /** Waits, for at most `maxMs`, until no answer is being served and every voucher on its way to a node has been
+   * handed over, and returns how many are still out. A router that is told to stop calls this first: a node left
+   * owed for an answer it holds no signature for cannot be picked back up by a router that lost its records. */
+  async drain(maxMs = 5_000): Promise<number> {
+    const until = Date.now() + maxMs;
+    while ((this.answering > 0 || this.handing.size > 0) && Date.now() < until) {
+      await Promise.race([Promise.allSettled([...this.handing]), new Promise((r) => setTimeout(r, 50))]);
+      if (this.answering > 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    return this.answering + this.handing.size;
+  }
+
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     if (this.healthTimer) clearInterval(this.healthTimer);
@@ -225,6 +241,10 @@ export class Router {
     // Origin header; the Host header still names that domain, so a router listening on this computer only answers
     // requests addressed to this computer.
     if (LOOPBACK_HOSTS.has(this.o.host ?? '127.0.0.1') && !LOOPBACK_HOSTS.has(hostname(req.headers.host))) return send(res, 403, { error: { code: 'host', message: 'the router only answers requests addressed to this computer' } });
+    if (req.method === 'POST') {
+      this.answering += 1;
+      res.once('close', () => (this.answering -= 1));
+    }
     try {
       if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === '/models')) return this.models(res);
       if (req.method === 'POST' && (url.pathname === '/v1/chat/completions' || url.pathname === '/chat/completions')) return await this.chat(req, res);
@@ -588,9 +608,11 @@ export class Router {
     const voucher = this.o.channels.settle(address, { ...record, cost: fair });
     const timing: Timing = { route: roundMs(state.routeMs ?? 0), channel: roundMs(channelMs), seal: roundMs(sealMs), node: roundMs(nodeMs), sign: roundMs(performance.now() - beforeSign), ...theirs };
     this.inflight.delete(address);
-    void fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
+    const handed = fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
     }).then(finish).catch(() => undefined);
+    this.handing.add(handed);
+    void handed.finally(() => this.handing.delete(handed));
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
