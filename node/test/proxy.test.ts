@@ -1,13 +1,15 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { connect, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, viaProxy } from '../src/proxy.ts';
+import { fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, socksTunnel, viaProxy } from '../src/proxy.ts';
+import { createServer as createTcpServer, type Socket } from 'node:net';
 import { Keypair, SystemProgram, Transaction, type Connection } from '@solana/web3.js';
 import { NO_WEBSOCKET, rpcConnection } from '../src/chain/connect.ts';
 import { pollStatus, sendOne } from '../src/chain/send.ts';
@@ -100,13 +102,18 @@ after(() => {
 
 describe('reaching nodes through a proxy', () => {
   it('reads a proxy address and never prints its password', () => {
-    assert.deepEqual(parseProxy('http://127.0.0.1:8118'), { host: '127.0.0.1', port: 8118, auth: null, label: '127.0.0.1:8118' });
-    assert.deepEqual(parseProxy('proxy.example:3128'), { host: 'proxy.example', port: 3128, auth: null, label: 'proxy.example:3128' });
+    assert.deepEqual(parseProxy('http://127.0.0.1:8118'), { kind: 'http', host: '127.0.0.1', port: 8118, auth: null, user: null, pass: null, label: '127.0.0.1:8118' });
+    assert.deepEqual(parseProxy('proxy.example:3128'), { kind: 'http', host: 'proxy.example', port: 3128, auth: null, user: null, pass: null, label: 'proxy.example:3128' });
     const withAuth = parseProxy('http://me:s3cret%21@proxy.example:3128');
     assert.equal(withAuth.auth, Buffer.from('me:s3cret!').toString('base64'));
     assert.ok(!withAuth.label.includes('s3cret') && !withAuth.label.includes('me'));
     assert.equal(parseProxy('http://proxy.example').port, 80);
-    assert.throws(() => parseProxy('socks5://127.0.0.1:9050'), /HTTP proxy.*socks5 is not spoken/);
+    assert.deepEqual(parseProxy('socks5://127.0.0.1:9050'), { kind: 'socks5', host: '127.0.0.1', port: 9050, auth: null, user: null, pass: null, label: '127.0.0.1:9050' });
+    assert.equal(parseProxy('socks5h://proxy.example').port, 1080);
+    const named = parseProxy('socks5://me:s3cret@proxy.example:1080');
+    assert.deepEqual([named.kind, named.user, named.pass], ['socks5', 'me', 's3cret']);
+    assert.ok(!named.label.includes('s3cret'));
+    assert.throws(() => parseProxy('socks4://127.0.0.1:9050'), /HTTP .* and SOCKS5 .*socks4 is not spoken/);
     assert.throws(() => parseProxy('https://proxy.example:443'), /https is not spoken/);
     assert.throws(() => parseProxy('http://'), /address like/);
   });
@@ -295,6 +302,153 @@ describe('the Solana RPC behind the proxy', () => {
       if (f !== 'chain/connect.ts') assert.ok(!src.includes('new Connection('), `${f} opens its own RPC connection; use rpcConnection`);
       if (f !== 'chain/send.ts') assert.ok(!/sendAndConfirmTransaction\(|\.confirmTransaction\(/.test(src), `${f} confirms by subscription; use sendOne or confirmed`);
       if (!local.includes(f)) assert.ok(!/(^|[^.\w])fetch\(|fetch as unknown/m.test(src), `${f} calls fetch itself; use fetchNode or outFetch`);
+    }
+  });
+});
+
+describe('a SOCKS5 proxy', () => {
+  // A small SOCKS5 server (RFC 1928 and 1929): no sign-in, or a name and password. It writes down where each tunnel
+  // went and what passed through. curl is run against it first, so the client under test is checked against a server
+  // that a reference client also accepts.
+  const asked: { to: string; bytes: Buffer[]; user?: string }[] = [];
+  const cfg = { need: null as { user: string; pass: string } | null, refuse: 0 };
+  const socks = createTcpServer((c: Socket) => {
+    let buf = Buffer.alloc(0), step = 0, user: string | undefined;
+    const onData = (d: Buffer) => {
+      buf = Buffer.concat([buf, d]);
+      for (;;) {
+        if (step === 0) {
+          if (buf.length < 2 || buf.length < 2 + buf[1]) return;
+          const methods = [...buf.subarray(2, 2 + buf[1])];
+          buf = buf.subarray(2 + buf[1]);
+          const pick = cfg.need ? (methods.includes(2) ? 2 : 255) : methods.includes(0) ? 0 : 255;
+          c.write(Buffer.from([5, pick]));
+          if (pick === 255) return void c.end();
+          step = pick === 2 ? 1 : 2;
+        } else if (step === 1) {
+          if (buf.length < 2 || buf.length < 2 + buf[1] + 1) return;
+          const ulen = buf[1], plen = buf[2 + ulen];
+          if (buf.length < 3 + ulen + plen) return;
+          user = buf.subarray(2, 2 + ulen).toString();
+          const ok = user === cfg.need!.user && buf.subarray(3 + ulen, 3 + ulen + plen).toString() === cfg.need!.pass;
+          buf = buf.subarray(3 + ulen + plen);
+          c.write(Buffer.from([1, ok ? 0 : 1]));
+          if (!ok) return void c.end();
+          step = 2;
+        } else if (step === 2) {
+          if (buf.length < 5) return;
+          const len = buf[3] === 1 ? 4 : buf[3] === 3 ? 1 + buf[4] : 16;
+          if (buf.length < 4 + len + 2) return;
+          const host = buf[3] === 1 ? [...buf.subarray(4, 8)].join('.') : buf.subarray(5, 5 + buf[4]).toString();
+          const port = buf.readUInt16BE(4 + len);
+          const rest = buf.subarray(4 + len + 2);
+          step = 3;
+          c.off('data', onData);
+          if (cfg.refuse) return void c.end(Buffer.from([5, cfg.refuse, 0, 1, 0, 0, 0, 0, 0, 0]));
+          const rec = { to: `${host}:${port}`, bytes: [] as Buffer[], user };
+          asked.push(rec);
+          const up = connect(port, host === 'localhost' ? '127.0.0.1' : host, () => {
+            c.write(Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 0]));
+            if (rest.length) { rec.bytes.push(rest); up.write(rest); }
+            c.on('data', (x: Buffer) => rec.bytes.push(x));
+            c.pipe(up);
+            up.pipe(c);
+          });
+          up.on('error', () => c.destroy());
+          c.on('error', () => up.destroy());
+          return;
+        } else return;
+      }
+    };
+    c.on('data', onData);
+    c.on('error', () => undefined);
+  });
+  before(() => new Promise<void>((r) => socks.listen(0, '127.0.0.1', () => r())));
+  after(() => socks.close());
+  const at = () => `127.0.0.1:${(socks.address() as AddressInfo).port}`;
+
+  it('the test server is one a reference client accepts (curl)', async (t) => {
+    let out: string;
+    try {
+      // Not execFileSync: the servers curl talks to live in this process and need its event loop.
+      out = (await promisify(execFile)('curl', ['-sS', '--max-time', '10', '--socks5-hostname', at(), `http://127.0.0.1:${portOf(plain)}/v1/models`], { encoding: 'utf8' })).stdout;
+    } catch (e) {
+      // Only a missing curl skips this; a curl that ran and failed means the test server is wrong.
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return t.skip('curl is not here');
+      throw e;
+    }
+    assert.deepEqual(JSON.parse(out), { method: 'GET', url: '/v1/models', got: 0 });
+    assert.equal(asked.at(-1)!.to, `127.0.0.1:${portOf(plain)}`);
+  });
+
+  it('a plain-http node is reached through a tunnel, with the name sent to the proxy', async () => {
+    const proxy = parseProxy(`socks5://${at()}`);
+    const r = await viaProxy(proxy, `http://localhost:${portOf(plain)}/v1/chat/completions?x=1`, { method: 'POST', headers: { 'x-orrery-wire': '1' }, body: JSON.stringify({ sealed: 'abc' }) });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { method: 'POST', url: '/v1/chat/completions?x=1', got: 16 });
+    assert.equal(asked.at(-1)!.to, `localhost:${portOf(plain)}`, 'the proxy got the name, not an address this machine looked up');
+    assert.equal(seen.at(-1)!.headers['x-orrery-wire'], '1');
+    const stream = await viaProxy(proxy, `http://127.0.0.1:${portOf(plain)}/stream`);
+    assert.equal(await stream.text(), 'data: one\n\ndata: two\n\n');
+  });
+
+  it('an https node is reached by TLS inside the tunnel: the proxy sees where, and none of what', async (t) => {
+    if (!secure || !ca) return t.skip('openssl is not here to make a certificate');
+    const proxy = parseProxy(`socks5://${at()}`);
+    const r = await viaProxy(proxy, `https://localhost:${portOf(secure)}/v1/chat/completions`, { method: 'POST', body: SECRET }, { ca });
+    assert.deepEqual(await r.json(), { method: 'POST', url: '/v1/chat/completions', got: SECRET.length });
+    const carried = Buffer.concat(asked.at(-1)!.bytes);
+    assert.equal(asked.at(-1)!.to, `localhost:${portOf(secure)}`);
+    assert.ok(carried.length > SECRET.length && !carried.includes(SECRET) && !carried.includes('/v1/chat/completions'));
+    await assert.rejects(viaProxy(proxy, `https://localhost:${portOf(secure)}/v1/models`), /TLS to localhost through the proxy/);
+  });
+
+  it('signs in with a name and password when the proxy asks, and says so when they are wrong or missing', async () => {
+    cfg.need = { user: 'me', pass: 's3cret' };
+    try {
+      const ok = await viaProxy(parseProxy(`socks5://me:s3cret@${at()}`), `http://127.0.0.1:${portOf(plain)}/v1/models`);
+      assert.equal(ok.status, 200);
+      assert.equal(asked.at(-1)!.user, 'me');
+      await assert.rejects(viaProxy(parseProxy(`socks5://me:wrong@${at()}`), `http://127.0.0.1:${portOf(plain)}/v1/models`), /did not accept the name and password/);
+      await assert.rejects(viaProxy(parseProxy(`socks5://${at()}`), `http://127.0.0.1:${portOf(plain)}/v1/models`), /accepts no way of signing in/);
+    } finally {
+      cfg.need = null;
+    }
+  });
+
+  it('a proxy that cannot reach the node, is gone, or is not SOCKS at all is an error that names it; nothing goes out directly', async () => {
+    cfg.refuse = 5;
+    try {
+      await assert.rejects(viaProxy(parseProxy(`socks5://${at()}`), `http://127.0.0.1:${portOf(plain)}/v1/models`), /could not reach 127\.0\.0\.1:\d+ \(connection refused\)/);
+    } finally {
+      cfg.refuse = 0;
+    }
+    const heard = seen.length;
+    await assert.rejects(viaProxy(parseProxy(`socks5://127.0.0.1:${portOf(proxyServer)}`), `http://127.0.0.1:${portOf(plain)}/v1/models`, { timeoutMs: 2_000 }), /does not speak SOCKS5|closed the connection|timeout/);
+    const dead = createServer();
+    await listen(dead);
+    const port = portOf(dead);
+    await new Promise<void>((r) => dead.close(() => r()));
+    await assert.rejects(viaProxy(parseProxy(`socks5://127.0.0.1:${port}`), `http://127.0.0.1:${portOf(plain)}/v1/models`), /did not answer/);
+    assert.equal(seen.length, heard);
+    await assert.rejects(socksTunnel(parseProxy(`socks5://${at()}`), '::1', 80), /IPv6 address through a SOCKS proxy is not supported yet/);
+  });
+
+  it('the Solana RPC goes through it too', async () => {
+    const rpc = createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: (JSON.parse(body) as { id: unknown }).id, result: 77 })));
+    });
+    await listen(rpc);
+    setNodeProxy(parseProxy(`socks5://${at()}`));
+    try {
+      assert.equal(await rpcConnection(`http://127.0.0.1:${portOf(rpc)}`).getSlot(), 77);
+      assert.equal(asked.at(-1)!.to, `127.0.0.1:${portOf(rpc)}`);
+    } finally {
+      setNodeProxy(null);
+      rpc.close();
+      rpc.closeAllConnections();
     }
   });
 });

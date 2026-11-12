@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · `--proxy` speaks SOCKS5 as well as HTTP. `orrery router --proxy socks5://127.0.0.1:9050` sends everything the router sends, to nodes and to the Solana RPC, through a SOCKS5 proxy, with a name and password if the address carries them. The proxy is given the host’s name, so the lookup happens there and not on your machine, and TLS to the node runs inside the tunnel. As with an HTTP proxy there is no fallback: a proxy that is down, refuses or is not SOCKS5 fails the request. Checked on mainnet through a local SOCKS5 server (18 tunnels, every one asked for by name) and against curl as a second client of the same server; not yet run through Tor itself.
+
 ## 0.1.13 · 2026-11-11 23:14 UTC
 
 **Behind a proxy your router shows nobody where you are, any tool can carry a job’s budget in its API key, and every answer says where its time went.**

@@ -56,7 +56,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --max-price <in/out>      never route above this price, dollars per million tokens, e.g. 0.50/1.50 (per request: x-orrery-max-price)
       --max-cost <usd>          a dollar budget for each request, e.g. 0.002 (per request: x-orrery-max-cost)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
-      --proxy <http://host:port> reach nodes and the Solana RPC through this HTTP proxy, so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
+      --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
       --enclave-images <hex,...> only seal prompts to enclaves that booted one of these images
@@ -319,7 +319,7 @@ async function main() {
   const proxyAt = ownArgs.indexOf('--proxy');
   const proxyText = proxyAt >= 0 ? ownArgs[proxyAt + 1] : process.env.ORRERY_PROXY;
   // A privacy flag that was typed without its address must stop here, not run without a proxy.
-  if (proxyAt >= 0 && (!proxyText || proxyText.startsWith('--'))) throw new Error('--proxy needs an address, e.g. --proxy http://127.0.0.1:8118');
+  if (proxyAt >= 0 && (!proxyText || proxyText.startsWith('--'))) throw new Error('--proxy needs an address, e.g. --proxy http://127.0.0.1:8118 or --proxy socks5://127.0.0.1:9050');
   if (proxyText) setNodeProxy(parseProxy(proxyText));
   if (cmd === 'provider' && sub === 'init') {
     const out = flag('out', 'provider.json')!;

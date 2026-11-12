@@ -5,33 +5,95 @@
 // third. Requests to nodes are already encrypted to each node's own key, so the proxy in the middle carries
 // ciphertext: it learns which node you talk to, when, and how much, and nothing of what was said.
 //
-// Only an HTTP proxy is spoken (CONNECT for https, a forwarded request for http); no SOCKS. The Solana RPC and the
-// chip makers' certificate lists go the same way (outFetch, chain/connect.ts), so with a proxy set this process
-// opens no connection to anything else. A node operator's own model server is not covered: that is the node's side.
+// Two kinds of proxy are spoken: HTTP (CONNECT for https, a forwarded request for http) and SOCKS5 (a tunnel for
+// either; the proxy is given the name, so it does the lookup). The Solana RPC and the chip makers' certificate lists
+// go the same way (outFetch, chain/connect.ts), so with a proxy set this process opens no connection to anything
+// else. A node operator's own model server is not covered: that is the node's side.
 //
 // There is no fallback. When a proxy is set and it does not answer, the request fails; it never goes out directly.
 import { request as httpRequest, type ClientRequest, type IncomingMessage, type RequestOptions } from 'node:http';
-import { connect as netConnect, isIP } from 'node:net';
+import { connect as netConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, type ConnectionOptions } from 'node:tls';
 import { Readable } from 'node:stream';
 import { fetchWithTimeout } from './sse.ts';
 
-export type Proxy = { host: string; port: number; auth: string | null; label: string };
+export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string };
 type Init = RequestInit & { timeoutMs?: number };
 
-/** Reads `http://host:port` (or `host:port`, or with `user:pass@`). The label is what gets printed: never the password. */
+/** Reads `http://host:port`, `socks5://host:port` (or `host:port`, or with `user:pass@`). The label is what gets
+ * printed: never the password. */
 export function parseProxy(text: string): Proxy {
   let u: URL;
   try {
     u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `http://${text}`);
   } catch {
-    throw new Error(`--proxy is an address like http://127.0.0.1:8118, not "${text}"`);
+    throw new Error(`--proxy is an address like http://127.0.0.1:8118 or socks5://127.0.0.1:9050, not "${text}"`);
   }
-  if (u.protocol !== 'http:') throw new Error(`--proxy speaks to an HTTP proxy (http://host:port); ${u.protocol.replace(':', '')} is not spoken here`);
+  const kind = u.protocol === 'http:' ? 'http' : u.protocol === 'socks5:' || u.protocol === 'socks5h:' ? 'socks5' : null;
+  if (!kind) throw new Error(`--proxy speaks HTTP (http://host:port) and SOCKS5 (socks5://host:port); ${u.protocol.replace(':', '')} is not spoken here`);
   if (!u.hostname) throw new Error('--proxy needs a host');
-  const port = Number(u.port || 80);
-  const auth = u.username ? Buffer.from(`${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}`).toString('base64') : null;
-  return { host: u.hostname.replace(/^\[|\]$/g, ''), port, auth, label: `${u.hostname}:${port}` };
+  const port = Number(u.port || (kind === 'http' ? 80 : 1080));
+  const user = u.username ? decodeURIComponent(u.username) : null, pass = u.username ? decodeURIComponent(u.password) : null;
+  const auth = user !== null ? Buffer.from(`${user}:${pass}`).toString('base64') : null;
+  return { kind, host: u.hostname.replace(/^\[|\]$/g, ''), port, auth, user, pass, label: `${u.hostname}:${port}` };
+}
+
+const SOCKS_SAID: Record<number, string> = { 1: 'general failure', 2: 'not allowed by its rules', 3: 'network unreachable', 4: 'host unreachable', 5: 'connection refused', 6: 'timed out', 7: 'command not supported', 8: 'address type not supported' };
+
+/** Asks a SOCKS5 proxy (RFC 1928, with RFC 1929 name and password when given) for a tunnel to host:port. The proxy
+ * is sent the name itself, so the lookup happens there and not on this machine. */
+export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?: (s: Socket) => void): Promise<Socket> {
+  return new Promise((done, fail) => {
+    if (isIP(host) === 6) return void fail(new Error('an IPv6 address through a SOCKS proxy is not supported yet; use a name'));
+    const s = netConnect({ host: proxy.host, port: proxy.port });
+    onSocket?.(s);
+    const bad = (m: string) => {
+      s.destroy();
+      fail(new Error(m));
+    };
+    // Exactly n bytes, read without switching the socket to flowing mode, so whatever follows the handshake is left
+    // in place for TLS or HTTP to read.
+    const read = (n: number) => new Promise<Buffer>((got, lost) => {
+      const attempt = () => {
+        const b = s.read(n) as Buffer | null;
+        if (!b) return;
+        s.off('readable', attempt);
+        if (b.length < n) lost(new Error('closed the connection early'));
+        else got(b);
+      };
+      s.on('readable', attempt);
+      attempt();
+    });
+    const gone = () => fail(new Error(`the proxy at ${proxy.label} closed the connection`));
+    s.once('error', (e) => fail(new Error(`the proxy at ${proxy.label} did not answer: ${e.message}`)));
+    s.once('close', gone);
+    s.once('connect', () => {
+      void (async () => {
+        const named = proxy.user !== null;
+        s.write(Buffer.from(named ? [5, 2, 0, 2] : [5, 1, 0]));
+        const [version, method] = await read(2);
+        if (version !== 5) return bad(`${proxy.label} does not speak SOCKS5`);
+        if (method === 2) {
+          const u = Buffer.from(proxy.user ?? ''), p = Buffer.from(proxy.pass ?? '');
+          if (!named || !u.length || u.length > 255 || p.length > 255) return bad(`the proxy at ${proxy.label} wants a name and password (socks5://name:password@host:port)`);
+          s.write(Buffer.concat([Buffer.from([1, u.length]), u, Buffer.from([p.length]), p]));
+          if ((await read(2))[1] !== 0) return bad(`the proxy at ${proxy.label} did not accept the name and password`);
+        } else if (method !== 0) return bad(`the proxy at ${proxy.label} accepts no way of signing in that this router has`);
+        const name = Buffer.from(host);
+        if (name.length > 255) return bad('that host name is too long for SOCKS');
+        const address = isIP(host) === 4 ? Buffer.from([1, ...host.split('.').map(Number)]) : Buffer.concat([Buffer.from([3, name.length]), name]);
+        s.write(Buffer.concat([Buffer.from([5, 1, 0]), address, Buffer.from([port >> 8, port & 255])]));
+        const reply = await read(4);
+        if (reply[0] !== 5) return bad(`${proxy.label} does not speak SOCKS5`);
+        if (reply[1] !== 0) return bad(`the proxy at ${proxy.label} could not reach ${host}:${port} (${SOCKS_SAID[reply[1]] ?? `code ${reply[1]}`})`);
+        const bound = reply[3] === 1 ? 4 : reply[3] === 4 ? 16 : reply[3] === 3 ? (await read(1))[0] : -1;
+        if (bound < 0) return bad(`${proxy.label} answered in a way SOCKS5 does not`);
+        await read(bound + 2);
+        s.off('close', gone);
+        done(s);
+      })().catch((e: Error) => bad(`the proxy at ${proxy.label} ${e.message}`));
+    });
+  });
 }
 
 let current: Proxy | null = null;
@@ -143,6 +205,24 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
       req.end(body ?? undefined);
     };
 
+    const secureOver = (socket: Socket) => {
+      const secure = tlsConnect({ ...tls, socket, ...(isIP(target.hostname) ? {} : { servername: target.hostname }), ALPNProtocols: ['http/1.1'] });
+      live = secure;
+      secure.on('error', (err) => fail(new Error(`TLS to ${target.hostname} through the proxy: ${err.message}`)));
+      return secure;
+    };
+    if (proxy.kind === 'socks5') {
+      // A SOCKS5 proxy gives a tunnel to anything: TLS to an https node inside it, plain HTTP to an http one.
+      const port = Number(target.port || (target.protocol === 'https:' ? 443 : 80));
+      socksTunnel(proxy, target.hostname, port, (s) => (live = s)).then((socket) => {
+        if (settled) return void socket.destroy();
+        socket.on('error', (err) => fail(new Error(`through the proxy at ${proxy.label}: ${err.message}`)));
+        const stream = target.protocol === 'https:' ? secureOver(socket) : socket;
+        live = stream;
+        send({ createConnection: () => stream, host: target.hostname, port, path: `${target.pathname}${target.search}`, headers: { host: target.host } });
+      }, fail);
+      return;
+    }
     const proxyAuth: Record<string, string> = proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {};
     if (target.protocol === 'http:') {
       // A plain-http node: the proxy is asked for the whole address. What it forwards is already sealed to the node.
@@ -160,9 +240,7 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
         socket.destroy();
         return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${target.hostname}:${port} (${res.statusCode})`));
       }
-      const secure = tlsConnect({ ...tls, socket, ...(isIP(target.hostname) ? {} : { servername: target.hostname }), ALPNProtocols: ['http/1.1'] });
-      live = secure;
-      secure.on('error', (err) => fail(new Error(`TLS to ${target.hostname} through the proxy: ${err.message}`)));
+      const secure = secureOver(socket as Socket);
       send({ createConnection: () => secure, host: target.hostname, port, path: `${target.pathname}${target.search}`, headers: { host: target.host } });
     });
     tunnel.end();

@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`--proxy` speaks SOCKS5 as well as HTTP. `orrery router --proxy socks5://127.0.0.1:9050` sends everything the router sends, to nodes and to the Solana RPC, through a SOCKS5 proxy, with a name and password if the address carries them. The proxy is given the host’s name, so the lookup happens there and not on your machine, and TLS to the node runs inside the tunnel. As with an HTTP proxy there is no fallback: a proxy that is down, refuses or is not SOCKS5 fails the request. Checked on mainnet through a local SOCKS5 server (18 tunnels, every one asked for by name) and against curl as a second client of the same server; not yet run through Tor itself.' },
+];
 
 export const RELEASES: Release[] = [
   {
