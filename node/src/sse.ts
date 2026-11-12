@@ -61,32 +61,46 @@ export async function finish(r: { arrayBuffer(): Promise<ArrayBuffer> }): Promis
   await r.arrayBuffer().catch(() => undefined);
 }
 
-/** A node's answer, event by event, up to its `[DONE]`. After that the node ends the answer, and this reads on to
- * that end (for `graceMs` at most) before it returns. Stopping at `[DONE]` instead drops a stream that is not quite
- * finished, which closes the connection: the next request then pays for a new one and a new TLS handshake. */
-export async function* answerEvents(body: ReadableStream<Uint8Array>, graceMs = 1_000): AsyncGenerator<SseEvent> {
+/** Reads what is left of a stream until it ends or `ms` pass. True if it ended. */
+async function readOut(events: AsyncIterator<unknown>, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const left = until - Date.now();
+    const next = left > 0 ? await nextWithin(events, left) : null;
+    if (!next) return false;
+    if (next.done) return true;
+  }
+}
+
+/** A node's answer, event by event, up to its `[DONE]`. After that the node ends the answer, and the stream is read
+ * on to that end: stopping at `[DONE]` instead drops a stream that is not quite finished, which closes the
+ * connection, and the next request then pays for a new one and a new TLS handshake.
+ *
+ * The end usually arrives within milliseconds, so it is waited for briefly (`waitMs`): the connection is then free
+ * for what the router sends next. A node slow to end is not waited on. The caller gets its answer, and the rest is
+ * read in the background for `graceMs` before the stream is let go. */
+export async function* answerEvents(body: ReadableStream<Uint8Array>, o: { waitMs?: number; graceMs?: number } = {}): AsyncGenerator<SseEvent> {
   const events = readSse(body)[Symbol.asyncIterator]();
-  let finished = false;
+  let settled = false;
   try {
     for (;;) {
       const next = await events.next();
       if (next.done) {
-        finished = true;
+        settled = true;
         return;
       }
       if (next.value.data === '[DONE]') break;
       yield next.value;
     }
-    for (;;) {
-      const next = await nextWithin(events, graceMs);
-      if (!next) return;
-      if (next.done) {
-        finished = true;
-        return;
-      }
+    settled = await readOut(events, o.waitMs ?? 150);
+    if (!settled) {
+      settled = true;
+      void readOut(events, o.graceMs ?? 1_000)
+        .then((ended) => (ended ? undefined : events.return?.(undefined)))
+        .catch(() => undefined);
     }
   } finally {
-    // Left early (the caller stopped, or the node kept the stream open past the grace): let go of the stream.
-    if (!finished) void events.return?.(undefined);
+    // Left early (the caller stopped before [DONE]): let go of the stream.
+    if (!settled) void events.return?.(undefined);
   }
 }

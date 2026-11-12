@@ -6,7 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
-- **Everyone** · A node’s connection carries one answer after another. The router stopped reading an answer at `[DONE]`; over a real network the end of the stream arrives a moment later, so the stream was dropped and the connection with it, and every answer paid for a new connection and a new TLS handshake. It now reads each answer to its end (for a second at most), finishes the voucher’s reply and lets go of refusals it will not read. Behind a proxy, where tunnels can be counted, the same three mainnet requests that opened 6 in 0.1.14 open 3: one to the node for the whole session and two to the RPC. The same holds without a proxy.
+- **Everyone** · A node’s connection carries one answer after another. The router stopped reading an answer at `[DONE]`; over a real network the end of the stream arrives a moment later, so the stream was dropped and the connection with it, and every answer paid for a new connection and a new TLS handshake. It now reads each answer to its end (for a second at most), finishes the voucher’s reply and lets go of refusals it will not read. A node that is slow to end its answer does not hold yours up: the router waits 150 ms for the end and reads the rest in the background. Counted on mainnet: behind a proxy the same three requests that opened 6 tunnels in 0.1.14 open 3 (one to the node for the whole session, two to the RPC), and without a proxy six answers that opened 7 new connections to the node in 0.1.14 open 2. We could not measure the time saved per answer: the model’s own variation is larger.
 
 ## 0.1.14 · 2026-11-12 04:02 UTC
 
