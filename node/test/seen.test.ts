@@ -14,8 +14,18 @@ const listen = (s: Server, host: string) => new Promise<number>((done, fail) => 
 describe('what a node sees of the caller', () => {
   it('reads the connection and what a balancer wrote down, and keeps only addresses', () => {
     assert.deepEqual(seenFrom({ headers: {}, socket: { remoteAddress: '::ffff:203.0.113.9' } }), { address: '203.0.113.9', socket: '203.0.113.9', forwarded: [] });
-    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '198.51.100.7, 10.0.0.3' }, socket: { remoteAddress: '10.0.0.3' } }), { address: '198.51.100.7', socket: '10.0.0.3', forwarded: ['198.51.100.7', '10.0.0.3'] });
-    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '<script>, 2001:db8::1' }, socket: { remoteAddress: '::1' } }), { address: '2001:db8::1', socket: '::1', forwarded: ['2001:db8::1'] });
+    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '<script>, 192.168.4.4' }, socket: { remoteAddress: '::1' } }), { address: '192.168.4.4', socket: '::1', forwarded: ['192.168.4.4'] }, 'all private (a test on one machine or one network): said as it is');
+  });
+
+  it('once a public caller is known, the private addresses of the network in front of the node are not said', () => {
+    // A node behind a hosting balancer: the caller, the balancer's public edge, then its private hop.
+    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '198.51.100.7, 203.0.113.20, 10.0.0.3' }, socket: { remoteAddress: '10.0.0.3' } }),
+      { address: '198.51.100.7', socket: '', forwarded: ['198.51.100.7', '203.0.113.20'] });
+    // A forwarding proxy on the caller's own network wrote down a private address before its public one.
+    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '192.168.1.5, 198.51.100.7' }, socket: { remoteAddress: '172.16.0.9' } }),
+      { address: '198.51.100.7', socket: '', forwarded: ['198.51.100.7'] });
+    assert.deepEqual(seenFrom({ headers: { 'x-forwarded-for': '2001:db8::1' }, socket: { remoteAddress: '::1' } }), { address: '2001:db8::1', socket: '', forwarded: ['2001:db8::1'] });
+    assert.deepEqual(seenFrom({ headers: {}, socket: { remoteAddress: '203.0.113.9' } }), { address: '203.0.113.9', socket: '203.0.113.9', forwarded: [] }, 'a public caller straight in: unchanged');
   });
 
   it('a router does not print what is not an address', () => {

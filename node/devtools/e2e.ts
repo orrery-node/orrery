@@ -372,6 +372,9 @@ check('orrery doctor reads the chain, every listing, the wallet and the router, 
 // What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
 const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };
 const seenLine = doc.find((l) => l.what === 'seen as');
+// A node behind a balancer: what the balancer wrote down, as a hosting front would write it.
+const fronted = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`, { headers: { 'x-forwarded-for': '198.51.100.7, 203.0.113.20, 10.0.0.3' } }).then((r) => r.json())) as { address?: string; socket?: string; forwarded?: string[] };
+check('a node behind a balancer tells a caller its public address and not the private addresses of its own network', fronted.address === '198.51.100.7' && fronted.socket === '' && JSON.stringify(fronted.forwarded) === JSON.stringify(['198.51.100.7', '203.0.113.20']), JSON.stringify(fronted));
 check('a node says what address it sees a request from, and orrery doctor prints it, so a proxy is checked from the far side', seenSaid.address === '127.0.0.1' && seenSaid.socket === '127.0.0.1' && Array.isArray(seenSaid.forwarded) && seenSaid.forwarded.length === 0 && !!seenLine && /sees 127\.0\.0\.1/.test(seenLine.detail), seenLine?.detail ?? `no line from doctor · the node said ${JSON.stringify(seenSaid)}`);
 let loadTrips = 0;
 if (process.env.E2E_LOAD) {

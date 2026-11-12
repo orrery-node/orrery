@@ -13,10 +13,27 @@ export type Seen = { address: string; socket: string; forwarded: string[] };
 const ADDRESS = /^[0-9a-fA-F:.]{2,45}$/;
 const plain = (a: string) => a.trim().replace(/^\[(.*)\]$/, '$1').replace(/^::ffff:/i, '');
 
-/** What this request tells the node about its origin. Only things shaped like an address are kept. */
+const NOT_PUBLIC = new BlockList();
+for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv4');
+for (const [net, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv6');
+
+/** Whether an address is one the internet routes to: not loopback, not a private, shared or link-local range. */
+export function isPublic(a: string): boolean {
+  const v = isIP(a);
+  return v !== 0 && !NOT_PUBLIC.check(a, v === 6 ? 'ipv6' : 'ipv4');
+}
+
+/** What this request tells the node about its origin. Only things shaped like an address are kept. Once any of them
+ * is public, the private ones are left out: they are the hops of the network in front of the node (a hosting
+ * balancer), or of the caller's own network, and say nothing a caller across the internet can use. When all of them
+ * are private (a test on one machine or one network), they are said as they are. */
 export function seenFrom(req: Pick<IncomingMessage, 'headers'> & { socket: { remoteAddress?: string } }): Seen {
-  const socket = plain(req.socket.remoteAddress ?? '');
-  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map(plain).filter((a) => ADDRESS.test(a)).slice(0, 8);
+  let socket = plain(req.socket.remoteAddress ?? '');
+  let forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map(plain).filter((a) => ADDRESS.test(a)).slice(0, 8);
+  if ([socket, ...forwarded].some(isPublic)) {
+    forwarded = forwarded.filter(isPublic);
+    if (!isPublic(socket)) socket = '';
+  }
   return { address: forwarded[0] ?? socket, socket, forwarded };
 }
 
@@ -39,16 +56,6 @@ export function seenAddresses(s: Seen): string[] {
 /** The addresses of this computer's own network interfaces, loopback left out. */
 export function ownAddresses(): string[] {
   return Object.values(networkInterfaces()).flatMap((list) => list ?? []).filter((i) => !i.internal).map((i) => plain(i.address.replace(/%.*$/, '')));
-}
-
-const NOT_PUBLIC = new BlockList();
-for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv4');
-for (const [net, bits] of [['::', 127], ['fc00::', 7], ['fe80::', 10]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv6');
-
-/** Whether an address is one the internet routes to: not loopback, not a private, shared or link-local range. */
-export function isPublic(a: string): boolean {
-  const v = isIP(a);
-  return v !== 0 && !NOT_PUBLIC.check(a, v === 6 ? 'ipv6' : 'ipv4');
 }
 
 /** Asks nodes in turn what address they see and returns the first answer. It goes through the proxy when one is set. */
