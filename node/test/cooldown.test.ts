@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rank, Stats } from '../src/router/policy.ts';
-import { away } from '../src/router/patience.ts';
+import { away, nextWait, patienceFrom } from '../src/router/patience.ts';
 import { ChannelUnknown } from '../src/router/channels.ts';
 import type { ProviderEntry } from '../src/router/registry.ts';
 import type { ModelOffer } from '../src/manifest.ts';
@@ -30,4 +30,21 @@ test('what counts as a node being away for a moment, and what is a refusal', () 
     new Error('read ECONNRESET'), new Error('the proxy at 127.0.0.1:8118 refused a tunnel to node.example:443 (502)'), new ChannelUnknown('an open channel to this node is on chain, but the node did not say where it stands')]) assert.equal(away(e), true, e.message);
   for (const e of [new Error('provider answered 500'), new Error('provider answered 400'), new Error('payment refused: channel_closing'), new Error('enclave not verified'),
     new Error('provider closed the stream without a usage record')]) assert.equal(away(e), false, e.message);
+});
+
+test('a request may say how long it waits for an absent node, in seconds, up to 30', () => {
+  assert.equal(patienceFrom(undefined, 8_000), 8_000, 'nothing said: the router\'s own setting');
+  assert.equal(patienceFrom('0', 8_000), 0);
+  assert.equal(patienceFrom('2.5', 8_000), 2_500);
+  assert.equal(patienceFrom(' 20 ', 8_000), 20_000);
+  for (const bad of ['', 'forever', '-1', '31', 'NaN', '1e9', '5s']) assert.throws(() => patienceFrom(bad, 8_000), /x-orrery-patience is a number of seconds from 0 to 30/, bad);
+});
+
+test('more patience means more rounds, each at most 3 seconds apart, never past the limit', () => {
+  assert.equal(nextWait(0, 0, 8_000), 1_500);
+  assert.equal(nextWait(1, 1_600, 8_000), 3_000);
+  assert.equal(nextWait(2, 4_700, 8_000), 3_000, 'a third round still fits in 8 seconds');
+  assert.equal(nextWait(3, 7_800, 8_000), null);
+  assert.equal(nextWait(6, 20_000, 30_000), 3_000, 'an agent that asked for 30 seconds keeps asking');
+  assert.equal(nextWait(0, 0, 0), null, 'patience 0: no round at all');
 });

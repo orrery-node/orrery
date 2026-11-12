@@ -766,6 +766,19 @@ await sleep(1_300);
 const afterGap = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
 await afterGap.text();
 check('a node that is away for a second costs the caller a short wait, not an error, and is not refused afterwards', acrossGap.status === 200 && gapMs >= 1_000 && gapMs < 9_000 && afterGap.status === 200 && router.trips.length === tripsBeforeGap + 2, `the only node asked for was away for 1.2 s: ${acrossGap.status} after ${gapMs} ms${acrossGap.status === 200 ? '' : ` (${acrossBody.slice(0, 110)})`} · the next request: ${afterGap.status}`);
+// The same gap, but the agent says how long it will wait: 0 fails at once (it has somewhere else to go), and a value
+// that is not a number of seconds is refused before anything is sent.
+await restarting.close();
+setTimeout(() => void restarting.listen(), 1_200);
+const quickAt = Date.now();
+const quick = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58(), 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+await quick.text();
+const quickMs = Date.now() - quickAt;
+const silly = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': 'forever' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const sillySaid = ((await silly.json()) as { error?: { code?: string; message?: string } }).error;
+await sleep(1_400);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+check('an agent sets its own patience per request: x-orrery-patience: 0 fails at once, and a value that is not seconds is refused', quick.status === 502 && quickMs < 800 && silly.status === 400 && sillySaid?.code === 'bad_request' && /x-orrery-patience/.test(sillySaid?.message ?? ''), `patience 0 with the node away: ${quick.status} after ${quickMs} ms · 'forever': ${silly.status} ${sillySaid?.code ?? ''}`);
 setNodeProxy(parseProxy(`127.0.0.1:${(recorder.address() as { port: number }).port}`));
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Stopping cleanly: right after an answer the voucher for it is still on its way. A router told to stop hands it over

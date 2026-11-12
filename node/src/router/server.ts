@@ -10,7 +10,7 @@ import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
-import { away, nextWait } from './patience.ts';
+import { away, nextWait, patienceFrom } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels } from './channels.ts';
@@ -368,6 +368,12 @@ export class Router {
   private async serveOne(body: Record<string, unknown>, req: IncomingMessage, res: ServerResponse, anth: Shape | null) {
     const began = performance.now();
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
+    let patienceMs: number;
+    try {
+      patienceMs = patienceFrom(req.headers['x-orrery-patience'] === undefined ? undefined : String(req.headers['x-orrery-patience']), this.o.patienceMs ?? 8_000);
+    } catch (e) {
+      throw new Unserved((e as Error).message, 400, 'bad_request');
+    }
     // A proxy that is set and gives this computer's address to a node hides nothing: the request stays here.
     if (this.farSide?.givenAway && nodeProxy()) throw new Unserved(`${this.farSide.node} sees ${this.farSide.givenAway}, this computer's own address, through the proxy; nothing is sent until the proxy stops giving it away`, 503, 'proxy_gives_address_away');
     const header = String(req.headers['x-orrery-route'] ?? '');
@@ -489,7 +495,7 @@ export class Router {
       }
       // Nothing has reached the client. When every node was away (not there, or something in front of it answered for
       // it), the router waits a moment and goes round once more: a node that restarts is back in seconds.
-      const wait = allAway && !res.headersSent ? nextWait(round, performance.now() - began, this.o.patienceMs ?? 8_000) : null;
+      const wait = allAway && !res.headersSent ? nextWait(round, performance.now() - began, patienceMs) : null;
       if (wait === null) break;
       this.log(`no node for ${model} could be reached; asking again in ${wait / 1000} s`);
       await new Promise((r) => setTimeout(r, wait));
