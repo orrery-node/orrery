@@ -494,7 +494,8 @@ export class Router {
       this.log(`no node for ${model} could be reached; asking again in ${wait / 1000} s`);
       await new Promise((r) => setTimeout(r, wait));
     }
-    throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed');
+    // The client's SDK reads Retry-After before it tries again; by now this request has already waited its own share.
+    throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed', { 'retry-after': '3' });
   }
 
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {

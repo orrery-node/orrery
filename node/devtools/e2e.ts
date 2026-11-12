@@ -787,6 +787,7 @@ await proxyGone.text();
 const rpcGone = await proxiedRpc.getSlot().then(() => 'answered', () => 'refused');
 setNodeProxy(null);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+check('when no node could answer, the refusal tells the client when to ask again, in the header its SDK already reads', proxyGone.status === 502 && proxyGone.headers.get('retry-after') === '3', `${proxyGone.status} with retry-after: ${proxyGone.headers.get('retry-after')}`);
 check('with a proxy set the router reaches nodes only through it: the proxy carries a request it cannot read, and with the proxy gone the request fails instead of going out directly',
   throughProxy.status === 200 && throughProxy.content.length > 20 && tripsAfterThrough === tripsBeforeProxy + 1 && proxyCarried.length >= 1 && proxyCarried.every((x) => x.body.length > 100) && !proxyRead
   && proxyGone.status >= 500 && router.trips.length === tripsWithProxy && /^127\.0\.0\.1:\d+$/.test(statusWithProxy.proxy ?? ''),
