@@ -608,6 +608,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
+- [x] Through `orrery mcp`, every answer and refusal under a task says what the task has spent and has left, and `status` lists the tasks (in main, next release)
 - [x] A router told to stop (Ctrl-C, SIGTERM) lets answers in flight finish and hands over the vouchers still on their way before it exits (in main, next release)
 - [x] A node that is away for a moment: the request waits and goes round again (`--patience`, 8 seconds by default, or `x-orrery-patience: <seconds>` on one request), and a cooldown no longer refuses a model's only node (in main, next release)
 - [x] A router behind a proxy asks a node what it sees before it pays for anything, shows it on `/orrery/status`, and does not send while the node sees this computer's own public address (in main, next release)

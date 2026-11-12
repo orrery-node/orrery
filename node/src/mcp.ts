@@ -20,7 +20,7 @@ const TOOLS = [
         max_price: { type: 'string', description: 'optional price ceiling in dollars per million tokens, input/output, e.g. 0.50/1.50; no provider above it is used' },
         max_cost: { type: 'number', description: 'optional budget in dollars for this one answer, e.g. 0.001; only providers whose worst case fits are used' },
         task: { type: 'string', description: 'optional name for the job this call belongs to; every call with the same task draws from one budget' },
-        task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call; when it is spent the router refuses further calls under the task' },
+        task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call; when it is spent the router refuses further calls under the task. Every answer and refusal under a task says what it has spent and has left' },
       },
       required: ['model', 'prompt'],
     },
@@ -60,7 +60,7 @@ const TOOLS = [
   },
   {
     name: 'status',
-    description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), and the last 24 hours of spend by model from its own log.',
+    description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), the last 24 hours of spend by model from its own log, and every task with what it has spent and has left.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -95,11 +95,14 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}), ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
       const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
       const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
-      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
+      // Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal.
+      const spent = r.headers.get('x-orrery-task-spent'), left = r.headers.get('x-orrery-task-left');
+      const task = typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';
+      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const answer = j.choices?.[0]?.message?.content ?? '';
       const who = r.headers.get('x-orrery-provider');
       const cost = r.headers.get('x-orrery-cost');
-      return text(`${answer}\n\n— answered by ${who ? `${who.slice(0, 6)}…` : 'a provider'} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer`);
+      return text(`${answer}\n\n— answered by ${who ? `${who.slice(0, 6)}…` : 'a provider'} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${task}`);
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
@@ -135,7 +138,9 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down').map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}`);
       const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[] } | null;
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
-      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}`);
+      const tk = (await fetchFn(`${router}/orrery/tasks`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { tasks?: { name: string; budget: string; spent: string; left: string; answers: number }[] } | null;
+      const tasks = (tk?.tasks ?? []).slice(0, 10).map((t) => `${t.name}: $${t.spent} of $${t.budget} spent, $${t.left} left, ${t.answers} answer${t.answers === 1 ? '' : 's'}`);
+      return text(`spent today: $${j.spentToday ?? '0'}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {
