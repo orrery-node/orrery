@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'everyone', text: 'A node’s connection carries one answer after another. The router stopped reading an answer at `[DONE]`; over a real network the end of the stream arrives a moment later, so the stream was dropped and the connection with it, and every answer paid for a new connection and a new TLS handshake. It now reads each answer to its end (for a second at most), finishes the voucher’s reply and lets go of refusals it will not read. Behind a proxy, where tunnels can be counted, the same three mainnet requests that opened 6 in 0.1.14 open 3: one to the node for the whole session and two to the RPC. The same holds without a proxy.' },
+];
 
 export const RELEASES: Release[] = [
   {

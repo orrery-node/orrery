@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Everyone** · A node’s connection carries one answer after another. The router stopped reading an answer at `[DONE]`; over a real network the end of the stream arrives a moment later, so the stream was dropped and the connection with it, and every answer paid for a new connection and a new TLS handshake. It now reads each answer to its end (for a second at most), finishes the voucher’s reply and lets go of refusals it will not read. Behind a proxy, where tunnels can be counted, the same three mainnet requests that opened 6 in 0.1.14 open 3: one to the node for the whole session and two to the RPC. The same holds without a proxy.
+
 ## 0.1.14 · 2026-11-12 04:02 UTC
 
 **Behind a proxy the router speaks SOCKS5 and keeps its tunnels open, and a job that is out of budget is told so with a 402.**

@@ -7,7 +7,7 @@ import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { decrypt, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
-import { readSse, sseFrame } from '../sse.ts';
+import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
@@ -468,6 +468,7 @@ export class Router {
     this.inflight.set(address, maxCost);
     const r = await fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
     if (r.status === 409 && wired && !retried) {
+      drop(r);
       // The node restarted with a new wire key: read it again (signature checked as before) and send once more.
       await this.o.registry.refreshWire(address);
       return this.forward(cand, body, wantsStream, res, route, fellThrough, true, anth, state, resumed);
@@ -488,16 +489,20 @@ export class Router {
       }
       throw new Error(`payment refused: ${j.error.code}`);
     }
-    if (!r.ok || !r.body) throw new Error(`provider answered ${r.status}`);
+    if (!r.ok || !r.body) {
+      drop(r);
+      throw new Error(`provider answered ${r.status}`);
+    }
     const theirs = nodeSaid(r.headers.get('server-timing'));
 
     let ttft = 0;
     let record: (UsageRecord & { owed: string }) | null = null;
     let claimedOff = 0;
     const chunks: Record<string, unknown>[] = [];
-    for await (const ev of readSse(r.body)) {
+    // answerEvents stops handing out events at [DONE] and then reads the answer to its end, so the connection it
+    // came on can carry the next request.
+    for await (const ev of answerEvents(r.body)) {
       let data = ev.data;
-      if (data === '[DONE]') break;
       if (key) data = decrypt(key, Buffer.from(data, 'base64')).toString('utf8');
       if (ev.event === 'orrery') {
         const y = JSON.parse(data);
@@ -551,7 +556,7 @@ export class Router {
     this.inflight.delete(address);
     void fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/orrery/voucher`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: ch.channel, voucher }), timeoutMs: 5_000,
-    }).catch(() => undefined);
+    }).then(finish).catch(() => undefined);
     this.stats.ok(address, ttft);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),

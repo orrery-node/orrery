@@ -13,6 +13,7 @@ import { ed25519Verify, home } from '../keys.ts';
 import { wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchNode } from '../proxy.ts';
+import { drop } from '../sse.ts';
 
 /** `vcek` is the chip's certificate (DER, base64) that an AMD SEV-SNP node serves next to its report. */
 export type Attestation = { kind: number; measurement: string; enclaveKey: string; report: string; reportHash: string; vcek?: string };
@@ -154,7 +155,7 @@ export class Registry {
     await Promise.all(
       this.usable().map(async (e) => {
         const t0 = Date.now();
-        const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { upstream?: string } | null;
+        const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : (drop(r), null))).catch(() => null)) as { upstream?: string } | null;
         if (!h) return;
         e.healthMs = Date.now() - t0;
         e.healthAt = Date.now();
@@ -174,7 +175,7 @@ export class Registry {
       this.usable().filter((e) => e.manifest?.burn).map(async (e) => {
         const share = e.manifest!.burn!.share;
         const owner = e.account.authority.toBase58();
-        const j = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/orrery/burns`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { receipts?: BurnReceipt[] } | null;
+        const j = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/orrery/burns`, { timeoutMs: 4_000 }).then((r) => (r.ok ? r.json() : (drop(r), null))).catch(() => null)) as { receipts?: BurnReceipt[] } | null;
         let spent = 0n, burned = 0n, n = 0;
         for (const r of (j?.receipts ?? []).slice(-200)) {
           if (typeof r?.swapTx !== 'string' || typeof r.burnTx !== 'string' || usedTx.has(r.swapTx) || usedTx.has(r.burnTx)) continue;

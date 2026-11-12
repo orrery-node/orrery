@@ -665,6 +665,20 @@ check('an answer says where its time went (Server-Timing): choosing the node, th
   && !!timedTrip.ms && timedTrip.ms.node > 0 && timedTrip.ms.route + timedTrip.ms.seal + timedTrip.ms.sign < timedTrip.ms.node,
   timedHeader);
 
+// A node's connection carries one answer after another: the router reads each answer to its end, so the next request
+// rides the connection already open instead of paying for a new one.
+const keptNode = nodes.find((n) => n.pda.toBase58() === timedTrip.provider)!;
+let keptOpened = 0;
+(keptNode as unknown as { server: { on(e: 'connection', f: () => void): void } }).server.on('connection', () => keptOpened++);
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const keptRuns: { status: number }[] = [];
+for (let i = 0; i < 5; i++) {
+  keptRuns.push(await ask('llama-3.3-70b', { header: { 'x-orrery-provider': timedTrip.provider } }));
+  await sleep(150);
+}
+check('five answers in a row from one node ride connections already open: the router reads each answer to its end instead of dropping the stream',
+  keptRuns.every((x) => x.status === 200) && keptOpened <= 2, `${keptRuns.length} answers, ${keptOpened} new connection${keptOpened === 1 ? '' : 's'} to the node`);
+
 // Through a proxy: the router reaches nodes only by it, the proxy carries requests it cannot read, and when the proxy
 // is gone the request fails instead of going out directly.
 const proxied: { url: string; body: string }[] = [];
