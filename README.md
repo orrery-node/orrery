@@ -611,6 +611,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
 - [x] A router that lost its records asks the node about its channel sealed, and the answer comes back sealed (in main, next release)
 - [x] The 'reads payment inside' flag is signed with the node key, and a router that has seen it keeps to it when it, or the wire key, goes missing (in main, next release)
+- [x] `orrery doctor` prints a `sealing` line under each node: request and payment sealed to its own key, payment in headers, or plain; `orrery provider check` reads the node's wire key from its public address (in main, next release)
 - [x] A channel the node released or that is closing: the router lets it go and sends again on a fresh one, instead of failing until its own check (in main, next release)
 - [x] Through `orrery mcp`, every answer and refusal under a task says what the task has spent and has left, and `status` lists the tasks (in main, next release)
 - [x] A router told to stop (Ctrl-C, SIGTERM) lets answers in flight finish and hands over the vouchers still on their way before it exits (in main, next release)

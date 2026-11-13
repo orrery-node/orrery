@@ -375,6 +375,10 @@ const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
 check('orrery doctor reads the chain, every listing, the wallet and the router, and flags the provider that went dark', docBad.length === 1 && docBad[0] === nodes[0].pda.toBase58().slice(0, 8) && doc.some((l) => l.what === 'router' && l.ok) && doc.some((l) => l.what === 'wallet USDC' && l.ok), `${doc.filter((l) => l.ok).length} ok · flagged: ${docBad.join(', ') || 'none'} (Kestrel, dark: ${doc.find((l) => l.ok === false)?.detail ?? ''})`);
+// How a request and its payment travel to each node: doctor says, from the node's own signed answers.
+const nodeLines = doc.filter((l) => /^  \S/.test(l.what) && l.ok === true);
+const sealLines = doc.filter((l) => l.what.trim() === 'sealing');
+check('orrery doctor says, for each node that answers, whether the request and the payment go sealed to it', nodeLines.length >= 2 && sealLines.length >= nodeLines.length && sealLines.every((l) => l.ok === true && /payment/.test(l.detail)), `${nodeLines.length} nodes answering, ${sealLines.length} sealing line${sealLines.length === 1 ? '' : 's'}${sealLines[0] ? `: ${sealLines[0].detail}` : ''}`);
 // What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
 const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };
 const seenLine = doc.find((l) => l.what === 'seen as');

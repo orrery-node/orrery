@@ -55,6 +55,15 @@ export function readWire(j: { key?: string; sig?: string; inside?: boolean; insi
   return { key, inside: j.inside === true && insideSig.length === 64 && ed25519Verify(nodeKey.toBytes(), insideMessage(key), insideSig) };
 }
 
+/** The node keys a router keeps to (see Registry.pins), as saved in its pin file; empty when there is none or it cannot be read. */
+export function readPins(path?: string): Set<string> {
+  try {
+    return new Set(path && existsSync(path) ? ((JSON.parse(readFileSync(path, 'utf8')) as { inside?: string[] }).inside ?? []) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export class Registry {
   entries = new Map<string, ProviderEntry>();
   refreshedAt = 0;
@@ -64,11 +73,8 @@ export class Registry {
   private pins = new Set<string>();
 
   constructor(private conn: Connection, private tee: TeePolicy, private pinPath?: string) {
-    try {
-      if (pinPath && existsSync(pinPath)) for (const k of (JSON.parse(readFileSync(pinPath, 'utf8')) as { inside?: string[] }).inside ?? []) this.pins.add(k);
-    } catch {
-      // An unreadable file starts the pins over; they are filled again from the next signed answers.
-    }
+    // An unreadable file starts the pins over; they are filled again from the next signed answers.
+    this.pins = readPins(pinPath);
   }
 
   /** Whether this node has shown this router a signed wire key that reads payment inside. */

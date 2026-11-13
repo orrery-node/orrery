@@ -4,18 +4,29 @@ import { rpcConnection } from './chain/connect.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from './chain/program.ts';
 import { usd } from './pricing.ts';
-import { Registry } from './router/registry.ts';
+import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
+/** How a request and its payment travel to a node, from what the node signed with its node key: sealed to the node's own
+ * key with the payment inside, sealed with the payment in headers its host can read, or plain JSON inside TLS. */
+export function sealCheck(e: ProviderEntry, pinned: boolean): Check {
+  const what = '    sealing';
+  if (!e.wire) return pinned
+    ? { ok: false, what, detail: 'showed this router a signed wire key before and shows none now; nothing goes to it in the clear until it does' }
+    : { ok: null, what, detail: 'no wire key: requests reach it as plain JSON inside TLS, which its host can read' };
+  if (!e.wireInside) return { ok: null, what, detail: 'requests sealed to its own key; it does not sign that it reads payment inside, so which channel pays goes in headers its host can read' };
+  return { ok: true, what, detail: `requests and payment sealed to its own key, both signed by its node key${pinned ? '; this router keeps to that if either goes missing' : ''}` };
+}
+
 const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string }): Promise<Check[]> {
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
     const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
@@ -38,6 +49,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     out.push({ ok: c.settleMint.equals(o.mint), what: 'program', detail: `${n(c.providers, 'provider')}, ${n(c.channels, 'channel')}, $${usd(c.settled)} settled · close grace ${Number(c.closeGraceSecs) / 60} min · settles in ${c.settleMint.equals(o.mint) ? 'USDC' : c.settleMint.toBase58()}` });
   }
 
+  // The router's pins as it keeps them, read and not written: doctor's own reading of a node changes nothing there.
+  const pins = readPins(o.pins);
   const registry = new Registry(conn, { allowDev: o.allowDev ?? false, measurements: [] });
   t0 = Date.now();
   await registry.refresh();
@@ -61,6 +74,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const detail = !h ? 'did not answer /health' : h.upstream === 'down' ? `answered /health in ${took}, but its model server is down` : `answered /health in ${took}${h.upstream === 'up' ? ', model server up' : ''}`;
     out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, ${detail}` });
     // A node that claims an enclave: say whether this computer could verify it, and if not, which check stopped it.
+    out.push(sealCheck(e, pins.has(e.account.nodeKey.toBase58())));
     if (e.tee) out.push({ ok: e.tee.verified ? true : e.tee.dev ? null : false, what: '    enclave', detail: `${TEE_KINDS[e.account.teeKind] ?? 'enclave'} · ${e.tee.verified ? `${e.tee.reason}; :private can use this node` : `not verified: ${e.tee.reason}`}` });
   }
   // What a node sees of this computer: the first node that says is asked, through the proxy when one is set.
