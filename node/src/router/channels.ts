@@ -36,7 +36,8 @@ export class Channels {
   private sign: Sign;
   spend: Spend = { day: '', units: 0n };
   /** A node's wire key and whether it reads payment inside the seal, as the router's registry has it. Set by the router. */
-  wireOf: ((provider: string) => { key: Buffer; inside: boolean } | null) | null = null;
+  /** 'missing': the node showed a signed wire key before and shows none now, so it is not asked about a channel in the clear. */
+  wireOf: ((provider: string) => { key: Buffer; inside: boolean } | 'missing' | null) | null = null;
   /** Reads a node's wire key again, after the node said a question was encrypted to a key it no longer holds. */
   rewire: ((provider: string) => Promise<void>) | null = null;
 
@@ -191,6 +192,7 @@ export class Channels {
    * An older node is asked as before, with the channel in the query. */
   private async standing(provider: string, endpoint: string, address: string, again = false): Promise<{ voucher: string | null; owed: string } | null> {
     const wire = this.wireOf?.(provider);
+    if (wire === 'missing') return null;
     if (!wire?.inside) {
       const r = await fetchNode(`${endpoint}/orrery/channel?address=${address}`, { timeoutMs: 5_000 }).catch(() => null);
       return r?.ok ? ((await r.json()) as { voucher: string | null; owed: string }) : null;

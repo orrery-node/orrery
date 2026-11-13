@@ -108,7 +108,7 @@ async function router() {
   if (!ROUTES.includes(route)) throw new Error(`unknown route ${route}`);
   const minFirmware = flag('min-firmware') ? parseFirmware(flag('min-firmware')!) : null;
   if (flag('min-firmware') && !minFirmware) throw new Error('--min-firmware is four numbers: <boot loader>.<tee>.<snp>.<microcode>, e.g. 3.0.8.115');
-  const registry = new Registry(conn, { allowDev: has('allow-dev-enclaves'), measurements: (flag('enclave-images', '') ?? '').split(',').filter(Boolean), minFirmware, allowOutdated: has('allow-outdated') });
+  const registry = new Registry(conn, { allowDev: has('allow-dev-enclaves'), measurements: (flag('enclave-images', '') ?? '').split(',').filter(Boolean), minFirmware, allowOutdated: has('allow-outdated') }, home('router', 'pins.json'));
   const channels = new Channels(conn, wallet, session, mint(), home('router', 'channels.json'), {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });

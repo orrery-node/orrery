@@ -83,3 +83,7 @@ export function openRequest(enclave: EnclaveKey, wire: { epk: string; box: strin
  * prevents that), but nothing between the two machines can: not the node's hosting platform, its load balancer or a
  * firewall in front of it, which otherwise see the plain request after TLS ends and may block or log it. */
 export const wireMessage = (key: Buffer) => Buffer.concat([Buffer.from('orrery/wire/1'), key]);
+
+/** What a node signs with the same node key to say it reads the channel and the voucher from inside the seal, for this
+ * wire key. Without it a router keeps payment in headers, so nothing in front of a node can claim this for one. */
+export const insideMessage = (key: Buffer) => Buffer.concat([Buffer.from('orrery/wire-inside/1'), key]);

@@ -1,6 +1,8 @@
 // What the router knows about the network: every Provider account on chain, plus the price manifest each node
 // serves, kept only if its sha256 matches the hash the provider's wallet put on chain.
 import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { pledgeKept, verifyReceipt, type BurnReceipt, type ParsedTx } from '../burn.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -10,7 +12,7 @@ import { tdxFmspc, verifyTdx } from '../tee/tdx.ts';
 import { fetchCrls } from '../tee/crl.ts';
 import { fetchTcbInfo } from '../tee/tcb.ts';
 import { ed25519Verify, home } from '../keys.ts';
-import { wireMessage } from '../seal.ts';
+import { insideMessage, wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { fetchNode } from '../proxy.ts';
 import { drop } from '../sse.ts';
@@ -33,7 +35,8 @@ export type ProviderEntry = {
   /** The node's own encryption key for requests on the wire, kept only if the node key on chain signed it. Null when
    * the node has none (an older node); requests to it travel as plain JSON inside TLS. */
   wire?: Buffer | null;
-  /** The node said (on /v1/wire) that it reads the channel and the voucher from inside the sealed body. */
+  /** The node said (on /v1/wire, signed with its node key) that it reads the channel and the voucher from inside the
+   * sealed body, now or at some earlier read by this router (see Registry.pins). */
   wireInside?: boolean;
   /** The node's burn pledge and how much of it this router has verified on chain itself. */
   burn?: { share: number; spent: bigint; burned: bigint; receipts: number; kept: number; checkedAt: number };
@@ -43,11 +46,44 @@ export type ProviderEntry = {
  * (AMD: a floor you set; Intel: whether a platform Intel lists as out of date is still accepted). */
 export type TeePolicy = { allowDev: boolean; measurements: string[]; minFirmware?: Firmware | null; allowOutdated?: boolean; verifier?: (a: Attestation, p: ProviderAccount) => Promise<boolean> };
 
+/** A node's /v1/wire answer, read: the wire key if the node key on its listing signed it, and whether the node reads
+ * payment inside the seal, which counts only with the node key's signature over that too. */
+export function readWire(j: { key?: string; sig?: string; inside?: boolean; insideSig?: string }, nodeKey: PublicKey): { key: Buffer; inside: boolean } | null {
+  const key = Buffer.from(j.key ?? '', 'hex'), sig = Buffer.from(j.sig ?? '', 'hex');
+  if (key.length !== 32 || !ed25519Verify(nodeKey.toBytes(), wireMessage(key), sig)) return null;
+  const insideSig = Buffer.from(j.insideSig ?? '', 'hex');
+  return { key, inside: j.inside === true && insideSig.length === 64 && ed25519Verify(nodeKey.toBytes(), insideMessage(key), insideSig) };
+}
+
 export class Registry {
   entries = new Map<string, ProviderEntry>();
   refreshedAt = 0;
+  /** Node keys that have shown this router a signed wire key that reads payment inside. A router keeps to that: when the
+   * flag or the wire key later goes missing (as a hosting platform in front of the node could make it), it keeps
+   * payment inside, and it does not send that node a request in the clear. Kept in `pinPath` across restarts. */
+  private pins = new Set<string>();
 
-  constructor(private conn: Connection, private tee: TeePolicy) {}
+  constructor(private conn: Connection, private tee: TeePolicy, private pinPath?: string) {
+    try {
+      if (pinPath && existsSync(pinPath)) for (const k of (JSON.parse(readFileSync(pinPath, 'utf8')) as { inside?: string[] }).inside ?? []) this.pins.add(k);
+    } catch {
+      // An unreadable file starts the pins over; they are filled again from the next signed answers.
+    }
+  }
+
+  /** Whether this node has shown this router a signed wire key that reads payment inside. */
+  pinned(address: string): boolean {
+    const e = this.entries.get(address);
+    return !!e && this.pins.has(e.account.nodeKey.toBase58());
+  }
+
+  private pin(nodeKey: string): void {
+    if (this.pins.has(nodeKey)) return;
+    this.pins.add(nodeKey);
+    if (!this.pinPath) return;
+    mkdirSync(dirname(this.pinPath), { recursive: true });
+    writeFileSync(this.pinPath, JSON.stringify({ inside: [...this.pins] }, null, 1));
+  }
 
   async refresh(): Promise<void> {
     const accounts = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
@@ -78,7 +114,9 @@ export class Registry {
           }
         }
         entry.tee = await this.checkTee(entry);
-        if (!same && p.active) {
+        // A node that showed a signed wire key before and has none now is asked again on every refresh, not only when
+        // its listing changes: until then nothing goes to it in the clear.
+        if (p.active && (!same || (!entry.wire && this.pins.has(p.nodeKey.toBase58())))) {
           const w = await this.wireKey(p);
           entry.wire = w?.key ?? null;
           entry.wireInside = !!w?.inside;
@@ -104,9 +142,12 @@ export class Registry {
     try {
       const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
       if (!r.ok) return null;
-      const j = (await r.json()) as { key?: string; sig?: string; inside?: boolean };
-      const key = Buffer.from(j.key ?? '', 'hex'), sig = Buffer.from(j.sig ?? '', 'hex');
-      return key.length === 32 && ed25519Verify(p.nodeKey.toBytes(), wireMessage(key), sig) ? { key, inside: j.inside === true } : null;
+      const w = readWire((await r.json()) as Parameters<typeof readWire>[0], p.nodeKey);
+      if (!w) return null;
+      const nodeKey = p.nodeKey.toBase58();
+      if (w.inside) this.pin(nodeKey);
+      // Shown signed before and missing now: what changed is more likely the platform in front than the node.
+      return this.pins.has(nodeKey) ? { key: w.key, inside: true } : w;
     } catch {
       return null;
     }

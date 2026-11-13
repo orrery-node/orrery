@@ -166,7 +166,7 @@ export class Router {
     // Channels asks a node about a channel it lost track of sealed when the node reads payment inside the seal.
     o.channels.wireOf ??= (p) => {
       const e = o.registry.entries.get(p);
-      return e?.wire ? { key: e.wire, inside: !!e.wireInside } : null;
+      return e?.wire ? { key: e.wire, inside: !!e.wireInside } : o.registry.pinned(p) ? 'missing' : null;
     };
     o.channels.rewire ??= (p) => o.registry.refreshWire(p);
   }
@@ -534,6 +534,11 @@ export class Router {
     const enclaveHeaders: Record<string, string> = enclave ? { 'x-orrery-sealed': '1', 'x-orrery-enclave': enclave.kind, 'x-orrery-enclave-image': enclave.image, 'x-orrery-enclave-verdict': enclave.verdict } : {};
     let key: Buffer | null = null;
     let wired = false;
+    // A node that has shown this router a signed wire key gets nothing in the clear when the key goes missing: a hosting
+    // platform in front of it could hide /v1/wire to read the prompt and the payment. The next refresh asks again.
+    if (!cand.sealed && !cand.entry.wire && this.o.registry.pinned(address)) {
+      throw new Error('this node showed a signed wire key before and shows none now; nothing goes to it in the clear');
+    }
     if (cand.sealed) {
       if (!cand.entry.tee?.verified) throw new Error('enclave not verified');
       const s = sealRequest(cand.entry.tee.enclaveKey, Buffer.from(payload));

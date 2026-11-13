@@ -16,7 +16,7 @@ import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { encrypt, enclaveKeyFromSecret, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
+import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
@@ -318,8 +318,10 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/v1/wire') {
         // The key routers encrypt requests to, signed with the node key that this listing carries on chain.
         // `inside`: this node reads the channel and the voucher from inside the sealed body, so a router need not send
-        // them where the node's hosting platform can read them.
-        return json(res, 200, { key: this.wire.publicKey.toString('hex'), sig: Buffer.from(signerOf(this.node)(wireMessage(this.wire.publicKey))).toString('hex'), node: this.node.publicKey.toBase58(), inside: true });
+        // them where the node's hosting platform can read them. Signed with the node key (insideSig), so the platform
+        // cannot claim it, and a router that has seen it once keeps to it when the platform takes it away.
+        const sign = signerOf(this.node);
+        return json(res, 200, { key: this.wire.publicKey.toString('hex'), sig: Buffer.from(sign(wireMessage(this.wire.publicKey))).toString('hex'), node: this.node.publicKey.toBase58(), inside: true, insideSig: Buffer.from(sign(insideMessage(this.wire.publicKey))).toString('hex') });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/burns') {
         // What this node pledged and every buy-and-burn it has made, with the transactions a router can check on chain.

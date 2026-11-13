@@ -724,6 +724,9 @@ check('five answers in a row from one node ride connections already open: the ro
 // is gone the request fails instead of going out directly.
 const proxied: { url: string; body: string; answer?: string; headers?: Record<string, unknown> }[] = [];
 let slowVouchers = false;
+// What the platform in front of Ironbridge could do to its /v1/wire answer: drop the signature on its 'inside' flag,
+// drop the flag too, or answer that there is no wire key at all.
+let wireTamper: null | 'unsigned' | 'strip' | 'gone' = null;
 const recorder = createHttpServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
@@ -731,7 +734,25 @@ const recorder = createHttpServer((req, res) => {
     const rec: { url: string; body: string; answer?: string; headers?: Record<string, unknown> } = { url: req.url ?? '', body, headers: { ...req.headers } };
     proxied.push(rec);
     const u = new URL(req.url ?? '');
+    const tampered = !!wireTamper && u.pathname === '/v1/wire' && u.port === String(providerSpecs[1].port);
+    if (tampered && wireTamper === 'gone') {
+      res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'not_found', message: 'no such route' } }));
+      return;
+    }
     const out = httpRequest({ host: u.hostname, port: u.port, path: `${u.pathname}${u.search}`, method: req.method, headers: req.headers }, (r) => {
+      if (tampered) {
+        let raw = '';
+        r.on('data', (c: Buffer) => (raw += c.toString('utf8')));
+        r.on('end', () => {
+          const j = JSON.parse(raw) as Record<string, unknown>;
+          delete j.insideSig;
+          if (wireTamper === 'strip') delete j.inside;
+          const b = JSON.stringify(j);
+          rec.answer = b;
+          res.writeHead(200, { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(b)) }).end(b);
+        });
+        return;
+      }
       res.writeHead(r.statusCode ?? 502, r.headers);
       // What came back, as the proxy saw it.
       rec.answer = '';
@@ -816,6 +837,44 @@ const rebornUnder = new Channels(conn, user, session, usdc, join(WORK, 'home/rou
 const pickedUnder = await (rebornUnder as unknown as { recover: (p: string) => Promise<{ channel: string; cumulative: bigint } | null> }).recover(nodes[1].pda.toBase58()).then((c) => c?.channel ?? 'nothing', (e: Error) => `refused: ${e.message}`);
 if (ibLedger) ibLedger.owed = ibOwed;
 check('a router that lost its records carries on from its voucher when the node counts a little less than it signed for, instead of setting the channel aside', !!ibLedger?.best && pickedUnder === ibChannel, `node’s tally 13 units under the voucher · picked back up: ${pickedUnder === ibChannel ? 'the same channel' : pickedUnder}`);
+// The flag that says a node reads payment inside counts only with the node key's signature on it: a router meeting
+// the node for the first time does not take the platform's word for it.
+wireTamper = 'unsigned';
+const firstSight = new Registry(conn, { allowDev: true, measurements: [] });
+await firstSight.refresh();
+wireTamper = null;
+const firstIb = firstSight.entries.get(nodes[1].pda.toBase58());
+check('a node’s “I read payment inside” counts only with its node key’s signature on it', !!firstIb?.wire && firstIb.wireInside === false, `unsigned flag: ${firstIb?.wire ? (firstIb.wireInside ? 'believed' : 'not believed, payment stays in headers for a node met this way') : 'no wire key read'}`);
+// A router that has seen the signed flag keeps to it. A front that then strips the flag gets no headers back.
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+wireTamper = 'strip';
+await registry.refreshWire(nodes[1].pda.toBase58());
+const beforeStrip = proxied.length;
+const afterStrip = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+await afterStrip.text();
+const stripAsk = proxied.slice(beforeStrip).find((x) => x.url.includes('/v1/chat/completions'));
+check('once a router has seen a node’s signed flag, a front that strips it does not get the payment headers back', afterStrip.status === 200 && !!stripAsk && stripAsk.headers?.['x-orrery-channel'] === undefined && !stripAsk.body.includes(ibChannel), `flag stripped from /v1/wire: ${afterStrip.status}, channel header ${stripAsk?.headers?.['x-orrery-channel'] === undefined ? 'not sent' : 'sent'}`);
+// Nor does a front that hides the wire key: the router does not send that node the prompt in the clear.
+wireTamper = 'gone';
+await registry.refreshWire(nodes[1].pda.toBase58());
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const beforeGone = proxied.length;
+const afterGone = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58(), 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi in a plain sentence.' }] }) });
+await afterGone.text();
+const goneClear = proxied.slice(beforeGone).filter((x) => x.url.startsWith(`http://127.0.0.1:${providerSpecs[1].port}/v1/chat`) && x.body.includes('Say hi in a plain sentence'));
+// The same goes for a router that lost its records: it does not ask that node about its channel in the clear.
+const beforeGoneRecover = proxied.length;
+const rebornGone = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-gone-recover.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+(rebornGone as unknown as { wireOf: unknown }).wireOf = (channels as unknown as { wireOf: unknown }).wireOf;
+const goneRecovered = await (rebornGone as unknown as { recover: (p: string) => Promise<{ channel: string } | null> }).recover(nodes[1].pda.toBase58()).then((c) => c?.channel ?? 'nothing', (e: Error) => `refused: ${e.message}`);
+const goneAsked = proxied.slice(beforeGoneRecover).filter((x) => x.url.includes('/orrery/channel'));
+const goneNamed = goneAsked.filter((x) => x.url.includes(ibChannel) || x.body.includes(ibChannel) || (x.answer ?? '').includes(ibChannel));
+check('nor does a router that lost its records ask that node about its channel in the clear, and it opens no second one', goneNamed.length === 0 && goneRecovered !== 'nothing' && goneRecovered !== ibChannel, `${goneAsked.length} question${goneAsked.length === 1 ? '' : 's'} about the channel, ${goneNamed.length} naming it · ${goneRecovered.startsWith('refused') ? 'refused to guess, no second channel' : goneRecovered === ibChannel ? 'picked it back up' : goneRecovered}`);
+wireTamper = null;
+await registry.refreshWire(nodes[1].pda.toBase58());
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const backIb = registry.entries.get(nodes[1].pda.toBase58());
+check('a front that hides the wire key of a node that showed one does not get the prompt in the clear', goneClear.length === 0 && !!backIb?.wire && backIb.wireInside === true, `wire key hidden: ${goneClear.length} request${goneClear.length === 1 ? '' : 's'} to it in the clear (answer ${afterGone.status}) · once it shows again: ${backIb?.wire ? 'wire key read' : 'no wire key'}, inside ${backIb?.wireInside ? 'yes' : 'no'}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);
