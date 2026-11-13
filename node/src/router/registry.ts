@@ -123,7 +123,7 @@ export class Registry {
         // A node that showed a signed wire key before and has none now is asked again on every refresh, not only when
         // its listing changes: until then nothing goes to it in the clear.
         if (p.active && (!same || (!entry.wire && this.pins.has(p.nodeKey.toBase58())))) {
-          const w = await this.wireKey(p);
+          const w = await this.wireKey(p, entry.manifest?.inside === true);
           entry.wire = w?.key ?? null;
           entry.wireInside = !!w?.inside;
         }
@@ -139,12 +139,14 @@ export class Registry {
   async refreshWire(address: string): Promise<void> {
     const e = this.entries.get(address);
     if (!e) return;
-    const w = await this.wireKey(e.account);
+    const w = await this.wireKey(e.account, e.manifest?.inside === true);
     e.wire = w?.key ?? null;
     e.wireInside = !!w?.inside;
   }
 
-  private async wireKey(p: ProviderAccount): Promise<{ key: Buffer; inside: boolean } | null> {
+  private async wireKey(p: ProviderAccount, listed = false): Promise<{ key: Buffer; inside: boolean } | null> {
+    // Listed in the price list whose hash is on chain: kept to from the first request, before any /v1/wire answer.
+    if (listed) this.pin(p.nodeKey.toBase58());
     try {
       const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 4_000 });
       if (!r.ok) return null;

@@ -90,7 +90,7 @@ const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
   { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
-  { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, models: [['gemma-3-27b', 200_000, 800_000]] },
+  { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, inside: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
 
 const nodes: InstanceType<typeof ProviderNode>[] = [];
@@ -108,6 +108,7 @@ for (const s of providerSpecs) {
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
+    paymentInside: 'inside' in s ? (s.inside as boolean) : undefined,
   });
   node.log = (l) => console.log(`    [${s.name.split(' ')[0]}] ${l}`);
   await fund(wallet.publicKey);
@@ -758,6 +759,7 @@ let slowVouchers = false;
 // What the platform in front of Ironbridge could do to its /v1/wire answer: drop the signature on its 'inside' flag,
 // drop the flag too, or answer that there is no wire key at all.
 let wireTamper: null | 'unsigned' | 'strip' | 'gone' = null;
+let wireTamperPort: number = providerSpecs[1].port;
 const recorder = createHttpServer((req, res) => {
   let body = '';
   req.on('data', (d) => (body += d));
@@ -765,7 +767,7 @@ const recorder = createHttpServer((req, res) => {
     const rec: { url: string; body: string; answer?: string; headers?: Record<string, unknown> } = { url: req.url ?? '', body, headers: { ...req.headers } };
     proxied.push(rec);
     const u = new URL(req.url ?? '');
-    const tampered = !!wireTamper && u.pathname === '/v1/wire' && u.port === String(providerSpecs[1].port);
+    const tampered = !!wireTamper && u.pathname === '/v1/wire' && u.port === String(wireTamperPort);
     if (tampered && wireTamper === 'gone') {
       res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'not_found', message: 'no such route' } }));
       return;
@@ -946,6 +948,20 @@ check('every answer says how its payment traveled: inside the seal, or in header
 // their channel in headers its host could read (routers before 0.1.16, or this rig posing as one above).
 const ibEarned = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`)).json()) as { total: { answers: number }; paidInside?: { answers: number; inside: number } };
 check('a node tells its operator how many answers were paid inside the seal and how many named their channel in headers', !!ibEarned.paidInside && ibEarned.paidInside.answers === ibEarned.total.answers && ibEarned.paidInside.inside >= 2 && ibEarned.paidInside.inside < ibEarned.paidInside.answers, `Ironbridge, last 24h: ${ibEarned.paidInside ? `${ibEarned.paidInside.inside} of ${ibEarned.paidInside.answers} answers paid inside the seal` : 'not said'}`);
+// A node that put 'payment inside' in its price list, whose hash is on chain, is kept to from a router's first request:
+// a front that strips the flag, or hides the wire key, before this router ever reached the node gets nothing more.
+wireTamperPort = providerSpecs[3].port;
+wireTamper = 'strip';
+const listedSight = new Registry(conn, { allowDev: true, measurements: [] });
+await listedSight.refresh();
+const haloStripped = listedSight.entries.get(nodes[3].pda.toBase58());
+const haloStrippedInside = haloStripped?.wireInside === true && !!haloStripped.wire;
+wireTamper = 'gone';
+await listedSight.refreshWire(nodes[3].pda.toBase58());
+const haloGone = { wire: !!listedSight.entries.get(nodes[3].pda.toBase58())?.wire, pinned: listedSight.pinned(nodes[3].pda.toBase58()) };
+wireTamper = null;
+wireTamperPort = providerSpecs[1].port;
+check('a node that lists payment inside in its price list on chain is kept to from the first request: stripping the flag or hiding the key gets its front nothing more', haloStrippedInside && !haloGone.wire && haloGone.pinned, `Halo, met for the first time behind a front that strips the flag: ${haloStrippedInside ? 'payment inside' : 'payment in headers'} · with its key hidden: ${haloGone.pinned && !haloGone.wire ? 'nothing sent in the clear' : 'would go in the clear'}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

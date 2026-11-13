@@ -4,7 +4,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'everyone', text: 'A node can put “payment inside” in its price list, whose hash is on chain. A router keeps to the signed flag once it has seen it, but a front that strips the flag, or hides the wire key, before a router has ever reached the node used to get that router’s first requests the old way. Set `paymentInside: true` in provider.json and register again, and the mark rides in the list itself: a router keeps payment inside the seal from its very first request to that node, and sends it nothing in the clear if the wire key is missing. Off by default, since it changes the list and a node has to register again.' },
+];
 
 export const RELEASES: Release[] = [
   {

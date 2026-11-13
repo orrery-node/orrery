@@ -27,6 +27,9 @@ export type Manifest = {
   /** The node's upstream continues a partial answer handed to it as a final assistant message, so a router can resume a
    * stream another provider dropped. */
   resume?: boolean;
+  /** The node reads the channel and the voucher from inside the seal. Listed here, it is pinned on chain with the rest of
+   * the list, so nothing in front of the node can take it away from a router that meets the node for the first time. */
+  inside?: boolean;
 };
 
 function sortKeys(v: unknown): unknown {
@@ -60,5 +63,6 @@ export function checkManifest(m: unknown): Manifest {
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
   if (x.burn !== undefined && (!Number.isSafeInteger(x.burn?.share) || x.burn.share < 1 || x.burn.share > 10_000)) throw new Error('manifest: burn.share must be 1 to 10000 basis points');
   if (x.resume !== undefined && typeof x.resume !== 'boolean') throw new Error('manifest: resume must be true or false');
+  if (x.inside !== undefined && x.inside !== true) throw new Error('manifest: inside, when listed, is true');
   return x;
 }

@@ -4,6 +4,7 @@ import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 import { insideMessage, newEnclaveKey, wireMessage } from '../src/seal.ts';
 import { readWire } from '../src/router/registry.ts';
+import { checkManifest } from '../src/manifest.ts';
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
 
@@ -25,5 +26,13 @@ describe('the flag a node sets to say it reads payment inside the seal', () => {
   });
   it('a wire key without the node key’s signature is not read at all', () => {
     assert.equal(readWire({ key: signed.key, sig: hex(signerOf(Keypair.generate())(wireMessage(wire.publicKey))), inside: true }, node.publicKey), null);
+  });
+});
+
+describe('payment inside, listed in the price list', () => {
+  const base = { v: 1, name: 'n', authority: 'a', nodeKey: 'k', models: [] };
+  it('a manifest may say it, as true and nothing else', () => {
+    assert.equal(checkManifest({ ...base, inside: true }).inside, true);
+    assert.throws(() => checkManifest({ ...base, inside: 'yes' }), /inside/);
   });
 });

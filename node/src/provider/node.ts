@@ -53,6 +53,10 @@ export type ProviderConfig = {
   holder?: { tiers: HolderTier[] };
   /** Set when the upstream continues a final assistant message (assistant prefill), so routers may resume through this node. */
   resume?: boolean;
+  /** List in the price list (pinned on chain) that this node reads payment inside the seal, so a router keeps the channel out
+   * of headers from its very first request, whatever the front of this node does to /v1/wire. It changes the list: run
+   * provider register again after setting it. */
+  paymentInside?: boolean;
   /** Burn on every answer: spend `share` basis points of every USDC this node redeems on buying the network token and
    * burning it. `minUnits` is the smallest buy worth its fee, in USDC base units (default 10,000 = one cent). */
   burn?: { share: number; minUnits?: number };
@@ -193,6 +197,7 @@ export class ProviderNode {
       holder: cfg.holder ? { tiers: checkTiers(cfg.holder.tiers) } : undefined,
       burn: cfg.burn ? { share: cfg.burn.share } : undefined,
       resume: cfg.resume ? true : undefined,
+      inside: cfg.paymentInside ? true : undefined,
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
     this.manifestBytes = canonical(this.manifest);
