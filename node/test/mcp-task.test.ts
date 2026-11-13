@@ -21,6 +21,16 @@ describe('orrery mcp and task budgets', () => {
     assert.match(out.result.content[0].text, /the router could not answer: no provider can answer m within \$0\.000004 for this request\n— task review: \$0\.000046 spent, \$0\.000004 left/);
   });
 
+  it('status gives an agent each node’s track record: how many times it has been paid out on chain', async () => {
+    const out = await call('status', {}, async (url) => (url.endsWith('/orrery/status') ? reply({ spentToday: '0', channels: [], providers: [
+      { address: 'A1', name: 'Seed', modelServer: 'up', healthMs: 12, sealing: 'inside', redeems: 147 },
+      { address: 'B2', name: 'New', modelServer: 'up', sealing: 'inside', redeems: 1 },
+    ] }) : reply({ rows: [] })));
+    const t = out.result.content[0].text;
+    assert.match(t, /Seed: model server up \(12 ms\), request and payment sealed to it, paid out 147 times on chain/);
+    assert.match(t, /New: model server up, request and payment sealed to it, paid out once on chain/);
+  });
+
   it('status tells an agent how each node gets the request and the payment', async () => {
     const out = await call('status', {}, async (url) => {
       if (url.endsWith('/orrery/status')) return reply({ spentToday: '0', channels: [], providers: [

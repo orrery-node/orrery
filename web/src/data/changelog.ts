@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The `status` tool of `orrery mcp` gives each node the same track record: how many times it has been paid out on chain.' },
   { who: 'router', text: '`orrery doctor` gives every node its track record: how many times it has been paid out on chain, from the count its own listing keeps.' },
   { who: 'provider', text: '`orrery provider earnings` ends with what has already landed in your wallet: how many payouts your listing on chain has counted and the total they settled. The node’s local `/orrery/earnings` carries the same as `onChain`.' },
   { who: 'everyone', text: '`orrery doctor` says which nodes list payment inside in their price list on chain (its `sealing` line adds that a router keeps to them from the first request), and `orrery provider check` says whether yours does, or how to list it: `"paymentInside": true` and register again.' },
