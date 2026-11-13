@@ -428,9 +428,24 @@ check('orrery spend adds up to exactly what the router signed across its channel
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
-const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`)).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };
+// The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
+const ibKey = (nodes[1] as unknown as { consoleKey?: () => string }).consoleKey?.() ?? '';
+const ibStatus = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { answers: number; signed: string; waiting: string; channels: { signed: string }[] };
 const ibSigned = channels.get(ib.pda.toBase58())?.cumulative ?? 0n;
-const relayed = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-forwarded-for': '203.0.113.7' } });
+const relayed = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-forwarded-for': '203.0.113.7', 'x-orrery-console-key': ibKey } });
+// A front on the node's own machine that relays without saying so (nginx's defaults: Host rewritten to 127.0.0.1, no
+// X-Forwarded-For) looks exactly like this computer. The node's own pages also need the key only its disk holds, so
+// such a front, or anyone it relays, reads no channel from them.
+const frontLike = { host: `127.0.0.1:${providerSpecs[1].port}` };
+const rawRead = (port: number, path: string, headers: Record<string, string>) => new Promise<{ status: number; body: string }>((done) => {
+  const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { let body = ''; res.setEncoding('utf8'); res.on('data', (c) => (body += c)); res.on('end', () => done({ status: res.statusCode ?? 0, body })); });
+  r.on('error', () => done({ status: 0, body: '' }));
+  r.end();
+});
+const asFront = await Promise.all(['/orrery/status', '/orrery/earnings?since=24h', '/'].map((p) => rawRead(providerSpecs[1].port, p, frontLike)));
+const withKey = await Promise.all(['/orrery/status', '/orrery/earnings?since=24h'].map((p) => rawRead(providerSpecs[1].port, p, { ...frontLike, 'x-orrery-console-key': ibKey })));
+const consolePage = await rawRead(providerSpecs[1].port, `/?key=${ibKey}`, frontLike);
+check('a front on the node’s machine that relays like this computer reads nothing from the node’s own pages without the key on its disk', asFront.every((r) => r.status !== 200 && !/channel/.test(r.body)) && withKey.every((r) => r.status === 200) && consolePage.status === 200 && /Your node/.test(consolePage.body), `without the key: ${asFront.map((r) => r.status).join(', ')} · with it: ${withKey.map((r) => r.status).join(', ')} · console page with ?key: ${consolePage.status}`);
 check('the provider console shows what routers signed to it, and only on its own computer', ibStatus.signed === usd(ibSigned) && ibStatus.waiting === usd(ibSigned) && ibStatus.answers > 0 && relayed.status === 404, `Ironbridge: ${ibStatus.answers} answers · $${ibStatus.signed} signed · $${ibStatus.waiting} waiting · relayed request ${relayed.status}`);
 const ibBefore = channels.get(ib.pda.toBase58())!;
 const reborn = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-after-restart.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
@@ -956,7 +971,7 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 check('every answer says how its payment traveled: inside the seal, or in headers to an older node', insideAnswer.status === 200 && insideAnswer.headers.get('x-orrery-payment') === 'inside' && asOld.headers.get('x-orrery-payment') === 'headers', `to Ironbridge: ${insideAnswer.headers.get('x-orrery-payment') ?? 'not said'} · as an older node: ${asOld.headers.get('x-orrery-payment') ?? 'not said'}`);
 // The operator's side of the same thing: how many answers this node was paid for inside the seal, and how many named
 // their channel in headers its host could read (routers before 0.1.16, or this rig posing as one above).
-const ibEarned = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`)).json()) as { total: { answers: number }; paidInside?: { answers: number; inside: number }; onChain?: { payouts: number; settled: string } | null };
+const ibEarned = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { total: { answers: number }; paidInside?: { answers: number; inside: number }; onChain?: { payouts: number; settled: string } | null };
 const ibListing = decodeProvider((await conn.getAccountInfo(nodes[1].pda))!.data);
 check('a node tells its operator what has already landed on chain: payouts to its wallet and the total settled, from its listing', !!ibEarned.onChain && ibEarned.onChain.payouts === Number(ibListing.redeems) && ibEarned.onChain.payouts >= 1 && ibEarned.onChain.settled === usd(ibListing.settled), `Ironbridge: ${ibEarned.onChain ? `${ibEarned.onChain.payouts} payout${ibEarned.onChain.payouts === 1 ? '' : 's'}, $${ibEarned.onChain.settled} settled` : 'not said'} · listing on chain: ${String(ibListing.redeems)} redeems, $${usd(ibListing.settled)}`);
 check('a node tells its operator how many answers were paid inside the seal and how many named their channel in headers', !!ibEarned.paidInside && ibEarned.paidInside.answers === ibEarned.total.answers && ibEarned.paidInside.inside >= 2 && ibEarned.paidInside.inside < ibEarned.paidInside.answers, `Ironbridge, last 24h: ${ibEarned.paidInside ? `${ibEarned.paidInside.inside} of ${ibEarned.paidInside.answers} answers paid inside the seal` : 'not said'}`);

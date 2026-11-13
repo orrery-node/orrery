@@ -319,6 +319,7 @@ async function provider(sub: string) {
   if (sub === 'start') {
     await node.listen();
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
+    console.log(`your console, on this computer only: http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
     return;
   }
   if (sub === 'register') {

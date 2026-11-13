@@ -2,7 +2,7 @@
 // you hold capacity on) to routers on the network. It never sees a wallet signature per request: it checks the
 // router's running-total voucher, serves, meters, and redeems the highest voucher on chain when it chooses.
 import { rpcConnection } from '../chain/connect.ts';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
@@ -20,7 +20,7 @@ import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openReques
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
-import { isLocal, providerConsolePage } from './console.ts';
+import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
 import { appendTrip, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
@@ -151,6 +151,7 @@ export class ProviderNode {
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
   private warnedLowFees = false;
+  private consoleKeyValue: string | null = null;
   /** Where this node keeps its keys and its ledger of what routers signed to it. */
   readonly dir: string;
   log: (line: string) => void = (l) => console.log(l);
@@ -305,6 +306,11 @@ export class ProviderNode {
       }
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/orrery/status')) {
         if (!isLocal(req)) return fail(res, 404, 'not_found', 'no such route');
+        if (!hasConsoleKey(req, url, this.consoleKey())) {
+          if (url.pathname !== '/') return fail(res, 404, 'not_found', 'no such route');
+          res.writeHead(403, { 'content-type': 'text/html; charset=utf-8' });
+          return void res.end(consoleKeyPage());
+        }
         if (url.pathname === '/') {
           res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
           return void res.end(providerConsolePage());
@@ -312,7 +318,7 @@ export class ProviderNode {
         return json(res, 200, this.status());
       }
       if (req.method === 'GET' && url.pathname === '/orrery/earnings') {
-        if (!isLocal(req)) return fail(res, 404, 'not_found', 'no such route');
+        if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');
         const since = url.searchParams.get('since') ?? '24h';
         const served = readTrips(`${this.dir}/served.jsonl`);
         const { rows, total } = summarize(served, 'model', windowMs(since));
@@ -605,6 +611,18 @@ export class ProviderNode {
     }
     if (done.length) await this.feeHeadsUp();
     return done;
+  }
+
+  /** The key the node's own pages ask for, kept in console.key in its folder (made on first use, readable only by its
+   * owner). The console's address carries it: http://127.0.0.1:<port>/?key=… */
+  consoleKey(): string {
+    if (this.consoleKeyValue) return this.consoleKeyValue;
+    const path = `${this.dir}/console.key`;
+    const kept = existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+    if (/^[0-9a-f]{32}$/.test(kept)) return (this.consoleKeyValue = kept);
+    const made = randomBytes(16).toString('hex');
+    writePrivate(path, `${made}\n`);
+    return (this.consoleKeyValue = made);
   }
 
   /** Says once, while payouts still go through, that the node key is running low on SOL for their fees. */

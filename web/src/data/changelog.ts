@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'A node’s own pages (its console, `/orrery/status`, `/orrery/earnings`) also need a key kept only in its folder (`console.key`). A front on the same machine that relays without saying so, like nginx with its defaults, looked exactly like this computer and could read which channel paid for each answer; now it reads nothing. `provider start` prints the console address with the key.' },
   { who: 'provider', text: 'A running node says when its key is running low on SOL for redeem fees, before it runs out: once, with about how many payouts are left and the address to send a little SOL to. It checks when it starts and after each payout, at the same line `provider check` uses.' },
   { who: 'provider', text: 'A node whose key runs out of SOL for redeem fees says so in plain words: how much it has left, the address to send a little SOL to, and that what routers signed is safe and is redeemed once the key can pay. Before, the log showed only the chain’s own error.' },
   { who: 'router', text: 'The `status` tool of `orrery mcp` gives each node the same track record: how many times it has been paid out on chain.' },
