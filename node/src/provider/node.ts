@@ -114,6 +114,12 @@ function secretFromEnv(name: string, what: string): string {
   return v;
 }
 
+/** Under this much SOL a node key is running low on redeem fees: about 400 payouts at Solana's base fee. */
+export const FEE_FLOOR_LAMPORTS = 2_000_000;
+
+/** What one redeem transaction pays when nothing is added on top: Solana's base fee for its one signature. */
+const REDEEM_FEE_LAMPORTS = 5_000;
+
 /** The smallest amount worth a redemption's fee when the operator names none: five cents. */
 export const REDEEM_MIN_UNITS = 50_000;
 
@@ -144,6 +150,7 @@ export class ProviderNode {
   private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
+  private warnedLowFees = false;
   /** Where this node keeps its keys and its ledger of what routers signed to it. */
   readonly dir: string;
   log: (line: string) => void = (l) => console.log(l);
@@ -596,7 +603,21 @@ export class ProviderNode {
     for (const g of groups) {
       if (!(await this.redeemBatch(g, ixs, done)) && g.length > 1) for (const one of g) await this.redeemBatch([one], ixs, done);
     }
+    if (done.length) await this.feeHeadsUp();
     return done;
+  }
+
+  /** Says once, while payouts still go through, that the node key is running low on SOL for their fees. */
+  private async feeHeadsUp(): Promise<void> {
+    const lamports = await this.conn.getBalance(this.node.publicKey).catch(() => null);
+    if (lamports === null) return;
+    if (lamports >= FEE_FLOOR_LAMPORTS) {
+      this.warnedLowFees = false;
+      return;
+    }
+    if (this.warnedLowFees || lamports < 10_000) return;
+    this.warnedLowFees = true;
+    this.log(`the node key is running low on SOL for redeem fees: ${(lamports / 1e9).toFixed(6)} SOL, about ${Math.floor(lamports / REDEEM_FEE_LAMPORTS)} more payouts. Send a little SOL to ${this.node.publicKey.toBase58()} before it runs out`);
   }
 
   private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
@@ -680,6 +701,7 @@ export class ProviderNode {
       // What is waiting to be redeemed exists only in the ledger file: say so once when the folder may not stay.
       const warning = folderWarning(this.dir, this.status().waiting);
       if (warning) this.log(warning);
+      void this.feeHeadsUp();
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
       this.timer = setInterval(() => void this.redeemDue().then(() => this.burnDue()).catch(() => undefined), every);
     });

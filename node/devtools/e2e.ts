@@ -990,6 +990,22 @@ iron.log = ironLogBefore;
 const feeLine = ironLines.find((l) => /redeem failed/.test(l));
 check('a node whose key cannot pay redeem fees says so, with the address to send SOL to, and that what was signed is safe', brokeRedeemed.length === 0 && !!feeLine && feeLine.includes(iron.node.publicKey.toBase58()) && /send a little SOL/.test(feeLine) && /safe/.test(feeLine), feeLine ? feeLine.replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 220) : 'no redeem was attempted');
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+// Before it runs out: a node whose key is down to its last fees says so once, after a payout that still went
+// through, with about how many are left. A second payout under the line does not say it again.
+const lowLines: string[] = [];
+iron.log = (l) => { lowLines.push(l); ironLogBefore(l); };
+const ironFull = await conn.getBalance(iron.node.publicKey);
+const lowKeep = 1_000_000;
+await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: iron.node.publicKey, toPubkey: admin.publicKey, lamports: ironFull - lowKeep - 5_000 })), [iron.node]);
+const askIron = async () => { await (await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) })).text(); await sleep(600); for (const o of router.stats.all().values()) o.cooldownUntil = 0; };
+await askIron();
+const lowRedeemed = await iron.redeemDue(1n);
+await askIron();
+const lowAgain = await iron.redeemDue(1n);
+await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: iron.node.publicKey, lamports: ironFull - lowKeep })), [admin]);
+iron.log = ironLogBefore;
+const lowSaid = lowLines.filter((l) => /running low/.test(l));
+check('a node whose key is running low on SOL for redeem fees says so once, before it runs out, with about how many payouts are left', lowRedeemed.length >= 1 && lowAgain.length >= 1 && lowSaid.length === 1 && lowSaid[0].includes(iron.node.publicKey.toBase58()) && /about \d+ more payouts/.test(lowSaid[0]), `${lowRedeemed.length} + ${lowAgain.length} payouts at ${(lowKeep / 1e9).toFixed(4)} SOL · ${lowSaid.length} heads-up line${lowSaid.length === 1 ? '' : 's'}${lowSaid[0] ? `: ${lowSaid[0].replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 200)}` : ''}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

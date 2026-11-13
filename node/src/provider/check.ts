@@ -8,7 +8,7 @@ import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
 import { folderRisk, folderWarning } from './folder.ts';
-import type { ProviderNode } from './node.ts';
+import { FEE_FLOOR_LAMPORTS, type ProviderNode } from './node.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
@@ -51,7 +51,8 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   }
 
   const sol = (await node.conn.getBalance(node.node.publicKey)) / LAMPORTS_PER_SOL;
-  out.push({ ok: sol >= 0.002, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${sol >= 0.002 ? '' : `; send a little to ${node.node.publicKey.toBase58()}`}` });
+  const enough = sol >= FEE_FLOOR_LAMPORTS / LAMPORTS_PER_SOL;
+  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()}`}` });
 
   // A redemption costs its transaction fee whatever it moves; a minimum under a cent means paying more than is collected.
   const min = cfg.redeem?.minUnits;
