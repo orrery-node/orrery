@@ -380,6 +380,10 @@ check('orrery doctor reads the chain, every listing, the wallet and the router, 
 const nodeLines = doc.filter((l) => /^  \S/.test(l.what) && l.ok === true);
 const sealLines = doc.filter((l) => l.what.trim() === 'sealing');
 check('orrery doctor says, for each node that answers, whether the request and the payment go sealed to it', nodeLines.length >= 2 && sealLines.length >= nodeLines.length && sealLines.every((l) => l.ok === true && /payment/.test(l.detail)), `${nodeLines.length} nodes answering, ${sealLines.length} sealing line${sealLines.length === 1 ? '' : 's'}${sealLines[0] ? `: ${sealLines[0].detail}` : ''}`);
+// Which nodes list payment inside in their price list on chain, and so are kept to from a router's first request.
+const sealUnder = (name: string) => doc.slice(doc.findIndex((l) => l.what.trim() === name) + 1).find((l) => l.what.trim() === 'sealing');
+const haloSeal = sealUnder('Halo Compute'), ironSeal = sealUnder('Ironbridge Compute');
+check('orrery doctor says which nodes list payment inside in their price list on chain', /listed in its price list on chain/.test(haloSeal?.detail ?? '') && !/listed in its price list/.test(ironSeal?.detail ?? ''), `Halo: ${haloSeal?.detail ?? 'no line'} · Ironbridge: ${ironSeal?.detail ?? 'no line'}`);
 // What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
 const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };
 const seenLine = doc.find((l) => l.what === 'seen as');
@@ -568,6 +572,8 @@ const behindStrip = Object.assign(Object.create(iron) as typeof iron, { cfg: { .
 const stripCheck = await providerCheck(behindStrip);
 stripFront.close();
 const wireDirect = lineOf(ironCheck, 'wire key'), wireStripped = lineOf(stripCheck, 'wire key');
+const haloWire = lineOf(haloCheck, 'wire key');
+check('orrery provider check says whether payment inside is listed in the price list on chain, and how to list it', /listed in your price list on chain/.test(haloWire?.detail ?? '') && /paymentInside/.test(wireDirect?.detail ?? ''), `Halo: ${haloWire?.detail ?? 'no line'} · Ironbridge: ${wireDirect?.detail ?? 'no line'}`);
 check('orrery provider check reads the node’s wire key from its public address as routers do, and says when something in front drops the signed flag', wireDirect?.ok === true && wireStripped?.ok === false && /drops/.test(wireStripped.detail), `direct: ${wireDirect?.detail ?? 'no such line'} · behind a front that drops it: ${wireStripped?.detail ?? 'no such line'}`);
 
 // Burn on every answer: Ironbridge pledged 25% of what it redeems. A local desk stands in for the market (the admin

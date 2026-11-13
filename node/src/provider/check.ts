@@ -40,7 +40,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     : !read ? { ok: false, what: 'wire key', detail: 'what arrives at /v1/wire is not signed by this node key, so routers do not seal requests to this node' }
     : !read.key.equals(node.wire.publicKey) ? { ok: false, what: 'wire key', detail: 'routers read a wire key at your address that is not the one this node holds (another node answering there?)' }
     : !read.inside ? { ok: false, what: 'wire key', detail: 'routers read the key, but not the signed flag that payment goes inside: something in front of this node drops it, so routers new to this node send the channel in headers' }
-    : { ok: true, what: 'wire key', detail: 'routers read it signed, payment inside: what sits in front of this node sees neither prompts nor which channel pays' });
+    : { ok: true, what: 'wire key', detail: `routers read it signed, payment inside: what sits in front of this node sees neither prompts nor which channel pays${node.manifest.inside ? '; listed in your price list on chain, so routers keep to it from their first request' : '. Set "paymentInside": true and register again to list it on chain, so routers keep to it from their first request'}` });
 
   const info = await node.conn.getAccountInfo(node.pda);
   const acct = info ? decodeProvider(info.data) : null;

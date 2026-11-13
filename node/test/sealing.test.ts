@@ -30,3 +30,11 @@ describe('orrery doctor: how a request and its payment travel to a node', () => 
     assert.match(l.detail, /nothing goes to it in the clear/);
   });
 });
+
+describe('orrery doctor: a node that lists payment inside on chain', () => {
+  it('says so, since a router keeps to it from the first request', () => {
+    const listed = { wire: Buffer.alloc(32, 1), wireInside: true, manifest: { inside: true } } as unknown as ProviderEntry;
+    assert.match(sealCheck(listed, true).detail, /listed in its price list on chain/);
+    assert.doesNotMatch(sealCheck(entry(true, true), true).detail, /listed in its price list/);
+  });
+});

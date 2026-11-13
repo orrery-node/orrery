@@ -19,7 +19,8 @@ export function sealCheck(e: ProviderEntry, pinned: boolean): Check {
     ? { ok: false, what, detail: 'showed this router a signed wire key before and shows none now; nothing goes to it in the clear until it does' }
     : { ok: null, what, detail: 'no wire key: requests reach it as plain JSON inside TLS, which its host can read' };
   if (!e.wireInside) return { ok: null, what, detail: 'requests sealed to its own key; it does not sign that it reads payment inside, so which channel pays goes in headers its host can read' };
-  return { ok: true, what, detail: `requests and payment sealed to its own key, both signed by its node key${pinned ? '; this router keeps to that if either goes missing' : ''}` };
+  const listed = e.manifest?.inside === true ? '; listed in its price list on chain, so kept to from a router’s first request' : '';
+  return { ok: true, what, detail: `requests and payment sealed to its own key, both signed by its node key${listed}${pinned && !listed ? '; this router keeps to that if either goes missing' : ''}` };
 }
 
 const ms = (t0: number) => `${Date.now() - t0} ms`;
