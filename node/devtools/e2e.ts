@@ -961,13 +961,19 @@ const farSide = router as unknown as FarSide;
 const farSaid = (await farSide.checkProxy?.()) ?? null;
 const farStatus = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { proxySeen?: { node: string | null; address: string | null; givenAway: string | null } | null };
 const farLeak = (await farSide.checkProxy?.(['127.0.0.1'], () => true)) ?? null;
+const { handle: mcpHandle } = await import('../src/mcp.ts');
+const mcpStatusText = async () => ((await mcpHandle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, ROUTER, fetch as never, '0')) as { result: { content: { text: string }[] } }).result.content[0].text;
+const mcpLeak = await mcpStatusText();
 const tripsBeforeLeak = router.trips.length;
 const leakAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
 const leakSaid = ((await leakAsk.json()) as { error?: { code?: string } }).error?.code;
 const leakPaid = router.trips.length - tripsBeforeLeak;
 await farSide.checkProxy?.();
+const mcpBack = await mcpStatusText();
 const afterLeak = await ask('llama-3.3-70b');
 check('behind a proxy the router asks a node what address it sees and shows it; when the node saw this computer’s own address the router stops sending, and starts again once it does not', !!farSaid && farSaid.givenAway === null && /sees 127\.0\.0\.1/.test(farSaid.line) && farStatus.proxySeen?.address === '127.0.0.1' && !!farStatus.proxySeen?.node && farLeak?.givenAway === '127.0.0.1' && leakAsk.status === 503 && leakSaid === 'proxy_gives_address_away' && leakPaid === 0 && afterLeak.status === 200, farSaid ? `${farSaid.line} · told the node saw its own address: ${leakAsk.status} ${leakSaid}, ${leakPaid} paid · asked again: ${afterLeak.status}` : 'the router has no far-side check');
+const proxyLine = (t: string) => t.split('\n').find((l) => l.startsWith('leaving this computer:')) ?? 'no such line';
+check('an agent asking the MCP status tool is told how its requests leave this computer: the proxy, what a node sees, and when the router has stopped', /through the proxy at 127\.0\.0\.1:\d+; \S.* sees 127\.0\.0\.1$/.test(proxyLine(mcpBack)) && /this computer’s own address/.test(proxyLine(mcpLeak)), `${proxyLine(mcpBack)} · while a node saw this computer: ${proxyLine(mcpLeak)}`);
 // A node that restarts is away for a second or two. A request that arrives in that gap, and has no other node to go
 // to, waits a moment and goes round again; before, it failed at once and the node was then refused for 15 seconds more.
 setNodeProxy(null);

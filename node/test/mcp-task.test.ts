@@ -46,6 +46,15 @@ describe('orrery mcp and task budgets', () => {
     assert.match((await ask({})).result.content[0].text, /\n— traveled as plain JSON inside TLS, which the node’s host can read$/);
   });
 
+  it('status tells an agent how its requests leave this computer', async () => {
+    const leaving = async (st: Record<string, unknown>) => (await call('status', {}, async (url) => (url.endsWith('/orrery/status') ? reply({ spentToday: '0', channels: [], providers: [], ...st }) : reply({ rows: [] })))).result.content[0].text.split('\n').find((l) => l.startsWith('leaving this computer:'));
+    assert.equal(await leaving({ proxy: null, proxySeen: null }), 'leaving this computer: no proxy, so nodes see the address this computer’s requests leave from (orrery router --proxy hides it)');
+    assert.equal(await leaving({ proxy: '127.0.0.1:8119', proxySeen: { node: 'Orrery Seed', address: '203.0.113.7', givenAway: null } }), 'leaving this computer: through the proxy at 127.0.0.1:8119; Orrery Seed sees 203.0.113.7');
+    assert.equal(await leaving({ proxy: '127.0.0.1:8119', proxySeen: { node: 'Orrery Seed', address: '198.51.100.4', givenAway: '198.51.100.4' } }), 'leaving this computer: through the proxy at 127.0.0.1:8119, but Orrery Seed saw this computer’s own address (198.51.100.4); the router sends nothing until it does not');
+    assert.equal(await leaving({ proxy: '127.0.0.1:8119', proxySeen: null }), 'leaving this computer: through the proxy at 127.0.0.1:8119; no node has said yet what address it sees');
+    assert.match((await call('status', {}, async (url) => (url.endsWith('/orrery/status') ? reply({ spentToday: '0', channels: [], providers: [], privateOnly: true }) : reply({ rows: [] })))).result.content[0].text, /\nprivate only: every request goes sealed to an enclave this router verified, or not at all/);
+  });
+
   it('status lists the tasks with what each has left', async () => {
     const out = await call('status', {}, async (url) => {
       if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000046', channels: [], providers: [] });
