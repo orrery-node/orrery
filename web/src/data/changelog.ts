@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'When no router is running, the tools of `orrery mcp` say so and give the command that starts one (and `--router` for one that runs elsewhere), so an agent can pass it straight to you. Before, they asked whether the router was running and showed `fetch failed`.' },
   { who: 'provider', text: '`orrery provider console --config provider.json` prints the address of your node’s console with its key, read from the node’s folder, for when the start output is long gone. A visit to the console without the key says to run it.' },
   { who: 'provider', text: 'A node’s log line for an answer paid inside the seal no longer names the channel or its running total, just that it was paid inside the seal. The log goes to whoever hosts the node, the same party the seal keeps them from; the console, behind its key, still shows them.' },
   { who: 'provider', text: 'A node’s own pages (its console, `/orrery/status`, `/orrery/earnings`) also need a key kept only in its folder (`console.key`). A front on the same machine that relays without saying so, like nginx with its defaults, looked exactly like this computer and could read which channel paid for each answer; now it reads nothing. `provider start` prints the console address with the key.' },

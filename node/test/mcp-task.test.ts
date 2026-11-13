@@ -8,6 +8,22 @@ const call = async (name: string, args: Record<string, unknown>, fetchFn: (url: 
   (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, 'http://r', fetchFn, '0')) as { result: { content: { text: string }[]; isError?: boolean } };
 
 describe('orrery mcp and task budgets', () => {
+  it('with no router to talk to, every tool says so and gives the command that starts one', async () => {
+    const refused = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:7171'), { code: 'ECONNREFUSED' }) }); };
+    for (const [tool, args] of [['ask', { model: 'm', prompt: 'hi' }], ['models', {}], ['quote', { model: 'm' }], ['status', {}]] as const) {
+      const out = await call(tool, args, refused);
+      assert.equal(out.result.isError, true, tool);
+      assert.match(out.result.content[0].text, /^no Orrery router is answering at http:\/\/r\. Start one with: npx -y orrery-node router --wallet <your keypair\.json>/, tool);
+      assert.match(out.result.content[0].text, /--router <its address>/, tool);
+    }
+  });
+
+  it('a router that answers but breaks keeps its own error', async () => {
+    const out = await call('models', {}, async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => { throw new SyntaxError('Unexpected token < in JSON'); } }));
+    assert.equal(out.result.isError, true);
+    assert.match(out.result.content[0].text, /^the router at http:\/\/r answered with something unexpected: Unexpected token </);
+  });
+
   it('an answer under a task says what the task has spent and has left', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review', task_budget: 0.00005 }, async () =>
       reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-cost': '0.000020', 'x-orrery-task-spent': '0.000020', 'x-orrery-task-left': '0.000030' }));

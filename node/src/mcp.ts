@@ -155,7 +155,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {
-    return text(`is the router running at ${router}? ${(e as Error).message}`, true);
+    // An agent passes this on to its user, so a router that is not running gets the command that starts one.
+    const code = (e as { cause?: { code?: string } }).cause?.code;
+    if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET' || (e as Error).message === 'fetch failed')
+      return text(`no Orrery router is answering at ${router}. Start one with: npx -y orrery-node router --wallet <your keypair.json> (it pays providers from that wallet's USDC). If one runs elsewhere, start orrery mcp with --router <its address>.`, true);
+    return text(`the router at ${router} answered with something unexpected: ${(e as Error).message}`, true);
   }
 }
 
