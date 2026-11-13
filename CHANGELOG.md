@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider console --config provider.json` prints the address of your node’s console with its key, read from the node’s folder, for when the start output is long gone. A visit to the console without the key says to run it.
 - **Node** · A node’s log line for an answer paid inside the seal no longer names the channel or its running total, just that it was paid inside the seal. The log goes to whoever hosts the node, the same party the seal keeps them from; the console, behind its key, still shows them.
 - **Node** · A node’s own pages (its console, `/orrery/status`, `/orrery/earnings`) also need a key kept only in its folder (`console.key`). A front on the same machine that relays without saying so, like nginx with its defaults, looked exactly like this computer and could read which channel paid for each answer; now it reads nothing. `provider start` prints the console address with the key.
 - **Node** · A running node says when its key is running low on SOL for redeem fees, before it runs out: once, with about how many payouts are left and the address to send a little SOL to. It checks when it starts and after each payout, at the same line `provider check` uses.

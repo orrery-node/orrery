@@ -29,7 +29,7 @@ export function hasConsoleKey(req: Pick<IncomingMessage, 'headers'>, url: URL, k
 /** The page that asks for the key: a local visit to the console without it. Says where the address is, not the key. */
 export function consoleKeyPage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}
-<main><div><h1><span>Your node.</span> This page needs its key.</h1><p class="lede">Open the address the node printed when it started; it ends in ?key=. The key is in console.key in the node’s folder, so only someone who can read that folder can read this page.</p></div></main></body></html>`;
+<main><div><h1><span>Your node.</span> This page needs its key.</h1><p class="lede">Open the address the node printed when it started, or run <code>orrery provider console --config provider.json</code> to print it again; it ends in ?key=. The key is in console.key in the node’s folder, so only someone who can read that folder can read this page.</p></div></main></body></html>`;
 }
 
 export function providerConsolePage(): string {

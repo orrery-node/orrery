@@ -87,6 +87,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
   ${CLI} provider start   --config provider.json
+  ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
@@ -278,6 +279,8 @@ async function provider(sub: string) {
     return;
   }
   const node = new ProviderNode(cfg);
+  // The console's address with its key, from this node's folder: for an operator whose start output is gone.
+  if (sub === 'console') return console.log(`http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
   if (cfg.burn) {
     // A pledge needs the wallet on this machine: the buy and the burn are the wallet's own transactions.
     if (!cfg.wallet && !flag('wallet')) throw new Error('a burn pledge needs the provider wallet on this machine ("wallet" in provider.json or --wallet): the buy and the burn are signed by it');
