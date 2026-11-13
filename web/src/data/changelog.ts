@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'Every answer names the node that gave it in `x-orrery-provider-name`, from its price list, streamed or not, and the `ask` tool of `orrery mcp` says "answered by Orrery Seed (76Udba…)" instead of the address alone, so an agent can match it to the nodes in `status`.' },
   { who: 'provider', text: '`orrery provider status --config provider.json` prints what your console shows, in the terminal: answers since start, what routers signed to you, what is redeemed on chain, what is waiting, and your channels. For a node on a server with no browser. With no node running, it says so and gives the start command.' },
   { who: 'router', text: 'When no router is running, the tools of `orrery mcp` say so and give the command that starts one (and `--router` for one that runs elsewhere), so an agent can pass it straight to you. Before, they asked whether the router was running and showed `fetch failed`.' },
   { who: 'provider', text: '`orrery provider console --config provider.json` prints the address of your node’s console with its key, read from the node’s folder, for when the start output is long gone. A visit to the console without the key says to run it.' },

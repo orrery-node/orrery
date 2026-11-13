@@ -30,6 +30,14 @@ describe('orrery mcp and task budgets', () => {
     assert.match(out.result.content[0].text, /^Hello\.\n\n— answered by 76Udba… via route auto, paid \$0\.000020 for this answer\n— traveled as plain JSON inside TLS, which the node’s host can read\n— task review: \$0\.000020 spent, \$0\.000030 left$/);
   });
 
+  it('an answer names the node that gave it, decoding a name the router had to percent-encode', async () => {
+    const named = async (name: string) => (await call('ask', { model: 'm', prompt: 'hi' }, async () => reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-provider-name': name, 'x-orrery-cost': '0.000082' }))).result.content[0].text;
+    assert.match(await named('Orrery Seed'), /\n— answered by Orrery Seed \(76Udba…\) via route auto, paid \$0\.000082 for this answer\n/);
+    assert.match(await named(encodeURIComponent('Nœud Paris')), /— answered by Nœud Paris \(76Udba…\)/);
+    assert.match(await named('100%25 GPU'), /— answered by 100% GPU \(76Udba…\)/);
+    assert.match(await named('%E0%A4%A'), /— answered by %E0%A4%A \(76Udba…\)/);
+  });
+
   it('a refusal for the task’s budget says the same, so the agent knows to stop or raise it', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review' }, async () =>
       reply({ error: { code: 'over_budget', message: 'no provider can answer m within $0.000004 for this request' } }, 402, { 'x-orrery-task-spent': '0.000046', 'x-orrery-task-left': '0.000004' }));

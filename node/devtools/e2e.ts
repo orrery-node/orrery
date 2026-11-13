@@ -996,6 +996,11 @@ const servedInside = insideLines.find((l) => l.startsWith('served '));
 const servedOld = oldLines.find((l) => l.startsWith('served '));
 check('a node’s log keeps out what was paid inside the seal: no channel and no running total on that answer’s line, while an answer paid in headers still names its channel', !!servedInside && !!ibChannel && !servedInside.includes(ibChannel.slice(0, 6)) && !/owed/.test(servedInside) && !!servedOld && servedOld.includes(ibChannel.slice(0, 6)), `paid inside: ${servedInside?.replace(ibChannel.slice(0, 6), '<channel>') ?? 'no line'} · in headers: ${servedOld?.replace(ibChannel.slice(0, 6), '<channel>') ?? 'no line'}`);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+// Every answer names the node that gave it, from its price list, streamed or not.
+const streamedIb = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+await streamedIb.text();
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+check('every answer names the node that gave it, streamed or not', insideAnswer.headers.get('x-orrery-provider-name') === 'Ironbridge Compute' && streamedIb.status === 200 && streamedIb.headers.get('x-orrery-provider-name') === 'Ironbridge Compute', `as JSON: ${insideAnswer.headers.get('x-orrery-provider-name') ?? 'not named'} · streamed: ${streamedIb.headers.get('x-orrery-provider-name') ?? 'not named'}`);
 check('every answer says how its payment traveled: inside the seal, or in headers to an older node', insideAnswer.status === 200 && insideAnswer.headers.get('x-orrery-payment') === 'inside' && asOld.headers.get('x-orrery-payment') === 'headers', `to Ironbridge: ${insideAnswer.headers.get('x-orrery-payment') ?? 'not said'} · as an older node: ${asOld.headers.get('x-orrery-payment') ?? 'not said'}`);
 // The operator's side of the same thing: how many answers this node was paid for inside the seal, and how many named
 // their channel in headers its host could read (routers before 0.1.16, or this rig posing as one above).
