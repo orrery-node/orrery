@@ -253,9 +253,25 @@ async function provider(sub: string) {
     const since = flag('since', '24h')!;
     const log = `${expand(cfg.dataDir ?? home('provider'))}/served.jsonl`;
     const { rows, total } = summarize(readTrips(log), by, windowMs(since));
-    if (!total.answers) return console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
+    // What has already landed in the wallet: the listing on chain counts every payout and what they settled.
+    const landed = async () => {
+      try {
+        const authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${expand(cfg.dataDir ?? home('provider'))}/wallet.json`)).publicKey;
+        const listing = await rpcConnection(cfg.rpcUrl ?? rpc()).getAccountInfo(pda.provider(authority));
+        if (!listing) return;
+        const p = decodeProvider(listing.data);
+        console.log(`on chain: ${Number(p.redeems)} payout${Number(p.redeems) === 1 ? '' : 's'} to your wallet so far, $${usd(p.settled)} settled`);
+      } catch {
+        // The log above stands on its own; the chain line is added when the listing can be read.
+      }
+    };
+    if (!total.answers) {
+      console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
+      return landed();
+    }
     console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    await landed();
     // How routers paid: inside the seal, or with the channel named in headers this node's host can read.
     const paid = paidInside(readTrips(log), windowMs(since));
     console.log(`paid inside the seal: ${paid.inside} of ${paid.answers} answer${paid.answers === 1 ? '' : 's'}${paid.inside < paid.answers ? '; the rest named their channel in headers your host can read (routers before 0.1.16)' : ''}`);

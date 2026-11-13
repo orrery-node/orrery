@@ -310,7 +310,10 @@ export class ProviderNode {
         const served = readTrips(`${this.dir}/served.jsonl`);
         const { rows, total } = summarize(served, 'model', windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint }) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units) });
-        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)) });
+        // What has already landed: the listing's own count of payouts to this node's wallet and the total they settled.
+        const listing = await this.conn.getAccountInfo(this.pda).catch(() => null);
+        const onChain = listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null;
+        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         const upstream = await this.upstreamUp();
