@@ -171,7 +171,9 @@ export class Channels {
       const v = j.voucher ? decodeVoucher(j.voucher) : null;
       if (v && !verifyVoucher(this.session.publicKey, address, v)) continue;
       const cumulative = v?.cumulative ?? 0n;
-      if (BigInt(j.owed) !== cumulative || cumulative < ch.redeemed || cumulative > ch.deposit) continue;
+      // The node may count a little less than the router signed for; it is then owed nothing beyond the voucher, which
+      // is all this asks. More than the voucher means answers this router no longer has a record of paying for.
+      if (BigInt(j.owed) > cumulative || cumulative < ch.redeemed || cumulative > ch.deposit) continue;
       const state: ChannelState = {
         provider, channel: address.toBase58(), id: ch.id.toString(), deposit: ch.deposit, cumulative,
         usageHash: v ? Buffer.from(v.usageHash) : ZERO_HASH, voucher: v ? encodeVoucher(v) : null, openedAt: Number(ch.openedAt) * 1000, checkedAt: Date.now(),

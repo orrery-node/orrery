@@ -798,6 +798,24 @@ const pickedSealed = await rebornSealed.ensure(nodes[1].pda.toBase58(), 1n).then
 const askedAbout = proxied.slice(beforeRecover).filter((x) => x.url.includes('/orrery/channel'));
 const askedNaming = askedAbout.filter((x) => x.url.includes(ibChannel) || x.body.includes(ibChannel) || (x.answer ?? '').includes(ibChannel));
 check('a router that lost its records asks the node about its channel sealed, so neither the question nor the answer shows the node’s front which channel it picks back up', pickedSealed === ibChannel && askedAbout.length >= 1 && askedNaming.length === 0, `picked back up: ${pickedSealed === ibChannel ? 'the same channel' : pickedSealed} · ${askedAbout.length} question${askedAbout.length === 1 ? '' : 's'} about it through the proxy, ${askedNaming.length} naming it`);
+// An older node, one that has not said it reads payment inside, is still asked the old way and still answers.
+const beforeOldRecover = proxied.length;
+const rebornOld = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-old-recover.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+(rebornOld as unknown as { wireOf?: (p: string) => { key: Buffer; inside: boolean } | null }).wireOf = (p) => { const e = registry.entries.get(p); return e?.wire ? { key: e.wire, inside: false } : null; };
+const pickedOld = await rebornOld.ensure(nodes[1].pda.toBase58(), 1n).then((c) => c.channel, (e: Error) => `refused: ${e.message}`);
+const askedOld = proxied.slice(beforeOldRecover).filter((x) => x.url.includes('/orrery/channel'));
+check('an older node is still asked about a lost channel the old way, and the same channel comes back', pickedOld === ibChannel && askedOld.length >= 1 && askedOld.every((x) => x.url.includes(`address=${ibChannel}`)), `picked back up: ${pickedOld === ibChannel ? 'the same channel' : pickedOld} · ${askedOld.length} question${askedOld.length === 1 ? '' : 's'}, by ${askedOld.map((x) => new URL(x.url).search ? 'GET with the channel in the query' : 'POST').join(', ')}`);
+const recoverView = (x: { url: string; body: string; answer?: string } | undefined) => x && ({ method: x.body ? 'POST' : 'GET', path: new URL(x.url).pathname + new URL(x.url).search, bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96), answerBytes: (x.answer ?? '').length, answerStart: (x.answer ?? '').slice(0, 160) });
+writeFileSync(join(WORK, 'recover.json'), JSON.stringify({ channel: ibChannel, node: 'Ironbridge Compute', sealed: recoverView(askedAbout.at(-1)), old: recoverView(askedOld.at(-1)) }, null, 1));
+// A node's own tally can sit below the latest voucher: the router signed for a little more than the node counted.
+// The node is then owed nothing beyond the voucher, and a router that lost its records carries on from it.
+const ibLedger = (iron as unknown as { ledger: Map<string, { owed: bigint; best?: { cumulative: bigint } }> }).ledger.get(ibChannel);
+const ibOwed = ibLedger?.owed ?? 0n;
+if (ibLedger?.best) ibLedger.owed = ibLedger.best.cumulative - 13n;
+const rebornUnder = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-under-recover.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+const pickedUnder = await (rebornUnder as unknown as { recover: (p: string) => Promise<{ channel: string; cumulative: bigint } | null> }).recover(nodes[1].pda.toBase58()).then((c) => c?.channel ?? 'nothing', (e: Error) => `refused: ${e.message}`);
+if (ibLedger) ibLedger.owed = ibOwed;
+check('a router that lost its records carries on from its voucher when the node counts a little less than it signed for, instead of setting the channel aside', !!ibLedger?.best && pickedUnder === ibChannel, `node’s tally 13 units under the voucher · picked back up: ${pickedUnder === ibChannel ? 'the same channel' : pickedUnder}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);
