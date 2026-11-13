@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.16 · 2026-11-13 10:00 UTC
+
+**Payment travels inside the seal: a node’s host no longer sees which channel pays, how long your prompt is or what the channel has paid, and doctor, status and MCP say how each request went.**
 
 - **Router** · A router behind a proxy checks it from the far side before it pays for anything. 0.1.15 let `orrery doctor` ask a node what address it sees; now the router asks at start-up, prints the answer in its first lines, shows it on `/orrery/status` as `proxySeen`, and asks again on every registry refresh. When the node saw one of this computer’s own public addresses the proxy hides nothing: `orrery router` does not start, and a running router answers 503 `proxy_gives_address_away` and sends nothing until a later check comes back clean. A matching private address does not stop a router (a node’s own balancer may use the same one). Still true: a computer behind a home router does not know its public address, so there the line is for you to read.
 - **Router** · A router that lost its records does not open a second channel when the node is only out of reach. A router with its session key but no channel file (a container that restarted, a wiped home folder) finds its open channel on chain and asks the node where it stands. If the node did not answer, it used to treat that as "no channel" and open a new one, locking a second deposit beside the first until you closed one yourself. Now the request fails for that node, nothing is opened, and the next request asks again; the search on chain is tried twice before the router gives up on it. Still as before: a node that answers and is owed more than the last voucher it holds (the router stopped between an answer and its voucher) gets a new channel, because a router without its records cannot check that claim.
@@ -29,6 +31,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · Every answer says how its payment traveled: `x-orrery-payment: inside` when the channel and voucher went inside the seal, `headers` when they went as headers to an older node. Under `orrery mcp`, an `ask` answer ends with one line on how it traveled: sealed to a verified enclave, sealed to the node’s own key (payment inside, or in headers its host can read), or plain JSON inside TLS.
 - **Router** · The `status` tool of `orrery mcp` tells an agent how its requests leave this computer: through which proxy and what address a node sees there, that the router has stopped because a node saw this computer’s own address, or that there is no proxy and nodes see the address requests leave from. With `--private-only` it says so too.
 - **Node** · A node tells its operator how routers paid it. Each answer in the node’s log now says whether its payment came inside the seal, and `orrery provider earnings` (and the node’s local `/orrery/earnings`) ends with how many of the window’s answers were paid that way; the rest named their channel in headers the node’s host can read, which is what routers before 0.1.16 do.
+
+`npx -y orrery-node@0.1.16`
 
 ## 0.1.15 · 2026-11-12 08:35 UTC
 

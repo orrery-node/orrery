@@ -398,7 +398,7 @@ WantedBy=multi-user.target
 ```
 </details>
 
-- **Keep the data folder.** Between redemptions, what routers signed to you exists only in the ledger in `dataDir` (default `~/.orrery/provider`): up to `redeem.minUnits` per channel. In a container, mount a disk there. `orrery provider check` flags a temporary folder or a container's own disk, and the node says so when it starts (in main, next release).
+- **Keep the data folder.** Between redemptions, what routers signed to you exists only in the ledger in `dataDir` (default `~/.orrery/provider`): up to `redeem.minUnits` per channel. In a container, mount a disk there. `orrery provider check` flags a temporary folder or a container's own disk, and the node says so when it starts (0.1.16).
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
 - **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`.
 - **Your upstream key is safe.** Only standard chat fields reach your upstream; fallback model lists, plugins, provider routing and `n` are dropped, so a caller cannot spend your key on something your price list does not cover.
@@ -601,22 +601,22 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [ ] AMD firmware on Turin (its level is laid out differently); NVIDIA GPU attestation
 - [x] SOCKS5 proxies (`--proxy socks5://host:port`, with a name and password when given): the proxy is sent the host's name, so the lookup happens there (0.1.14)
 - [x] Tunnels through the proxy are kept and reused between requests (0.1.14)
-- [x] A node listed by an IPv6 address, through either kind of proxy (in main, next release)
-- [x] Payment inside the seal: to a node that says it reads it there, the channel and voucher travel sealed, so a hosting platform in front of the node cannot tell which wallet pays (in main, next release)
-- [x] Requests padded to a size class before sealing, so their length on the wire shows the class and not the prompt's length (in main, next release)
-- [x] Answer frames padded to whole 256-byte blocks, so their lengths do not spell out the tokens (in main, next release)
+- [x] A node listed by an IPv6 address, through either kind of proxy (0.1.16)
+- [x] Payment inside the seal: to a node that says it reads it there, the channel and voucher travel sealed, so a hosting platform in front of the node cannot tell which wallet pays (0.1.16)
+- [x] Requests padded to a size class before sealing, so their length on the wire shows the class and not the prompt's length (0.1.16)
+- [x] Answer frames padded to whole 256-byte blocks, so their lengths do not spell out the tokens (0.1.16)
 - [ ] Hide how many frames an answer has and when they go out
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
-- [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
-- [x] A router that lost its records asks the node about its channel sealed, and the answer comes back sealed (in main, next release)
-- [x] The 'reads payment inside' flag is signed with the node key, and a router that has seen it keeps to it when it, or the wire key, goes missing (in main, next release)
-- [x] `orrery doctor` prints a `sealing` line under each node: request and payment sealed to its own key, payment in headers, or plain; `orrery provider check` reads the node's wire key from its public address (in main, next release)
-- [x] A channel the node released or that is closing: the router lets it go and sends again on a fresh one, instead of failing until its own check (in main, next release)
-- [x] Through `orrery mcp`, every answer and refusal under a task says what the task has spent and has left, and `status` lists the tasks (in main, next release)
-- [x] A router told to stop (Ctrl-C, SIGTERM) lets answers in flight finish and hands over the vouchers still on their way before it exits (in main, next release)
-- [x] A node that is away for a moment: the request waits and goes round again (`--patience`, 8 seconds by default, or `x-orrery-patience: <seconds>` on one request), and a cooldown no longer refuses a model's only node (in main, next release)
-- [x] A router behind a proxy asks a node what it sees before it pays for anything, shows it on `/orrery/status`, and does not send while the node sees this computer's own public address (in main, next release)
+- [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (0.1.16)
+- [x] A router that lost its records asks the node about its channel sealed, and the answer comes back sealed (0.1.16)
+- [x] The 'reads payment inside' flag is signed with the node key, and a router that has seen it keeps to it when it, or the wire key, goes missing (0.1.16)
+- [x] `orrery doctor` prints a `sealing` line under each node: request and payment sealed to its own key, payment in headers, or plain; `orrery provider check` reads the node's wire key from its public address (0.1.16)
+- [x] A channel the node released or that is closing: the router lets it go and sends again on a fresh one, instead of failing until its own check (0.1.16)
+- [x] Through `orrery mcp`, every answer and refusal under a task says what the task has spent and has left, and `status` lists the tasks (0.1.16)
+- [x] A router told to stop (Ctrl-C, SIGTERM) lets answers in flight finish and hands over the vouchers still on their way before it exits (0.1.16)
+- [x] A node that is away for a moment: the request waits and goes round again (`--patience`, 8 seconds by default, or `x-orrery-patience: <seconds>` on one request), and a cooldown no longer refuses a model's only node (0.1.16)
+- [x] A router behind a proxy asks a node what it sees before it pays for anything, shows it on `/orrery/status`, and does not send while the node sees this computer's own public address (0.1.16)
 - [x] A node does not redeem dust: with no `redeem.minUnits` set, a channel is redeemed once five cents are waiting on it (0.1.15)
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
