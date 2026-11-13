@@ -3,6 +3,7 @@
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { decodeProvider } from '../chain/program.ts';
 import { usd } from '../pricing.ts';
+import { readWire } from '../router/registry.ts';
 import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
@@ -29,6 +30,17 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   out.push(!health ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} did not answer /health (is the node running, and reachable from outside?)` }
     : health.provider !== node.pda.toBase58() ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} answers as another listing` }
     : { ok: local ? null : true, what: 'public address', detail: `${cfg.publicUrl} answered in ${Date.now() - t0} ms${local ? ', but only machines on your network can reach that address' : ''}` });
+
+  // What routers read of this node's wire key, fetched from the public address as they fetch it. A hosting platform in
+  // front of the node can change that answer, and routers then send less sealed than the node offers.
+  const wire = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/v1/wire`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as Parameters<typeof readWire>[0] | null;
+  const read = wire ? readWire(wire, node.node.publicKey) : null;
+  out.push(!health ? { ok: null, what: 'wire key', detail: 'not read: the public address did not answer' }
+    : !wire ? { ok: false, what: 'wire key', detail: `${cfg.publicUrl} did not answer /v1/wire, so routers send this node plain requests that whatever is in front of it can read` }
+    : !read ? { ok: false, what: 'wire key', detail: 'what arrives at /v1/wire is not signed by this node key, so routers do not seal requests to this node' }
+    : !read.key.equals(node.wire.publicKey) ? { ok: false, what: 'wire key', detail: 'routers read a wire key at your address that is not the one this node holds (another node answering there?)' }
+    : !read.inside ? { ok: false, what: 'wire key', detail: 'routers read the key, but not the signed flag that payment goes inside: something in front of this node drops it, so routers new to this node send the channel in headers' }
+    : { ok: true, what: 'wire key', detail: 'routers read it signed, payment inside: what sits in front of this node sees neither prompts nor which channel pays' });
 
   const info = await node.conn.getAccountInfo(node.pda);
   const acct = info ? decodeProvider(info.data) : null;

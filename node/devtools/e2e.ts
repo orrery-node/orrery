@@ -538,6 +538,33 @@ const ironFolder = lineOf(ironCheck, 'data folder');
 check('orrery provider check says where the node keeps what it is owed and has not redeemed, and how much is there', ironFolder?.ok === true && ironFolder.detail.includes(join(WORK, 'providers')) && /\$\d+\.\d{6} waiting there/.test(ironFolder.detail), ironFolder?.detail ?? 'no such line');
 check('orrery provider check tells an operator whether the node is ready to earn', lineOf(ironCheck, 'model server')?.ok !== false && lineOf(ironCheck, 'listing')?.ok === true && lineOf(ironCheck, 'node key')?.ok === true && !!lineOf(ironCheck, 'burn pledge') && lineOf(haloCheck, 'model server')?.ok === false, `Ironbridge: ${ironCheck.filter((l) => l.ok === true).length} ready, ${ironCheck.filter((l) => l.ok === false).length} to fix · Halo (model server stopped): ${lineOf(haloCheck, 'model server')?.detail}`);
 
+// The same check, from behind a front that drops the signed flag from /v1/wire the way a hosting platform could: the
+// operator is told, since from then on new routers send that node the channel in headers.
+const stripFront = createHttpServer((req, res) => {
+  const out = httpRequest({ host: '127.0.0.1', port: providerSpecs[1].port, path: req.url, method: req.method, headers: req.headers }, (r) => {
+    if (req.url !== '/v1/wire') {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+      return;
+    }
+    let raw = '';
+    r.on('data', (c: Buffer) => (raw += c.toString('utf8')));
+    r.on('end', () => {
+      const j = JSON.parse(raw) as Record<string, unknown>;
+      delete j.insideSig;
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(j));
+    });
+  });
+  out.on('error', () => res.writeHead(502).end());
+  req.pipe(out);
+});
+await new Promise<void>((done) => stripFront.listen(0, '127.0.0.1', () => done()));
+const behindStrip = Object.assign(Object.create(iron) as typeof iron, { cfg: { ...iron.cfg, publicUrl: `http://127.0.0.1:${(stripFront.address() as { port: number }).port}` } });
+const stripCheck = await providerCheck(behindStrip);
+stripFront.close();
+const wireDirect = lineOf(ironCheck, 'wire key'), wireStripped = lineOf(stripCheck, 'wire key');
+check('orrery provider check reads the node’s wire key from its public address as routers do, and says when something in front drops the signed flag', wireDirect?.ok === true && wireStripped?.ok === false && /drops/.test(wireStripped.detail), `direct: ${wireDirect?.detail ?? 'no such line'} · behind a front that drops it: ${wireStripped?.detail ?? 'no such line'}`);
+
 // Burn on every answer: Ironbridge pledged 25% of what it redeems. A local desk stands in for the market (the admin
 // sells the stand-in token at 2,500 per USDC in one transaction both sign); the burn itself is a real token burn.
 const ironWallet = wallets[1];
