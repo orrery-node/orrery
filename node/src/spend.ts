@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
 export type Enclave = { kind: string; image: string; verdict: string };
-export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; sealed?: boolean; enclave?: Enclave; task?: string };
+export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean };
 
 /** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
 export const ROLL_BYTES = 10 * 1024 * 1024;
@@ -15,7 +15,7 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
-    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}) })}\n`);
+    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
   }
@@ -70,6 +70,13 @@ export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task'
 }
 
 /** Every sealed answer in the window, newest first: which machine handled it and what the router had verified. */
+/** Of the answers in the window, how many were paid inside the seal (the channel and voucher in the sealed body) rather
+ * than in headers a node's host can read. A node logs `inside` on each answer it served that way. */
+export function paidInside(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; inside: number } {
+  const recent = trips.filter((t) => now - t.at <= sinceMs);
+  return { answers: recent.length, inside: recent.filter((t) => t.inside).length };
+}
+
 export function sealedTrips(trips: LoggedTrip[], sinceMs: number, now = Date.now()): LoggedTrip[] {
   return trips.filter((t) => t.sealed && now - t.at <= sinceMs).sort((a, b) => b.at - a.at);
 }

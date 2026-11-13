@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { appendTrip, readTrips, sealedTrips, summarize, windowMs } from '../src/spend.ts';
+import { appendTrip, paidInside, readTrips, sealedTrips, summarize, windowMs } from '../src/spend.ts';
 
 const t = (at: number, model: string, providerName: string, cost: string, extra = {}) => ({ at, model, provider: providerName.toLowerCase(), providerName, inputTokens: 100, outputTokens: 20, cost, ...extra });
 
@@ -59,4 +59,15 @@ describe('orrery spend', () => {
     const byTask = summarize(back, 'task', Infinity, 5_000);
     assert.deepEqual(byTask.rows.map((r) => [r.key, r.answers, r.units]), [['audit-7', 2, 31n], ['(no task)', 1, 5n]]);
   });
+});
+
+it('a node’s log keeps which answers were paid inside the seal, and counts them over a window', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'served-')), 'served.jsonl');
+  const now = Date.now();
+  const base = { model: 'm', provider: 'c', providerName: 'C', inputTokens: 1, outputTokens: 1, cost: '0.000001' };
+  appendTrip(path, { ...base, at: now - 1_000, inside: true });
+  appendTrip(path, { ...base, at: now - 2_000 });
+  appendTrip(path, { ...base, at: now - 3_000, inside: true });
+  appendTrip(path, { ...base, at: now - 48 * 3600_000, inside: true });
+  assert.deepEqual(paidInside(readTrips(path), 24 * 3600_000, now), { answers: 3, inside: 2 });
 });

@@ -20,7 +20,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } f
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
+import { paidInside, readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -256,6 +256,9 @@ async function provider(sub: string) {
     if (!total.answers) return console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
     console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    // How routers paid: inside the seal, or with the channel named in headers this node's host can read.
+    const paid = paidInside(readTrips(log), windowMs(since));
+    console.log(`paid inside the seal: ${paid.inside} of ${paid.answers} answer${paid.answers === 1 ? '' : 's'}${paid.inside < paid.answers ? '; the rest named their channel in headers your host can read (routers before 0.1.16)' : ''}`);
     return;
   }
   const node = new ProviderNode(cfg);

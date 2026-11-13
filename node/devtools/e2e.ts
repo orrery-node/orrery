@@ -942,6 +942,10 @@ const insideAnswer = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POS
 await insideAnswer.text();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 check('every answer says how its payment traveled: inside the seal, or in headers to an older node', insideAnswer.status === 200 && insideAnswer.headers.get('x-orrery-payment') === 'inside' && asOld.headers.get('x-orrery-payment') === 'headers', `to Ironbridge: ${insideAnswer.headers.get('x-orrery-payment') ?? 'not said'} · as an older node: ${asOld.headers.get('x-orrery-payment') ?? 'not said'}`);
+// The operator's side of the same thing: how many answers this node was paid for inside the seal, and how many named
+// their channel in headers its host could read (routers before 0.1.16, or this rig posing as one above).
+const ibEarned = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`)).json()) as { total: { answers: number }; paidInside?: { answers: number; inside: number } };
+check('a node tells its operator how many answers were paid inside the seal and how many named their channel in headers', !!ibEarned.paidInside && ibEarned.paidInside.answers === ibEarned.total.answers && ibEarned.paidInside.inside >= 2 && ibEarned.paidInside.inside < ibEarned.paidInside.answers, `Ironbridge, last 24h: ${ibEarned.paidInside ? `${ibEarned.paidInside.inside} of ${ibEarned.paidInside.answers} answers paid inside the seal` : 'not said'}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);
