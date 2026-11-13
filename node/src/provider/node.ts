@@ -420,6 +420,11 @@ export class ProviderNode {
       sealKey = opened.key;
     }
     const inside = (sealKey && body.orrery && typeof body.orrery === 'object' ? body.orrery : null) as { channel?: unknown; voucher?: unknown } | null;
+    // What a refusal says about this channel's payments (totals, unpaid answers, the deposit) goes back sealed to a router
+    // that sent payment inside the seal: totals chain one wallet's requests together, and a deposit names its channel on
+    // chain. The code stays readable, so the router knows what to do.
+    const payFail = (status: number, code: string, message: string, extra: Record<string, unknown>) =>
+      fail(res, status, code, message, inside && sealKey ? { box: encrypt(sealKey, padFrame(JSON.stringify(extra))).toString('base64') } : extra);
     if (inside) {
       if (typeof inside.channel === 'string') address = inside.channel;
       if (typeof inside.voucher === 'string') voucherText = inside.voucher;
@@ -440,13 +445,13 @@ export class ProviderNode {
       this.accept(address, e, v);
     }
     const paid = e.best?.cumulative ?? 0n;
-    if (paid < e.owed) return fail(res, 402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
+    if (paid < e.owed) return payFail(402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
     const maxOut = kind === 'embeddings' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
     const maxCost = costOf(price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
-      if (e.owed + maxCost > e.channel.deposit) return fail(res, 402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
+      if (e.owed + maxCost > e.channel.deposit) return payFail(402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
     }
 
     const settle = (send: (data: string, event?: string) => void, inputTokens: number, outputTokens: number, cachedTokens: number) => {

@@ -911,6 +911,31 @@ const backIb = registry.entries.get(nodes[1].pda.toBase58());
 const sealingBack = await sealingOf();
 check('the router’s status says how each node gets the request and the payment, including a node it is holding back from', sealingHidden === 'withheld' && sealingBack === 'inside', `Ironbridge with its wire key hidden: ${sealingHidden ?? 'not said'} · once it shows again: ${sealingBack ?? 'not said'}`);
 check('a front that hides the wire key of a node that showed one does not get the prompt in the clear', goneClear.length === 0 && !!backIb?.wire && backIb.wireInside === true, `wire key hidden: ${goneClear.length} request${goneClear.length === 1 ? '' : 's'} to it in the clear (answer ${afterGone.status}) · once it shows again: ${backIb?.wire ? 'wire key read' : 'no wire key'}, inside ${backIb?.wireInside ? 'yes' : 'no'}`);
+// A node owed for an answer it holds no voucher for says so with a 402 and the unpaid records, which the router pays
+// before it goes on. To a router that pays inside the seal those details (totals, records) are sealed as well.
+const ibAddr = nodes[1].pda.toBase58();
+type Settle = (p: string, rec: unknown) => unknown;
+const chs = channels as unknown as { settle: Settle };
+const settleReal: Settle = chs.settle.bind(channels);
+let skipSettle = true;
+chs.settle = (p, rec) => {
+  if (skipSettle && p === ibAddr) {
+    skipSettle = false;
+    throw new Error('the router stopped before signing');
+  }
+  return settleReal(p, rec);
+};
+const ibAsk = (content: string) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': ibAddr, 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content }] }) }).then(async (r) => { await r.text(); return r.status; });
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+await ibAsk('Say hi.');
+chs.settle = settleReal;
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const beforeOwed = proxied.length;
+const afterUnpaid = await ibAsk('Say hi again.');
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+const refusals = proxied.slice(beforeOwed).filter((x) => x.url.includes('/v1/chat/completions') && /payment_required/.test(x.answer ?? ''));
+const totalsInClear = refusals.filter((x) => /"(owed|paid|unpaid|deposit)"/.test(x.answer ?? ''));
+check('a node’s 402 for an unpaid answer is sealed to a router that pays inside the seal, and the router still pays it and goes on', skipSettle === false && refusals.length >= 1 && totalsInClear.length === 0 && afterUnpaid === 200, `${refusals.length} payment_required answer${refusals.length === 1 ? '' : 's'} through the proxy, ${totalsInClear.length} with totals in the clear${totalsInClear[0] ? `: ${(totalsInClear[0].answer ?? '').slice(0, 90)}` : ''} · the request after it: ${afterUnpaid}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

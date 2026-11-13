@@ -580,7 +580,15 @@ export class Router {
       throw new Error(`provider answered ${r.status}${code ? ` (${code})` : ''}`);
     }
     if (r.status === 402 && !retried) {
-      const j = (await r.json()) as { error: { code: string; unpaid?: { requestId: string; model: string; inputTokens: number; outputTokens: number; cost: string }[]; need?: string } };
+      const j = (await r.json()) as { error: { code: string; box?: string; unpaid?: { requestId: string; model: string; inputTokens: number; outputTokens: number; cost: string }[]; need?: string } };
+      // A node that read payment inside the seal seals what its refusal says about the channel: open it with this request's key.
+      if (j.error.box && key) {
+        try {
+          Object.assign(j.error, JSON.parse(decrypt(key, Buffer.from(j.error.box, 'base64')).toString('utf8')));
+        } catch {
+          // Left as it came: the refusal below names the code.
+        }
+      }
       if (j.error.code === 'payment_required' && j.error.unpaid?.length === 1) {
         const u = j.error.unpaid[0];
         const allowed = this.inflight.get(address) ?? 0n;
