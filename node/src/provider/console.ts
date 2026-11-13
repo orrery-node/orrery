@@ -26,6 +26,15 @@ export function hasConsoleKey(req: Pick<IncomingMessage, 'headers'>, url: URL, k
   return a.length === b.length && b.length > 0 && timingSafeEqual(a, b);
 }
 
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[] };
+
+/** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
+ * loopback, so it never goes through a proxy. */
+export async function readOwnStatus(port: number, key: string): Promise<OwnStatus | null> {
+  const r = await fetch(`http://127.0.0.1:${port}/orrery/status`, { headers: { 'x-orrery-console-key': key } }).catch(() => null);
+  return r?.ok ? ((await r.json()) as OwnStatus) : null;
+}
+
 /** The page that asks for the key: a local visit to the console without it. Says where the address is, not the key. */
 export function consoleKeyPage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}

@@ -26,6 +26,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
+import { readOwnStatus } from './provider/console.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
@@ -88,6 +89,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
   ${CLI} provider start   --config provider.json
   ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
+  ${CLI} provider status  --config provider.json   what the console shows, in this terminal: answers, signed, redeemed, waiting
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
@@ -281,6 +283,23 @@ async function provider(sub: string) {
   const node = new ProviderNode(cfg);
   // The console's address with its key, from this node's folder: for an operator whose start output is gone.
   if (sub === 'console') return console.log(`http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
+  // What the console shows, in a terminal: for a node on a server with no browser. Read from the running node.
+  if (sub === 'status') {
+    const s = await readOwnStatus(cfg.listen, node.consoleKey());
+    if (!s) {
+      process.exitCode = 1;
+      return console.log(`no node is answering on 127.0.0.1:${cfg.listen}. Start it with: ${CLI} provider start --config ${cfgPath}`);
+    }
+    const unsigned = s.channels.reduce((n, c) => n + c.unsigned, 0);
+    return console.log([
+      `${s.name}  ·  listing ${s.provider}`,
+      `  answers since start   ${s.answers}`,
+      `  signed to you         $${s.signed}`,
+      `  redeemed on chain     $${s.redeemed}`,
+      `  waiting to redeem     $${s.waiting}`,
+      `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
+    ].join('\n'));
+  }
   if (cfg.burn) {
     // A pledge needs the wallet on this machine: the buy and the burn are the wallet's own transactions.
     if (!cfg.wallet && !flag('wallet')) throw new Error('a burn pledge needs the provider wallet on this machine ("wallet" in provider.json or --wallet): the buy and the burn are signed by it');
