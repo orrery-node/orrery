@@ -73,7 +73,9 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const took = ms(t0);
     if (h) up.push({ name, endpoint: e.account.endpoint.replace(/\/$/, '') });
     const detail = !h ? 'did not answer /health' : h.upstream === 'down' ? `answered /health in ${took}, but its model server is down` : `answered /health in ${took}${h.upstream === 'up' ? ', model server up' : ''}`;
-    out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, ${detail}` });
+    // Its track record, as its own listing counts it: every payout to its wallet is a transaction on chain.
+    const payouts = Number(e.account.redeems);
+    out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, paid out ${payouts} time${payouts === 1 ? '' : 's'} on chain, ${detail}` });
     // A node that claims an enclave: say whether this computer could verify it, and if not, which check stopped it.
     out.push(sealCheck(e, pins.has(e.account.nodeKey.toBase58())));
     if (e.tee) out.push({ ok: e.tee.verified ? true : e.tee.dev ? null : false, what: '    enclave', detail: `${TEE_KINDS[e.account.teeKind] ?? 'enclave'} · ${e.tee.verified ? `${e.tee.reason}; :private can use this node` : `not verified: ${e.tee.reason}`}` });

@@ -383,6 +383,10 @@ check('orrery doctor says, for each node that answers, whether the request and t
 // Which nodes list payment inside in their price list on chain, and so are kept to from a router's first request.
 const sealUnder = (name: string) => doc.slice(doc.findIndex((l) => l.what.trim() === name) + 1).find((l) => l.what.trim() === 'sealing');
 const haloSeal = sealUnder('Halo Compute'), ironSeal = sealUnder('Ironbridge Compute');
+// A node's track record, as its own listing on chain counts it: how many times it has been paid out.
+const ironDocLine = doc.find((l) => l.what.trim() === 'Ironbridge Compute');
+const ironPayouts = Number(decodeProvider((await conn.getAccountInfo(nodes[1].pda))!.data).redeems);
+check('orrery doctor says how many times each node has been paid out on chain', new RegExp(`paid out ${ironPayouts} times? on chain`).test(ironDocLine?.detail ?? ''), `Ironbridge: ${ironDocLine?.detail ?? 'no line'} · its listing counts ${ironPayouts}`);
 check('orrery doctor says which nodes list payment inside in their price list on chain', /listed in its price list on chain/.test(haloSeal?.detail ?? '') && !/listed in its price list/.test(ironSeal?.detail ?? ''), `Halo: ${haloSeal?.detail ?? 'no line'} · Ironbridge: ${ironSeal?.detail ?? 'no line'}`);
 // What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
 const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };

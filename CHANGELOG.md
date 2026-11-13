@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery doctor` gives every node its track record: how many times it has been paid out on chain, from the count its own listing keeps.
 - **Node** · `orrery provider earnings` ends with what has already landed in your wallet: how many payouts your listing on chain has counted and the total they settled. The node’s local `/orrery/earnings` carries the same as `onChain`.
 - **Everyone** · `orrery doctor` says which nodes list payment inside in their price list on chain (its `sealing` line adds that a router keeps to them from the first request), and `orrery provider check` says whether yours does, or how to list it: `"paymentInside": true` and register again.
 - **Everyone** · A node can put “payment inside” in its price list, whose hash is on chain. A router keeps to the signed flag once it has seen it, but a front that strips the flag, or hides the wire key, before a router has ever reached the node used to get that router’s first requests the old way. Set `paymentInside: true` in provider.json and register again, and the mark rides in the list itself: a router keeps payment inside the seal from its very first request to that node, and sends it nothing in the clear if the wire key is missing. Off for nodes already listed, since it changes the list and a node has to register again; `orrery provider init` turns it on for a new node, which registers anyway.
