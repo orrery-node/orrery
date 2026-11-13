@@ -46,7 +46,8 @@ export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowe
 
 /** A starting provider config: every model the server lists, at a placeholder price to edit. A server that can report
  * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports.
- * Embedding models are priced on input tokens only ($0.02 per million to start). */
+ * Embedding models are priced on input tokens only ($0.02 per million to start). A new node lists payment inside the
+ * seal in its price list from its first registration, so routers keep to it from their first request (README). */
 export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
@@ -59,5 +60,6 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     upstream: { baseUrl: found.baseUrl },
     models: found.models.map((id) => (isEmbeddingModel(id) ? { id: networkId(id), upstreamModel: id, context: 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } } : { id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
     redeem: { everySecs: 300, minUnits: 50_000 },
+    paymentInside: true,
   };
 }

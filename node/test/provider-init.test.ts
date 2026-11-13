@@ -30,6 +30,11 @@ describe('orrery provider init', () => {
     assert.deepEqual(c.models.map((m) => [m.id, m.upstreamModel, m.price.input, m.price.output]), [['llama3.1-8b', 'llama3.1:8b', 500_000, 1_000_000], ['qwen2.5-7b', 'qwen2.5:7b', 500_000, 1_000_000]]);
   });
 
+  it('a new node lists payment inside in its price list from its first registration, so routers keep to it from their first request', () => {
+    const c = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b'] });
+    assert.equal(c.paymentInside, true);
+  });
+
   it('gives a server that reports cache hits a cached-input price, and leaves the others at the input price', () => {
     const v = draftConfig({ name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', models: ['Qwen/Qwen3-32B'] });
     assert.equal(v.models[0].price.cachedInput, 125_000);
