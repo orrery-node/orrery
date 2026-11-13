@@ -614,7 +614,14 @@ export class ProviderNode {
       this.save();
       return true;
     } catch (err) {
-      this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${(err as Error).message.split('\n')[0]}`);
+      // The usual reason a redeem fails for good is a node key with no SOL for the fee, and the chain says it in its own
+      // words. Say it plainly, with the address: to an operator it otherwise looks like the payments stopped.
+      const lamports = await this.conn.getBalance(this.node.publicKey).catch(() => null);
+      const broke = lamports !== null && lamports < 10_000
+        ? `; the node key has ${(lamports / 1e9).toFixed(6)} SOL for fees: send a little SOL to ${this.node.publicKey.toBase58()}. What routers signed is safe and is redeemed once the key can pay`
+        : '';
+      const said = (err as Error).message.split('\n')[0].trim().replace(/[.\s]+$/, '');
+      this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${said}${broke}`);
       return false;
     }
   }

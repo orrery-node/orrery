@@ -974,6 +974,22 @@ const haloGone = { wire: !!listedSight.entries.get(nodes[3].pda.toBase58())?.wir
 wireTamper = null;
 wireTamperPort = providerSpecs[1].port;
 check('a node that lists payment inside in its price list on chain is kept to from the first request: stripping the flag or hiding the key gets its front nothing more', haloStrippedInside && !haloGone.wire && haloGone.pinned, `Halo, met for the first time behind a front that strips the flag: ${haloStrippedInside ? 'payment inside' : 'payment in headers'} · with its key hidden: ${haloGone.pinned && !haloGone.wire ? 'nothing sent in the clear' : 'would go in the clear'}`);
+// A node key with no SOL cannot pay a redeem's fee. The node says so, with the address to top up, instead of a bare
+// chain error: to its operator it would otherwise look like the payments stopped.
+const ironLines: string[] = [];
+const ironLogBefore = iron.log;
+iron.log = (l) => { ironLines.push(l); ironLogBefore(l); };
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+await (await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) })).text();
+await sleep(600);
+const ironSol = await conn.getBalance(iron.node.publicKey);
+await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: iron.node.publicKey, toPubkey: admin.publicKey, lamports: ironSol - 5_000 })), [iron.node]);
+const brokeRedeemed = await iron.redeemDue(1n).catch(() => []);
+await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: iron.node.publicKey, lamports: ironSol })), [admin]);
+iron.log = ironLogBefore;
+const feeLine = ironLines.find((l) => /redeem failed/.test(l));
+check('a node whose key cannot pay redeem fees says so, with the address to send SOL to, and that what was signed is safe', brokeRedeemed.length === 0 && !!feeLine && feeLine.includes(iron.node.publicKey.toBase58()) && /send a little SOL/.test(feeLine) && /safe/.test(feeLine), feeLine ? feeLine.replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 220) : 'no redeem was attempted');
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

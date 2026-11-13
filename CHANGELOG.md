@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · A node whose key runs out of SOL for redeem fees says so in plain words: how much it has left, the address to send a little SOL to, and that what routers signed is safe and is redeemed once the key can pay. Before, the log showed only the chain’s own error.
 - **Router** · The `status` tool of `orrery mcp` gives each node the same track record: how many times it has been paid out on chain.
 - **Router** · `orrery doctor` gives every node its track record: how many times it has been paid out on chain, from the count its own listing keeps.
 - **Node** · `orrery provider earnings` ends with what has already landed in your wallet: how many payouts your listing on chain has counted and the total they settled. The node’s local `/orrery/earnings` carries the same as `onChain`.
