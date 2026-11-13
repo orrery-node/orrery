@@ -11,7 +11,7 @@ describe('orrery mcp and task budgets', () => {
   it('an answer under a task says what the task has spent and has left', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review', task_budget: 0.00005 }, async () =>
       reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-cost': '0.000020', 'x-orrery-task-spent': '0.000020', 'x-orrery-task-left': '0.000030' }));
-    assert.match(out.result.content[0].text, /^Hello\.\n\n— answered by 76Udba… via route auto, paid \$0\.000020 for this answer\n— task review: \$0\.000020 spent, \$0\.000030 left$/);
+    assert.match(out.result.content[0].text, /^Hello\.\n\n— answered by 76Udba… via route auto, paid \$0\.000020 for this answer\n— traveled as plain JSON inside TLS, which the node’s host can read\n— task review: \$0\.000020 spent, \$0\.000030 left$/);
   });
 
   it('a refusal for the task’s budget says the same, so the agent knows to stop or raise it', async () => {
@@ -36,6 +36,14 @@ describe('orrery mcp and task budgets', () => {
     assert.match(t, /Old: model server up, request sealed, payment in headers its host can read/);
     assert.match(t, /Plain: model server up, plain JSON its host can read/);
     assert.match(t, /Hidden: model server up, nothing sent: its wire key went missing/);
+  });
+
+  it('an answer tells the agent how it traveled', async () => {
+    const ask = (h: Record<string, string>) => call('ask', { model: 'm', prompt: 'hi' }, async () => reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-cost': '0.000020', ...h }));
+    assert.match((await ask({ 'x-orrery-wire': '1', 'x-orrery-payment': 'inside' })).result.content[0].text, /\n— traveled sealed to the node’s own key, payment inside the seal$/);
+    assert.match((await ask({ 'x-orrery-wire': '1', 'x-orrery-payment': 'headers' })).result.content[0].text, /\n— traveled sealed to the node’s own key, payment in headers its host can read$/);
+    assert.match((await ask({ 'x-orrery-sealed': '1', 'x-orrery-enclave': 'AMD SEV-SNP', 'x-orrery-payment': 'inside' })).result.content[0].text, /\n— traveled sealed to a verified enclave \(AMD SEV-SNP\), payment inside the seal$/);
+    assert.match((await ask({})).result.content[0].text, /\n— traveled as plain JSON inside TLS, which the node’s host can read$/);
   });
 
   it('status lists the tasks with what each has left', async () => {

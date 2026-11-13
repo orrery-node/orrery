@@ -102,7 +102,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const answer = j.choices?.[0]?.message?.content ?? '';
       const who = r.headers.get('x-orrery-provider');
       const cost = r.headers.get('x-orrery-cost');
-      return text(`${answer}\n\n— answered by ${who ? `${who.slice(0, 6)}…` : 'a provider'} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${task}`);
+      // How this answer traveled, from the router's own headers: an agent can tell what the node's host could read.
+      const payment = r.headers.get('x-orrery-payment') === 'inside' ? 'payment inside the seal' : 'payment in headers its host can read';
+      const traveled = r.headers.get('x-orrery-sealed') === '1' ? `sealed to a verified enclave (${r.headers.get('x-orrery-enclave') ?? 'enclave'}), ${payment}`
+        : r.headers.get('x-orrery-wire') === '1' ? `sealed to the node’s own key, ${payment}` : 'as plain JSON inside TLS, which the node’s host can read';
+      return text(`${answer}\n\n— answered by ${who ? `${who.slice(0, 6)}…` : 'a provider'} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer\n— traveled ${traveled}${task}`);
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
