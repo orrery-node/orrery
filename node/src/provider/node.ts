@@ -361,10 +361,14 @@ export class ProviderNode {
       }
       if (req.method === 'POST' && url.pathname === '/orrery/voucher') {
         let b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string; wire?: number };
-        // A router that knows this node reads payment inside the seal hands the voucher over sealed as well.
+        // A router that knows this node reads payment inside the seal hands the voucher over sealed as well, and the
+        // answer goes back sealed: the running total in it would let the front chain one channel's answers together.
+        let replyKey: Buffer | null = null;
         if (b.wire) {
           try {
-            b = JSON.parse(openRequest(this.wire, b as unknown as { epk: string; box: string }).plaintext.toString('utf8'));
+            const opened = openRequest(this.wire, b as unknown as { epk: string; box: string });
+            b = JSON.parse(opened.plaintext.toString('utf8'));
+            replyKey = opened.key;
           } catch {
             return fail(res, 409, 'wire_key', 'this voucher was encrypted to another key; read /v1/wire again');
           }
@@ -372,7 +376,9 @@ export class ProviderNode {
         const e = await this.entry(b.channel);
         this.accept(b.channel, e, decodeVoucher(b.voucher));
         this.save();
-        return json(res, 200, { paid: e.best?.cumulative ?? 0n, owed: e.owed });
+        const standing = { paid: e.best?.cumulative ?? 0n, owed: e.owed };
+        if (!replyKey) return json(res, 200, standing);
+        return json(res, 200, { box: encrypt(replyKey, padFrame(JSON.stringify(standing, (_, v) => (typeof v === 'bigint' ? v.toString() : v)))).toString('base64') });
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') return await this.complete(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/embeddings') return await this.complete(req, res, 'embeddings');
