@@ -864,8 +864,14 @@ const ibEntry = registry.entries.get(nodes[1].pda.toBase58()) as unknown as { wi
 const hadInside = ibEntry.wireInside;
 ibEntry.wireInside = false;
 const beforeOld = proxied.length;
+// What the node writes to its log for each answer, kept to compare below.
+const ibLogged = (lines: string[]) => { const was = iron.log; iron.log = (l) => { lines.push(l); was(l); }; return () => { iron.log = was; }; };
+const oldLines: string[] = [];
+const stopOld = ibLogged(oldLines);
 const asOld = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
 await asOld.text();
+await sleep(200);
+stopOld();
 ibEntry.wireInside = hadInside;
 const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/completions'));
 // A router that lost its records finds its channel on chain and asks the node where it stands. To a node that reads
@@ -965,8 +971,17 @@ const totalsInClear = refusals.filter((x) => /"(owed|paid|unpaid|deposit)"/.test
 check('a node’s 402 for an unpaid answer is sealed to a router that pays inside the seal, and the router still pays it and goes on', !skipSettle && refusals.length >= 1 && totalsInClear.length === 0 && afterUnpaid === 200, `${refusals.length} payment_required answer${refusals.length === 1 ? '' : 's'} through the proxy, ${totalsInClear.length} with totals in the clear${totalsInClear[0] ? `: ${(totalsInClear[0].answer ?? '').slice(0, 90)}` : ''} · the request after it: ${afterUnpaid}`);
 // Each answer tells the client how its payment traveled: inside the seal to a node that reads it there, in headers
 // to one that does not.
+const insideLines: string[] = [];
+const stopInside = ibLogged(insideLines);
 const insideAnswer = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
 await insideAnswer.text();
+await sleep(200);
+stopInside();
+// A node's log goes to whoever hosts it (a platform's log service, the host of an enclave): the party the seal keeps
+// the channel from. The line for an answer paid inside the seal names neither the channel nor its running total.
+const servedInside = insideLines.find((l) => l.startsWith('served '));
+const servedOld = oldLines.find((l) => l.startsWith('served '));
+check('a node’s log keeps out what was paid inside the seal: no channel and no running total on that answer’s line, while an answer paid in headers still names its channel', !!servedInside && !!ibChannel && !servedInside.includes(ibChannel.slice(0, 6)) && !/owed/.test(servedInside) && !!servedOld && servedOld.includes(ibChannel.slice(0, 6)), `paid inside: ${servedInside?.replace(ibChannel.slice(0, 6), '<channel>') ?? 'no line'} · in headers: ${servedOld?.replace(ibChannel.slice(0, 6), '<channel>') ?? 'no line'}`);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 check('every answer says how its payment traveled: inside the seal, or in headers to an older node', insideAnswer.status === 200 && insideAnswer.headers.get('x-orrery-payment') === 'inside' && asOld.headers.get('x-orrery-payment') === 'headers', `to Ironbridge: ${insideAnswer.headers.get('x-orrery-payment') ?? 'not said'} · as an older node: ${asOld.headers.get('x-orrery-payment') ?? 'not said'}`);
 // The operator's side of the same thing: how many answers this node was paid for inside the seal, and how many named

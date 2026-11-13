@@ -490,7 +490,10 @@ export class ProviderNode {
       this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey && !wired });
       appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost), ...(inside ? { inside: true } : {}) });
       if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
-      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}${off ? `  holder −${off / 100}%` : ''}${wired ? '  wire' : sealKey ? '  sealed' : ''}`);
+      // The log goes to whoever hosts the node. Paid inside the seal, the channel and its running total were kept from
+      // that party on the wire, so they stay off this line too; the console (behind its key) still shows them.
+      const paidBy = inside ? '  paid inside the seal' : `  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}`;
+      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}${paidBy}${off ? `  holder −${off / 100}%` : ''}${wired ? '  wire' : sealKey ? '  sealed' : ''}`);
     };
     const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
 
