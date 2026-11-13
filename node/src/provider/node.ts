@@ -338,6 +338,25 @@ export class ProviderNode {
         const e = await this.entry(address);
         return json(res, 200, { channel: address, voucher: e.best ? encodeVoucher(e.best) : null, paid: e.best?.cumulative ?? 0n, owed: e.owed });
       }
+      if (req.method === 'POST' && url.pathname === '/orrery/channel') {
+        // The same question, sealed, from a router that knows this node reads payment inside the seal. The answer goes
+        // back sealed as well: whatever sits in front of this process sees neither the channel nor its voucher.
+        let opened: { plaintext: Buffer; key: Buffer };
+        try {
+          opened = openRequest(this.wire, JSON.parse((await readBody(req)).toString('utf8')) as { epk: string; box: string });
+        } catch {
+          return fail(res, 409, 'wire_key', 'this question was encrypted to another key; read /v1/wire again');
+        }
+        const address = String((JSON.parse(opened.plaintext.toString('utf8')) as { address?: unknown }).address ?? '');
+        try {
+          new PublicKey(address);
+        } catch {
+          return fail(res, 400, 'bad_request', 'address is not a Solana address');
+        }
+        const e = await this.entry(address);
+        const answer = JSON.stringify({ channel: address, voucher: e.best ? encodeVoucher(e.best) : null, paid: e.best?.cumulative ?? 0n, owed: e.owed }, (_, v) => (typeof v === 'bigint' ? v.toString() : v));
+        return json(res, 200, { box: encrypt(opened.key, padFrame(answer)).toString('base64') });
+      }
       if (req.method === 'POST' && url.pathname === '/orrery/voucher') {
         let b = JSON.parse((await readBody(req)).toString('utf8')) as { channel: string; voucher: string; wire?: number };
         // A router that knows this node reads payment inside the seal hands the voucher over sealed as well.

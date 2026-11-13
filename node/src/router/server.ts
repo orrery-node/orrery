@@ -163,6 +163,12 @@ export class Router {
 
   constructor(private o: RouterOptions) {
     this.log = o.log ?? ((l) => console.log(l));
+    // Channels asks a node about a channel it lost track of sealed when the node reads payment inside the seal.
+    o.channels.wireOf ??= (p) => {
+      const e = o.registry.entries.get(p);
+      return e?.wire ? { key: e.wire, inside: !!e.wireInside } : null;
+    };
+    o.channels.rewire ??= (p) => o.registry.refreshWire(p);
   }
 
   async start(): Promise<Server> {

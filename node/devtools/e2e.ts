@@ -789,6 +789,15 @@ const asOld = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', hea
 await asOld.text();
 ibEntry.wireInside = hadInside;
 const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/completions'));
+// A router that lost its records finds its channel on chain and asks the node where it stands. To a node that reads
+// payment inside the seal, that question is sealed as well: nothing reaching the node's front names the channel.
+const beforeRecover = proxied.length;
+const rebornSealed = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels-sealed-recover.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
+(rebornSealed as unknown as { wireOf?: (p: string) => { key: Buffer; inside: boolean } | null }).wireOf = (p) => { const e = registry.entries.get(p); return e?.wire ? { key: e.wire, inside: !!e.wireInside } : null; };
+const pickedSealed = await rebornSealed.ensure(nodes[1].pda.toBase58(), 1n).then((c) => c.channel, (e: Error) => `refused: ${e.message}`);
+const askedAbout = proxied.slice(beforeRecover).filter((x) => x.url.includes('/orrery/channel'));
+const askedNaming = askedAbout.filter((x) => x.url.includes(ibChannel) || x.body.includes(ibChannel) || (x.answer ?? '').includes(ibChannel));
+check('a router that lost its records asks the node about its channel sealed, so neither the question nor the answer shows the node’s front which channel it picks back up', pickedSealed === ibChannel && askedAbout.length >= 1 && askedNaming.length === 0, `picked back up: ${pickedSealed === ibChannel ? 'the same channel' : pickedSealed} · ${askedAbout.length} question${askedAbout.length === 1 ? '' : 's'} about it through the proxy, ${askedNaming.length} naming it`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

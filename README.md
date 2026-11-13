@@ -609,6 +609,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (in main, next release)
+- [x] A router that lost its records asks the node about its channel sealed, and the answer comes back sealed (in main, next release)
 - [x] A channel the node released or that is closing: the router lets it go and sends again on a fresh one, instead of failing until its own check (in main, next release)
 - [x] Through `orrery mcp`, every answer and refusal under a task says what the task has spent and has left, and `status` lists the tasks (in main, next release)
 - [x] A router told to stop (Ctrl-C, SIGTERM) lets answers in flight finish and hands over the vouchers still on their way before it exits (in main, next release)

@@ -7,6 +7,7 @@ import { ACCOUNT, decodeChannel, decodeProvider, ins, pda, programId } from '../
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, encodeVoucher, signVoucher, verifyVoucher } from '../chain/voucher.ts';
 import { fetchNode } from '../proxy.ts';
+import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { signerOf, writePrivate, type Sign } from '../keys.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 
@@ -34,6 +35,10 @@ export class Channels {
   private opening = new Map<string, Promise<ChannelState>>();
   private sign: Sign;
   spend: Spend = { day: '', units: 0n };
+  /** A node's wire key and whether it reads payment inside the seal, as the router's registry has it. Set by the router. */
+  wireOf: ((provider: string) => { key: Buffer; inside: boolean } | null) | null = null;
+  /** Reads a node's wire key again, after the node said a question was encrypted to a key it no longer holds. */
+  rewire: ((provider: string) => Promise<void>) | null = null;
 
   constructor(
     private conn: Connection,
@@ -158,12 +163,11 @@ export class Channels {
     const endpoint = decodeProvider(info.data).endpoint.replace(/\/$/, '');
     let silent: string | null = null;
     for (const { address, ch } of mine) {
-      const r = await fetchNode(`${endpoint}/orrery/channel?address=${address.toBase58()}`, { timeoutMs: 5_000 }).catch(() => null);
-      if (!r?.ok) {
+      const j = await this.standing(provider, endpoint, address.toBase58());
+      if (!j) {
         silent ??= address.toBase58();
         continue;
       }
-      const j = (await r.json()) as { voucher: string | null; owed: string };
       const v = j.voucher ? decodeVoucher(j.voucher) : null;
       if (v && !verifyVoucher(this.session.publicKey, address, v)) continue;
       const cumulative = v?.cumulative ?? 0n;
@@ -178,6 +182,31 @@ export class Channels {
     }
     if (silent) throw new ChannelUnknown(`an open channel to this node is on chain (${silent.slice(0, 6)}…), but the node did not say where it stands; a second one is not opened on a guess`);
     return null;
+  }
+
+  /** Where a channel stands, in the node's words. A node that reads payment inside the seal is asked sealed and answers
+   * sealed, so its hosting platform sees that a router asked, not about which channel, nor the voucher that comes back.
+   * An older node is asked as before, with the channel in the query. */
+  private async standing(provider: string, endpoint: string, address: string, again = false): Promise<{ voucher: string | null; owed: string } | null> {
+    const wire = this.wireOf?.(provider);
+    if (!wire?.inside) {
+      const r = await fetchNode(`${endpoint}/orrery/channel?address=${address}`, { timeoutMs: 5_000 }).catch(() => null);
+      return r?.ok ? ((await r.json()) as { voucher: string | null; owed: string }) : null;
+    }
+    const sealed = sealRequest(wire.key, padRequest(Buffer.from(JSON.stringify({ address }))), 'wire');
+    const r = await fetchNode(`${endpoint}/orrery/channel`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: sealed.body, timeoutMs: 5_000 }).catch(() => null);
+    if (r?.status === 409 && !again && this.rewire) {
+      // The node restarted with a new wire key: read it again (signature checked as before) and ask once more.
+      await this.rewire(provider).catch(() => undefined);
+      return this.standing(provider, endpoint, address, true);
+    }
+    if (!r?.ok) return null;
+    try {
+      const { box } = (await r.json()) as { box: string };
+      return JSON.parse(decrypt(sealed.key, Buffer.from(box, 'base64')).toString('utf8')) as { voucher: string | null; owed: string };
+    } catch {
+      return null;
+    }
   }
 
   private async open(provider: string, deposit: bigint): Promise<ChannelState> {
