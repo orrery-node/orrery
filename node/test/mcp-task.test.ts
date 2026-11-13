@@ -21,6 +21,23 @@ describe('orrery mcp and task budgets', () => {
     assert.match(out.result.content[0].text, /the router could not answer: no provider can answer m within \$0\.000004 for this request\n— task review: \$0\.000046 spent, \$0\.000004 left/);
   });
 
+  it('status tells an agent how each node gets the request and the payment', async () => {
+    const out = await call('status', {}, async (url) => {
+      if (url.endsWith('/orrery/status')) return reply({ spentToday: '0', channels: [], providers: [
+        { address: 'A1', name: 'Seed', modelServer: 'up', healthMs: 12, sealing: 'inside' },
+        { address: 'B2', name: 'Old', modelServer: 'up', sealing: 'request' },
+        { address: 'C3', name: 'Plain', modelServer: 'up', sealing: 'plain' },
+        { address: 'D4', name: 'Hidden', modelServer: 'up', sealing: 'withheld' },
+      ] });
+      return reply({ rows: [] });
+    });
+    const t = out.result.content[0].text;
+    assert.match(t, /Seed: model server up \(12 ms\), request and payment sealed to it/);
+    assert.match(t, /Old: model server up, request sealed, payment in headers its host can read/);
+    assert.match(t, /Plain: model server up, plain JSON its host can read/);
+    assert.match(t, /Hidden: model server up, nothing sent: its wire key went missing/);
+  });
+
   it('status lists the tasks with what each has left', async () => {
     const out = await call('status', {}, async (url) => {
       if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000046', channels: [], providers: [] });

@@ -314,6 +314,9 @@ export class Router {
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
       tee: e.tee ? { verified: e.tee.verified, dev: e.tee.dev, reason: e.tee.reason } : null, observed: this.stats.get(e.address),
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,
+      // How a request and its payment go to this node: inside (both sealed to its own key), request (sealed, payment in
+      // headers), plain (JSON inside TLS), or withheld (it showed a signed wire key before and shows none now).
+      sealing: e.wire ? (e.wireInside ? 'inside' : 'request') : this.o.registry.pinned(e.address) ? 'withheld' : 'plain',
       burn: e.manifest?.burn ? { share: e.manifest.burn.share, verified: !!e.burn, spent: usd(e.burn?.spent ?? 0n), burned: (e.burn?.burned ?? 0n).toString(), receipts: e.burn?.receipts ?? 0, kept: e.burn?.kept ?? null } : null,
     }));
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));

@@ -133,9 +133,10 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'status') {
       const r = await fetchFn(`${router}/orrery/status`);
-      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[]; providers?: { address: string; name: string | null; modelServer?: string | null; healthMs?: number | null }[] };
+      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[]; providers?: { address: string; name: string | null; modelServer?: string | null; healthMs?: number | null; sealing?: string }[] };
+      const sealing: Record<string, string> = { inside: ', request and payment sealed to it', request: ', request sealed, payment in headers its host can read', plain: ', plain JSON its host can read', withheld: ', nothing sent: its wire key went missing' };
       const ch = (j.channels ?? []).map((c) => `${c.provider.slice(0, 6)}…  spent $${c.spent}, $${c.left} left`);
-      const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down').map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}`);
+      const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down').map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}${sealing[p.sealing ?? ''] ?? ''}`);
       const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[] } | null;
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
       const tk = (await fetchFn(`${router}/orrery/tasks`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { tasks?: { name: string; budget: string; spent: string; left: string; answers: number }[] } | null;

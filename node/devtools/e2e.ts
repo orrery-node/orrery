@@ -901,10 +901,15 @@ const goneRecovered = await (rebornGone as unknown as { recover: (p: string) => 
 const goneAsked = proxied.slice(beforeGoneRecover).filter((x) => x.url.includes('/orrery/channel'));
 const goneNamed = goneAsked.filter((x) => x.url.includes(ibChannel) || x.body.includes(ibChannel) || (x.answer ?? '').includes(ibChannel));
 check('nor does a router that lost its records ask that node about its channel in the clear, and it opens no second one', goneNamed.length === 0 && goneRecovered !== 'nothing' && goneRecovered !== ibChannel, `${goneAsked.length} question${goneAsked.length === 1 ? '' : 's'} about the channel, ${goneNamed.length} naming it · ${goneRecovered.startsWith('refused') ? 'refused to guess, no second channel' : goneRecovered === ibChannel ? 'picked it back up' : goneRecovered}`);
+type Sealing = { providers: { address: string; sealing?: string }[] };
+const sealingOf = async () => ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as Sealing).providers.find((p) => p.address === nodes[1].pda.toBase58())?.sealing;
+const sealingHidden = await sealingOf();
 wireTamper = null;
 await registry.refreshWire(nodes[1].pda.toBase58());
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const backIb = registry.entries.get(nodes[1].pda.toBase58());
+const sealingBack = await sealingOf();
+check('the router’s status says how each node gets the request and the payment, including a node it is holding back from', sealingHidden === 'withheld' && sealingBack === 'inside', `Ironbridge with its wire key hidden: ${sealingHidden ?? 'not said'} · once it shows again: ${sealingBack ?? 'not said'}`);
 check('a front that hides the wire key of a node that showed one does not get the prompt in the clear', goneClear.length === 0 && !!backIb?.wire && backIb.wireInside === true, `wire key hidden: ${goneClear.length} request${goneClear.length === 1 ? '' : 's'} to it in the clear (answer ${afterGone.status}) · once it shows again: ${backIb?.wire ? 'wire key read' : 'no wire key'}, inside ${backIb?.wireInside ? 'yes' : 'no'}`);
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
