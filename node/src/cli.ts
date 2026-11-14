@@ -15,7 +15,7 @@ import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
-import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel } from './provider/init.ts';
+import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, nextSteps } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
@@ -429,7 +429,9 @@ async function main() {
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
-    console.log(`wrote ${out}. Next:\n  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)\n  2. ${CLI} provider compare --config ${out} to see where new prices would stand\n  3. ${CLI} provider register --config ${out} --wallet <keypair.json>\n  4. ${CLI} provider start --config ${out}`);
+    console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI)}`);
+    // The draft names the usual Solana wallet file. Saying now that it is not there beats an error at the next command.
+    if (!existsSync(expand(cfg.wallet))) console.log(`note: there is no keypair at ${cfg.wallet} yet. Point "wallet" in ${out} at yours, or put its address in "authority"; any Solana wallet with a little SOL works.`);
     return;
   }
   if (cmd === 'connect') {

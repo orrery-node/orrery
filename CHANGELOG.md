@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · A provider command run before your wallet file exists says which file is missing and what the node needs it for (only its address: `"authority"` works without the file), not `ENOENT`. `orrery provider init` says so right after it writes the config, and its next steps now include `provider check` and `provider compose`.
 - **Node** · `orrery provider init` says what to do next when it finds nothing to list: with no model server running it names the quickest way to start one, and when a server answers but has no models yet (a fresh Ollama) it says so and gives the pull command. Before, both ended at "pass --upstream".
 - **Router** · An answer that came after a node failed says so: `x-orrery-skipped` counts the nodes that failed first, and the `ask` tool of `orrery mcp` adds "1 node failed before this one answered; a node that does not answer is not paid". The router moves on by itself; this shows it did.
 - **Router** · Your router keeps its own record of every node: how many health checks it made and how many found the node up. It is on `/orrery/status` (`watched`), in `orrery doctor` ("up in 118 of 120 checks this router made over 1 h") and in the MCP `status` tool, next to how many times the node has been paid on chain. Nobody vouches for it; it is what your own router saw.

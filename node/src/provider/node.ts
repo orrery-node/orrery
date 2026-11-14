@@ -93,6 +93,13 @@ async function readBody(req: IncomingMessage, limit = 4 * 1024 * 1024): Promise<
 
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
 
+/** The address of the wallet a node is listed under. The node only ever needs the address; a missing file gets the
+ * two ways on in words, not the file system's error. */
+function walletAddress(path: string): PublicKey {
+  if (!existsSync(path)) throw new Error(`there is no keypair at ${path}, where this provider.json says your wallet is. The node only needs the wallet's address to find its listing: point "wallet" at your keypair file, or put its address in "authority" and keep the wallet off this machine. The wallet itself signs once, for orrery provider register. No wallet yet? Any Solana wallet works (solana-keygen new -o ${path} makes one); it needs a little SOL to pay for the listing.`);
+  return loadKeypair(path).publicKey;
+}
+
 // Only standard chat fields reach the upstream. A gateway upstream (OpenRouter and the like) reads extra fields such
 // as fallback model lists, plugins or provider routing, any of which would let a caller spend the operator's key on
 // something the price list does not cover. `n` is dropped for the same reason: it multiplies the output. `user` is
@@ -163,7 +170,7 @@ export class ProviderNode {
       ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretFromEnv(cfg.nodeKeyEnv, 'node key'))))
       : loadOrCreateKeypair(expand(cfg.nodeKey ?? `${this.dir}/node.json`));
     this.apiKey = cfg.upstream.apiKey ?? (cfg.upstream.apiKeyEnv ? secretFromEnv(cfg.upstream.apiKeyEnv, 'upstream key') : undefined);
-    this.authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${this.dir}/wallet.json`)).publicKey;
+    this.authority = cfg.authority ? new PublicKey(cfg.authority) : walletAddress(expand(cfg.wallet ?? `${this.dir}/wallet.json`));
     this.pda = pda.provider(this.authority);
     this.mint = new PublicKey(cfg.settleMint);
     const wirePath = `${this.dir}/wire.key`;

@@ -48,6 +48,17 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
     : `no model server answered on this computer (looked for ${KNOWN_UPSTREAMS.map(([n, u]) => `${n} at ${u.replace(/^http:\/\/127\.0\.0\.1/, '')}`).join(', ')}). Start one and run this again: the quickest is Ollama (ollama serve, then ${FIRST_MODEL}). For a server somewhere else, pass --upstream <url>`);
 }
 
+/** What is left to do after `provider init` wrote a config, in order. */
+export function nextSteps(out: string, cli = 'orrery'): string {
+  return [
+    `  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)`,
+    `  2. ${cli} provider compare --config ${out} to see where new prices would stand`,
+    `  3. ${cli} provider register --config ${out} --wallet <keypair.json> lists the node on chain (a one-time transaction from your wallet)`,
+    `  4. ${cli} provider check --config ${out} says whether it is ready to earn`,
+    `  5. ${cli} provider start --config ${out}, or ${cli} provider compose --config ${out} to run it in Docker`,
+  ].join('\n');
+}
+
 /** Embedding models by their usual names; they are priced on input tokens only. */
 export const isEmbeddingModel = (id: string) => /(^|[/_.-])(embed|embedding|bge|e5|gte|nomic-embed|mxbai|arctic-embed|jina-embeddings)/i.test(id);
 

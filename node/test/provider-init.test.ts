@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, networkId } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, networkId, nextSteps } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -9,6 +9,11 @@ const fake = (served: Record<string, string[]>) => async (url: string) => {
 };
 
 describe('orrery provider init', () => {
+  it('lists the steps from a fresh config to a running node, check and Docker included', () => {
+    const steps = nextSteps('provider.json');
+    assert.match(steps, /1\. .*publicUrl.*\n {2}2\. .*provider compare.*\n {2}3\. .*provider register.*\n {2}4\. .*provider check.*\n {2}5\. .*provider start.*provider compose/s);
+  });
+
   it('turns upstream ids into network-style ids', () => {
     assert.equal(networkId('llama3.1:8b'), 'llama3.1-8b');
     assert.equal(networkId('Qwen/Qwen3-32B'), 'qwen3-32b');
