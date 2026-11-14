@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { rpcConnection } from './chain/connect.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve as resolvePath } from 'node:path';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { sendOne } from './chain/send.ts';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
@@ -27,6 +27,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
 import { consoleLine, readOwnStatus } from './provider/console.ts';
+import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
@@ -88,6 +89,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
   ${CLI} provider start   --config provider.json
+  ${CLI} provider compose --config provider.json [--out docker-compose.yml] [--print]   a docker-compose file that runs this node in a container
   ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
   ${CLI} provider status  --config provider.json [--json]   what the console shows, in this terminal: answers, signed, redeemed, waiting, fee SOL
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
@@ -225,6 +227,21 @@ async function provider(sub: string) {
   const cfg = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
   cfg.rpcUrl = flag('rpc', process.env.ORRERY_RPC_URL ?? cfg.rpcUrl) ?? cfg.rpcUrl;
   cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
+  // Where the model server is, when that differs from the config: a node in a container reaches one on its host this way.
+  if (process.env.ORRERY_UPSTREAM_URL) cfg.upstream.baseUrl = process.env.ORRERY_UPSTREAM_URL;
+  if (sub === 'compose') {
+    // A docker-compose file for this node: the official Node image running this package, nothing built or hosted by us.
+    const out = flag('out', 'docker-compose.yml')!;
+    const raw = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
+    const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
+    const text = composeFile({ cfg: raw, configPath: resolvePath(expand(cfgPath)), home: process.env.HOME ?? '/root', pkg: flag('package', `orrery-node@${version}`)!, port: cfg.listen });
+    if (has('print')) return console.log(text);
+    // A node told to listen on this computer only would do the same inside the container, where nothing could reach it.
+    if (/^(127\.0\.0\.1|localhost|::1)$/.test((raw as { host?: string }).host ?? '')) console.log(`note: "host": "${(raw as { host?: string }).host}" in ${cfgPath} makes the node listen inside the container only; remove it so routers can reach the node`);
+    if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
+    writeFileSync(out, text);
+    return console.log(`wrote ${out}. Start the node with: docker compose up -d\nIts numbers, from inside the container: docker compose exec node npx -y --package=orrery-node@${version} orrery provider status --config ${resolvePath(expand(cfgPath))}`);
+  }
   if (sub === 'compare') {
     const registry = new Registry(rpcConnection(cfg.rpcUrl ?? rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
