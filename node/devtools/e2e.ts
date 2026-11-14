@@ -506,6 +506,15 @@ const skipped = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', h
 const skippedJ = (await skipped.json()) as { error?: { code?: string; message?: string } };
 const signedAfter = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 check('the router skips a node whose model server is down before sending or paying anything', skipped.status === 503 && /model server down/.test(skippedJ.error?.message ?? '') && signedAfter === signedBefore, `gemma (only Halo lists it) → ${skipped.status}: ${skippedJ.error?.message} · signed total unchanged`);
+// Every ten minutes a refresh re-reads a node's price list and builds its entry again. What the router last saw of the
+// node's health has to survive that: otherwise a node known to be down is forgotten until the next health check.
+const haloBefore = registry.entries.get(nodes[3].pda.toBase58())!;
+haloBefore.checkedAt = 0;
+await registry.refresh();
+const haloRebuilt = registry.entries.get(nodes[3].pda.toBase58())!;
+const skippedAgain = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma-3-27b', max_tokens: 32, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+const skippedAgainJ = (await skippedAgain.json()) as { error?: { message?: string } };
+check('a registry refresh that rebuilds a node’s entry keeps what the router last saw of its health, so a node known to be down stays skipped', haloRebuilt !== haloBefore && haloRebuilt.upstream === 'down' && typeof haloRebuilt.healthAt === 'number' && skippedAgain.status === 503 && /model server down/.test(skippedAgainJ.error?.message ?? ''), `rebuilt: ${haloRebuilt !== haloBefore} · model server after the rebuild: ${haloRebuilt.upstream ?? 'unknown'} · the request right after: ${skippedAgain.status} ${(skippedAgainJ.error?.message ?? '').slice(0, 70)}`);
 const statusNow = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { name: string | null; modelServer: string | null; healthMs: number | null }[] };
 const stateOf = (n: string) => statusNow.providers.find((p) => p.name === n);
 // The same checks kept as a record: how often this router itself found each node up. Halo's model server was switched

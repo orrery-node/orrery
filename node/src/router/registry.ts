@@ -108,6 +108,13 @@ export class Registry {
         const prev = this.entries.get(address);
         const same = prev && prev.account.manifestHash.equals(p.manifestHash) && prev.account.endpoint === p.endpoint && prev.manifest && Date.now() - prev.checkedAt < 10 * 60_000;
         const entry: ProviderEntry = same ? { ...prev!, account: p } : { address, account: p, manifest: null, problem: null, checkedAt: Date.now(), tee: null };
+        // A rebuilt entry keeps what this router last saw of the node's health while it is still at the same address: the
+        // next health check is up to half a minute away, and a node known to be down must stay skipped until then.
+        if (!same && prev && prev.account.endpoint === p.endpoint) {
+          entry.upstream = prev.upstream;
+          entry.healthMs = prev.healthMs;
+          entry.healthAt = prev.healthAt;
+        }
         if (!same && p.active) {
           try {
             const r = await fetchNode(`${p.endpoint.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 4_000 });
