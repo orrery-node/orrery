@@ -21,6 +21,7 @@ const TOOLS = [
         max_cost: { type: 'number', description: 'optional budget in dollars for this one answer, e.g. 0.001; only providers whose worst case fits are used' },
         task: { type: 'string', description: 'optional name for the job this call belongs to; every call with the same task draws from one budget' },
         task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call; when it is spent the router refuses further calls under the task. Every answer and refusal under a task says what it has spent and has left' },
+        node: { type: 'string', description: 'optional: ask this node only, by the name status lists (e.g. Orrery Seed) or by its address' },
       },
       required: ['model', 'prompt'],
     },
@@ -93,6 +94,18 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
       const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}), ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
+      // Staying with one node: an address goes as is; a name is looked up in the router's own list of nodes.
+      if (typeof a.node === 'string' && a.node.trim()) {
+        const wanted = a.node.trim();
+        if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wanted)) headers['x-orrery-provider'] = wanted;
+        else {
+          const st = (await (await fetchFn(`${router}/orrery/status`)).json()) as { providers?: { address: string; name?: string | null }[] };
+          const listed = st.providers ?? [];
+          const hit = listed.find((p) => (p.name ?? '').toLowerCase() === wanted.toLowerCase());
+          if (!hit) return text(`no node named ${wanted} is listed. The router knows: ${listed.map((p) => p.name ?? p.address).join(', ') || 'no nodes yet'}`, true);
+          headers['x-orrery-provider'] = hit.address;
+        }
+      }
       const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
       const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
       // Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal.

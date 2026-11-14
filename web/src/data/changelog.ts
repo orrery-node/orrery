@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The `ask` tool of `orrery mcp` takes an optional `node`: the name `status` lists (any case) or an address, and asks that node only. A name no node has gets the list of names the router knows, and nothing is sent.' },
   { who: 'provider', text: '`orrery provider status` also shows the SOL your node key has for fees and about how many payouts that pays for, and says when it is running low; `--json` prints it all for a monitor.' },
   { who: 'router', text: 'Every answer names the node that gave it in `x-orrery-provider-name`, from its price list, streamed or not, and the `ask` tool of `orrery mcp` says "answered by Orrery Seed (76Udba…)" instead of the address alone, so an agent can match it to the nodes in `status`.' },
   { who: 'provider', text: '`orrery provider status --config provider.json` prints what your console shows, in the terminal: answers since start, what routers signed to you, what is redeemed on chain, what is waiting, and your channels. For a node on a server with no browser. With no node running, it says so and gives the start command.' },

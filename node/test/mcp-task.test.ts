@@ -38,6 +38,26 @@ describe('orrery mcp and task budgets', () => {
     assert.match(await named('%E0%A4%A'), /— answered by %E0%A4%A \(76Udba…\)/);
   });
 
+  it('ask can stay with one node, by the name status lists or by its address, and says so when no node has that name', async () => {
+    const seen: { url: string; headers?: Record<string, string> }[] = [];
+    const fake = async (url: string, init?: { headers?: Record<string, string> }) => {
+      seen.push({ url, headers: init?.headers });
+      if (url.endsWith('/orrery/status')) return reply({ spentToday: '0', channels: [], providers: [{ address: '76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8', name: 'Orrery Seed' }, { address: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin', name: 'Halo Compute' }] });
+      return reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8', 'x-orrery-provider-name': 'Orrery Seed', 'x-orrery-cost': '0.000010' });
+    };
+    const byName = await call('ask', { model: 'm', prompt: 'hi', node: 'orrery seed' }, fake as never);
+    assert.equal(byName.result.isError, undefined);
+    assert.equal(seen.find((s) => s.url.endsWith('/v1/chat/completions'))?.headers?.['x-orrery-provider'], '76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8');
+    seen.length = 0;
+    await call('ask', { model: 'm', prompt: 'hi', node: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin' }, fake as never);
+    assert.equal(seen.find((s) => s.url.endsWith('/v1/chat/completions'))?.headers?.['x-orrery-provider'], '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin');
+    seen.length = 0;
+    const unknown = await call('ask', { model: 'm', prompt: 'hi', node: 'Ironbridge' }, fake as never);
+    assert.equal(unknown.result.isError, true);
+    assert.match(unknown.result.content[0].text, /^no node named Ironbridge is listed\. The router knows: Orrery Seed, Halo Compute$/);
+    assert.ok(!seen.some((s) => s.url.endsWith('/v1/chat/completions')), 'nothing is asked when the name matches no node');
+  });
+
   it('a refusal for the task’s budget says the same, so the agent knows to stop or raise it', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review' }, async () =>
       reply({ error: { code: 'over_budget', message: 'no provider can answer m within $0.000004 for this request' } }, 402, { 'x-orrery-task-spent': '0.000046', 'x-orrery-task-left': '0.000004' }));
