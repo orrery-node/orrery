@@ -234,13 +234,15 @@ async function provider(sub: string) {
     const out = flag('out', 'docker-compose.yml')!;
     const raw = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
     const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
-    const text = composeFile({ cfg: raw, configPath: resolvePath(expand(cfgPath)), home: process.env.HOME ?? '/root', pkg: flag('package', `orrery-node@${version}`)!, port: cfg.listen });
+    // The package the container runs: this version from npm, or what --package names (a pinned version, a packed file).
+    const pkg = flag('package', `orrery-node@${version}`)!;
+    const text = composeFile({ cfg: raw, configPath: resolvePath(expand(cfgPath)), home: process.env.HOME ?? '/root', pkg, port: cfg.listen });
     if (has('print')) return console.log(text);
     // A node told to listen on this computer only would do the same inside the container, where nothing could reach it.
     if (/^(127\.0\.0\.1|localhost|::1)$/.test((raw as { host?: string }).host ?? '')) console.log(`note: "host": "${(raw as { host?: string }).host}" in ${cfgPath} makes the node listen inside the container only; remove it so routers can reach the node`);
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
     writeFileSync(out, text);
-    return console.log(`wrote ${out}. Start the node with: docker compose up -d\nIts numbers, from inside the container: docker compose exec node npx -y --package=orrery-node@${version} orrery provider status --config ${resolvePath(expand(cfgPath))}`);
+    return console.log(`wrote ${out}. Start the node with: docker compose up -d\nIts numbers, from inside the container: docker compose exec node npx -y --package=${pkg} orrery provider status --config ${resolvePath(expand(cfgPath))}`);
   }
   if (sub === 'compare') {
     const registry = new Registry(rpcConnection(cfg.rpcUrl ?? rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });

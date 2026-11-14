@@ -468,6 +468,12 @@ const cliOut = (args: string[]) => new Promise<string>((done) => { let out = '';
 const statusOut = await cliOut(['status']);
 const ibStatusNow = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { answers: number; signed: string; redeemed: string; waiting: string; channels: unknown[] };
 const statusDown = await cliOut(['status', '--port', '17998']);
+// A compose file written for a package other than the default (a pinned version, a packed file): the file runs that
+// package, and so does the command it tells the operator to run inside the container.
+const composeAt = join(WORK, 'compose-check.yml');
+const composeSaid = await cliOut(['compose', '--out', composeAt, '--package', 'orrery-node@9.9.9', '--force']);
+const composeWrote = existsSync(composeAt) ? readFileSync(composeAt, 'utf8') : '';
+check('orrery provider compose writes the file for the package it was given, and the command it prints names that package too', /command: "npx -y --package=orrery-node@9\.9\.9 orrery provider start /.test(composeWrote) && /docker compose exec node npx -y --package=orrery-node@9\.9\.9 orrery provider status /.test(composeSaid), (composeSaid.split('\n').find((l) => /docker compose exec/.test(l)) ?? 'no such line').replace(/--config .*/, '--config …').slice(0, 150));
 // What is waiting, and when it lands: the rehearsal's nodes redeem anything, once an hour.
 const waitingLine = statusOut.split('\n').find((l) => /^\s+waiting to redeem\s/.test(l)) ?? '';
 check('orrery provider status says when what is waiting gets paid out', Number(ibStatusNow.waiting) > 0 && /pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
