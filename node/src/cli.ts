@@ -26,7 +26,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { providerCheck, renderCheck } from './provider/check.ts';
-import { readOwnStatus } from './provider/console.ts';
+import { consoleLine, readOwnStatus } from './provider/console.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
@@ -348,7 +348,7 @@ async function provider(sub: string) {
   if (sub === 'start') {
     await node.listen();
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
-    console.log(`your console, on this computer only: http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
+    console.log(consoleLine(cfg.listen, node.consoleKey(), !!process.stdout.isTTY, cfgPath));
     return;
   }
   if (sub === 'register') {

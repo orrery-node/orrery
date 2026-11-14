@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider start` prints your console’s key only to a terminal. When its output goes to a log, which is where a host keeps it, the line gives the address and `orrery provider console` to print the key.' },
 ];
 
 export const RELEASES: Release[] = [

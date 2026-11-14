@@ -26,6 +26,13 @@ export function hasConsoleKey(req: Pick<IncomingMessage, 'headers'>, url: URL, k
   return a.length === b.length && b.length > 0 && timingSafeEqual(a, b);
 }
 
+/** The line provider start prints for its console. The key goes only to a terminal: output that is not one usually
+ * lands in a log a host keeps, so that line names the command that prints the key instead. */
+export function consoleLine(port: number, key: string, toTerminal: boolean, configPath: string): string {
+  const at = `your console, on this computer only: http://127.0.0.1:${port}/`;
+  return toTerminal ? `${at}?key=${key}` : `${at} (orrery provider console --config ${configPath} prints it with its key)`;
+}
+
 export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[] };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on

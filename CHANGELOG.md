@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · `orrery provider start` prints your console’s key only to a terminal. When its output goes to a log, which is where a host keeps it, the line gives the address and `orrery provider console` to print the key.
+
 ## 0.1.17 · 2026-11-14 02:43 UTC
 
 **Every node carries its track record from Solana, a node’s own books stay behind a key only its folder holds, an agent sees which node answered and can stay with one, and a node warns you about its fee SOL before it runs out.**
