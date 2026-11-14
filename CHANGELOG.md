@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider status` says when your node last answered ("last answer 3 min ago"), and `--json` gives `lastAnswerAt`, so a monitor can tell when a node has stopped getting work.
 - **Router** · The `ask` tool of `orrery mcp` says how soon each answer started, as the router timed it: "answered by Orrery Seed (76Udba…) in 703 ms".
 - **Node** · `orrery provider start` prints your console’s key only to a terminal. When its output goes to a log, which is where a host keeps it, the line gives the address and `orrery provider console` to print the key.
 

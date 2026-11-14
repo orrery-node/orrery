@@ -294,7 +294,10 @@ async function provider(sub: string) {
     // The fee money, before it is a problem: every payout is one transaction the node key pays for.
     const lamports = await node.conn.getBalance(node.node.publicKey).catch(() => null);
     const payoutsLeft = lamports === null ? null : Math.floor(lamports / REDEEM_FEE_LAMPORTS);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft }, null, 2));
+    // When it last answered: a node that stopped getting work shows it here before anywhere else.
+    const lastAt = s.recent?.[0]?.at ?? null;
+    const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer'
       : `${(lamports / 1e9).toFixed(4)} SOL on the node key, about ${payoutsLeft!.toLocaleString('en-US')} payouts${lamports < FEE_FLOOR_LAMPORTS ? `; running low, send a little SOL to ${node.node.publicKey.toBase58()}` : ''}`;
     return console.log([
@@ -304,6 +307,7 @@ async function provider(sub: string) {
       `  redeemed on chain     $${s.redeemed}`,
       `  waiting to redeem     $${s.waiting}`,
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
+      `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
       `  fees                  ${fees}`,
     ].join('\n'));
   }

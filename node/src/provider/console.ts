@@ -33,7 +33,7 @@ export function consoleLine(port: number, key: string, toTerminal: boolean, conf
   return toTerminal ? `${at}?key=${key}` : `${at} (orrery provider console --config ${configPath} prints it with its key)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[] };
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[] };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
