@@ -617,6 +617,18 @@ const haloCheck = await providerCheck(nodes[3]);
 console.log(renderCheck('Ironbridge Compute', ironCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 console.log(renderCheck('Halo Compute', haloCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 const lineOf = (ls: { what: string; ok: boolean | null; detail: string }[], w: string) => ls.find((l) => l.what === w);
+// Registering from the command line with a wallet that has no SOL: stopped before anything is sent, with what a
+// listing takes, and the size the rent is worked out from is the size of a real listing.
+const brokeDir = join(WORK, 'providers', 'broke');
+mkdirSync(brokeDir, { recursive: true });
+const brokeWallet = Keypair.generate();
+writeFileSync(join(brokeDir, 'wallet.json'), JSON.stringify(Array.from(brokeWallet.secretKey)));
+writeFileSync(join(brokeDir, 'provider.json'), JSON.stringify({ ...nodes[1].cfg, name: 'Broke Node', listen: 17289, publicUrl: 'https://gpu.example.org', wallet: join(brokeDir, 'wallet.json'), dataDir: brokeDir, burn: undefined, authority: undefined }));
+const brokeOut = await new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'register', '--config', join(brokeDir, 'provider.json'), '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });
+const brokeListed = await conn.getAccountInfo(pda.provider(brokeWallet.publicKey));
+const realListingBytes = (await conn.getAccountInfo(nodes[1].pda))!.data.length;
+const { LISTING_BYTES: listingBytes } = (await import('../src/provider/check.ts')) as unknown as { LISTING_BYTES?: number };
+check('orrery provider register stops before sending when the wallet cannot pay for the listing, and says how much it takes', brokeOut.code === 1 && /has 0\.0000 SOL\. Listing a node takes about 0\.00\d+ SOL, once/.test(brokeOut.text) && !brokeListed && listingBytes === realListingBytes, `exit ${brokeOut.code} · ${brokeOut.text.trim().split('\n').pop()?.replace(brokeWallet.publicKey.toBase58(), '<wallet>').slice(0, 150) ?? 'nothing printed'} · a real listing is ${realListingBytes} bytes, the rent is worked out for ${listingBytes ?? 'no size'}`);
 // The check ends with the one next thing to do. Halo's model server is off; that comes before anything else.
 const { nextStep: nextOf } = (await import('../src/provider/check.ts')) as unknown as { nextStep?: (ls: unknown[], at: { config: string; publicUrl: string; nodeKey: string }) => string };
 const haloNext = nextOf?.(haloCheck, { config: 'provider.json', publicUrl: nodes[3].cfg.publicUrl, nodeKey: nodes[3].node.publicKey.toBase58() }) ?? 'no next step';

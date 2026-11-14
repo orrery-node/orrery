@@ -13,7 +13,7 @@ import { FEE_FLOOR_LAMPORTS, type ProviderNode } from './node.ts';
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
 /** The address provider init writes until the operator sets a real one. */
-const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
+export const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
 /** What a little SOL means for a node key: one payout is one transaction at the base fee. */
 const FEE_EXAMPLE = '0.01 SOL pays for about 2,000 payouts';
 
@@ -80,6 +80,20 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   if (cfg.burn) out.push({ ok: null, what: 'burn pledge', detail: `${cfg.burn.share / 100}% of what you redeem; orrery provider burn --config … shows what is due` });
   return out;
+}
+
+/** The size of a node's listing on chain; what it costs to list is the rent for an account this big, paid once. */
+export const LISTING_BYTES = 419;
+
+/** Why `provider register` should not send its transaction, in words, or null when it can: the address is still the
+ * placeholder (the listing would point routers nowhere), or the wallet cannot pay for it. */
+export function registerProblem(o: { publicUrl: string; exists: boolean; lamports: number; rent: number; wallet: string }): string | null {
+  if (PLACEHOLDER_URL.test(o.publicUrl)) return 'set "publicUrl" first: it is still the placeholder from provider init, and the listing would send routers to an address that is not yours';
+  const fee = 10_000, sol = (n: number) => (n / 1e9).toFixed(4);
+  if (o.lamports >= o.rent + fee) return null;
+  return o.exists
+    ? `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Updating a listing is one transaction and needs its fee. Send it a little SOL and run this again`
+    : `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Listing a node takes about ${sol(o.rent + fee)} SOL, once: the rent for its listing on Solana, plus the fee. Send it a little SOL and run this again`;
 }
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,

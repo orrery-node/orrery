@@ -25,7 +25,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { nextStep, providerCheck, renderCheck } from './provider/check.ts';
+import { LISTING_BYTES, nextStep, providerCheck, registerProblem, renderCheck } from './provider/check.ts';
 import { consoleLine, readOwnStatus } from './provider/console.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -374,12 +374,18 @@ async function provider(sub: string) {
     return;
   }
   if (sub === 'register') {
-    const w = loadKeypair(expand(flag('wallet', cfg.wallet ?? '')!));
+    const walletPath = expand(flag('wallet', cfg.wallet ?? '')!);
+    if (!walletPath || !existsSync(walletPath)) throw new Error(walletPath ? `there is no keypair at ${walletPath}. Pass --wallet <keypair.json>: the wallet this node is listed under signs this one transaction` : 'pass --wallet <keypair.json>: the wallet this node is listed under signs this one transaction');
+    const w = loadKeypair(walletPath);
     if (!w.publicKey.equals(node.authority)) throw new Error('the wallet does not match the config authority');
     const exists = await node.conn.getAccountInfo(node.pda);
+    // Nothing is sent when it cannot work or would be wasted: the wallet cannot pay, or the address is the placeholder.
+    const problem = registerProblem({ publicUrl: cfg.publicUrl, exists: !!exists, lamports: await node.conn.getBalance(w.publicKey), rent: exists ? 0 : await node.conn.getMinimumBalanceForRentExemption(LISTING_BYTES), wallet: w.publicKey.toBase58() });
+    if (problem) throw new Error(problem);
     const ix = exists ? node.updateInstruction(w.publicKey) : node.registerInstruction(w.publicKey);
     const sig = await sendOne(node.conn, new Transaction().add(ix), [w]);
     console.log(`${exists ? 'updated' : 'listed'} ${node.pda.toBase58()}  tx ${sig}`);
+    console.log(`next: ${CLI} provider check --config ${cfgPath} says what is left before it earns`);
     return;
   }
   if (sub === 'attest') {

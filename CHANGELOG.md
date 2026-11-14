@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider register` checks before it sends. A wallet without the SOL a listing takes is told how much that is (about 0.0028 SOL, once: the rent for the listing plus the fee) in place of a raw chain error, a `publicUrl` still at the `provider init` placeholder is not listed, and a missing wallet file says so. After listing it points at `provider check`.
 - **Router** · A node that stops answering your router’s health checks is shown as that. Before, `/orrery/status` and the MCP `status` tool kept saying "model server up" from the node’s last answer; now status carries `answering` and `unansweredSince`, and the tool says "not answering health checks for 3 min".
 - **Router** · Your router’s record of each node survives a restart. It is kept in `router/watched.json` in the router’s home folder and picked up when the router starts, so "up in 8,611 of 8,640 checks over 3 days" can actually build up.
 - **Node** · `orrery provider check` ends with the one next thing to do, in the order a new node goes through them: start the model server, set the public address, list on chain, fund the node key, start the node. With nothing left it says the node is ready to earn. The fee line says what a little SOL buys (0.01 SOL pays for about 2,000 payouts), and an address left at the `provider init` placeholder is called that.
