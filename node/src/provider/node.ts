@@ -118,7 +118,7 @@ function secretFromEnv(name: string, what: string): string {
 export const FEE_FLOOR_LAMPORTS = 2_000_000;
 
 /** What one redeem transaction pays when nothing is added on top: Solana's base fee for its one signature. */
-const REDEEM_FEE_LAMPORTS = 5_000;
+export const REDEEM_FEE_LAMPORTS = 5_000;
 
 /** The smallest amount worth a redemption's fee when the operator names none: five cents. */
 export const REDEEM_MIN_UNITS = 50_000;

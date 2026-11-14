@@ -9,7 +9,7 @@ import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, program
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
-import { ProviderNode, type ProviderConfig } from './provider/node.ts';
+import { FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
@@ -89,7 +89,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
   ${CLI} provider start   --config provider.json
   ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
-  ${CLI} provider status  --config provider.json   what the console shows, in this terminal: answers, signed, redeemed, waiting
+  ${CLI} provider status  --config provider.json [--json]   what the console shows, in this terminal: answers, signed, redeemed, waiting, fee SOL
   ${CLI} provider register --config provider.json --wallet <keypair.json>   list or update on chain
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
@@ -291,6 +291,12 @@ async function provider(sub: string) {
       return console.log(`no node is answering on 127.0.0.1:${cfg.listen}. Start it with: ${CLI} provider start --config ${cfgPath}`);
     }
     const unsigned = s.channels.reduce((n, c) => n + c.unsigned, 0);
+    // The fee money, before it is a problem: every payout is one transaction the node key pays for.
+    const lamports = await node.conn.getBalance(node.node.publicKey).catch(() => null);
+    const payoutsLeft = lamports === null ? null : Math.floor(lamports / REDEEM_FEE_LAMPORTS);
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft }, null, 2));
+    const fees = lamports === null ? 'the RPC did not answer'
+      : `${(lamports / 1e9).toFixed(4)} SOL on the node key, about ${payoutsLeft!.toLocaleString('en-US')} payouts${lamports < FEE_FLOOR_LAMPORTS ? `; running low, send a little SOL to ${node.node.publicKey.toBase58()}` : ''}`;
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
       `  answers since start   ${s.answers}`,
@@ -298,6 +304,7 @@ async function provider(sub: string) {
       `  redeemed on chain     $${s.redeemed}`,
       `  waiting to redeem     $${s.waiting}`,
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
+      `  fees                  ${fees}`,
     ].join('\n'));
   }
   if (cfg.burn) {

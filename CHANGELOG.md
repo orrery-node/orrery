@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider status` also shows the SOL your node key has for fees and about how many payouts that pays for, and says when it is running low; `--json` prints it all for a monitor.
 - **Router** · Every answer names the node that gave it in `x-orrery-provider-name`, from its price list, streamed or not, and the `ask` tool of `orrery mcp` says "answered by Orrery Seed (76Udba…)" instead of the address alone, so an agent can match it to the nodes in `status`.
 - **Node** · `orrery provider status --config provider.json` prints what your console shows, in the terminal: answers since start, what routers signed to you, what is redeemed on chain, what is waiting, and your channels. For a node on a server with no browser. With no node running, it says so and gives the start command.
 - **Router** · When no router is running, the tools of `orrery mcp` say so and give the command that starts one (and `--router` for one that runs elsewhere), so an agent can pass it straight to you. Before, they asked whether the router was running and showed `fetch failed`.
