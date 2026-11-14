@@ -185,9 +185,13 @@ const holderCost = costOf(discounted(haloPrice, 3_500), haloTrip.inputTokens, ha
 check('a wallet holding 2% of the network token pays the 1% tier price', nameOf(r.provider) === 'Halo Compute' && haloTrip.off === 3_500 && r.cost === usd(holderCost) && holderCost < listCost,
   `$${r.cost} instead of $${usd(listCost)} · holds ${standing ? sharePct(standing) : '?'} of supply`);
 
+const kestrelSignedBefore = channels.get(nodes[0].pda.toBase58())?.cumulative ?? 0n;
 await nodes[0].close();
 r = await ask('llama-3.3-70b:cheap');
 check('when the cheapest provider goes dark the request falls through', r.status === 200 && nameOf(r.provider) !== 'Kestrel GPU Co-op', `${nameOf(r.provider)} answered`);
+// The answer says a node failed first, and the node that failed was signed nothing for it.
+const kestrelSignedAfter = channels.get(nodes[0].pda.toBase58())?.cumulative ?? 0n;
+check('an answer that came after a node failed says so, and the node that failed is signed nothing for it', r.headers?.get('x-orrery-skipped') === '1' && kestrelSignedAfter === kestrelSignedBefore && Number(r.cost) > 0, `x-orrery-skipped: ${r.headers?.get('x-orrery-skipped') ?? 'not said'} · signed to Kestrel before and after: $${usd(kestrelSignedBefore)} → $${usd(kestrelSignedAfter)} · ${nameOf(r.provider)} was paid $${r.cost}`);
 const trips = router.trips;
 const am = await fetch(`${ROUTER}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'any' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 64, system: 'Be brief.', messages: [{ role: 'user', content: 'Say hello.' }] }) });
 const amj = (await am.json()) as { type?: string; content?: { type: string; text?: string }[]; stop_reason?: string; usage?: { input_tokens: number; output_tokens: number } };

@@ -639,7 +639,7 @@ export class Router {
       }
       if (wantsStream) {
         if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs, ...theirs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs, ...theirs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader });
           state.started = true;
           const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
           if (anth) {
@@ -697,7 +697,7 @@ export class Router {
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

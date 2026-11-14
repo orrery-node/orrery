@@ -65,6 +65,14 @@ describe('orrery mcp and task budgets', () => {
     assert.match(await timed('x'), /— answered by Orrery Seed \(76Udba…\) via route auto/);
   });
 
+  it('an answer that came after a node failed says so, with the rule: a node that does not answer is not paid', async () => {
+    const after = async (n: string | null) => (await call('ask', { model: 'm', prompt: 'hi' }, async () => reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-provider-name': 'Vault Nine', 'x-orrery-cost': '0.000019', ...(n ? { 'x-orrery-skipped': n } : {}) }))).result.content[0].text;
+    assert.match(await after('1'), /\n— 1 node failed before this one answered; a node that does not answer is not paid\n— traveled /);
+    assert.match(await after('2'), /\n— 2 nodes failed before this one answered; a node that does not answer is not paid\n/);
+    assert.ok(!(await after(null)).includes('failed before'));
+    assert.ok(!(await after('0')).includes('failed before'));
+  });
+
   it('a refusal for the task’s budget says the same, so the agent knows to stop or raise it', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review' }, async () =>
       reply({ error: { code: 'over_budget', message: 'no provider can answer m within $0.000004 for this request' } }, 402, { 'x-orrery-task-spent': '0.000046', 'x-orrery-task-left': '0.000004' }));
