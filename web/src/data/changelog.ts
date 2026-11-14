@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider status` says when what is waiting gets paid out: "pays out by itself at $0.05" while it is under your node’s minimum, with the command that does it now, and "at the next round" once it is there.' },
   { who: 'provider', text: '`orrery provider register` checks before it sends. A wallet without the SOL a listing takes is told how much that is (about 0.0028 SOL, once: the rent for the listing plus the fee) in place of a raw chain error, a `publicUrl` still at the `provider init` placeholder is not listed, and a missing wallet file says so. After listing it points at `provider check`.' },
   { who: 'router', text: 'A node that stops answering your router’s health checks is shown as that. Before, `/orrery/status` and the MCP `status` tool kept saying "model server up" from the node’s last answer; now status carries `answering` and `unansweredSince`, and the tool says "not answering health checks for 3 min".' },
   { who: 'router', text: 'Your router’s record of each node survives a restart. It is kept in `router/watched.json` in the router’s home folder and picked up when the router starts, so "up in 8,611 of 8,640 checks over 3 days" can actually build up.' },

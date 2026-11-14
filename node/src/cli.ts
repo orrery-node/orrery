@@ -9,7 +9,7 @@ import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, program
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
-import { FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, type ProviderConfig } from './provider/node.ts';
+import { FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
@@ -26,7 +26,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, providerCheck, registerProblem, renderCheck } from './provider/check.ts';
-import { consoleLine, readOwnStatus } from './provider/console.ts';
+import { consoleLine, payoutHint, readOwnStatus } from './provider/console.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
@@ -322,7 +322,7 @@ async function provider(sub: string) {
       `  answers since start   ${s.answers}`,
       `  signed to you         $${s.signed}`,
       `  redeemed on chain     $${s.redeemed}`,
-      `  waiting to redeem     $${s.waiting}`,
+      `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath)}`,
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
       `  fees                  ${fees}`,

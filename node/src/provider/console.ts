@@ -33,6 +33,17 @@ export function consoleLine(port: number, key: string, toTerminal: boolean, conf
   return toTerminal ? `${at}?key=${key}` : `${at} (orrery provider console --config ${configPath} prints it with its key)`;
 }
 
+/** When what is waiting gets paid out, for the status line: by itself at the node's minimum, or at the next round once
+ * it is there. Empty when nothing waits. */
+export function payoutHint(waiting: string, minUnits: number, everySecs: number, configPath: string): string {
+  const units = Math.round(Number(waiting) * 1e6);
+  if (!(units > 0)) return '';
+  const every = everySecs < 60 ? `${everySecs} s` : `${Math.round(everySecs / 60)} min`;
+  if (units >= minUnits) return `  (pays out at the next round, every ${every})`;
+  const min = (minUnits / 1e6).toFixed(6).replace(/0+$/, '').replace(/\.$/, '').replace(/^(\d+\.\d)$/, '$10');
+  return `  (pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
+}
+
 export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[] };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on

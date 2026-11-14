@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { consoleLine, hasConsoleKey, isLocal } from '../src/provider/console.ts';
+import { consoleLine, hasConsoleKey, isLocal, payoutHint } from '../src/provider/console.ts';
 
 const req = (remoteAddress: string, headers: Record<string, string> = {}) => ({ socket: { remoteAddress }, headers: { host: '127.0.0.1:17282', ...headers } });
 
@@ -40,6 +40,15 @@ describe('provider console access', () => {
     const logged = consoleLine(7272, key, false, 'provider.json');
     assert.ok(!logged.includes(key), 'no key in a log');
     assert.equal(logged, 'your console, on this computer only: http://127.0.0.1:7272/ (orrery provider console --config provider.json prints it with its key)');
+  });
+
+  it('says when what is waiting is paid out: at the minimum by itself, at the next round once it is there, never when nothing waits', () => {
+    assert.equal(payoutHint('0.000422', 50_000, 300, 'provider.json'), '  (pays out by itself at $0.05; orrery provider redeem --config provider.json does it now)');
+    assert.equal(payoutHint('0.061000', 50_000, 300, 'provider.json'), '  (pays out at the next round, every 5 min)');
+    assert.equal(payoutHint('0.000010', 1, 3_600, 'provider.json'), '  (pays out at the next round, every 60 min)');
+    assert.equal(payoutHint('0.050000', 50_000, 45, 'provider.json'), '  (pays out at the next round, every 45 s)');
+    assert.equal(payoutHint('0.000000', 50_000, 300, 'provider.json'), '');
+    assert.equal(payoutHint('0.004000', 5_000, 300, 'p.json'), '  (pays out by itself at $0.005; orrery provider redeem --config p.json does it now)');
   });
 
   it('refuses a page that points its own domain at this computer (DNS rebinding)', () => {

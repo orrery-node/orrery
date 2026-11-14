@@ -462,6 +462,9 @@ const cliOut = (args: string[]) => new Promise<string>((done) => { let out = '';
 const statusOut = await cliOut(['status']);
 const ibStatusNow = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { answers: number; signed: string; redeemed: string; waiting: string; channels: unknown[] };
 const statusDown = await cliOut(['status', '--port', '17998']);
+// What is waiting, and when it lands: the rehearsal's nodes redeem anything, once an hour.
+const waitingLine = statusOut.split('\n').find((l) => /^\s+waiting to redeem\s/.test(l)) ?? '';
+check('orrery provider status says when what is waiting gets paid out', Number(ibStatusNow.waiting) > 0 && /pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
 // The fee money too, before it is a problem: SOL on the node key and about how many payouts it pays for; and the same
 // as JSON for a monitor.
 const statusJson = await cliOut(['status', '--json']);
