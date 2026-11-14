@@ -147,6 +147,17 @@ describe('orrery mcp and task budgets', () => {
     assert.match((await call('status', {}, async (url) => (url.endsWith('/orrery/status') ? reply({ spentToday: '0', channels: [], providers: [], privateOnly: true }) : reply({ rows: [] })))).result.content[0].text, /\nprivate only: every request goes sealed to an enclave this router verified, or not at all/);
   });
 
+  it('status tells an agent how many answers came after a node did not answer, and that such a node is signed nothing', async () => {
+    const withSkips = async (after: unknown) => (await call('status', {}, async (url) => {
+      if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000100', channels: [], providers: [] });
+      if (url.includes('/orrery/spend')) return reply({ rows: [{ key: 'llama-3.3-70b', answers: 5, usd: '0.000100' }], ...(after ? { afterANodeDidNotAnswer: after } : {}) });
+      return reply({ tasks: [] });
+    })).result.content[0].text as string;
+    assert.match(await withSkips({ answers: 2, nodes: 3 }), /last 24h by model:\nllama-3\.3-70b: 5 answers, \$0\.000100\n2 of these answers came from the next node after another did not answer \(3 skipped in all\)\. A node that does not answer is signed nothing\.$/);
+    assert.ok(!/did not answer/.test(await withSkips({ answers: 0, nodes: 0 })));
+    assert.ok(!/did not answer/.test(await withSkips(null)));
+  });
+
   it('status lists the tasks with what each has left', async () => {
     const out = await call('status', {}, async (url) => {
       if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000046', channels: [], providers: [] });

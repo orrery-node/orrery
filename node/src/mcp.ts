@@ -2,6 +2,7 @@
 // work to models on the network. Every call goes through the router, so each answer is routed and paid per answer
 // exactly like a request from any other tool.
 import { span, watchedText } from './router/watched.ts';
+import { skipNote } from './spend.ts';
 import { createInterface } from 'node:readline';
 
 type Json = Record<string, unknown>;
@@ -169,11 +170,13 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const sealing: Record<string, string> = { inside: ', request and payment sealed to it', request: ', request sealed, payment in headers its host can read', plain: ', plain JSON its host can read', withheld: ', nothing sent: its wire key went missing' };
       const ch = (j.channels ?? []).map((c) => `${c.provider.slice(0, 6)}…  spent $${c.spent}, $${c.left} left`);
       const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down' || p.answering === false).map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: ${p.answering === false ? `not answering health checks${typeof p.unansweredSince === 'number' ? ` for ${span(Date.now() - p.unansweredSince)}` : ''}` : `model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}`}${sealing[p.sealing ?? ''] ?? ''}${typeof p.redeems === 'number' ? `, paid out ${p.redeems === 1 ? 'once' : `${p.redeems} times`} on chain` : ''}${watchedText(p.watched) ? `, ${watchedText(p.watched)}` : ''}`);
-      const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[] } | null;
+      const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[]; afterANodeDidNotAnswer?: { answers: number; nodes: number } } | null;
+      // Under the spend: answers that came from the next node after another did not answer. That node was signed nothing.
+      const skips = sp?.afterANodeDidNotAnswer ? skipNote(sp.afterANodeDidNotAnswer) : '';
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
       const tk = (await fetchFn(`${router}/orrery/tasks`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { tasks?: { name: string; budget: string; spent: string; left: string; answers: number }[] } | null;
       const tasks = (tk?.tasks ?? []).slice(0, 10).map((t) => `${t.name}: $${t.spent} of $${t.budget} spent, $${t.left} left, ${t.answers} answer${t.answers === 1 ? '' : 's'}`);
-      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
+      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}${skips ? `\n${skips}` : ''}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {
