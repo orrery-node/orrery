@@ -12,6 +12,11 @@ import { FEE_FLOOR_LAMPORTS, type ProviderNode } from './node.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
+/** The address provider init writes until the operator sets a real one. */
+const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
+/** What a little SOL means for a node key: one payout is one transaction at the base fee. */
+const FEE_EXAMPLE = '0.01 SOL pays for about 2,000 payouts';
+
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
   const base = cfg.upstream.baseUrl.replace(/\/$/, '');
@@ -27,7 +32,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const t0 = Date.now();
   const health = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { provider?: string } | null;
   const local = /^https?:\/\/(127\.|localhost|0\.0\.0\.0|10\.|192\.168\.)/.test(cfg.publicUrl);
-  out.push(!health ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} did not answer /health (is the node running, and reachable from outside?)` }
+  out.push(!health ? { ok: false, what: 'public address', detail: PLACEHOLDER_URL.test(cfg.publicUrl) ? `${cfg.publicUrl} is still the placeholder from provider init: set publicUrl to the address routers will reach` : `${cfg.publicUrl} did not answer /health (is the node running, and reachable from outside?)` }
     : health.provider !== node.pda.toBase58() ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} answers as another listing` }
     : { ok: local ? null : true, what: 'public address', detail: `${cfg.publicUrl} answered in ${Date.now() - t0} ms${local ? ', but only machines on your network can reach that address' : ''}` });
 
@@ -52,7 +57,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   const sol = (await node.conn.getBalance(node.node.publicKey)) / LAMPORTS_PER_SOL;
   const enough = sol >= FEE_FLOOR_LAMPORTS / LAMPORTS_PER_SOL;
-  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()}`}` });
+  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()} (${FEE_EXAMPLE})`}` });
 
   // A redemption costs its transaction fee whatever it moves; a minimum under a cent means paying more than is collected.
   const min = cfg.redeem?.minUnits;
@@ -75,6 +80,21 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   if (cfg.burn) out.push({ ok: null, what: 'burn pledge', detail: `${cfg.burn.share / 100}% of what you redeem; orrery provider burn --config … shows what is due` });
   return out;
+}
+
+/** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
+ * then the node itself. Nothing failing means routers can find it, reach it and pay it. */
+export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string }): string {
+  const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
+  const register = `orrery provider register --config ${at.config} --wallet <keypair.json>`;
+  const server = bad('model server'), listing = bad('listing'), address = bad('public address');
+  if (server) return `next: start your model server: ${server.detail}`;
+  if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
+  if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (a one-time transaction from your wallet)` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
+  if (bad('node key')) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE})`;
+  if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
+  const other = lines.find((l) => l.ok === false);
+  return other ? `next: ${other.what}: ${other.detail}` : 'ready to earn: routers can find this node, reach it and pay it';
 }
 
 export const renderCheck = (name: string, lines: CheckLine[]) => [`"${name}"`, ...lines.map((l) => `${l.ok === null ? '·' : l.ok ? '✓' : '✗'} ${l.what.padEnd(15)}${l.detail}`)].join('\n');

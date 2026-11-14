@@ -1,0 +1,29 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { nextStep, type CheckLine } from '../src/provider/check.ts';
+
+const L = (what: string, ok: boolean | null, detail = ''): CheckLine => ({ what, ok, detail });
+const at = { config: 'provider.json', publicUrl: 'https://gpu.example.org', nodeKey: 'NodeKey111' };
+const good = [L('model server', true), L('public address', true), L('listing', true), L('node key', true), L('data folder', true)];
+const but = (what: string, ok: boolean | null, detail = '') => good.map((l) => (l.what === what ? L(what, ok, detail) : l));
+
+describe('the one next step provider check ends with', () => {
+  it('walks a new node through its first run in order', () => {
+    const fresh = [L('model server', true), L('public address', false), L('listing', false, 'not on chain yet'), L('node key', false), L('data folder', true)];
+    assert.match(nextStep(fresh, { ...at, publicUrl: 'https://your-node.example.com' }), /^next: set "publicUrl" in provider\.json to the address routers will reach/);
+    assert.match(nextStep(fresh, at), /^next: list the node on chain: orrery provider register --config provider\.json --wallet <keypair\.json>/);
+    assert.match(nextStep([L('model server', true), L('public address', false), L('listing', true), L('node key', false)], at), /^next: send a little SOL to NodeKey111 .*0\.01 SOL pays for about 2,000 payouts/);
+    assert.match(nextStep(but('public address', false), at), /^next: start the node \(orrery provider start --config provider\.json, or provider compose for Docker\) and make sure https:\/\/gpu\.example\.org reaches it from outside/);
+  });
+
+  it('puts a model server that is not answering first, and a changed price list before anything after it', () => {
+    assert.match(nextStep([L('model server', false, 'http://127.0.0.1:11434/v1 did not answer /models'), L('listing', false, 'not on chain yet')], at), /^next: start your model server: http:\/\/127\.0\.0\.1:11434\/v1 did not answer/);
+    assert.match(nextStep(but('listing', false, 'your price list changed since you listed; run provider register again so routers accept it'), at), /^next: run orrery provider register --config provider\.json --wallet <keypair\.json> again: your price list changed/);
+  });
+
+  it('says ready when nothing fails, and names what is left when something else does', () => {
+    assert.equal(nextStep(good, at), 'ready to earn: routers can find this node, reach it and pay it');
+    assert.equal(nextStep(but('data folder', null, 'on a disk'), at), 'ready to earn: routers can find this node, reach it and pay it');
+    assert.match(nextStep(but('data folder', false, '/tmp/x is a temporary folder'), at), /^next: data folder: \/tmp\/x is a temporary folder/);
+  });
+});

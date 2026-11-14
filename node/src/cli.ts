@@ -25,7 +25,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { providerCheck, renderCheck } from './provider/check.ts';
+import { nextStep, providerCheck, renderCheck } from './provider/check.ts';
 import { consoleLine, readOwnStatus } from './provider/console.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -363,6 +363,7 @@ async function provider(sub: string) {
     const lines = await providerCheck(node);
     if (has('json')) return console.log(JSON.stringify(lines, null, 2));
     console.log(renderCheck(cfg.name, lines));
+    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58() }));
     process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     return;
   }

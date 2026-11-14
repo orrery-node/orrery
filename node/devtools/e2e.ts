@@ -608,6 +608,10 @@ const haloCheck = await providerCheck(nodes[3]);
 console.log(renderCheck('Ironbridge Compute', ironCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 console.log(renderCheck('Halo Compute', haloCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 const lineOf = (ls: { what: string; ok: boolean | null; detail: string }[], w: string) => ls.find((l) => l.what === w);
+// The check ends with the one next thing to do. Halo's model server is off; that comes before anything else.
+const { nextStep: nextOf } = (await import('../src/provider/check.ts')) as unknown as { nextStep?: (ls: unknown[], at: { config: string; publicUrl: string; nodeKey: string }) => string };
+const haloNext = nextOf?.(haloCheck, { config: 'provider.json', publicUrl: nodes[3].cfg.publicUrl, nodeKey: nodes[3].node.publicKey.toBase58() }) ?? 'no next step';
+check('orrery provider check ends with the one next thing to do', /^next: start your model server: /.test(haloNext), haloNext.slice(0, 140));
 const ironFolder = lineOf(ironCheck, 'data folder');
 check('orrery provider check says where the node keeps what it is owed and has not redeemed, and how much is there', ironFolder?.ok === true && ironFolder.detail.includes(join(WORK, 'providers')) && /\$\d+\.\d{6} waiting there/.test(ironFolder.detail), ironFolder?.detail ?? 'no such line');
 check('orrery provider check tells an operator whether the node is ready to earn', lineOf(ironCheck, 'model server')?.ok !== false && lineOf(ironCheck, 'listing')?.ok === true && lineOf(ironCheck, 'node key')?.ok === true && !!lineOf(ironCheck, 'burn pledge') && lineOf(haloCheck, 'model server')?.ok === false, `Ironbridge: ${ironCheck.filter((l) => l.ok === true).length} ready, ${ironCheck.filter((l) => l.ok === false).length} to fix · Halo (model server stopped): ${lineOf(haloCheck, 'model server')?.detail}`);
