@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The `ask` tool of `orrery mcp` says how soon each answer started, as the router timed it: "answered by Orrery Seed (76Udba…) in 703 ms".
 - **Node** · `orrery provider start` prints your console’s key only to a terminal. When its output goes to a log, which is where a host keeps it, the line gives the address and `orrery provider console` to print the key.
 
 ## 0.1.17 · 2026-11-14 02:43 UTC

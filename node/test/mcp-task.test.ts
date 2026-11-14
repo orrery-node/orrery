@@ -58,6 +58,13 @@ describe('orrery mcp and task budgets', () => {
     assert.ok(!seen.some((s) => s.url.endsWith('/v1/chat/completions')), 'nothing is asked when the name matches no node');
   });
 
+  it('an answer says how soon it started, from the router’s first-token time', async () => {
+    const timed = async (ms: string) => (await call('ask', { model: 'm', prompt: 'hi' }, async () => reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-provider-name': 'Orrery Seed', 'x-orrery-cost': '0.000025', 'x-orrery-ttft-ms': ms }))).result.content[0].text;
+    assert.match(await timed('703'), /— answered by Orrery Seed \(76Udba…\) in 703 ms via route auto, paid \$0\.000025 for this answer/);
+    assert.match(await timed('1106'), /— answered by Orrery Seed \(76Udba…\) in 1\.1 s via route auto/);
+    assert.match(await timed('x'), /— answered by Orrery Seed \(76Udba…\) via route auto/);
+  });
+
   it('a refusal for the task’s budget says the same, so the agent knows to stop or raise it', async () => {
     const out = await call('ask', { model: 'm', prompt: 'hi', task: 'review' }, async () =>
       reply({ error: { code: 'over_budget', message: 'no provider can answer m within $0.000004 for this request' } }, 402, { 'x-orrery-task-spent': '0.000046', 'x-orrery-task-left': '0.000004' }));
