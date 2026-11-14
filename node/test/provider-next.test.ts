@@ -21,6 +21,11 @@ describe('the one next step provider check ends with', () => {
     assert.match(nextStep(but('listing', false, 'your price list changed since you listed; run provider register again so routers accept it'), at), /^next: run orrery provider register --config provider\.json --wallet <keypair\.json> again: your price list changed/);
   });
 
+  it('speaks to a node that is already running when its address does not answer', () => {
+    assert.match(nextStep(but('public address', false), { ...at, running: true }), /^next: make sure https:\/\/gpu\.example\.org reaches this node from outside: it did not answer from here \(orrery provider check --config provider\.json looks again\)/);
+    assert.match(nextStep([L('model server', true), L('public address', false), L('listing', false, 'not on chain yet'), L('node key', false)], { ...at, running: true }), /^next: list the node on chain: /);
+  });
+
   it('says ready when nothing fails, and names what is left when something else does', () => {
     assert.equal(nextStep(good, at), 'ready to earn: routers can find this node, reach it and pay it');
     assert.equal(nextStep(but('data folder', null, 'on a disk'), at), 'ready to earn: routers can find this node, reach it and pay it');

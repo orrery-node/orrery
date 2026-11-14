@@ -371,6 +371,8 @@ async function provider(sub: string) {
     await node.listen();
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
     console.log(consoleLine(cfg.listen, node.consoleKey(), !!process.stdout.isTTY, cfgPath));
+    // Once it is up, the one thing left before it earns: a node that is not listed yet would otherwise wait in silence.
+    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true }))).catch(() => undefined);
     return;
   }
   if (sub === 'register') {

@@ -98,7 +98,7 @@ export function registerProblem(o: { publicUrl: string; exists: boolean; lamport
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
  * then the node itself. Nothing failing means routers can find it, reach it and pay it. */
-export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string }): string {
+export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean }): string {
   const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
   const register = `orrery provider register --config ${at.config} --wallet <keypair.json>`;
   const server = bad('model server'), listing = bad('listing'), address = bad('public address');
@@ -106,6 +106,7 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
   if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (a one-time transaction from your wallet)` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
   if (bad('node key')) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE})`;
+  if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
   const other = lines.find((l) => l.ok === false);
   return other ? `next: ${other.what}: ${other.detail}` : 'ready to earn: routers can find this node, reach it and pay it';
