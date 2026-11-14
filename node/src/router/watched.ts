@@ -40,3 +40,15 @@ export function watchedText(w: Watched | null | undefined, now = Date.now()): st
   if (!w || w.checks < 1) return '';
   return `up in ${w.up.toLocaleString('en-US')} of ${w.checks.toLocaleString('en-US')} check${w.checks === 1 ? '' : 's'} this router made over ${span(now - w.since)}`;
 }
+
+/** "answered 41 of 43 requests this router sent it since it started", from the router's own count of what the node
+ * did with its requests (kept in memory, so it starts over with the router). Empty before the first request. A
+ * request the node answered against its own listing was still answered: only unanswered ones are left out. */
+export function answeredText(o: { ok: number; fail: number; broke?: number } | null | undefined): string {
+  if (!o) return '';
+  const unanswered = Math.max(0, o.fail - (o.broke ?? 0)), sent = o.ok + unanswered;
+  if (sent < 1) return '';
+  const n = (x: number) => x.toLocaleString('en-US');
+  const of = unanswered === 0 ? (sent === 1 ? 'the 1 request' : `all ${n(sent)} requests`) : `${n(o.ok)} of ${n(sent)} requests`;
+  return `answered ${of} this router sent it since it started`;
+}

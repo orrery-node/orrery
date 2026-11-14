@@ -39,7 +39,9 @@ export function applyAlias(model: string, aliases: Alias[] | undefined): string 
   return model;
 }
 
-export type Observed = { ttftMs: number | null; ok: number; fail: number; cooldownUntil: number };
+/** `ok`: requests the node answered. `fail`: what counts against it with this router, which is the requests it left
+ * unanswered plus `broke`, the ones it answered against its own listing. */
+export type Observed = { ttftMs: number | null; ok: number; fail: number; cooldownUntil: number; broke?: number };
 
 export class Stats {
   private m = new Map<string, Observed>();
@@ -56,6 +58,7 @@ export class Stats {
   penalize(address: string) {
     const o = this.get(address);
     o.fail += 1;
+    o.broke = (o.broke ?? 0) + 1;
     this.m.set(address, o);
   }
   fail(address: string) {
