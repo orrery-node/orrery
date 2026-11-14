@@ -23,6 +23,15 @@ describe('orrery provider init', () => {
     await assert.rejects(findUpstream(undefined, fake({})), /pass --upstream/);
   });
 
+  it('says what to do next when no model server is running, and when one is running with no models yet', async () => {
+    await assert.rejects(findUpstream(undefined, fake({})), /no model server answered on this computer.*Start one and run this again.*ollama pull llama3\.1:8b.*--upstream <url>/s);
+    await assert.rejects(findUpstream(undefined, fake({ 'http://127.0.0.1:11434/v1': [] })), /^Error: Ollama answered at http:\/\/127\.0\.0\.1:11434\/v1 but has no models yet\. Pull one \(ollama pull llama3\.1:8b\) and run this again/);
+    await assert.rejects(findUpstream(undefined, fake({ 'http://127.0.0.1:1234/v1': [] })), /^Error: LM Studio answered at http:\/\/127\.0\.0\.1:1234\/v1 but has no models yet\. Load one in it and run this again/);
+    // A server further down the list that does have models still wins over an empty one.
+    assert.equal((await findUpstream(undefined, fake({ 'http://127.0.0.1:11434/v1': [], 'http://127.0.0.1:8000/v1': ['Qwen/Qwen3-32B'] }))).name, 'vLLM');
+    await assert.rejects(findUpstream('http://10.0.0.5:9000/v1', fake({ 'http://10.0.0.5:9000/v1': [] })), /your server answered at http:\/\/10\.0\.0\.5:9000\/v1 but has no models yet/);
+  });
+
   it('drafts a config with every model at a placeholder price', () => {
     const c = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b', 'qwen2.5:7b'] }, { name: 'Basement GPU' });
     assert.equal(c.name, 'Basement GPU');

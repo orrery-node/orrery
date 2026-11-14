@@ -15,6 +15,9 @@ export const KNOWN_UPSTREAMS: [string, string][] = [
 
 export type Found = { name: string; baseUrl: string; models: string[] };
 
+/** The command that gives a fresh Ollama its first model, for the messages that point a new operator at one. */
+const FIRST_MODEL = 'ollama pull llama3.1:8b';
+
 /** Servers that can report prompt-cache hits in usage.prompt_tokens_details.cached_tokens, and the flag that turns it on. */
 export const CACHE_REPORTING: Record<string, string> = {
   vLLM: '--enable-prompt-tokens-details',
@@ -24,6 +27,9 @@ export const CACHE_REPORTING: Record<string, string> = {
 /** The first server that answers /models with at least one model: the one given, or the known local ones in order. */
 export async function findUpstream(explicit: string | undefined, fetchFn: Fetch = fetch as unknown as Fetch): Promise<Found> {
   const tries: [string, string][] = explicit ? [['your server', explicit.replace(/\/$/, '')]] : KNOWN_UPSTREAMS;
+  // A server that answers with no models yet (a fresh Ollama) is remembered: that is a different next step from no
+  // server at all.
+  let empty: [string, string] | null = null;
   for (const [name, baseUrl] of tries) {
     try {
       const r = await fetchFn(`${baseUrl}/models`, { signal: AbortSignal.timeout(1_500) });
@@ -31,11 +37,15 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
       const j = (await r.json()) as { data?: { id?: string }[] };
       const models = (j.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
       if (models.length) return { name, baseUrl, models };
+      empty ??= [name, baseUrl];
     } catch {
       continue;
     }
   }
-  throw new Error(explicit ? `no models at ${explicit}/models` : `no OpenAI-compatible server answered on ${KNOWN_UPSTREAMS.map(([n, u]) => `${n} (${u})`).join(', ')}; pass --upstream <url>`);
+  if (empty) throw new Error(`${empty[0]} answered at ${empty[1]} but has no models yet. ${empty[0] === 'Ollama' ? `Pull one (${FIRST_MODEL})` : 'Load one in it'} and run this again`);
+  throw new Error(explicit
+    ? `no model server answered at ${explicit}/models`
+    : `no model server answered on this computer (looked for ${KNOWN_UPSTREAMS.map(([n, u]) => `${n} at ${u.replace(/^http:\/\/127\.0\.0\.1/, '')}`).join(', ')}). Start one and run this again: the quickest is Ollama (ollama serve, then ${FIRST_MODEL}). For a server somewhere else, pass --upstream <url>`);
 }
 
 /** Embedding models by their usual names; they are priced on input tokens only. */
