@@ -7,6 +7,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { watchedText, type Watched } from './router/watched.ts';
+import { skipNote } from './spend.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
@@ -28,6 +29,17 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
+type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number };
+
+/** What a running router's /orrery/spend says about its last 24 hours, as one line: what it paid, and the answers
+ * where a node did not answer or did not finish (signed nothing). Null when the router did not say. */
+export function paidLine(sp: Spent | null): string | null {
+  if (!sp?.total) return null;
+  if (!sp.total.answers) return 'nothing in the last 24 h';
+  const note = skipNote({ answers: sp.afterANodeDidNotAnswer?.answers ?? 0, nodes: sp.afterANodeDidNotAnswer?.nodes ?? 0, resumed: sp.finishedByAnotherNode ?? 0 });
+  return `$${sp.total.usd} for ${sp.total.answers} answer${sp.total.answers === 1 ? '' : 's'} in the last 24 h${note ? ` · ${note}` : ''}`;
+}
+
 export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
@@ -120,6 +132,11 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   for (const p of status?.providers ?? []) {
     const said = watchedText(p.watched);
     if (said) out.push({ ok: null, what: '  watched', detail: `${p.name ?? `${p.address.slice(0, 6)}…`} ${said}` });
+  }
+  // What it paid in the last day, by its own log, and what it did not pay for.
+  if (status) {
+    const paid = paidLine(await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/spend?since=24h`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as Spent | null);
+    if (paid) out.push({ ok: null, what: '  paid', detail: paid });
   }
   return out;
 }

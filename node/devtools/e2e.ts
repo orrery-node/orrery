@@ -381,6 +381,8 @@ check('orrery provider init finds a model server and writes provider.json', init
 const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
+const docPaid = doc.find((l) => l.what.trim() === 'paid')?.detail ?? '';
+check('orrery doctor says what the running router paid in the last 24 hours, and what it did not pay for', /^\$0\.\d{6} for \d+ answers in the last 24 h · \d+ of these answers came from the next node after another did not answer/.test(docPaid) && /signed nothing\.$/.test(docPaid), docPaid.slice(0, 170) || 'doctor says nothing about it');
 check('orrery doctor reads the chain, every listing, the wallet and the router, and flags the provider that went dark', docBad.length === 1 && docBad[0] === nodes[0].pda.toBase58().slice(0, 8) && doc.some((l) => l.what === 'router' && l.ok) && doc.some((l) => l.what === 'wallet USDC' && l.ok), `${doc.filter((l) => l.ok).length} ok · flagged: ${docBad.join(', ') || 'none'} (Kestrel, dark: ${doc.find((l) => l.ok === false)?.detail ?? ''})`);
 // How a request and its payment travel to each node: doctor says, from the node's own signed answers.
 const nodeLines = doc.filter((l) => /^  \S/.test(l.what) && l.ok === true);
