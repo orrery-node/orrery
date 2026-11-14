@@ -5,6 +5,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'Your router keeps its own record of every node: how many health checks it made and how many found the node up. It is on `/orrery/status` (`watched`), in `orrery doctor` ("up in 118 of 120 checks this router made over 1 h") and in the MCP `status` tool, next to how many times the node has been paid on chain. Nobody vouches for it; it is what your own router saw.' },
   { who: 'provider', text: '`orrery provider compose --config provider.json` writes a `docker-compose.yml` that runs your node in a container: the official Node image running this package from npm, your config and the node’s folder mounted at their own paths (same key, same listing, same ledger), restart on failure and a health check. A model server on the same machine is reached through the host (`ORRERY_UPSTREAM_URL`), secrets come in by name, and the wallet is never mounted.' },
   { who: 'provider', text: '`orrery provider status` says when your node last answered ("last answer 3 min ago"), and `--json` gives `lastAnswerAt`, so a monitor can tell when a node has stopped getting work.' },
   { who: 'router', text: 'The `ask` tool of `orrery mcp` says how soon each answer started, as the router timed it: "answered by Orrery Seed (76Udba…) in 703 ms".' },

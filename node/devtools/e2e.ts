@@ -504,6 +504,14 @@ const signedAfter = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 check('the router skips a node whose model server is down before sending or paying anything', skipped.status === 503 && /model server down/.test(skippedJ.error?.message ?? '') && signedAfter === signedBefore, `gemma (only Halo lists it) → ${skipped.status}: ${skippedJ.error?.message} · signed total unchanged`);
 const statusNow = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { name: string | null; modelServer: string | null; healthMs: number | null }[] };
 const stateOf = (n: string) => statusNow.providers.find((p) => p.name === n);
+// The same checks kept as a record: how often this router itself found each node up. Halo's model server was switched
+// off mid-run, so some of its checks found it down; Ironbridge was up at every one.
+type WatchedRec = { checks: number; up: number; since: number } | null | undefined;
+const watchedOf = (n: string) => (stateOf(n) as unknown as { watched?: WatchedRec } | undefined)?.watched ?? null;
+const haloW = watchedOf('Halo Compute'), ironW = watchedOf('Ironbridge Compute');
+const docAgain = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
+const watchedLine = (n: string) => docAgain.find((l) => l.what.trim() === 'watched' && l.detail.startsWith(n))?.detail ?? null;
+check('the router keeps its own record of each node: how many health checks it made and how many found the node up, in status and in doctor', !!ironW && ironW.checks >= 2 && ironW.up === ironW.checks && !!haloW && haloW.checks >= 2 && haloW.up < haloW.checks && haloW.up >= 1 && new RegExp(`^Ironbridge Compute up in ${ironW.up} of ${ironW.checks} checks this router made over `).test(watchedLine('Ironbridge Compute') ?? '') && /^Halo Compute up in \d+ of \d+ checks/.test(watchedLine('Halo Compute') ?? ''), `Ironbridge ${ironW ? `${ironW.up}/${ironW.checks}` : 'no record'} · Halo ${haloW ? `${haloW.up}/${haloW.checks}` : 'no record'} · doctor: ${watchedLine('Halo Compute') ?? 'no line'}`);
 check('the router reports each node’s model server in its status and console', stateOf('Halo Compute')?.modelServer === 'down' && stateOf('Ironbridge Compute')?.modelServer === 'up' && typeof stateOf('Ironbridge Compute')?.healthMs === 'number', `/orrery/status · Halo ${stateOf('Halo Compute')?.modelServer} · Ironbridge ${stateOf('Ironbridge Compute')?.modelServer} in ${stateOf('Ironbridge Compute')?.healthMs} ms`);
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);

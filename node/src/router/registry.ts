@@ -1,5 +1,6 @@
 // What the router knows about the network: every Provider account on chain, plus the price manifest each node
 // serves, kept only if its sha256 matches the hash the provider's wallet put on chain.
+import type { Watched } from './watched.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -209,12 +210,23 @@ export class Registry {
   /** Asks every usable node's /health whether its model server answers, so the router can skip a node that is up
    * while its model is not, before paying for a request it cannot serve. A node that does not answer keeps its last
    * state; the router's own failure cool-down covers nodes that are down altogether. */
+  /** This router's own record of every node it has checked, kept across registry refreshes. */
+  private watch = new Map<string, Watched>();
+
+  watched(address: string): Watched | null {
+    return this.watch.get(address) ?? null;
+  }
+
   async checkHealth(): Promise<void> {
     await Promise.all(
       this.usable().map(async (e) => {
         const t0 = Date.now();
+        const rec = this.watch.get(e.address) ?? { checks: 0, up: 0, since: t0 };
+        this.watch.set(e.address, rec);
+        rec.checks += 1;
         const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : (drop(r), null))).catch(() => null)) as { upstream?: string } | null;
         if (!h) return;
+        if (h.upstream !== 'down') rec.up += 1;
         e.healthMs = Date.now() - t0;
         e.healthAt = Date.now();
         if (h.upstream === 'up' || h.upstream === 'down') e.upstream = h.upstream;

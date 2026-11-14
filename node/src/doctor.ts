@@ -6,6 +6,7 @@ import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from 
 import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
+import { watchedText, type Watched } from './router/watched.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
@@ -113,8 +114,13 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { route?: string; channels?: unknown[] } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { route?: string; channels?: unknown[]; providers?: { name: string | null; address: string; watched?: Watched | null }[] } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: `not running at ${o.router}; start it with orrery router --wallet <keypair.json>` });
+  // What the running router has seen for itself: how many of its own checks found each node up.
+  for (const p of status?.providers ?? []) {
+    const said = watchedText(p.watched);
+    if (said) out.push({ ok: null, what: '  watched', detail: `${p.name ?? `${p.address.slice(0, 6)}…`} ${said}` });
+  }
   return out;
 }
 
