@@ -109,12 +109,17 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
         }
       }
       const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
-      const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+      const j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { message?: string } };
       // Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal.
       const spent = r.headers.get('x-orrery-task-spent'), left = r.headers.get('x-orrery-task-left');
       const task = typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const answer = j.choices?.[0]?.message?.content ?? '';
+      // The model ran out of room. A reasoning model thinks first and that counts against the cap, so the whole cap can
+      // go before a word of the answer: the agent is told which, instead of handed an empty or half answer in silence.
+      const cap = Number(a.max_tokens ?? 1024), ranOut = j.choices?.[0]?.finish_reason === 'length';
+      const shown = answer.trim() ? answer : ranOut ? `(no answer: the model used all ${cap} output tokens before it wrote one. A reasoning model thinks first and that counts. Ask again with a larger max_tokens.)` : '(the model returned an empty answer)';
+      const cutOff = answer.trim() && ranOut ? `\n— stopped at max_tokens ${cap}, so the answer is cut off: ask with a larger max_tokens for all of it` : '';
       const who = r.headers.get('x-orrery-provider');
       const rawName = r.headers.get('x-orrery-provider-name');
       const name = rawName ? (() => { try { return decodeURIComponent(rawName); } catch { return rawName; } })() : null;
@@ -129,7 +134,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const payment = r.headers.get('x-orrery-payment') === 'inside' ? 'payment inside the seal' : 'payment in headers its host can read';
       const traveled = r.headers.get('x-orrery-sealed') === '1' ? `sealed to a verified enclave (${r.headers.get('x-orrery-enclave') ?? 'enclave'}), ${payment}`
         : r.headers.get('x-orrery-wire') === '1' ? `sealed to the node’s own key, ${payment}` : 'as plain JSON inside TLS, which the node’s host can read';
-      return text(`${answer}\n\n— answered by ${name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider'}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${skipped}\n— traveled ${traveled}${task}`);
+      return text(`${shown}\n\n— answered by ${name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider'}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${skipped}${cutOff}\n— traveled ${traveled}${task}`);
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);

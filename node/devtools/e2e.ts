@@ -237,6 +237,8 @@ for (let i = 0; i < 50 && !(mcpOut[6] && mcpOut[7] && mcpOut[8] && mcpOut[9]); i
 mcpSend({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'status', arguments: {} } });
 for (let i = 0; i < 50 && !mcpOut[10]; i++) await sleep(200);
 const mcpTask = mcpOut[9]?.result?.content?.[0]?.text ?? '';
+// That ask was capped at 16 tokens and the model server cut its reply there: the agent is told, not left guessing.
+check('an agent is told through orrery mcp when an answer was cut off at its max_tokens', /\n— stopped at max_tokens 16, so the answer is cut off: ask with a larger max_tokens for all of it/.test(mcpTask), (mcpTask.split('\n').find((l) => /max_tokens/.test(l)) ?? 'the tool says nothing about it').slice(0, 120));
 const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';

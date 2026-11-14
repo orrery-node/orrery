@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery mcp`’s `ask` tells an agent when the model ran out of room. An answer cut off at `max_tokens` ends with a line saying so. And when a reasoning model spends the whole cap thinking and writes nothing, the tool says that in words ("no answer: the model used all 1024 output tokens before it wrote one") instead of handing back an empty answer.
 - **Router** · `orrery doctor` says what your running router paid in the last 24 hours, by its own log, and what it did not pay for: answers that came after a node did not answer, or that another node had to finish.
 - **Router** · Your router’s log now keeps which answers were finished by another node after the first stopped mid-answer, and `orrery spend` and the MCP `status` tool count them apart from answers where a node did not answer at all: "1 was finished by another node after the first stopped mid-answer". Either way that first node is signed nothing. `--json` and `/orrery/spend` carry it as `finishedByAnotherNode`.
 - **Node** · `orrery provider compose --package <pkg>` names that package in the command it prints for use inside the container. The file already ran what you asked for (a pinned version, a packed file); the printed `docker compose exec` line named the default npm version.

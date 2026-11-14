@@ -70,7 +70,8 @@ createServer(async (req, res) => {
     }
     frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: { content: (i ? ' ' : '') + words[i] }, finish_reason: null }] });
   }
-  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+  // Like a real model server: a reply the cap cut short ends with finish_reason length.
+  frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [{ index: 0, delta: {}, finish_reason: n < words.length ? 'length' : 'stop' }] });
   frame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: body.model, choices: [], usage: { prompt_tokens: promptTokens, completion_tokens: n - from, total_tokens: promptTokens + n - from, prompt_tokens_details: { cached_tokens: cachedTokens } } });
   res.write('data: [DONE]\n\n');
   res.end();

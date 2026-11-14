@@ -38,6 +38,20 @@ describe('orrery mcp and task budgets', () => {
     assert.match(await named('%E0%A4%A'), /— answered by %E0%A4%A \(76Udba…\)/);
   });
 
+  it('ask says when the model ran out of room: an answer cut off at the cap, or none at all', async () => {
+    const said = async (content: string, finish: string, args: Record<string, unknown> = {}) => (await call('ask', { model: 'm', prompt: 'hi', ...args }, (async () => reply({ choices: [{ message: { content }, finish_reason: finish }] }, 200, { 'x-orrery-provider': '76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8', 'x-orrery-cost': '0.000038' })) as never)).result.content[0].text;
+    const empty = await said('', 'length');
+    assert.match(empty, /^\(no answer: the model used all 1024 output tokens before it wrote one\. A reasoning model thinks first and that counts\. Ask again with a larger max_tokens\.\)\n\n— answered by /);
+    assert.match(empty, /paid \$0\.000038 for this answer/);
+    assert.match(await said('', 'length', { max_tokens: 220 }), /^\(no answer: the model used all 220 output tokens/);
+    const cut = await said('The first half of a', 'length', { max_tokens: 64 });
+    assert.match(cut, /^The first half of a\n\n— answered by /);
+    assert.match(cut, /\n— stopped at max_tokens 64, so the answer is cut off: ask with a larger max_tokens for all of it/);
+    const whole = await said('Hello.', 'stop');
+    assert.ok(!/max_tokens/.test(whole));
+    assert.match(await said('', 'stop'), /^\(the model returned an empty answer\)\n\n— answered by /);
+  });
+
   it('ask can stay with one node, by the name status lists or by its address, and says so when no node has that name', async () => {
     const seen: { url: string; headers?: Record<string, string> }[] = [];
     const fake = async (url: string, init?: { headers?: Record<string, string> }) => {
