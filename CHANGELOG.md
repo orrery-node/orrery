@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.17 · 2026-11-14 02:43 UTC
+
+**Every node carries its track record from Solana, a node’s own books stay behind a key only its folder holds, an agent sees which node answered and can stay with one, and a node warns you about its fee SOL before it runs out.**
 
 - **Router** · The `ask` tool of `orrery mcp` takes an optional `node`: the name `status` lists (any case) or an address, and asks that node only. A name no node has gets the list of names the router knows, and nothing is sent.
 - **Node** · `orrery provider status` also shows the SOL your node key has for fees and about how many payouts that pays for, and says when it is running low; `--json` prints it all for a monitor.
@@ -21,6 +23,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · `orrery provider earnings` ends with what has already landed in your wallet: how many payouts your listing on chain has counted and the total they settled. The node’s local `/orrery/earnings` carries the same as `onChain`.
 - **Everyone** · `orrery doctor` says which nodes list payment inside in their price list on chain (its `sealing` line adds that a router keeps to them from the first request), and `orrery provider check` says whether yours does, or how to list it: `"paymentInside": true` and register again.
 - **Everyone** · A node can put “payment inside” in its price list, whose hash is on chain. A router keeps to the signed flag once it has seen it, but a front that strips the flag, or hides the wire key, before a router has ever reached the node used to get that router’s first requests the old way. Set `paymentInside: true` in provider.json and register again, and the mark rides in the list itself: a router keeps payment inside the seal from its very first request to that node, and sends it nothing in the clear if the wire key is missing. Off for nodes already listed, since it changes the list and a node has to register again; `orrery provider init` turns it on for a new node, which registers anyway.
+
+`npx -y orrery-node@0.1.17`
 
 ## 0.1.16 · 2026-11-13 10:00 UTC
 
