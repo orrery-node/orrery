@@ -33,7 +33,7 @@ export function saveWatched(path: string, m: Map<string, Watched>): void {
   }
 }
 
-const span = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 2 * 86_400_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`);
+export const span = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 2 * 86_400_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`);
 
 /** "up in 118 of 120 checks this router made over 1 h"; empty when there is no record yet. */
 export function watchedText(w: Watched | null | undefined, now = Date.now()): string {

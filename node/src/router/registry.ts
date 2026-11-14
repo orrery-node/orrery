@@ -33,6 +33,8 @@ export type ProviderEntry = {
   /** How long the node's /health took to answer, and when, at the last check that got an answer. */
   healthMs?: number;
   healthAt?: number;
+  /** When this router's health checks of the node first went unanswered, until one is answered again. */
+  unansweredAt?: number;
   /** The node's own encryption key for requests on the wire, kept only if the node key on chain signed it. Null when
    * the node has none (an older node); requests to it travel as plain JSON inside TLS. */
   wire?: Buffer | null;
@@ -115,6 +117,7 @@ export class Registry {
           entry.upstream = prev.upstream;
           entry.healthMs = prev.healthMs;
           entry.healthAt = prev.healthAt;
+          entry.unansweredAt = prev.unansweredAt;
         }
         if (!same && p.active) {
           try {
@@ -234,7 +237,11 @@ export class Registry {
         this.watch.set(e.address, rec);
         rec.checks += 1;
         const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : (drop(r), null))).catch(() => null)) as { upstream?: string } | null;
-        if (!h) return;
+        if (!h) {
+          e.unansweredAt ??= Date.now();
+          return;
+        }
+        e.unansweredAt = undefined;
         if (h.upstream !== 'down') rec.up += 1;
         e.healthMs = Date.now() - t0;
         e.healthAt = Date.now();

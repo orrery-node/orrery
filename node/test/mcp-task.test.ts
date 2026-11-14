@@ -101,6 +101,18 @@ describe('orrery mcp and task budgets', () => {
     assert.match(t, /New: model server up, request and payment sealed to it, paid out once on chain$/m);
   });
 
+  it('status lists a node that stopped answering as that, with how long, and not as up', async () => {
+    const now = Date.now();
+    const out = await call('status', {}, async (url) => (url.endsWith('/orrery/status') ? reply({ spentToday: '0', channels: [], providers: [
+      { address: 'A1', name: 'Gone', modelServer: 'up', healthMs: 12, sealing: 'inside', redeems: 9, answering: false, unansweredSince: now - 180_000, watched: { checks: 10, up: 4, since: now - 300_000 } },
+      { address: 'B2', name: 'Here', modelServer: 'up', healthMs: 30, sealing: 'inside', redeems: 2, answering: true },
+    ] }) : reply({ rows: [] })));
+    const t = out.result.content[0].text;
+    assert.match(t, /Gone: not answering health checks for 3 min, request and payment sealed to it, paid out 9 times on chain, up in 4 of 10 checks this router made over 5 min/);
+    assert.ok(!/Gone: model server up/.test(t));
+    assert.match(t, /Here: model server up \(30 ms\)/);
+  });
+
   it('status tells an agent how each node gets the request and the payment', async () => {
     const out = await call('status', {}, async (url) => {
       if (url.endsWith('/orrery/status')) return reply({ spentToday: '0', channels: [], providers: [

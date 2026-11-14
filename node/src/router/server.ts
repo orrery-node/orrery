@@ -323,6 +323,8 @@ export class Router {
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,
       // This router's own record of the node: health checks made, and how many found it up.
       watched: this.o.registry.watched(e.address),
+      // Whether its last health check was answered (null before the first check), and since when it has not been.
+      answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
       // How a request and its payment go to this node: inside (both sealed to its own key), request (sealed, payment in
       // headers), plain (JSON inside TLS), or withheld (it showed a signed wire key before and shows none now).
       sealing: e.wire ? (e.wireInside ? 'inside' : 'request') : this.o.registry.pinned(e.address) ? 'withheld' : 'plain',
