@@ -156,6 +156,12 @@ describe('orrery mcp and task budgets', () => {
     assert.match(await withSkips({ answers: 2, nodes: 3 }), /last 24h by model:\nllama-3\.3-70b: 5 answers, \$0\.000100\n2 of these answers came from the next node after another did not answer \(3 skipped in all\)\. A node that does not answer is signed nothing\.$/);
     assert.ok(!/did not answer/.test(await withSkips({ answers: 0, nodes: 0 })));
     assert.ok(!/did not answer/.test(await withSkips(null)));
+    const finished = (await call('status', {}, async (url) => {
+      if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000100', channels: [], providers: [] });
+      if (url.includes('/orrery/spend')) return reply({ rows: [{ key: 'llama-3.3-70b', answers: 5, usd: '0.000100' }], afterANodeDidNotAnswer: { answers: 0, nodes: 0 }, finishedByAnotherNode: 1 });
+      return reply({ tasks: [] });
+    })).result.content[0].text as string;
+    assert.match(finished, /\n1 of these answers was finished by another node after the first stopped mid-answer\. A node that does not finish an answer is signed nothing for it\.$/);
   });
 
   it('status lists the tasks with what each has left', async () => {

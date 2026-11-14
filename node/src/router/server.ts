@@ -293,7 +293,8 @@ export class Router {
         const spendTrips = readTrips(home('router', 'trips.jsonl'));
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: skipped(spendTrips, windowMs(since)) });
+        const skips = skipped(spendTrips, windowMs(since));
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · Your router’s log now keeps which answers were finished by another node after the first stopped mid-answer, and `orrery spend` and the MCP `status` tool count them apart from answers where a node did not answer at all: "1 was finished by another node after the first stopped mid-answer". Either way that first node is signed nothing. `--json` and `/orrery/spend` carry it as `finishedByAnotherNode`.
 - **Node** · `orrery provider compose --package <pkg>` names that package in the command it prints for use inside the container. The file already ran what you asked for (a pinned version, a packed file); the printed `docker compose exec` line named the default npm version.
 - **Router** · `orrery mcp`’s `status` tool tells an agent the same under its last 24 hours of spend: how many answers came from the next node after another did not answer, and that such a node is signed nothing.
 - **Router** · `orrery spend` says how many of its answers came from the next node after another did not answer, and that a node that does not answer is signed nothing. Your router already noted it on each answer; now the total shows it, and `--json` and `/orrery/spend` carry the count.

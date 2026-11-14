@@ -30,12 +30,29 @@ describe('orrery spend', () => {
   it('counts the answers that came from the next node after another did not answer, and says those nodes were signed nothing', () => {
     const now = 1_000_000_000;
     const trips = [t(now - 1_000, 'gpt-oss-120b', 'Seed', '0.000014', { fellThrough: 1 }), t(now - 2_000, 'gpt-oss-120b', 'Seed', '0.000014'), t(now - 3_000, 'gpt-oss-120b', 'Vault', '0.000013', { fellThrough: 2 }), t(now - 90_000_000, 'gpt-oss-120b', 'Seed', '1.000000', { fellThrough: 1 })];
-    assert.deepEqual(skipped(trips, windowMs('24h'), now), { answers: 2, nodes: 3 });
-    assert.deepEqual(skipped(trips, Infinity, now), { answers: 3, nodes: 4 });
+    assert.deepEqual(skipped(trips, windowMs('24h'), now), { answers: 2, nodes: 3, resumed: 0 });
+    assert.deepEqual(skipped(trips, Infinity, now), { answers: 3, nodes: 4, resumed: 0 });
     assert.equal(skipNote({ answers: 2, nodes: 3 }), '2 of these answers came from the next node after another did not answer (3 skipped in all). A node that does not answer is signed nothing.');
     assert.equal(skipNote({ answers: 1, nodes: 1 }), '1 of these answers came from the next node after another did not answer. A node that does not answer is signed nothing.');
     assert.equal(skipNote({ answers: 0, nodes: 0 }), '');
-    assert.deepEqual(skipped([t(now, 'm', 'Seed', '0.000001')], Infinity, now), { answers: 0, nodes: 0 });
+    assert.deepEqual(skipped([t(now, 'm', 'Seed', '0.000001')], Infinity, now), { answers: 0, nodes: 0, resumed: 0 });
+  });
+
+  it('keeps apart the answers another node finished after the first stopped mid-answer, in the log and in the line', () => {
+    const now = 1_000_000_000;
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-spend-'));
+    const path = join(dir, 'trips.jsonl');
+    appendTrip(path, t(now - 1_000, 'gpt-oss-120b', 'Seed', '0.000014', { fellThrough: 1, resumed: true }));
+    appendTrip(path, t(now - 2_000, 'gpt-oss-120b', 'Vault', '0.000013', { fellThrough: 2 }));
+    appendTrip(path, t(now - 3_000, 'gpt-oss-120b', 'Seed', '0.000014'));
+    const back = readTrips(path);
+    assert.equal(back[0].resumed, true);
+    assert.equal(back[1].resumed, undefined);
+    assert.deepEqual(skipped(back, Infinity, now), { answers: 1, nodes: 2, resumed: 1 });
+    assert.equal(skipNote({ answers: 1, nodes: 2, resumed: 1 }), '1 of these answers came from the next node after another did not answer (2 skipped in all); 1 was finished by another node after the first stopped mid-answer. A node that does not answer or does not finish is signed nothing.');
+    assert.equal(skipNote({ answers: 0, nodes: 0, resumed: 2 }), '2 of these answers were finished by another node after the first stopped mid-answer. A node that does not finish an answer is signed nothing for it.');
+    assert.equal(skipNote({ answers: 2, nodes: 2, resumed: 0 }), '2 of these answers came from the next node after another did not answer. A node that does not answer is signed nothing.');
+    assert.equal(skipNote({ answers: 0, nodes: 0, resumed: 0 }), '');
   });
 
   it('appends one line per answer and skips lines it cannot read', () => {
