@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery spend` says how many of its answers came from the next node after another did not answer, and that a node that does not answer is signed nothing. Your router already noted it on each answer; now the total shows it, and `--json` and `/orrery/spend` carry the count.
 - **Node** · `orrery provider start` says, once the node is up, the one thing left before it earns, or that it is ready. A node started before it was listed used to start without a word and wait for routers that could not find it.
 - **Node** · `orrery provider status` says when what is waiting gets paid out: "pays out by itself at $0.05" while it is under your node’s minimum, with the command that does it now, and "at the next round" once it is there.
 - **Node** · `orrery provider register` checks before it sends. A wallet without the SOL a listing takes is told how much that is (about 0.0028 SOL, once: the rent for the listing plus the fee) in place of a raw chain error, a `publicUrl` still at the `provider init` placeholder is not listed, and a missing wallet file says so. After listing it points at `provider check`.

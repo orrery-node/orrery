@@ -20,7 +20,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } f
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { paidInside, readTrips, sealedTrips, summarize, windowMs } from './spend.ts';
+import { paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -514,13 +514,17 @@ async function main() {
     const byFlag = flag('by', 'model');
     const by = byFlag === 'provider' || byFlag === 'task' ? byFlag : 'model';
     const since = flag('since', '24h')!;
-    const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
-    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })) }, null, 2));
+    const spendTrips = readTrips(home('router', 'trips.jsonl'));
+    const { rows, total } = summarize(spendTrips, by, windowMs(since));
+    // Answers that came from the next node after another did not answer: that node was signed nothing.
+    const skips = skipped(spendTrips, windowMs(since));
+    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })), afterANodeDidNotAnswer: skips }, null, 2));
     if (!total.answers) return console.log(`No answers in the last ${since}. The router logs each answer it pays for to ${home('router', 'trips.jsonl')}.`);
     const line = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => `${r.key.padEnd(26)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r.cacheKept ? `  ${r.cacheKept} kept for cache` : ''}`;
     console.log(`last ${since}, by ${by}`);
     for (const r of rows) console.log(line(r));
     console.log(line(total));
+    if (skips.answers) console.log(skipNote(skips));
     return;
   }
   if (cmd === 'doctor') {

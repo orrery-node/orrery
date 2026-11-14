@@ -21,7 +21,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, readTrips, summarize, windowMs } from '../spend.ts';
+import { appendTrip, readTrips, skipped, summarize, windowMs } from '../spend.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
@@ -290,9 +290,10 @@ export class Router {
         const since = url.searchParams.get('since') ?? '24h';
         const byParam = url.searchParams.get('by');
         const by = byParam === 'provider' || byParam === 'task' ? byParam : 'model';
-        const { rows, total } = summarize(readTrips(home('router', 'trips.jsonl')), by, windowMs(since));
+        const spendTrips = readTrips(home('router', 'trips.jsonl'));
+        const { rows, total } = summarize(spendTrips, by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total) });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: skipped(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

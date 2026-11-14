@@ -69,6 +69,20 @@ export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task'
   return { rows: [...rows.values()].sort((a, b) => (b.units > a.units ? 1 : b.units < a.units ? -1 : b.answers - a.answers)), total };
 }
 
+/** Of the answers in the window, how many came from the next node after another did not answer, and how many nodes
+ * were passed over in all. The router logs it on each answer (`fellThrough`). */
+export function skipped(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; nodes: number } {
+  const after = trips.filter((t) => now - t.at <= sinceMs && (t.fellThrough ?? 0) > 0);
+  return { answers: after.length, nodes: after.reduce((a, t) => a + (t.fellThrough ?? 0), 0) };
+}
+
+/** The line under a spend total for those answers, or nothing when there were none. A node is paid by a voucher the
+ * router signs after an answer; one that does not answer gets no voucher. */
+export function skipNote(s: { answers: number; nodes: number }): string {
+  if (!s.answers) return '';
+  return `${s.answers} of these answers came from the next node after another did not answer${s.nodes > s.answers ? ` (${s.nodes} skipped in all)` : ''}. A node that does not answer is signed nothing.`;
+}
+
 /** Every sealed answer in the window, newest first: which machine handled it and what the router had verified. */
 /** Of the answers in the window, how many were paid inside the seal (the channel and voucher in the sealed body) rather
  * than in headers a node's host can read. A node logs `inside` on each answer it served that way. */

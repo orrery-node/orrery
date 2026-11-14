@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { appendTrip, paidInside, readTrips, sealedTrips, summarize, windowMs } from '../src/spend.ts';
+import { appendTrip, paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs } from '../src/spend.ts';
 
 const t = (at: number, model: string, providerName: string, cost: string, extra = {}) => ({ at, model, provider: providerName.toLowerCase(), providerName, inputTokens: 100, outputTokens: 20, cost, ...extra });
 
@@ -25,6 +25,17 @@ describe('orrery spend', () => {
     assert.equal(total.inputTokens, 300);
     assert.equal(rows[1].cacheKept, 1);
     assert.deepEqual(summarize(trips, 'provider', Infinity, now).rows.map((r) => r.key), ['Seed', 'Vault']);
+  });
+
+  it('counts the answers that came from the next node after another did not answer, and says those nodes were signed nothing', () => {
+    const now = 1_000_000_000;
+    const trips = [t(now - 1_000, 'gpt-oss-120b', 'Seed', '0.000014', { fellThrough: 1 }), t(now - 2_000, 'gpt-oss-120b', 'Seed', '0.000014'), t(now - 3_000, 'gpt-oss-120b', 'Vault', '0.000013', { fellThrough: 2 }), t(now - 90_000_000, 'gpt-oss-120b', 'Seed', '1.000000', { fellThrough: 1 })];
+    assert.deepEqual(skipped(trips, windowMs('24h'), now), { answers: 2, nodes: 3 });
+    assert.deepEqual(skipped(trips, Infinity, now), { answers: 3, nodes: 4 });
+    assert.equal(skipNote({ answers: 2, nodes: 3 }), '2 of these answers came from the next node after another did not answer (3 skipped in all). A node that does not answer is signed nothing.');
+    assert.equal(skipNote({ answers: 1, nodes: 1 }), '1 of these answers came from the next node after another did not answer. A node that does not answer is signed nothing.');
+    assert.equal(skipNote({ answers: 0, nodes: 0 }), '');
+    assert.deepEqual(skipped([t(now, 'm', 'Seed', '0.000001')], Infinity, now), { answers: 0, nodes: 0 });
   });
 
   it('appends one line per answer and skips lines it cannot read', () => {
