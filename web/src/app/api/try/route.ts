@@ -64,7 +64,8 @@ export async function POST(req: Request) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
-        max_tokens: 220,
+        // Room for a reasoning model to think and still answer: at 220 one question in six came back empty.
+        max_tokens: 600,
         messages: [
           { role: 'system', content: ORRERY_FACTS },
           { role: 'user', content: prompt },
@@ -85,10 +86,19 @@ export async function POST(req: Request) {
       const budget = j.error?.code === 'budget';
       return json(budget ? 429 : 502, { error: budget ? 'The demo has spent its $0.50 for today. Run your own router with npx -y orrery-node router.' : `The network could not answer: ${j.error?.message ?? r.status}` });
     }
+    // A reasoning model can still spend its whole budget thinking and say nothing. Ask once more before a visitor is
+    // shown a blank answer; if that is empty too, say so in words.
+    let answer = j.choices?.[0]?.message?.content ?? '';
+    if (!answer.trim()) {
+      const again = await ask();
+      const ja = (await again.json().catch(() => ({}))) as typeof j;
+      if (again.ok) answer = ja.choices?.[0]?.message?.content ?? '';
+    }
+    if (!answer.trim()) return json(502, { error: 'The model spent its whole budget thinking and never answered. Ask again, or pick another model.' });
     const trip = d.router.trips[d.router.trips.length - 1];
     const ch = d.channels.list().find((c) => c.provider === trip?.provider);
     return json(200, {
-      answer: j.choices?.[0]?.message?.content ?? '',
+      answer,
       model: trip?.model ?? model,
       route: trip?.route ?? 'auto',
       provider: { address: trip?.provider, name: trip?.providerName },
