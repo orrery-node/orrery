@@ -1,6 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { watchedText } from '../src/router/watched.ts';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadWatched, saveWatched, watchedText } from '../src/router/watched.ts';
+
+describe('a router’s record on disk', () => {
+  it('comes back as it was written, so a restart does not start the record over', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'orrery-watched-')), 'router', 'watched.json');
+    const m = new Map([['NodeA', { checks: 120, up: 118, since: 1_794_000_000_000 }], ['NodeB', { checks: 3, up: 0, since: 1_794_000_100_000 }]]);
+    saveWatched(path, m);
+    assert.deepEqual([...loadWatched(path)], [...m]);
+    assert.equal(JSON.parse(readFileSync(path, 'utf8')).NodeA.up, 118);
+  });
+
+  it('starts empty from a missing or broken file, and drops entries that are not a record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-watched-'));
+    assert.equal(loadWatched(join(dir, 'none.json')).size, 0);
+    writeFileSync(join(dir, 'broken.json'), '{not json');
+    assert.equal(loadWatched(join(dir, 'broken.json')).size, 0);
+    writeFileSync(join(dir, 'mixed.json'), JSON.stringify({ Good: { checks: 5, up: 4, since: 10 }, MoreUpThanChecks: { checks: 2, up: 9, since: 10 }, Negative: { checks: -1, up: 0, since: 10 }, Text: 'x' }));
+    assert.deepEqual([...loadWatched(join(dir, 'mixed.json')).keys()], ['Good']);
+    assert.equal(loadWatched(undefined).size, 0);
+  });
+});
 
 describe('a router’s own record of a node', () => {
   it('says how many of its checks found the node up, and over how long', () => {

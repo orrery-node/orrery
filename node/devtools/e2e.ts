@@ -127,7 +127,8 @@ await mintTo(conn, admin, usdc, userTokens.address, admin, 100n * USD);
 const userOrey = await getOrCreateAssociatedTokenAccount(conn, admin, orey, user.publicKey);
 await mintTo(conn, admin, orey, userOrey.address, admin, 20_000_000n * TOKEN);
 const session = loadOrCreateKeypair(join(WORK, 'home/router/session.json'));
-const registry = new Registry(conn, { allowDev: true, measurements: [] });
+const WATCHED = join(WORK, 'home/router/watched.json');
+const registry = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(conn, { allowDev: true, measurements: [] }, undefined, WATCHED);
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
 const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b') });
 await router.start();
@@ -524,6 +525,10 @@ const watchedOf = (n: string) => (stateOf(n) as unknown as { watched?: WatchedRe
 const haloW = watchedOf('Halo Compute'), ironW = watchedOf('Ironbridge Compute');
 const docAgain = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const watchedLine = (n: string) => docAgain.find((l) => l.what.trim() === 'watched' && l.detail.startsWith(n))?.detail ?? null;
+// The record is on disk, so a router that restarts goes on counting from where it was.
+const restarted = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(conn, { allowDev: true, measurements: [] }, undefined, WATCHED);
+const keptIron = (restarted as unknown as { watched?: (a: string) => WatchedRec }).watched?.(nodes[1].pda.toBase58()) ?? null;
+check('a router that restarts keeps its record of each node: it is read back from its home folder', !!ironW && !!keptIron && keptIron.checks >= ironW.checks && keptIron.up >= ironW.up && keptIron.since === ironW.since && existsSync(WATCHED), `before: ${ironW ? `${ironW.up}/${ironW.checks}` : 'no record'} · a new registry on the same folder starts at: ${keptIron ? `${keptIron.up}/${keptIron.checks}` : 'nothing'}`);
 check('the router keeps its own record of each node: how many health checks it made and how many found the node up, in status and in doctor', !!ironW && ironW.checks >= 2 && ironW.up === ironW.checks && !!haloW && haloW.checks >= 2 && haloW.up < haloW.checks && haloW.up >= 1 && new RegExp(`^Ironbridge Compute up in ${ironW.up} of ${ironW.checks} checks this router made over `).test(watchedLine('Ironbridge Compute') ?? '') && /^Halo Compute up in \d+ of \d+ checks/.test(watchedLine('Halo Compute') ?? ''), `Ironbridge ${ironW ? `${ironW.up}/${ironW.checks}` : 'no record'} · Halo ${haloW ? `${haloW.up}/${haloW.checks}` : 'no record'} · doctor: ${watchedLine('Halo Compute') ?? 'no line'}`);
 check('the router reports each node’s model server in its status and console', stateOf('Halo Compute')?.modelServer === 'down' && stateOf('Ironbridge Compute')?.modelServer === 'up' && typeof stateOf('Ironbridge Compute')?.healthMs === 'number', `/orrery/status · Halo ${stateOf('Halo Compute')?.modelServer} · Ironbridge ${stateOf('Ironbridge Compute')?.modelServer} in ${stateOf('Ironbridge Compute')?.healthMs} ms`);
 if (process.env.E2E_HOLD) {

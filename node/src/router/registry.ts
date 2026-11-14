@@ -1,6 +1,6 @@
 // What the router knows about the network: every Provider account on chain, plus the price manifest each node
 // serves, kept only if its sha256 matches the hash the provider's wallet put on chain.
-import type { Watched } from './watched.ts';
+import { loadWatched, saveWatched, type Watched } from './watched.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -73,9 +73,10 @@ export class Registry {
    * payment inside, and it does not send that node a request in the clear. Kept in `pinPath` across restarts. */
   private pins = new Set<string>();
 
-  constructor(private conn: Connection, private tee: TeePolicy, private pinPath?: string) {
+  constructor(private conn: Connection, private tee: TeePolicy, private pinPath?: string, private watchPath?: string) {
     // An unreadable file starts the pins over; they are filled again from the next signed answers.
     this.pins = readPins(pinPath);
+    this.watch = loadWatched(watchPath);
   }
 
   /** Whether this node has shown this router a signed wire key that reads payment inside. */
@@ -217,8 +218,9 @@ export class Registry {
   /** Asks every usable node's /health whether its model server answers, so the router can skip a node that is up
    * while its model is not, before paying for a request it cannot serve. A node that does not answer keeps its last
    * state; the router's own failure cool-down covers nodes that are down altogether. */
-  /** This router's own record of every node it has checked, kept across registry refreshes. */
-  private watch = new Map<string, Watched>();
+  /** This router's own record of every node it has checked, kept across registry refreshes and, when it has a home
+   * folder, across restarts (router/watched.json). */
+  private watch: Map<string, Watched>;
 
   watched(address: string): Watched | null {
     return this.watch.get(address) ?? null;
@@ -239,6 +241,7 @@ export class Registry {
         if (h.upstream === 'up' || h.upstream === 'down') e.upstream = h.upstream;
       }),
     );
+    if (this.watchPath) saveWatched(this.watchPath, this.watch);
   }
 
   private burnSeen = new Map<string, { usdc: bigint; burned: bigint }>();
