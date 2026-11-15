@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · A router that cannot open a payment channel because of its own wallet says that, and what to do: no wallet ("start it with orrery router --wallet"), or a wallet without the money ("has $0.00 USDC and 0.0000 SOL; opening a channel locks $2.00 and takes about 0.005 SOL"). It answers 402 with code `wallet`. Before, the request came back as "all providers failed" and was counted against the node, which had done nothing.
 - **Node** · `orrery provider check` says what listing will cost before you list: "takes about 0.0028 SOL once, the rent for the listing", read from the cluster you are on, and the same amount is in the next-step line.
 - **Node** · `orrery provider check --json` exits 1 when the node is not ready, as the plain form does. It printed the failing lines and still exited 0, so a monitor or a script reading the exit code saw a healthy node.
 - **Node** · `orrery provider check` asks each model you list one small thing, straight to your model server (the first three): "llama3.1:8b answered a test request in 812 ms". A model that is listed but not pulled, not loaded or out of memory now fails in front of you, with the server’s own reason, and not later in front of a router.

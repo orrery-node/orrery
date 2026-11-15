@@ -13,7 +13,7 @@ import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } f
 import { away, nextWait, patienceFrom } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
-import { Channels } from './channels.ts';
+import { Channels, PayerProblem } from './channels.ts';
 import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
 import { ROUTES, applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
@@ -482,6 +482,8 @@ export class Router {
     const cands = route === 'auto' || route === 'speed' ? [...top.filter((c) => !this.busy(c.entry.address)), ...top.filter((c) => this.busy(c.entry.address))] : top;
     let prefill: string | null = null;
     const counted = new Set<string>();
+    // A channel that could not be opened because of this router's own wallet: nothing a node did.
+    let payer: PayerProblem | null = null;
     for (let round = 0; ; round++) {
       let allAway = true;
       for (let i = 0; i < cands.length; i++) {
@@ -492,6 +494,13 @@ export class Router {
           if (prefill === null) this.affinity.remember(keys, cand.entry.address);
           return;
         } catch (err) {
+          // The wallet could not pay for a channel to this node. Another node may already have one open, so the next is
+          // tried; this one is not counted against, and waiting would change nothing.
+          if (err instanceof PayerProblem) {
+            payer = err;
+            allAway = false;
+            continue;
+          }
           if (round === 0) tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
           if (!away(err)) allAway = false;
           // One request counts once against a node, however many rounds it took.
@@ -526,7 +535,9 @@ export class Router {
       await new Promise((r) => setTimeout(r, wait));
     }
     // The client's SDK reads Retry-After before it tries again; by now this request has already waited its own share.
-    throw new Unserved(`all providers failed: ${tried.join('; ')}`, 502, 'all_failed', { 'retry-after': '3' });
+    // Nothing a node did: the router's own wallet could not pay. Said as that, with what to do.
+    if (payer && !tried.length) throw new Unserved(payer.message, 402, 'wallet');
+    throw new Unserved(`all providers failed: ${tried.join('; ')}${payer ? `; and ${payer.message}` : ''}`, 502, 'all_failed', { 'retry-after': '3' });
   }
 
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {

@@ -447,6 +447,16 @@ check('the router’s log keeps which answers another node finished after the fi
 const consoleHtml = await (await fetch(`${ROUTER}/`)).text();
 const consoleOutside = [...consoleHtml.matchAll(/(?:https?:)?\/\/([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)].map((m) => m[1]).filter((h) => h !== '127.0.0.1');
 check('the router’s console page asks nothing of any other computer and carries its typefaces itself', consoleOutside.length === 0 && (consoleHtml.match(/@font-face/g) ?? []).length === 2 && !/<link\b/i.test(consoleHtml), consoleOutside.length ? `the page points a browser at ${[...new Set(consoleOutside)].join(', ')}` : `${Math.round(consoleHtml.length / 1024)} kB page, 2 typefaces inside it, no host but this computer`);
+// A second router, started with no wallet: it cannot open a channel, and that is its own problem, not a node's.
+const bareHome = join(WORK, 'home-no-wallet');
+const bare = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'router', '--port', '17290', '--rpc', RPC, '--mint', usdc.toBase58()], { stdio: 'ignore', env: { ...process.env, ORRERY_HOME: bareHome } });
+for (let i = 0; i < 100; i++) { if (await fetch('http://127.0.0.1:17290/orrery/status').then((r) => r.ok).catch(() => false)) break; await sleep(200); }
+const bareAsk = await fetch('http://127.0.0.1:17290/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }) });
+const bareSaid = (await bareAsk.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+const bareStatus = (await (await fetch('http://127.0.0.1:17290/orrery/status')).json()) as { providers: { name: string | null; observed: { ok: number; fail: number }; watched: { sent?: number } | null }[] };
+bare.kill();
+const blamed = bareStatus.providers.filter((p) => p.observed.fail > 0 || (p.watched?.sent ?? 0) > 0).map((p) => p.name);
+check('a router with no wallet says so and what to do, and counts the request against no node', bareAsk.status === 402 && bareSaid.error?.code === 'wallet' && /orrery router --wallet <keypair\.json>/.test(bareSaid.error?.message ?? '') && blamed.length === 0, `${bareAsk.status} ${bareSaid.error?.code}: ${(bareSaid.error?.message ?? '').slice(0, 110)} · counted against: ${blamed.join(', ') || 'no node'}`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

@@ -30,6 +30,18 @@ export type Spend = { day: string; units: bigint };
  * the first, so the request fails for this node and the next one asks again. */
 export class ChannelUnknown extends Error {}
 
+/** A request that could not be paid for because of this router's own wallet: none, or one without the money a channel
+ * takes. Not the node's doing, so it is not counted against the node, and the caller is told what to do. */
+export class PayerProblem extends Error {}
+
+/** Why this wallet cannot open a channel, in words, or null when it can (and the failure was something else). */
+export function walletProblem(o: { wallet: string | null; lamports: number; usdc: bigint; deposit: bigint }): string | null {
+  if (!o.wallet) return 'this router has no wallet, so it cannot open a payment channel. Start it with: orrery router --wallet <keypair.json>';
+  if (o.usdc >= o.deposit && o.lamports >= 5_000_000) return null;
+  const dollars = (u: bigint) => `$${(Number(u) / 1e6).toFixed(2)}`;
+  return `your wallet ${o.wallet} has ${dollars(o.usdc)} USDC and ${(o.lamports / 1e9).toFixed(4)} SOL. Opening a channel locks ${dollars(o.deposit)} of USDC and takes about 0.005 SOL for rent and fees. Send it both and ask again`;
+}
+
 export class Channels {
   private map = new Map<string, ChannelState>();
   private opening = new Map<string, Promise<ChannelState>>();
@@ -214,7 +226,7 @@ export class Channels {
   }
 
   private async open(provider: string, deposit: bigint): Promise<ChannelState> {
-    if (!this.wallet) throw new Error('no wallet configured: the router needs one to open a channel (orrery router --wallet <keypair.json>)');
+    if (!this.wallet) throw new PayerProblem(walletProblem({ wallet: null, lamports: 0, usdc: 0n, deposit })!);
     const id = randomBytes(8).readBigUInt64LE();
     const providerKey = new PublicKey(provider);
     const wallet = this.wallet;
@@ -225,7 +237,13 @@ export class Channels {
       // A transaction can land while its confirmation times out. The channel id is ours alone, so if its account now
       // exists with our session key, it is open; opening another would lock a second deposit.
       const info = await this.conn.getAccountInfo(channel, 'confirmed').catch(() => null);
-      if (!info || !decodeChannel(info.data).sessionKey.equals(this.session.publicKey)) throw e;
+      if (!info || !decodeChannel(info.data).sessionKey.equals(this.session.publicKey)) {
+        // It did not open. When the wallet is why, say that: it is not the node's failure.
+        const lamports = await this.conn.getBalance(wallet.publicKey).catch(() => null);
+        const usdc = await this.conn.getTokenAccountBalance(pda.ata(wallet.publicKey, this.mint)).then((b) => BigInt(b.value.amount)).catch(() => 0n);
+        const why = lamports === null ? null : walletProblem({ wallet: wallet.publicKey.toBase58(), lamports, usdc, deposit });
+        throw why ? new PayerProblem(why) : e;
+      }
     }
     const state: ChannelState = {
       provider, channel: channel.toBase58(), id: id.toString(), deposit, cumulative: 0n,
