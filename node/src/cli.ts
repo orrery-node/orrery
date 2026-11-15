@@ -584,7 +584,7 @@ async function main() {
     if (sub === 'new') {
       const out = resolvePath(expand(flag('out', home('wallet.json'))!));
       const { address } = newWallet(out);
-      return console.log(walletNextSteps(out, address, flag('deposit', '2')!, CLI));
+      return console.log(walletNextSteps(out, address, flag('deposit', '2')!, CLI, out === resolvePath(home('wallet.json')) && !process.env.ORRERY_WALLET));
     }
     if (sub === 'address') {
       const path = expand(flag('wallet', process.env.ORRERY_WALLET ?? home('wallet.json'))!);

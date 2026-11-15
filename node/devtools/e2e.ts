@@ -1411,6 +1411,7 @@ check('a node that knows its wallet only by its address sends the register step 
 const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
 const walkDoctorRouter = walkDoctor.text.split('\n').find((l) => /\brouter\s+not running/.test(l)) ?? '';
 check('orrery doctor, with the wallet orrery wallet new made, says to start the router without --wallet', /start it with \S+ router$/.test(walkDoctorRouter.trim()) && !walkDoctorRouter.includes('<keypair.json>'), walkDoctorRouter.trim().slice(0, 120) || 'no router line');
+check('orrery wallet new, at the default place, says what comes next without --wallet, since that is the wallet everything uses', /\nthen {2}\S+ router {3}uses this wallet\n/.test(walk1.text) && !/router --wallet|doctor --wallet|init --wallet/.test(walk1.text), (walk1.text.split('\n').find((l) => l.startsWith('then')) ?? 'no then line').trim().slice(0, 100));
 check('a new operator with no Solana tools goes from nothing to a paid answer with four commands and one deposit: wallet new, provider init, register --fund-key, provider start',
   walk1.code === 0 && !!walkWallet && walk2.code === 0 && walletOf(walkCfg) === join(walkHome, '.orrery', 'wallet.json') && walk3.code === 0 && walkKeyLamports === 10_000_000
   && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,

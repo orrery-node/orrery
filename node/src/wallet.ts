@@ -17,16 +17,18 @@ export function newWallet(path: string): { address: string } {
 }
 
 /** What to do with a new wallet: what to send it and the commands that come next, for a router and for a node. */
-export function walletNextSteps(path: string, address: string, depositUsd: string, cli = 'orrery'): string {
+export function walletNextSteps(path: string, address: string, depositUsd: string, cli = 'orrery', atDefault = false): string {
+  // A wallet at the default place is the one the router, doctor and provider init use without being told.
+  const w = atDefault ? '' : ` --wallet ${path}`;
   return [
     `wrote ${path}: a new Solana wallet, readable only by you. Back it up: there is no other copy and nobody can recover it.`,
     `address  ${address}`,
     'To use the network, send that address on Solana:',
     '  about 0.01 SOL   for transaction fees and the rent of a payment channel',
     `  USDC to spend    $${depositUsd} opens the first channel; close a channel and what you did not spend comes back`,
-    `then  ${cli} router --wallet ${path}   (a wallet at the default place is used without --wallet)`,
-    `      ${cli} doctor --wallet ${path}   reads its balances and says what is ready`,
+    atDefault ? `then  ${cli} router   uses this wallet` : `then  ${cli} router${w}   (a wallet at the default place is used without --wallet)`,
+    `      ${cli} doctor${w}   reads its balances and says what is ready`,
     `To run a node instead, send it about 0.013 SOL and no USDC: the listing’s rent and fee money for the node’s key.`,
-    `then  ${cli} provider init --wallet ${path}   (writes the node’s config with this wallet in it)`,
+    `then  ${cli} provider init${w}   (writes the node’s config with this wallet in it)`,
   ].join('\n');
 }

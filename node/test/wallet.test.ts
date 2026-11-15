@@ -43,4 +43,11 @@ describe('orrery wallet new', () => {
     const secret = (JSON.parse(readFileSync(path, 'utf8')) as number[]).slice(0, 32).join(',');
     assert.ok(!said.includes(secret) && !/\[\d+,\d+/.test(said), 'the key itself is never printed');
   });
+
+  it('names no --wallet for a wallet at the default place, since that is the one the router and doctor use', () => {
+    const said = walletNextSteps('/h/.orrery/wallet.json', 'Addr111', '2', 'orrery', true);
+    assert.match(said, /\nthen {2}orrery router {3}uses this wallet\n {6}orrery doctor {3}reads its balances and says what is ready\n/);
+    assert.ok(!/router --wallet|doctor --wallet/.test(said), said);
+    assert.match(said, /\nthen {2}orrery provider init {3}\(writes the node’s config with this wallet in it\)$/);
+  });
 });
