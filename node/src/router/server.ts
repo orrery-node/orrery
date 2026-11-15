@@ -21,7 +21,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, readTrips, skipped, summarize, windowMs } from '../spend.ts';
+import { appendTrip, readTrips, skipped, speeds, summarize, windowMs } from '../spend.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
@@ -294,7 +294,7 @@ export class Router {
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
         const skips = skipped(spendTrips, windowMs(since));
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, speed: speeds(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

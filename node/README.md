@@ -82,7 +82,7 @@ codex --profile orrery
 
 `orrery spend --since 24h --by model|provider` sums what your router paid, from the log it keeps of every answer it signs for (`~/.orrery/router/trips.jsonl`). The rehearsal checks that the log adds up to exactly what the router signed.
 
-`orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router.
+`orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router. With a router running it also prints that router's own record of each node: the checks it made, the requests the node answered and, in main (next release), how fast it started answering (`speed`, the median time to the first token over the last 24 hours by the router's clock).
 
 A request can name fallbacks: `"model": "deepseek-v3|qwen3-32b"` or an OpenRouter-style `"models": [...]` (up to four). When no provider of one model can answer (none lists it, none fits the price ceiling, all cooling down or all failed before the first token) the router moves to the next, and logs why. The daily cap and bad requests still stop the request.
 

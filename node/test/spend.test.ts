@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { appendTrip, paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs } from '../src/spend.ts';
+import { appendTrip, paidInside, readTrips, sealedTrips, skipNote, skipped, speeds, speedText, summarize, windowMs } from '../src/spend.ts';
 
 const t = (at: number, model: string, providerName: string, cost: string, extra = {}) => ({ at, model, provider: providerName.toLowerCase(), providerName, inputTokens: 100, outputTokens: 20, cost, ...extra });
 
@@ -87,6 +87,31 @@ describe('orrery spend', () => {
     const byTask = summarize(back, 'task', Infinity, 5_000);
     assert.deepEqual(byTask.rows.map((r) => [r.key, r.answers, r.units]), [['audit-7', 2, 31n], ['(no task)', 1, 5n]]);
   });
+
+  it('keeps how long each answer took to start, and gives each node its median for the window', () => {
+    const now = 1_800_000_000_000;
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-speed-'));
+    const log = join(dir, 'trips.jsonl');
+    for (const [i, ms] of [900, 300, 500].entries()) appendTrip(log, { ...t(now - i * 1000, 'm', 'Seed', '0.000001'), ttftMs: ms });
+    appendTrip(log, { ...t(now - 5000, 'm', 'Other', '0.000001'), ttftMs: 200 });
+    appendTrip(log, { ...t(now - 6000, 'm', 'Other', '0.000001'), ttftMs: 400 });
+    appendTrip(log, t(now - 7000, 'm', 'Other', '0.000001'));
+    appendTrip(log, { ...t(now - 2 * 86_400_000, 'm', 'Seed', '0.000001'), ttftMs: 9000 });
+    const read = readTrips(log);
+    assert.equal(read[0].ttftMs, 900);
+    assert.deepEqual(speeds(read, windowMs('24h'), now), [
+      { provider: 'seed', name: 'Seed', answers: 3, medianTtftMs: 500 },
+      { provider: 'other', name: 'Other', answers: 2, medianTtftMs: 300 },
+    ]);
+    assert.equal(speeds(read, Infinity, now)[0].medianTtftMs, 700);
+    assert.deepEqual(speeds([t(now, 'm', 'Seed', '0.000001')], Infinity, now), []);
+  });
+
+  it('says a node’s speed in one phrase', () => {
+    assert.equal(speedText({ answers: 42, medianTtftMs: 934 }), 'started answering in 934 ms (median of 42 answers in the last 24 h)');
+    assert.equal(speedText({ answers: 2, medianTtftMs: 310 }), 'started answering in 310 ms (median of 2 answers in the last 24 h)');
+    assert.equal(speedText({ answers: 1, medianTtftMs: 2040 }, '7 d'), 'started answering in 2.0 s (1 answer in the last 7 d)');
+  });
 });
 
 it('a node’s log keeps which answers were paid inside the seal, and counts them over a window', () => {
@@ -98,4 +123,5 @@ it('a node’s log keeps which answers were paid inside the seal, and counts the
   appendTrip(path, { ...base, at: now - 3_000, inside: true });
   appendTrip(path, { ...base, at: now - 48 * 3600_000, inside: true });
   assert.deepEqual(paidInside(readTrips(path), 24 * 3600_000, now), { answers: 3, inside: 2 });
+
 });

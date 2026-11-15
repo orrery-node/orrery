@@ -7,7 +7,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
-import { skipNote } from './spend.ts';
+import { speedText, skipNote } from './spend.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
@@ -29,7 +29,12 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number };
+type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[] };
+
+/** How fast each node started answering this router in the last 24 hours, by the router's own log: one line a node. */
+export function speedLines(sp: Spent | null): string[] {
+  return (sp?.speed ?? []).map((s) => `${s.name} ${speedText(s)}`);
+}
 
 /** What a running router's /orrery/spend says about its last 24 hours, as one line: what it paid, and the answers
  * where a node did not answer or did not finish (signed nothing). Null when the router did not say. */
@@ -138,7 +143,10 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   }
   // What it paid in the last day, by its own log, and what it did not pay for.
   if (status) {
-    const paid = paidLine(await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/spend?since=24h`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as Spent | null);
+    const spent = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/spend?since=24h`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as Spent | null;
+    // And how fast each node started answering, timed by this router.
+    for (const line of speedLines(spent)) out.push({ ok: null, what: '  speed', detail: line });
+    const paid = paidLine(spent);
     if (paid) out.push({ ok: null, what: '  paid', detail: paid });
   }
   return out;

@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
 export type Enclave = { kind: string; image: string; verdict: string };
-export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean };
+export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number };
 
 /** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
 export const ROLL_BYTES = 10 * 1024 * 1024;
@@ -15,7 +15,7 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
-    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}) })}\n`);
+    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
   }
@@ -93,6 +93,30 @@ export function skipNote(s: { answers: number; nodes: number; resumed?: number }
 /** Every sealed answer in the window, newest first: which machine handled it and what the router had verified. */
 /** Of the answers in the window, how many were paid inside the seal (the channel and voucher in the sealed body) rather
  * than in headers a node's host can read. A node logs `inside` on each answer it served that way. */
+export type Speed = { provider: string; name: string; answers: number; medianTtftMs: number };
+
+/** How fast each node started answering, by this router's own clock: the median time to the first token over the
+ * answers in the window that have one on record. Nobody reports it; it is read from the router's log. Nodes with
+ * the most answers come first. */
+export function speeds(trips: LoggedTrip[], sinceMs: number, now = Date.now()): Speed[] {
+  const by = new Map<string, { name: string; ms: number[] }>();
+  for (const t of trips) {
+    if (now - t.at > sinceMs || typeof t.ttftMs !== 'number' || !(t.ttftMs >= 0)) continue;
+    const e = by.get(t.provider) ?? { name: t.providerName, ms: [] };
+    e.name = t.providerName;
+    e.ms.push(t.ttftMs);
+    by.set(t.provider, e);
+  }
+  const median = (ms: number[]) => { const a = [...ms].sort((x, y) => x - y), h = a.length >> 1; return a.length % 2 ? a[h] : Math.round((a[h - 1] + a[h]) / 2); };
+  return [...by.entries()].map(([provider, e]) => ({ provider, name: e.name, answers: e.ms.length, medianTtftMs: median(e.ms) })).sort((a, b) => b.answers - a.answers);
+}
+
+/** "started answering in 0.9 s (median of 42 answers in the last 24 h)". */
+export function speedText(s: { answers: number; medianTtftMs: number }, window = '24 h'): string {
+  const took = s.medianTtftMs < 1000 ? `${Math.round(s.medianTtftMs)} ms` : `${(s.medianTtftMs / 1000).toFixed(1)} s`;
+  return `started answering in ${took} (${s.answers === 1 ? '1 answer' : `median of ${s.answers.toLocaleString('en-US')} answers`} in the last ${window})`;
+}
+
 export function paidInside(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; inside: number } {
   const recent = trips.filter((t) => now - t.at <= sinceMs);
   return { answers: recent.length, inside: recent.filter((t) => t.inside).length };

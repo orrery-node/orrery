@@ -33,4 +33,14 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(paidLine(null), null);
     assert.equal(paidLine({}), null);
   });
+
+  it('gives each node the speed this router measured for itself', async () => {
+    const { speedLines } = await import('../src/doctor.ts');
+    assert.deepEqual(speedLines({ speed: [{ provider: 'a', name: 'Orrery Seed', answers: 42, medianTtftMs: 934 }, { provider: 'b', name: 'Vault Nine', answers: 1, medianTtftMs: 120 }] }), [
+      'Orrery Seed started answering in 934 ms (median of 42 answers in the last 24 h)',
+      'Vault Nine started answering in 120 ms (1 answer in the last 24 h)',
+    ]);
+    assert.deepEqual(speedLines({ total: { answers: 3, usd: '0.000001' } }), []);
+    assert.deepEqual(speedLines(null), []);
+  });
 });
