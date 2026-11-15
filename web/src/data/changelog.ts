@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider check` says what listing will cost before you list: "takes about 0.0028 SOL once, the rent for the listing", read from the cluster you are on, and the same amount is in the next-step line.' },
   { who: 'provider', text: '`orrery provider check --json` exits 1 when the node is not ready, as the plain form does. It printed the failing lines and still exited 0, so a monitor or a script reading the exit code saw a healthy node.' },
   { who: 'provider', text: '`orrery provider check` asks each model you list one small thing, straight to your model server (the first three): "llama3.1:8b answered a test request in 812 ms". A model that is listed but not pulled, not loaded or out of memory now fails in front of you, with the server’s own reason, and not later in front of a router.' },
   { who: 'everyone', text: 'The local console pages (your router’s and your node’s) ask nothing of any other computer. Their two typefaces now travel inside the page; before, the browser that opened a console fetched them from Google Fonts, which told a third party each time one was opened and left the page blank where that host is blocked.' },

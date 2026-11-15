@@ -26,6 +26,14 @@ describe('the one next step provider check ends with', () => {
     assert.match(nextStep([L('model server', true), L('public address', false), L('listing', false, 'not on chain yet'), L('node key', false)], { ...at, running: true }), /^next: list the node on chain: /);
   });
 
+  it('says what listing costs when the check could read it', () => {
+    const unlisted = (detail: string) => [L('model server', true), L('public address', true), L('listing', false, detail), L('node key', true)];
+    assert.equal(nextStep(unlisted('not on chain yet: orrery provider register --config … --wallet … (takes about 0.0028 SOL once, the rent for the listing)'), at),
+      'next: list the node on chain: orrery provider register --config provider.json --wallet <keypair.json> (one transaction from your wallet, about 0.0028 SOL once for the listing’s rent)');
+    assert.equal(nextStep(unlisted('not on chain yet: orrery provider register --config … --wallet …'), at),
+      'next: list the node on chain: orrery provider register --config provider.json --wallet <keypair.json> (a one-time transaction from your wallet)');
+  });
+
   it('says ready when nothing fails, and names what is left when something else does', () => {
     assert.equal(nextStep(good, at), 'ready to earn: routers can find this node, reach it and pay it');
     assert.equal(nextStep(but('data folder', null, 'on a disk'), at), 'ready to earn: routers can find this node, reach it and pay it');

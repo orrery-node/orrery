@@ -51,7 +51,11 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   const info = await node.conn.getAccountInfo(node.pda);
   const acct = info ? decodeProvider(info.data) : null;
-  if (!acct) out.push({ ok: false, what: 'listing', detail: 'not on chain yet: orrery provider register --config … --wallet …' });
+  if (!acct) {
+    // What listing will cost here: the rent for an account that size on this cluster, plus the fee. Read, not assumed.
+    const rent = await node.conn.getMinimumBalanceForRentExemption(LISTING_BYTES).catch(() => null);
+    out.push({ ok: false, what: 'listing', detail: `not on chain yet: orrery provider register --config … --wallet …${rent === null ? '' : ` (takes about ${((rent + 10_000) / LAMPORTS_PER_SOL).toFixed(4)} SOL once, the rent for the listing)`}` });
+  }
   else {
     const same = acct.manifestHash.equals(node.manifestHash), url = acct.endpoint === cfg.publicUrl;
     out.push({ ok: same && url && acct.active, what: 'listing', detail: !acct.active ? 'on chain but closed' : !same ? 'your price list changed since you listed; run provider register again so routers accept it' : !url ? `on chain with another address (${acct.endpoint}); run provider register again` : `on chain, price list matches, $${usd(acct.settled)} settled in ${acct.redeems} redeems` });
@@ -145,7 +149,8 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   const test = bad('model test');
   if (test) return `next: get the model answering: ${test.detail}`;
   if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
-  if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (a one-time transaction from your wallet)` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
+  const cost = listing ? /takes about ([\d.]+ SOL) once/.exec(listing.detail)?.[1] : undefined;
+  if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
   if (bad('node key')) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE})`;
   if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
