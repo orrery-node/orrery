@@ -353,7 +353,7 @@ orrery provider show     --config provider.json                         # what t
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
-(In main, next release: no Solana tools needed. `orrery wallet new` makes the wallet, `orrery provider init` writes it into provider.json, and `orrery provider register --config provider.json` reads it from there, so the register step takes no `--wallet`.)
+(In main, next release: no Solana tools needed. `orrery wallet new` makes the wallet, `orrery provider init` writes it into provider.json, and `orrery provider register --config provider.json` reads it from there, so the register step takes no `--wallet`. With `--fund-key` the same transaction also sends the node’s key its fee money, so there is one address to fund.)
 
 ```jsonc
 {

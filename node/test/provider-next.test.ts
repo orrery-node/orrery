@@ -45,4 +45,13 @@ describe('the one next step provider check ends with', () => {
     assert.equal(nextStep(unlisted, { ...at, walletInConfig: true }), 'next: list the node on chain: orrery provider register --config provider.json (a one-time transaction from your wallet)');
     assert.match(nextStep(unlisted, at), /register --config provider\.json --wallet <keypair\.json> /);
   });
+
+  it('offers to send the node’s key its fee money in the register transaction, so there is one address to fund', () => {
+    const fresh = [L('model server', true), L('public address', true), L('listing', false, 'not on chain yet: orrery provider register --config … lists it (takes about 0.0028 SOL once, the rent for the listing)'), L('node key', false, '0.0000 SOL for redeem fees')];
+    assert.equal(nextStep(fresh, { ...at, walletInConfig: true }),
+      'next: list the node on chain: orrery provider register --config provider.json --fund-key (one transaction from your wallet, about 0.0028 SOL once for the listing’s rent; --fund-key also sends the node’s key 0.01 SOL for redeem fees)');
+    const listed = [L('model server', true), L('public address', true), L('listing', true), L('node key', false, '0.0000 SOL for redeem fees')];
+    assert.equal(nextStep(listed, { ...at, walletInConfig: true }),
+      'next: send a little SOL to NodeKey111 for redeem fees (0.01 SOL pays for about 2,000 payouts), or from the listing wallet: orrery provider register --config provider.json --fund-key');
+  });
 });

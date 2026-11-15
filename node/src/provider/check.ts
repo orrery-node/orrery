@@ -63,7 +63,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   const sol = (await node.conn.getBalance(node.node.publicKey)) / LAMPORTS_PER_SOL;
   const enough = sol >= FEE_FLOOR_LAMPORTS / LAMPORTS_PER_SOL;
-  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()} (${FEE_EXAMPLE})`}` });
+  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()} (${FEE_EXAMPLE}), or have the listing wallet send it: provider register --fund-key`}` });
 
   // A redemption costs its transaction fee whatever it moves; a minimum under a cent means paying more than is collected.
   const min = cfg.redeem?.minUnits;
@@ -128,15 +128,30 @@ export async function modelTest(
 /** The size of a node's listing on chain; what it costs to list is the rent for an account this big, paid once. */
 export const LISTING_BYTES = 419;
 
+/** `--fund-key`: what the listing wallet sends the node's key in the register transaction, in lamports. With no amount
+ * it is 0.01 SOL. More than half a SOL is refused: this is fee money, and a figure that large is a slipped digit. */
+export function fundKeyLamports(text: string | undefined): number {
+  if (text === undefined) return 10_000_000;
+  const sol = Number(text);
+  if (!Number.isFinite(sol) || sol <= 0) throw new Error('--fund-key takes an amount of SOL, such as --fund-key 0.01');
+  if (sol > 0.5) throw new Error(`--fund-key ${text} is more than a node key needs: it only pays redeem fees (${FEE_EXAMPLE}). The most this sends is 0.5 SOL`);
+  return Math.round(sol * 1e9);
+}
+
+/** How many payouts that much SOL pays for: one payout is one transaction at the base fee. */
+export const payoutsFor = (lamports: number) => Math.floor(lamports / 5_000);
+
 /** Why `provider register` should not send its transaction, in words, or null when it can: the address is still the
  * placeholder (the listing would point routers nowhere), or the wallet cannot pay for it. */
-export function registerProblem(o: { publicUrl: string; exists: boolean; lamports: number; rent: number; wallet: string }): string | null {
+export function registerProblem(o: { publicUrl: string; exists: boolean; lamports: number; rent: number; wallet: string; fund?: number }): string | null {
   if (PLACEHOLDER_URL.test(o.publicUrl)) return 'set "publicUrl" first: it is still the placeholder from provider init, and the listing would send routers to an address that is not yours';
   const fee = 10_000, sol = (n: number) => (n / 1e9).toFixed(4);
-  if (o.lamports >= o.rent + fee) return null;
+  const need = o.rent + fee + (o.fund ?? 0);
+  if (o.lamports >= need) return null;
+  const key = o.fund ? ` --fund-key sends the node’s key another ${sol(o.fund)} SOL: ${sol(need)} SOL in all.` : '';
   return o.exists
-    ? `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Updating a listing is one transaction and needs its fee. Send it a little SOL and run this again`
-    : `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Listing a node takes about ${sol(o.rent + fee)} SOL, once: the rent for its listing on Solana, plus the fee. Send it a little SOL and run this again`;
+    ? `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Updating a listing is one transaction and needs its fee.${key} Send it a little SOL and run this again`
+    : `your wallet ${o.wallet} has ${sol(o.lamports)} SOL. Listing a node takes about ${sol(o.rent + fee)} SOL, once: the rent for its listing on Solana, plus the fee.${key} Send it a little SOL and run this again`;
 }
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
@@ -145,14 +160,15 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
   // A config that names a wallet file which is there needs no --wallet: register reads it from the config.
   const register = `orrery provider register --config ${at.config}${at.walletInConfig ? '' : ' --wallet <keypair.json>'}`;
-  const server = bad('model server'), listing = bad('listing'), address = bad('public address');
+  const server = bad('model server'), listing = bad('listing'), address = bad('public address'), lowKey = bad('node key');
   if (server) return `next: start your model server: ${server.detail}`;
   const test = bad('model test');
   if (test) return `next: get the model answering: ${test.detail}`;
   if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
   const cost = listing ? /takes about ([\d.]+ SOL) once/.exec(listing.detail)?.[1] : undefined;
-  if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
-  if (bad('node key')) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE})`;
+  // A new node's key has no fee money either: the same transaction can send it, so there is one address to fund.
+  if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register}${lowKey ? ' --fund-key' : ''} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'}${lowKey ? '; --fund-key also sends the node’s key 0.01 SOL for redeem fees' : ''})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
+  if (lowKey) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE}), or from the listing wallet: ${register} --fund-key`;
   if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
   const other = lines.find((l) => l.ok === false);

@@ -1307,6 +1307,26 @@ check('the Solana RPC goes through the same proxy: reads, and a transaction sent
   proxiedAfter === proxiedBalance + 1_000 && !proxiedTransfer.startsWith('failed') && rpcCalls.includes('sendTransaction') && rpcCalls.includes('getSignatureStatuses') && rpcCalls.includes('getBalance') && rpcGone === 'refused',
   `${rpcCalls.length} RPC calls through the proxy (${[...new Set(rpcCalls)].join(', ')}); proxy gone → ${rpcGone}${proxiedTransfer.startsWith('failed') ? ` · ${proxiedTransfer}` : ''}`);
 
+// One address to fund: the listing wallet sends the node's key its fee money in the register transaction.
+await fund(brokeWallet.publicKey, 1);
+const fundedOut = await new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'register', '--config', join(brokeDir, 'provider.json'), '--rpc', RPC, '--fund-key', '0.02'], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });
+const fundedKey = /to the node’s key (\S+) /.exec(fundedOut.text)?.[1];
+const fundedLamports = fundedKey ? await conn.getBalance(new PublicKey(fundedKey)) : -1;
+const fundedListed = await conn.getAccountInfo(pda.provider(brokeWallet.publicKey));
+check('orrery provider register --fund-key lists the node and sends its key fee money in the same transaction, so a new operator funds one address', fundedOut.code === 0 && !!fundedListed && fundedLamports === 20_000_000 && /sent 0\.0200 SOL to the node’s key/.test(fundedOut.text), `exit ${fundedOut.code} · listed: ${fundedListed ? 'yes' : 'no'} · node key holds ${fundedLamports < 0 ? 'unknown' : `${(fundedLamports / 1e9).toFixed(4)} SOL`} · ${(fundedOut.text.split('\n').find((l) => l.startsWith('sent')) ?? 'no line about the key').replace(fundedKey ?? '-', '<key>').slice(0, 90)}`);
+
+// What that one transaction did, as the chain recorded it: for the record, and for anyone who wants to check the claim.
+const fundedSig = /tx (\S+)/.exec(fundedOut.text)?.[1];
+const fundedTx = fundedSig ? await conn.getTransaction(fundedSig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }) : null;
+if (fundedTx?.meta && fundedListed) {
+  const keys = fundedTx.transaction.message.getAccountKeys().staticAccountKeys.map((k) => k.toBase58());
+  const moved = (who: string) => { const i = keys.indexOf(who); return i < 0 ? null : fundedTx.meta!.postBalances[i] - fundedTx.meta!.preBalances[i]; };
+  writeFileSync(join(WORK, 'fund-key.json'), JSON.stringify({
+    instructions: fundedTx.transaction.message.compiledInstructions.length, signatures: fundedTx.transaction.signatures.length, feeLamports: fundedTx.meta.fee,
+    wallet: moved(brokeWallet.publicKey.toBase58()), listing: moved(pda.provider(brokeWallet.publicKey).toBase58()), nodeKey: fundedKey ? moved(fundedKey) : null,
+    listingBytes: fundedListed.data.length, said: fundedOut.text.trim().split('\n').map((l) => l.replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>')),
+  }, null, 1));
+}
 
 const summary = {
   ranAt: new Date().toISOString(), program: PROGRAM_ID, requests: trips.length, settledUnits: paidTotal.toString(),
