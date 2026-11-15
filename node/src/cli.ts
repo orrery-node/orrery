@@ -7,6 +7,7 @@ import { sendOne } from './chain/send.ts';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
 import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from './chain/program.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
+import { newWallet, walletNextSteps } from './wallet.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
@@ -50,6 +51,11 @@ const dollars = (s: string) => BigInt(Math.round(Number(s) * 1e6));
 
 const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
 
+  First time?
+  ${CLI} wallet new               makes a wallet file and says what to send it (skip this if you have a Solana keypair file)
+  ${CLI} router --wallet <file>   then point any OpenAI-compatible tool at http://127.0.0.1:${ROUTER_PORT}/v1
+  ${CLI} doctor --wallet <file>   reads the chain, the nodes, your wallet and your router, and says what is ready
+
   ${CLI} router                 run the router on http://127.0.0.1:${ROUTER_PORT}/v1
       --wallet <keypair.json>   wallet that opens channels (signs once per provider)
       --route <${ROUTES.join('|')}>   default route (per request: model suffix :cheap :fast :trusted :private)
@@ -78,6 +84,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
+  ${CLI} wallet new [--out <file>]   a new wallet file (default ~/.orrery/wallet.json) and what to send it; ${CLI} wallet address prints a wallet's address
   ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
   ${CLI} enclave verify --node <listing> | --report <file> --vcek <file> | --quote <file>   audit a private node, or check an AMD SEV-SNP report or Intel TDX quote, here, against the chip maker’s roots
   ${CLI} providers               every listed provider, what the chain says about it, and whether its model server answers
@@ -538,6 +545,20 @@ async function main() {
     console.log(has('json') ? JSON.stringify(lines.map((l) => ({ ...l, what: l.what.trim() })), null, 2) : render(lines));
     if (lines.some((l) => l.ok === false)) process.exitCode = 1;
     return;
+  }
+  if (cmd === 'wallet') {
+    // A wallet file for someone who has none; only its address is ever printed.
+    if (sub === 'new') {
+      const out = resolvePath(expand(flag('out', home('wallet.json'))!));
+      const { address } = newWallet(out);
+      return console.log(walletNextSteps(out, address, flag('deposit', '2')!, CLI));
+    }
+    if (sub === 'address') {
+      const path = expand(flag('wallet', process.env.ORRERY_WALLET ?? home('wallet.json'))!);
+      if (!existsSync(path)) throw new Error(`there is no wallet at ${path}. ${CLI} wallet new makes one`);
+      return console.log(loadKeypair(path).publicKey.toBase58());
+    }
+    throw new Error(`usage: ${CLI} wallet new [--out <file>]   or   ${CLI} wallet address [--wallet <file>]`);
   }
   if (cmd === 'router') return router();
   if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);

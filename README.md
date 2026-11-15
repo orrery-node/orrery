@@ -151,6 +151,8 @@ solana-keygen new -o ~/.config/solana/orrery.json
 solana address -k ~/.config/solana/orrery.json
 ```
 
+No Solana tools installed? `orrery wallet new` (in main, next release) makes the same kind of file at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it. It never writes over a file that is already there.
+
 **3. Run the router**
 
 ```bash

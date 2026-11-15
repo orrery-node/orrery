@@ -457,6 +457,14 @@ const bareStatus = (await (await fetch('http://127.0.0.1:17290/orrery/status')).
 bare.kill();
 const blamed = bareStatus.providers.filter((p) => p.observed.fail > 0 || (p.watched?.sent ?? 0) > 0).map((p) => p.name);
 check('a router with no wallet says so and what to do, and counts the request against no node', bareAsk.status === 402 && bareSaid.error?.code === 'wallet' && /orrery router --wallet <keypair\.json>/.test(bareSaid.error?.message ?? '') && blamed.length === 0, `${bareAsk.status} ${bareSaid.error?.code}: ${(bareSaid.error?.message ?? '').slice(0, 110)} · counted against: ${blamed.join(', ') || 'no node'}`);
+// Someone with no wallet makes one from the command line, and it is a file the rest of the tools read.
+const freshWallet = join(WORK, 'fresh', 'wallet.json');
+const walletRun = (args: string[]) => new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'wallet', ...args], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });
+const madeWallet = await walletRun(['new', '--out', freshWallet]);
+const madeAddress = existsSync(freshWallet) ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(freshWallet, 'utf8')))).publicKey.toBase58() : null;
+const madeAgain = await walletRun(['new', '--out', freshWallet]);
+const saidAddress = await walletRun(['address', '--wallet', freshWallet]);
+check('orrery wallet new makes a wallet file, says its address and what to send it, and never replaces one', madeWallet.code === 0 && !!madeAddress && madeWallet.text.includes(`address  ${madeAddress}`) && /about 0\.01 SOL/.test(madeWallet.text) && madeAgain.code === 1 && /there is already a wallet at/.test(madeAgain.text) && saidAddress.text.trim().split('\n').pop() === madeAddress, madeAddress ? `made ${madeAddress.slice(0, 6)}… · a second run: exit ${madeAgain.code}, ${madeAgain.text.trim().split('\n').pop()?.replace(madeAddress, '<address>').replace(freshWallet, '<file>').slice(0, 80)}` : `no wallet file was written (exit ${madeWallet.code})`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

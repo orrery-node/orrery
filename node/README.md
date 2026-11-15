@@ -51,6 +51,8 @@ session key 9WzDXw…AWWM signs vouchers; console at http://127.0.0.1:7171/
 
 Point anything that speaks the OpenAI API at `http://127.0.0.1:7171/v1`. Any API key works: your wallet is the account.
 
+The wallet is a Solana keypair file holding a little SOL and the USDC you want to spend. No such file yet? `orrery wallet new` (in main, next release) makes one at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it.
+
 ```python
 from openai import OpenAI
 
