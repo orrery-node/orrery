@@ -1400,6 +1400,13 @@ const walkCompose = join(walkHome, 'docker-compose.yml');
 const walkComposed = await walkRun(['provider', 'compose', '--config', walkCfg, '--out', walkCompose, '--force']);
 const walkComposeText = existsSync(walkCompose) ? readFileSync(walkCompose, 'utf8') : '';
 check('provider compose gives a container node its wallet’s address, so a config that names only a wallet file still finds its listing there', walkComposed.code === 0 && walkComposeText.includes(`ORRERY_AUTHORITY=${walkWallet}`) && !walkComposeText.includes('wallet.json:'), `${walkComposeText.includes('ORRERY_AUTHORITY=') ? 'ORRERY_AUTHORITY=<the wallet’s address>' : 'no address for the node'} · wallet file mounted: ${walkComposeText.includes('wallet.json:') ? 'yes' : 'no'}`);
+// A node that knows its wallet only by address (a container, a cold wallet) sends the register step to where the wallet is.
+const awayCfg = join(walkHome, 'provider-away.json');
+writeFileSync(awayCfg, JSON.stringify({ ...(JSON.parse(readFileSync(walkCfg, 'utf8')) as object), wallet: join(walkHome, 'not-here', 'wallet.json'), dataDir: join(walkHome, 'away-data') }, null, 2));
+const awayAddress = Keypair.generate().publicKey.toBase58();
+const awayCheck = await new Promise<string>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'check', '--config', awayCfg, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...walkEnv, ORRERY_AUTHORITY: awayAddress } }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', () => done(text)); });
+const awayNext = awayCheck.split('\n').find((l) => l.startsWith('next:')) ?? '';
+check('a node that knows its wallet only by its address sends the register step to the computer that has the wallet', /^next: list the node on chain, on the computer that has your wallet \(\S+wallet\.json\): \S+ provider register --config /.test(awayNext) && !awayNext.includes('<keypair.json>'), awayNext.split(walkHome).join('~').slice(0, 150) || 'no next line');
 check('a new operator with no Solana tools goes from nothing to a paid answer with four commands and one deposit: wallet new, provider init, register --fund-key, provider start',
   walk1.code === 0 && !!walkWallet && walk2.code === 0 && walletOf(walkCfg) === join(walkHome, '.orrery', 'wallet.json') && walk3.code === 0 && walkKeyLamports === 10_000_000
   && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,

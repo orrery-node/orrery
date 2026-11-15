@@ -45,6 +45,13 @@ const flag = (name: string, fallback?: string): string | undefined => {
 };
 const has = (name: string) => argv.includes(`--${name}`);
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
+/** Where a node's wallet is, for the register step: the file the config names is on this computer, or the node knows
+ * the wallet only by its address ("authority", or ORRERY_AUTHORITY in a container) and the file, if any, is elsewhere. */
+const walletWhere = (cfg: { wallet?: string; authority?: string }) => {
+  const here = !!cfg.wallet && existsSync(expand(cfg.wallet));
+  const byAddress = !here && !!(cfg.authority || process.env.ORRERY_AUTHORITY);
+  return { walletInConfig: here, ...(byAddress ? { walletAway: cfg.wallet ?? '' } : {}) };
+};
 /** The wallet a command uses: --wallet, then ORRERY_WALLET, then the one `orrery wallet new` made in the home folder. */
 const walletFlag = () => flag('wallet', process.env.ORRERY_WALLET) ?? (existsSync(home('wallet.json')) ? home('wallet.json') : undefined);
 const rpc = () => flag('rpc', process.env.ORRERY_RPC_URL ?? 'https://api.mainnet-beta.solana.com')!;
@@ -383,7 +390,7 @@ async function provider(sub: string) {
     process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     if (has('json')) return console.log(JSON.stringify(lines, null, 2));
     console.log(renderCheck(cfg.name, lines));
-    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), walletInConfig: !!cfg.wallet && existsSync(expand(cfg.wallet)) }));
+    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), ...walletWhere(cfg) }));
     return;
   }
   if (sub === 'start') {
@@ -391,7 +398,7 @@ async function provider(sub: string) {
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
     console.log(consoleLine(cfg.listen, node.consoleKey(), !!process.stdout.isTTY, cfgPath));
     // Once it is up, the one thing left before it earns: a node that is not listed yet would otherwise wait in silence.
-    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true, walletInConfig: !!cfg.wallet && existsSync(expand(cfg.wallet)) }))).catch(() => undefined);
+    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true, ...walletWhere(cfg) }))).catch(() => undefined);
     return;
   }
   if (sub === 'register') {
