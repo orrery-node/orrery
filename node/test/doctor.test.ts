@@ -43,4 +43,10 @@ describe('orrery doctor, what the running router paid', () => {
     assert.deepEqual(speedLines({ total: { answers: 3, usd: '0.000001' } }), []);
     assert.deepEqual(speedLines(null), []);
   });
+
+  it('says how to start a router the way it starts now: no --wallet for the wallet in the home folder, wallet new first when there is none', async () => {
+    const { routerMissing } = await import('../src/doctor.ts');
+    assert.equal(routerMissing('http://127.0.0.1:7171', true), 'not running at http://127.0.0.1:7171; start it with orrery router');
+    assert.equal(routerMissing('http://127.0.0.1:7171', false), 'not running at http://127.0.0.1:7171; start it with orrery wallet new   (makes the wallet that pays; send it SOL and USDC), then orrery router');
+  });
 });

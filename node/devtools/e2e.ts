@@ -1407,6 +1407,10 @@ const awayAddress = Keypair.generate().publicKey.toBase58();
 const awayCheck = await new Promise<string>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'check', '--config', awayCfg, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...walkEnv, ORRERY_AUTHORITY: awayAddress } }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', () => done(text)); });
 const awayNext = awayCheck.split('\n').find((l) => l.startsWith('next:')) ?? '';
 check('a node that knows its wallet only by its address sends the register step to the computer that has the wallet', /^next: list the node on chain, on the computer that has your wallet \(\S+wallet\.json\): \S+ provider register --config /.test(awayNext) && !awayNext.includes('<keypair.json>'), awayNext.split(walkHome).join('~').slice(0, 150) || 'no next line');
+// The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.
+const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
+const walkDoctorRouter = walkDoctor.text.split('\n').find((l) => /\brouter\s+not running/.test(l)) ?? '';
+check('orrery doctor, with the wallet orrery wallet new made, says to start the router without --wallet', /start it with \S+ router$/.test(walkDoctorRouter.trim()) && !walkDoctorRouter.includes('<keypair.json>'), walkDoctorRouter.trim().slice(0, 120) || 'no router line');
 check('a new operator with no Solana tools goes from nothing to a paid answer with four commands and one deposit: wallet new, provider init, register --fund-key, provider start',
   walk1.code === 0 && !!walkWallet && walk2.code === 0 && walletOf(walkCfg) === join(walkHome, '.orrery', 'wallet.json') && walk3.code === 0 && walkKeyLamports === 10_000_000
   && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,

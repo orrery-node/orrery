@@ -8,6 +8,7 @@ import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { speedText, skipNote } from './spend.ts';
+import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 
@@ -31,6 +32,10 @@ const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(
 /** The lines to print. ok null means information only, nothing to fix. */
 type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[] };
 
+/** The router line when none answers: how to start one the way it starts now. A wallet this command could read (from
+ * --wallet, ORRERY_WALLET or the home folder) is the one the router uses without --wallet. */
+export const routerMissing = (router: string, hasWallet: boolean) => `not running at ${router}; start it with ${startRouter(hasWallet, 'orrery')}`;
+
 /** How fast each node started answering this router in the last 24 hours, by the router's own log: one line a node. */
 export function speedLines(sp: Spent | null): string[] {
   return (sp?.speed ?? []).map((s) => `${s.name} ${speedText(s)}`);
@@ -45,7 +50,7 @@ export function paidLine(sp: Spent | null): string | null {
   return `$${sp.total.usd} for ${sp.total.answers} answer${sp.total.answers === 1 ? '' : 's'} in the last 24 h${note ? ` · ${note}` : ''}`;
 }
 
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
     const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
@@ -132,7 +137,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
 
   t0 = Date.now();
   const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { route?: string; channels?: unknown[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[] } | null;
-  out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: `not running at ${o.router}; start it with orrery router --wallet <keypair.json>` });
+  out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // What the running router has seen for itself: how many of its own checks found each node up.
   for (const p of status?.providers ?? []) {
     const said = watchedText(p.watched);
