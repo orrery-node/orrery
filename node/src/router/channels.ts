@@ -36,7 +36,8 @@ export class PayerProblem extends Error {}
 
 /** Why this wallet cannot open a channel, in words, or null when it can (and the failure was something else). */
 export function walletProblem(o: { wallet: string | null; lamports: number; usdc: bigint; deposit: bigint }): string | null {
-  if (!o.wallet) return 'this router has no wallet, so it cannot open a payment channel. Start it with: orrery router --wallet <keypair.json>';
+  // A router picks up the wallet `orrery wallet new` makes in its home folder, so making one is the first way out.
+  if (!o.wallet) return 'this router has no wallet, so it cannot open a payment channel. Make one with orrery wallet new and start the router again (it uses that wallet), or start it with orrery router --wallet <keypair.json> for a keypair file you have';
   if (o.usdc >= o.deposit && o.lamports >= 5_000_000) return null;
   const dollars = (u: bigint) => `$${(Number(u) / 1e6).toFixed(2)}`;
   return `your wallet ${o.wallet} has ${dollars(o.usdc)} USDC and ${(o.lamports / 1e9).toFixed(4)} SOL. Opening a channel locks ${dollars(o.deposit)} of USDC and takes about 0.005 SOL for rent and fees. Send it both and ask again`;
