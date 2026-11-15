@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { fundKeyLamports, LISTING_BYTES, registerProblem } from '../src/provider/check.ts';
+import { fundKeyLamports, fundKeyNote, LISTING_BYTES, nodeKeyLine, registerProblem } from '../src/provider/check.ts';
 
 const base = { publicUrl: 'https://gpu.example.org', exists: false, lamports: 10_000_000, rent: 2_778_760, wallet: 'Wallet111' };
 
@@ -38,5 +38,20 @@ describe('orrery provider register, before it sends anything', () => {
     const said = registerProblem({ ...base, lamports: 5_000_000, fund: 10_000_000 });
     assert.match(said ?? '', /Listing a node takes about 0\.0028 SOL, once: the rent for its listing on Solana, plus the fee\. --fund-key sends the node’s key another 0\.0100 SOL: 0\.0128 SOL in all\. Send it a little SOL and run this again$/);
     assert.match(registerProblem({ ...base, exists: true, rent: 0, lamports: 20_000, fund: 10_000_000 }) ?? '', /Updating a listing is one transaction and needs its fee\. --fund-key sends the node’s key another 0\.0100 SOL: 0\.0100 SOL in all\./);
+  });
+
+  it('counts the rent of the wallet’s USDC account in what the node key needs, when the first payout has to open it', () => {
+    assert.deepEqual(nodeKeyLine({ lamports: 3_000_000, accountRent: null, nodeKey: 'Key111' }), { ok: true, what: 'node key', detail: '0.0030 SOL for redeem fees' });
+    const short = nodeKeyLine({ lamports: 3_000_000, accountRent: 2_039_280, nodeKey: 'Key111' });
+    assert.equal(short.ok, false);
+    assert.match(short.detail, /^0\.0030 SOL for redeem fees; the first payout also opens your wallet’s USDC account, about 0\.0020 SOL once from this key; send a little to Key111 /);
+    const enough = nodeKeyLine({ lamports: 10_000_000, accountRent: 2_039_280, nodeKey: 'Key111' });
+    assert.equal(enough.ok, true);
+    assert.equal(enough.detail, '0.0100 SOL for redeem fees; the first payout also opens your wallet’s USDC account, about 0.0020 SOL once from this key');
+  });
+
+  it('says how many payouts --fund-key pays for, after the one that opens the wallet’s USDC account', () => {
+    assert.equal(fundKeyNote(10_000_000, 'Key111', null), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 2,000 payouts)');
+    assert.equal(fundKeyNote(10_000_000, 'Key111', 2_039_280), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 1,592 payouts; the first also opens your wallet’s USDC account)');
   });
 });

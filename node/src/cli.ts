@@ -26,7 +26,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { LISTING_BYTES, nextStep, providerCheck, fundKeyLamports, payoutsFor, registerProblem, renderCheck } from './provider/check.ts';
+import { LISTING_BYTES, nextStep, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck } from './provider/check.ts';
 import { consoleLine, payoutHint, readOwnStatus } from './provider/console.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -406,7 +406,10 @@ async function provider(sub: string) {
     if (fund) tx.add(SystemProgram.transfer({ fromPubkey: w.publicKey, toPubkey: node.node.publicKey, lamports: fund }));
     const sig = await sendOne(node.conn, tx, [w]);
     console.log(`${exists ? 'updated' : 'listed'} ${node.pda.toBase58()}  tx ${sig}`);
-    if (fund) console.log(`sent ${(fund / 1e9).toFixed(4)} SOL to the node’s key ${node.node.publicKey.toBase58()} for redeem fees (about ${payoutsFor(fund).toLocaleString('en-US')} payouts)`);
+    if (fund) {
+      const opens = (await node.conn.getAccountInfo(pda.ata(w.publicKey, node.mint)).catch(() => undefined)) === null ? await node.conn.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_BYTES).catch(() => null) : null;
+      console.log(fundKeyNote(fund, node.node.publicKey.toBase58(), opens));
+    }
     console.log(`next: ${CLI} provider check --config ${cfgPath} says what is left before it earns`);
     return;
   }

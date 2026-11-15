@@ -1318,6 +1318,8 @@ mkdirSync(walkHome, { recursive: true });
 const walkEnv = Object.fromEntries(Object.entries({ ...process.env, ORRERY_HOME: join(walkHome, '.orrery'), HOME: walkHome }).filter(([k]) => k !== 'ORRERY_WALLET')) as NodeJS.ProcessEnv;
 const walkRun = (args: string[]) => new Promise<{ code: number | null; text: string; ms: number }>((done) => { const t0 = Date.now(); let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: walkEnv }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text: text.split('\n').filter((l) => !l.startsWith('bigint:')).join('\n'), ms: Date.now() - t0 })); });
 const walkCfg = join(walkHome, 'provider.json');
+let walkKey: string | undefined;
+const walkKey0 = () => walkKey;
 const walk1 = await walkRun(['wallet', 'new']);
 const walkWallet = /address {2}(\S+)/.exec(walk1.text)?.[1];
 // The one deposit an operator makes. Here it is an airdrop; on mainnet it is a withdrawal from wherever their SOL is.
@@ -1327,6 +1329,7 @@ const walk2 = await walkRun(['provider', 'init', '--offline', '--upstream', 'htt
 // edits nothing else: the wallet, the models, the prices and the data folder are as init wrote them.
 if (existsSync(walkCfg)) writeFileSync(walkCfg, JSON.stringify({ ...(JSON.parse(readFileSync(walkCfg, 'utf8')) as object), rpcUrl: RPC, settleMint: usdc.toBase58(), listen: 17288 }, null, 2));
 const walk3 = await walkRun(['provider', 'register', '--config', walkCfg, '--rpc', RPC, '--fund-key']);
+walkKey = /to the node’s key (\S+) /.exec(walk3.text)?.[1];
 let walkStarted = '';
 const walkT0 = Date.now();
 const walkNode = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'start', '--config', walkCfg, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'], env: walkEnv });
@@ -1344,10 +1347,18 @@ const walkAnswer = await walkAsk.text();
 const walkAskMs = Date.now() - walkAskT0;
 const walkCost = walkAsk.headers.get('x-orrery-cost');
 await sleep(600); // the voucher for that answer follows it
+// Before its first payout the node says what that payout costs it: the wallet `orrery wallet new` made has no USDC account.
+const walk4 = await walkRun(['provider', 'check', '--json', '--config', walkCfg, '--rpc', RPC]);
+const walkKeyLine = ((): { ok: boolean | null; detail: string } | undefined => { try { return (JSON.parse(walk4.text.slice(walk4.text.indexOf('['))) as { what: string; ok: boolean | null; detail: string }[]).find((l) => l.what === 'node key'); } catch { return undefined; } })();
+const walkUsdcBefore = walkWallet ? await conn.getAccountInfo(pda.ata(new PublicKey(walkWallet), usdc)) : null;
+const walkKeyBefore = walkKey0() ? await conn.getBalance(new PublicKey(walkKey0()!)) : 0;
+const walkRedeem = await walkRun(['provider', 'redeem', '--config', walkCfg, '--rpc', RPC]);
+const walkUsdc = walkWallet ? await conn.getTokenAccountBalance(pda.ata(new PublicKey(walkWallet), usdc)).then((b) => b.value.amount, () => null) : null;
+const walkKeyAfter = walkKey0() ? await conn.getBalance(new PublicKey(walkKey0()!)) : 0;
 const walk5 = await walkRun(['provider', 'earnings', '--config', walkCfg, '--rpc', RPC]);
 walkNode.kill();
-const walkKey = /to the node’s key (\S+) /.exec(walk3.text)?.[1];
-const walkKeyLamports = walkKey ? await conn.getBalance(new PublicKey(walkKey)) : -1;
+// What --fund-key put on the key, read before the first payout spent any of it.
+const walkKeyLamports = walkKey ? walkKeyBefore : -1;
 const walkMask = (t: string) => t.split(walkHome).join('~').replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>').trim().split('\n');
 writeFileSync(join(WORK, 'walk-in.json'), JSON.stringify({
   steps: [
@@ -1357,8 +1368,12 @@ writeFileSync(join(WORK, 'walk-in.json'), JSON.stringify({
     { typed: 'orrery provider start --config provider.json', ms: walkStartMs, said: walkMask(walkStarted) },
   ],
   firstPaidAnswer: { status: walkAsk.status, ms: walkAskMs, cost: walkCost, node: walkAsk.headers.get('x-orrery-provider-name'), found: walkAsk.headers.get('x-orrery-provider') === walkListing },
+  firstPayout: { usdcAccountBefore: !!walkUsdcBefore, walletUsdcUnitsAfter: walkUsdc, nodeKeyPaidLamports: walkKeyBefore - walkKeyAfter, said: walkMask(walkRedeem.text), checkSaid: walkKeyLine?.detail.replace(/[1-9A-HJ-NP-Za-km-z]{43,44}/g, '<…>') ?? null },
   earnings: walkMask(walk5.text), nodeKeyLamports: walkKeyLamports, machineMs: walk1.ms + walk2.ms + walk3.ms + walkStartMs + walkAskMs,
 }, null, 1));
+check('the first payout lands in a wallet that never made a USDC account: the node’s key opens it, and the node says so before it pays',
+  !walkUsdcBefore && walkRedeem.code === 0 && walkUsdc !== null && Number(walkUsdc) === Math.round(Number(walkCost) * 1e6) && walkKeyBefore - walkKeyAfter > 2_000_000 && /first payout also opens your wallet’s USDC account/.test(walkKeyLine?.detail ?? '') && /sent 0\.0100 SOL .*the first also opens your wallet’s USDC account/.test(walk3.text),
+  `USDC account before: ${walkUsdcBefore ? 'yes' : 'none'} · redeem ${walkRedeem.code}: ${walkRedeem.text.trim().split('\n')[0]?.replace(/[1-9A-HJ-NP-Za-km-z]{43,44}/g, '<…>').slice(0, 50)} · wallet now holds ${walkUsdc ?? 'nothing'} units · the key paid ${((walkKeyBefore - walkKeyAfter) / 1e9).toFixed(6)} SOL · check said: ${(walkKeyLine?.detail ?? 'no node key line').replace(/[1-9A-HJ-NP-Za-km-z]{43,44}/g, '<…>').slice(0, 90)}`);
 check('a new operator with no Solana tools goes from nothing to a paid answer with four commands and one deposit: wallet new, provider init, register --fund-key, provider start',
   walk1.code === 0 && !!walkWallet && walk2.code === 0 && walletOf(walkCfg) === join(walkHome, '.orrery', 'wallet.json') && walk3.code === 0 && walkKeyLamports === 10_000_000
   && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,

@@ -1,7 +1,7 @@
 // `orrery provider check`: everything a node needs to earn, looked at from the operator's side before (or after) it
 // lists: the model server, the address routers will call, the listing on chain, the fee money, the enclave, the pledge.
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { decodeProvider } from '../chain/program.ts';
+import { decodeProvider, pda } from '../chain/program.ts';
 import { usd } from '../pricing.ts';
 import { readWire } from '../router/registry.ts';
 import { fetchWithTimeout } from '../sse.ts';
@@ -16,6 +16,26 @@ export type CheckLine = { ok: boolean | null; what: string; detail: string };
 export const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
 /** What a little SOL means for a node key: one payout is one transaction at the base fee. */
 const FEE_EXAMPLE = '0.01 SOL pays for about 2,000 payouts';
+
+/** The size of a token account; its rent is what opening the wallet's USDC account costs. */
+export const TOKEN_ACCOUNT_BYTES = 165;
+
+/** The node key's line. `accountRent` is the rent of the wallet's USDC account when it does not exist yet (null when
+ * it does): the first payout opens it and the node's key pays that, so the key needs it on top of its fee money. A
+ * key that passed this check would otherwise fail its first payout. */
+export function nodeKeyLine(o: { lamports: number; accountRent: number | null; nodeKey: string }): CheckLine {
+  const sol = (n: number) => (n / LAMPORTS_PER_SOL).toFixed(4);
+  const ok = o.lamports >= FEE_FLOOR_LAMPORTS + (o.accountRent ?? 0);
+  const opens = o.accountRent ? `; the first payout also opens your wallet’s USDC account, about ${sol(o.accountRent)} SOL once from this key` : '';
+  return { ok, what: 'node key', detail: `${sol(o.lamports)} SOL for redeem fees${opens}${ok ? '' : `; send a little to ${o.nodeKey} (${FEE_EXAMPLE}), or have the listing wallet send it: provider register --fund-key`}` };
+}
+
+/** What `provider register --fund-key` says it sent, and how many payouts that is once the first has opened the
+ * wallet's USDC account, when it has to. */
+export function fundKeyNote(lamports: number, nodeKey: string, accountRent: number | null): string {
+  const left = Math.max(0, lamports - (accountRent ?? 0));
+  return `sent ${(lamports / LAMPORTS_PER_SOL).toFixed(4)} SOL to the node’s key ${nodeKey} for redeem fees (about ${Math.floor(left / 5_000).toLocaleString('en-US')} payouts${accountRent ? '; the first also opens your wallet’s USDC account' : ''})`;
+}
 
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
@@ -61,9 +81,10 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     out.push({ ok: same && url && acct.active, what: 'listing', detail: !acct.active ? 'on chain but closed' : !same ? 'your price list changed since you listed; run provider register again so routers accept it' : !url ? `on chain with another address (${acct.endpoint}); run provider register again` : `on chain, price list matches, $${usd(acct.settled)} settled in ${acct.redeems} redeems` });
   }
 
-  const sol = (await node.conn.getBalance(node.node.publicKey)) / LAMPORTS_PER_SOL;
-  const enough = sol >= FEE_FLOOR_LAMPORTS / LAMPORTS_PER_SOL;
-  out.push({ ok: enough, what: 'node key', detail: `${sol.toFixed(4)} SOL for redeem fees${enough ? '' : `; send a little to ${node.node.publicKey.toBase58()} (${FEE_EXAMPLE}), or have the listing wallet send it: provider register --fund-key`}` });
+  // Payouts go to the wallet's USDC account. A wallet made by `orrery wallet new` has none yet: the first payout opens it.
+  const payoutAccount = await node.conn.getAccountInfo(pda.ata(node.authority, node.mint)).catch(() => undefined);
+  const accountRent = payoutAccount === null ? await node.conn.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_BYTES).catch(() => null) : null;
+  out.push(nodeKeyLine({ lamports: await node.conn.getBalance(node.node.publicKey), accountRent, nodeKey: node.node.publicKey.toBase58() }));
 
   // A redemption costs its transaction fee whatever it moves; a minimum under a cent means paying more than is collected.
   const min = cfg.redeem?.minUnits;
