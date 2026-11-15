@@ -363,10 +363,11 @@ async function provider(sub: string) {
   } else if (sub === 'burn') throw new Error('this provider.json has no "burn": { "share": … } pledge');
   if (sub === 'check') {
     const lines = await providerCheck(node);
+    // The exit code says whether the node is ready, in either form: a monitor running --json reads it too.
+    process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     if (has('json')) return console.log(JSON.stringify(lines, null, 2));
     console.log(renderCheck(cfg.name, lines));
     console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58() }));
-    process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     return;
   }
   if (sub === 'start') {

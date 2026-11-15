@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider check --json` exits 1 when the node is not ready, as the plain form does. It printed the failing lines and still exited 0, so a monitor or a script reading the exit code saw a healthy node.
 - **Node** · `orrery provider check` asks each model you list one small thing, straight to your model server (the first three): "llama3.1:8b answered a test request in 812 ms". A model that is listed but not pulled, not loaded or out of memory now fails in front of you, with the server’s own reason, and not later in front of a router.
 - **Everyone** · The local console pages (your router’s and your node’s) ask nothing of any other computer. Their two typefaces now travel inside the page; before, the browser that opened a console fetched them from Google Fonts, which told a third party each time one was opened and left the page blank where that host is blocked.
 - **Router** · Your router’s own record of each node now includes what the node did with your requests: `orrery doctor` and the MCP `status` tool say "answered 41 of 43 requests this router sent it over 3 days", beside how often its health checks found the node up and how many times the node has been paid out on chain. The count is kept in `router/watched.json` with the health checks, so it survives a restart.
