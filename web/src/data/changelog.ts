@@ -1,5 +1,7 @@
 // Every orrery-node release in plain words. Times are the npm publish times (registry.npmjs.org/orrery-node).
-// CHANGELOG.md at the repo root carries the same text; change both together.
+// CHANGELOG.md at the repo root is written from this file (changelogMarkdown below):
+//   cd web && npx tsx scripts/changelog.mjs > ../CHANGELOG.md
+// A test in node/ fails when the two differ.
 
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
@@ -264,3 +266,21 @@ export const RELEASES: Release[] = [
     ],
   },
 ];
+
+const WHO = { router: 'Router', provider: 'Node', everyone: 'Everyone' } as const;
+const asLine = (c: Change) => `- **${WHO[c.who]}** · ${c.text}`;
+
+/** CHANGELOG.md at the repo root, word for word. */
+export function changelogMarkdown(): string {
+  const head = [
+    '# Changelog',
+    '',
+    'Every orrery-node release in plain words, newest first. Times are when the release went up on npm. The same notes, easier on the eyes: [orrerynode.com/changelog](https://orrerynode.com/changelog).',
+    '',
+    'Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.',
+    '',
+  ];
+  const unreleased = UNRELEASED.length ? ['## Unreleased (in main)', '', ...UNRELEASED.map(asLine), ''] : [];
+  const releases = RELEASES.flatMap((r) => [`## ${r.version} · ${r.at.slice(0, 10)} ${r.at.slice(11, 16)} UTC`, '', `**${r.headline}**`, '', ...r.changes.map(asLine), '', `\`npx -y orrery-node@${r.version}\``, '']);
+  return [...head, ...unreleased, ...releases].join('\n');
+}
