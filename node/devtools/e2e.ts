@@ -465,6 +465,18 @@ const madeAddress = existsSync(freshWallet) ? Keypair.fromSecretKey(Uint8Array.f
 const madeAgain = await walletRun(['new', '--out', freshWallet]);
 const saidAddress = await walletRun(['address', '--wallet', freshWallet]);
 check('orrery wallet new makes a wallet file, says its address and what to send it, and never replaces one', madeWallet.code === 0 && !!madeAddress && madeWallet.text.includes(`address  ${madeAddress}`) && /about 0\.01 SOL/.test(madeWallet.text) && madeAgain.code === 1 && /there is already a wallet at/.test(madeAgain.text) && saidAddress.text.trim().split('\n').pop() === madeAddress, madeAddress ? `made ${madeAddress.slice(0, 6)}… · a second run: exit ${madeAgain.code}, ${madeAgain.text.trim().split('\n').pop()?.replace(madeAddress, '<address>').replace(freshWallet, '<file>').slice(0, 80)}` : `no wallet file was written (exit ${madeWallet.code})`);
+// The wallet made in a home folder is the one a router there uses when no --wallet is given.
+const madeHome = join(WORK, 'home-made-wallet');
+mkdirSync(madeHome, { recursive: true });
+writeFileSync(join(madeHome, 'wallet.json'), readFileSync(freshWallet));
+let madeOut = '';
+const madeRouter = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'router', '--port', '17290', '--rpc', RPC, '--mint', usdc.toBase58()], { stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, ORRERY_HOME: madeHome } });
+madeRouter.stdout!.on('data', (c) => (madeOut += c));
+for (let i = 0; i < 100; i++) { if (await fetch('http://127.0.0.1:17290/orrery/status').then((r) => r.ok).catch(() => false)) break; await sleep(200); }
+const madeAsk = await fetch('http://127.0.0.1:17290/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }) });
+const madeSaid = (await madeAsk.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
+madeRouter.kill();
+check('a router started with no --wallet uses the wallet made in its home folder, and says so', madeOut.includes(`wallet ${madeAddress?.slice(0, 6)}…`) && /using the wallet in .*wallet\.json/.test(madeOut) && madeAsk.status === 402 && (madeSaid.error?.message ?? '').startsWith(`your wallet ${madeAddress} has $0.00 USDC`), `${(madeOut.split('\n').find((l) => /router on/.test(l)) ?? 'no start line').replace(/.*route auto {2}· {2}/, '').slice(0, 40)} · asked: ${madeAsk.status} ${(madeSaid.error?.message ?? '').replace(madeAddress ?? '-', '<address>').slice(0, 70)}`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

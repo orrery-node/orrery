@@ -24,7 +24,7 @@ export function walletNextSteps(path: string, address: string, depositUsd: strin
     'To use the network, send that address on Solana:',
     '  about 0.01 SOL   for transaction fees and the rent of a payment channel',
     `  USDC to spend    $${depositUsd} opens the first channel; close a channel and what you did not spend comes back`,
-    `then  ${cli} router --wallet ${path}`,
+    `then  ${cli} router --wallet ${path}   (a wallet at the default place is used without --wallet)`,
     `      ${cli} doctor --wallet ${path}   reads its balances and says what is ready`,
     `To run a node, the same file lists it: ${cli} provider register --config provider.json --wallet ${path}`,
   ].join('\n');

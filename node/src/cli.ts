@@ -45,6 +45,8 @@ const flag = (name: string, fallback?: string): string | undefined => {
 };
 const has = (name: string) => argv.includes(`--${name}`);
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, process.env.HOME ?? '~');
+/** The wallet a command uses: --wallet, then ORRERY_WALLET, then the one `orrery wallet new` made in the home folder. */
+const walletFlag = () => flag('wallet', process.env.ORRERY_WALLET) ?? (existsSync(home('wallet.json')) ? home('wallet.json') : undefined);
 const rpc = () => flag('rpc', process.env.ORRERY_RPC_URL ?? 'https://api.mainnet-beta.solana.com')!;
 const mint = () => new PublicKey(flag('mint', process.env.ORRERY_SETTLE_MINT ?? USDC_MAINNET)!);
 const dollars = (s: string) => BigInt(Math.round(Number(s) * 1e6));
@@ -113,7 +115,7 @@ async function router() {
   const proxy = nodeProxy();
   if (proxy && !(await proxyAnswers(proxy))) throw new Error(`nothing answers at the proxy ${proxy.label}; start it first. The router does not fall back to reaching nodes directly`);
   const conn = rpcConnection(rpc());
-  const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+  const walletPath = walletFlag();
   const wallet = walletPath ? loadKeypair(expand(walletPath)) : null;
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const route = (flag('route', 'auto') as Route);
@@ -152,6 +154,8 @@ async function router() {
   if (proxy) console.log(`nodes and the Solana RPC are reached through the proxy at ${proxy.label}. ${far ? far.line[0].toUpperCase() + far.line.slice(1) : ''}`);
   if (has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1') console.log('private only: every request is sealed to an enclave this router verified, or refused');
   console.log(`${NAME} router on http://127.0.0.1:${port}/v1  ·  ${usable} providers  ·  route ${route}  ·  ${wallet ? `wallet ${wallet.publicKey.toBase58().slice(0, 6)}…` : 'no wallet (read-only)'}`);
+  // Said once, so nobody wonders which wallet is paying: the one in the home folder was picked up, not passed in.
+  if (wallet && !flag('wallet', process.env.ORRERY_WALLET)) console.log(`using the wallet in ${home('wallet.json')} (made by ${CLI} wallet new); --wallet <file> uses another`);
   console.log(`session key ${session.publicKey.toBase58()} signs vouchers; console at http://127.0.0.1:${port}/`);
   const s = await r.standing();
   if (s && s.balance > 0n) {
@@ -185,7 +189,7 @@ async function listChannels() {
   const conn = rpcConnection(rpc());
   const session = loadOrCreateKeypair(home('router', 'session.json'));
   const local = new Channels(conn, null, session, mint(), home('router', 'channels.json'), { deposit: 0n, topUpBelow: 0n, dailyCap: 0n }).list();
-  const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+  const walletPath = walletFlag();
   const address = flag('address') ?? (walletPath ? loadKeypair(expand(walletPath)).publicKey.toBase58() : null);
   const rows = new Map<string, { a: ReturnType<typeof decodeChannel> | null; signed: bigint | null }>();
   for (const c of local) {
@@ -538,7 +542,7 @@ async function main() {
     return;
   }
   if (cmd === 'doctor') {
-    const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+    const walletPath = walletFlag();
     const address = flag('address');
     const sessionPath = home('router', 'session.json');
     const lines = await doctor({ rpc: rpc(), mint: mint(), session: existsSync(sessionPath) ? loadKeypair(sessionPath).publicKey : undefined, wallet: address ? new PublicKey(address) : walletPath ? loadKeypair(expand(walletPath)).publicKey : undefined, router: flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!, deposit: dollars(flag('deposit', '2')!), allowDev: has('allow-dev-enclaves'), version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, pins: home('router', 'pins.json') });
@@ -622,7 +626,7 @@ async function main() {
   if (cmd === 'provider') return provider(sub ?? 'start');
   if (cmd === 'channels') return listChannels();
   if (cmd === 'close') {
-    const walletPath = flag('wallet', process.env.ORRERY_WALLET);
+    const walletPath = walletFlag();
     if (!sub || !walletPath) throw new Error(`usage: ${CLI} close <channel> --wallet <keypair.json> [--finish]`);
     const w = loadKeypair(expand(walletPath));
     const ch = new PublicKey(sub);
