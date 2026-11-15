@@ -21,7 +21,8 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, readTrips, skipped, speeds, summarize, windowMs } from '../spend.ts';
+import { appendTrip, readTrips, skipped, speeds, summarize, windowMs, type Speed } from '../spend.ts';
+import { recordLines } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
@@ -317,7 +318,16 @@ export class Router {
     send(res, 200, { object: 'list', data });
   }
 
+  /** How fast each node started answering over the last 24 hours, from the router's log; read again at most every
+   * 30 seconds, since a console asks for its status every few. */
+  private speedKept: { at: number; rows: Speed[] } | null = null;
+  private speedNow(): Speed[] {
+    if (!this.speedKept || Date.now() - this.speedKept.at > 30_000) this.speedKept = { at: Date.now(), rows: speeds(readTrips(home('router', 'trips.jsonl')), windowMs('24h')) };
+    return this.speedKept.rows;
+  }
+
   private async status(res: ServerResponse) {
+    const speedBy = new Map(this.speedNow().map((x) => [x.provider, { answers: x.answers, medianTtftMs: x.medianTtftMs }]));
     const providers = [...this.o.registry.entries.values()].map((e) => ({
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
@@ -325,6 +335,9 @@ export class Router {
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,
       // This router's own record of the node: health checks made, and how many found it up.
       watched: this.o.registry.watched(e.address),
+      // How fast it started answering this router, by the router's clock, and the whole record in lines a person reads.
+      speed: speedBy.get(e.address) ?? null,
+      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address) }),
       // Whether its last health check was answered (null before the first check), and since when it has not been.
       answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
       // How a request and its payment go to this node: inside (both sealed to its own key), request (sealed, payment in

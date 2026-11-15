@@ -2,6 +2,7 @@
 // node answering with its model server up. Nobody vouches for it; each router keeps and shows its own.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { speedText } from '../spend.ts';
 
 /** `sent`/`answered`: the requests this router sent the node and how many it answered, counted from `askedSince`. */
 export type Watched = { checks: number; up: number; since: number; sent?: number; answered?: number; askedSince?: number };
@@ -61,4 +62,11 @@ export function answeredText(o: { ok: number; fail: number; broke?: number } | W
   const n = (x: number) => x.toLocaleString('en-US');
   const of = answered === sent ? (sent === 1 ? 'the 1 request' : `all ${n(sent)} requests`) : `${n(answered)} of ${n(sent)} requests`;
   return `answered ${of} this router sent it ${kept ? `over ${span(now - o.askedSince!)}` : 'since it started'}`;
+}
+
+/** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when
+ * this router checked, what it did with the requests it was sent (the record on disk, else the counts since start),
+ * and how fast it started answering. Empty before there is anything to say. */
+export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined }, now = Date.now()): string[] {
+  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : ''].filter((l) => l.length > 0);
 }

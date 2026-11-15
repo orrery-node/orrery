@@ -497,6 +497,11 @@ check('orrery provider init names the wallet orrery wallet new made and the addr
 const spendSaid = (await (await fetch(`${ROUTER}/orrery/spend?since=24h`)).json()) as { speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[] };
 const loggedWithTime = readTrips(join(process.env.ORRERY_HOME ?? '', 'router', 'trips.jsonl')).filter((x) => typeof (x as { ttftMs?: number }).ttftMs === 'number').length;
 check('the router keeps how fast each node started answering, by its own clock, and gives each node its median', (spendSaid.speed ?? []).length >= 3 && (spendSaid.speed ?? []).every((x) => x.answers >= 1 && x.medianTtftMs >= 0 && x.name.length > 0) && loggedWithTime >= 20 && doc.some((l) => l.what.trim() === 'speed' && /started answering in \d/.test(l.detail)), `${(spendSaid.speed ?? []).slice(0, 3).map((x) => `${x.name} ${x.medianTtftMs} ms over ${x.answers}`).join(' · ') || 'no speed in /orrery/spend'} · doctor: ${doc.find((l) => l.what.trim() === 'speed')?.detail.slice(0, 80) ?? 'no speed line'}`);
+// The same record in the status a console or an agent reads: lines a person can read, and the speed as numbers.
+const recordSaid = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { name: string | null; record?: string[]; speed?: { answers: number; medianTtftMs: number } | null }[] };
+const ironRecord = recordSaid.providers.find((p) => p.name === 'Ironbridge Compute');
+const recordConsole = await (await fetch(`${ROUTER}/`)).text();
+check('the router’s status and its console carry its own record of each node: checks, answers and speed, beside what the chain says', !!ironRecord?.speed && ironRecord.speed.answers >= 1 && (ironRecord.record ?? []).some((l) => /^started answering in \d/.test(l)) && (ironRecord.record ?? []).some((l) => /^answered /.test(l)) && recordConsole.includes('this router’s record'), `Ironbridge Compute: ${(ironRecord?.record ?? ['no record in /orrery/status']).join(' · ').slice(0, 170)}`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

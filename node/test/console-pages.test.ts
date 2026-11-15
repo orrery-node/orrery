@@ -35,4 +35,10 @@ describe('the local console pages', () => {
     assert.deepEqual(outside('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X">'), ['fonts.googleapis.com']);
     assert.deepEqual(outside('<script src="//cdn.example.com/a.js"></script>'), ['cdn.example.com']);
   });
+
+  it('shows the router’s own record of each node, not only what it counted since it started', () => {
+    const html = consolePage();
+    assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');
+    assert.ok(html.includes('p.record'), 'the record lines from /orrery/status');
+  });
 });

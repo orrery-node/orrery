@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { answeredText, loadWatched, saveWatched, watchedText } from '../src/router/watched.ts';
+import { answeredText, loadWatched, recordLines, saveWatched, watchedText } from '../src/router/watched.ts';
 import { Stats } from '../src/router/policy.ts';
 
 describe('a router’s record on disk', () => {
@@ -85,5 +85,17 @@ describe('the count of answered requests, kept with the record on disk', () => {
     const back = loadWatched(path);
     assert.deepEqual(back.get('A'), { checks: 3, up: 3, since: 5 });
     assert.deepEqual(back.get('B'), { checks: 3, up: 3, since: 5 });
+  });
+
+  it('puts the whole record in lines a person reads: up in its checks, the requests it answered, how fast it started', () => {
+    const now = 1_794_100_000_000;
+    const w = { checks: 27, up: 25, since: now - 27 * 3_600_000, sent: 8, answered: 8, askedSince: now - 11 * 3_600_000 };
+    assert.deepEqual(recordLines({ watched: w, observed: { ok: 2, fail: 0 }, speed: { answers: 5, medianTtftMs: 731 } }, now), [
+      'up in 25 of 27 checks this router made over 27 h',
+      'answered all 8 requests this router sent it over 11 h',
+      'started answering in 731 ms (median of 5 answers in the last 24 h)',
+    ]);
+    assert.deepEqual(recordLines({ watched: null, observed: { ok: 3, fail: 1 }, speed: null }, now), ['answered 3 of 4 requests this router sent it since it started']);
+    assert.deepEqual(recordLines({ watched: null, observed: { ok: 0, fail: 0 }, speed: null }, now), []);
   });
 });
