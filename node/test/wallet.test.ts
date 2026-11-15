@@ -38,7 +38,7 @@ describe('orrery wallet new', () => {
     assert.match(said, /about 0\.01 SOL {3}for transaction fees and the rent of a payment channel/);
     assert.match(said, /\$2 opens the first channel/);
     assert.match(said, new RegExp(`then {2}orrery router --wallet ${path}`));
-    assert.match(said, new RegExp(`orrery provider register --config provider\\.json --wallet ${path}$`));
+    assert.match(said, new RegExp(`To run a node: orrery provider init --wallet ${path} {3}\\(writes the node’s config with this wallet in it\\)$`));
     const secret = (JSON.parse(readFileSync(path, 'utf8')) as number[]).slice(0, 32).join(',');
     assert.ok(!said.includes(secret) && !/\[\d+,\d+/.test(said), 'the key itself is never printed');
   });

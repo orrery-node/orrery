@@ -16,7 +16,7 @@ import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
-import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, nextSteps } from './provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, SOLANA_WALLET, walletNote, findUpstream, isEmbeddingModel, nextSteps } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
@@ -378,7 +378,7 @@ async function provider(sub: string) {
     process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     if (has('json')) return console.log(JSON.stringify(lines, null, 2));
     console.log(renderCheck(cfg.name, lines));
-    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58() }));
+    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), walletInConfig: !!cfg.wallet && existsSync(expand(cfg.wallet)) }));
     return;
   }
   if (sub === 'start') {
@@ -386,7 +386,7 @@ async function provider(sub: string) {
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
     console.log(consoleLine(cfg.listen, node.consoleKey(), !!process.stdout.isTTY, cfgPath));
     // Once it is up, the one thing left before it earns: a node that is not listed yet would otherwise wait in silence.
-    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true }))).catch(() => undefined);
+    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true, walletInConfig: !!cfg.wallet && existsSync(expand(cfg.wallet)) }))).catch(() => undefined);
     return;
   }
   if (sub === 'register') {
@@ -440,7 +440,9 @@ async function main() {
     const out = flag('out', 'provider.json')!;
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
     const found = await findUpstream(flag('upstream'));
-    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), wallet: flag('wallet') });
+    // The wallet the draft names is one the operator has, or the place `orrery wallet new` will put one.
+    const homeWallet = home('wallet.json');
+    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }) });
     writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
     const emb = found.models.filter(isEmbeddingModel);
@@ -453,8 +455,9 @@ async function main() {
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
     console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI)}`);
-    // The draft names the usual Solana wallet file. Saying now that it is not there beats an error at the next command.
-    if (!existsSync(expand(cfg.wallet))) console.log(`note: there is no keypair at ${cfg.wallet} yet. Point "wallet" in ${out} at yours, or put its address in "authority"; any Solana wallet with a little SOL works.`);
+    const walletFile = expand(cfg.wallet);
+    const listedUnder = existsSync(walletFile) ? (() => { try { return loadKeypair(walletFile).publicKey.toBase58(); } catch { return undefined; } })() : undefined;
+    console.log(walletNote({ wallet: cfg.wallet, exists: existsSync(walletFile), isHome: cfg.wallet === homeWallet, out, address: listedUnder }, CLI));
     return;
   }
   if (cmd === 'connect') {

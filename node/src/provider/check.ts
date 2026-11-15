@@ -54,7 +54,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   if (!acct) {
     // What listing will cost here: the rent for an account that size on this cluster, plus the fee. Read, not assumed.
     const rent = await node.conn.getMinimumBalanceForRentExemption(LISTING_BYTES).catch(() => null);
-    out.push({ ok: false, what: 'listing', detail: `not on chain yet: orrery provider register --config … --wallet …${rent === null ? '' : ` (takes about ${((rent + 10_000) / LAMPORTS_PER_SOL).toFixed(4)} SOL once, the rent for the listing)`}` });
+    out.push({ ok: false, what: 'listing', detail: `not on chain yet: orrery provider register --config … lists it${rent === null ? '' : ` (takes about ${((rent + 10_000) / LAMPORTS_PER_SOL).toFixed(4)} SOL once, the rent for the listing)`}` });
   }
   else {
     const same = acct.manifestHash.equals(node.manifestHash), url = acct.endpoint === cfg.publicUrl;
@@ -141,9 +141,10 @@ export function registerProblem(o: { publicUrl: string; exists: boolean; lamport
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
  * then the node itself. Nothing failing means routers can find it, reach it and pay it. */
-export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean }): string {
+export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean; walletInConfig?: boolean }): string {
   const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
-  const register = `orrery provider register --config ${at.config} --wallet <keypair.json>`;
+  // A config that names a wallet file which is there needs no --wallet: register reads it from the config.
+  const register = `orrery provider register --config ${at.config}${at.walletInConfig ? '' : ' --wallet <keypair.json>'}`;
   const server = bad('model server'), listing = bad('listing'), address = bad('public address');
   if (server) return `next: start your model server: ${server.detail}`;
   const test = bad('model test');

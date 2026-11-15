@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, networkId, nextSteps } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, findUpstream, isEmbeddingModel, networkId, nextSteps, walletNote } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -63,5 +63,27 @@ describe('orrery provider init', () => {
     for (const id of ['Qwen/Qwen3-32B', 'llama3.1:8b', 'deepseek-v3', 'gemma-3-27b']) assert.ok(!isEmbeddingModel(id), id);
     const c = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['nomic-embed-text', 'llama3.1:8b'] });
     assert.deepEqual(c.models.map((m) => [m.id, m.price.input, m.price.output]), [['nomic-embed-text', 20_000, 0], ['llama3.1-8b', 500_000, 1_000_000]]);
+  });
+
+  it('names a wallet the operator has: the one orrery wallet new made, else the usual Solana file, else where wallet new will put one', () => {
+    const h = '/h/.orrery/wallet.json';
+    assert.equal(draftWallet({ home: h, homeExists: true, solanaExists: true }), h);
+    assert.equal(draftWallet({ home: h, homeExists: false, solanaExists: true }), '~/.config/solana/id.json');
+    assert.equal(draftWallet({ home: h, homeExists: false, solanaExists: false }), h);
+    assert.equal(draftWallet({ asked: '/k/mine.json', home: h, homeExists: true, solanaExists: true }), '/k/mine.json');
+  });
+
+  it('says which address the node will be listed under, or how to get a wallet when the file is not there', () => {
+    assert.equal(walletNote({ wallet: '/h/.orrery/wallet.json', exists: true, isHome: true, out: 'provider.json', address: 'Addr111' }, 'orrery'),
+      'the node will be listed under Addr111, the wallet at /h/.orrery/wallet.json. It signs once, for provider register.');
+    assert.equal(walletNote({ wallet: '/h/.orrery/wallet.json', exists: false, isHome: true, out: 'provider.json' }, 'orrery'),
+      'note: there is no wallet at /h/.orrery/wallet.json yet. orrery wallet new makes one there. Or point "wallet" in provider.json at a Solana wallet you have, or put its address in "authority".');
+    assert.match(walletNote({ wallet: '/k/mine.json', exists: false, isHome: false, out: 'provider.json' }, 'orrery'), /yet\. orrery wallet new --out \/k\/mine\.json makes one there\./);
+  });
+
+  it('asks for no second keypair file at the register step: the config names the wallet', () => {
+    const steps = nextSteps('provider.json');
+    assert.ok(!steps.includes('<keypair.json>'), steps);
+    assert.match(steps, /\n {2}3\. orrery provider register --config provider\.json lists the node on chain \(one transaction from the wallet named in provider\.json\)\n/);
   });
 });

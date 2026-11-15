@@ -20,6 +20,7 @@ describe('a node started before its wallet file exists', () => {
       assert.match(e.message, new RegExp(`there is no keypair at ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
       assert.match(e.message, /"authority"/);
       assert.match(e.message, /provider register/);
+      assert.match(e.message, /No wallet yet\? orrery wallet new --out \S+ makes one/);
       return true;
     });
   });

@@ -39,4 +39,10 @@ describe('the one next step provider check ends with', () => {
     assert.equal(nextStep(but('data folder', null, 'on a disk'), at), 'ready to earn: routers can find this node, reach it and pay it');
     assert.match(nextStep(but('data folder', false, '/tmp/x is a temporary folder'), at), /^next: data folder: \/tmp\/x is a temporary folder/);
   });
+
+  it('leaves --wallet off the register line when the config names a wallet file that is there', () => {
+    const unlisted = [L('model server', true), L('public address', true), L('listing', false, 'not on chain yet: orrery provider register --config …'), L('node key', true)];
+    assert.equal(nextStep(unlisted, { ...at, walletInConfig: true }), 'next: list the node on chain: orrery provider register --config provider.json (a one-time transaction from your wallet)');
+    assert.match(nextStep(unlisted, at), /register --config provider\.json --wallet <keypair\.json> /);
+  });
 });

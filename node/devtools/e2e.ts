@@ -488,6 +488,11 @@ const [conDown, conDownNoWallet, conUp, conUnlisted] = await Promise.all([
   connectOut(['openai', '--router', ROUTER, '--model', 'nope-1'], madeHome),
 ]);
 check('orrery connect says when no router answers where its settings point, how to start one, and when the model asked for is not listed', /note: no router answers at http:\/\/127\.0\.0\.1:17997 yet.*Start one first: \S+ router$/.test(conDown) && /Start one first: \S+ wallet new .*then \S+ router$/.test(conDownNoWallet) && conUp.includes('model: gpt-oss-120b') && !conUp.includes('note:') && /note: your router does not list nope-1 right now.*It lists: /.test(conUnlisted), `nothing there: ${(conDown.split('\n').find((l) => l.startsWith('note:')) ?? 'no note').slice(0, 60)}… · running: ${conUp.includes('note:') ? 'a note' : 'no note'} · nope-1: ${(conUnlisted.split('\n').find((l) => l.startsWith('note:')) ?? 'no note').slice(0, 44)}…`);
+// A new operator with no Solana tools: the draft names the wallet `orrery wallet new` made, or where it will make one.
+const initAs = (homeDir: string, out: string) => new Promise<string>((done) => { let text = ''; const pi = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19102/v1', '--out', out], { stdio: ['ignore', 'pipe', 'pipe'], env: Object.fromEntries(Object.entries({ ...process.env, ORRERY_HOME: homeDir, HOME: homeDir }).filter(([k]) => k !== 'ORRERY_WALLET')) }); pi.stdout!.on('data', (c) => (text += c)); pi.stderr!.on('data', (c) => (text += c)); pi.on('exit', () => done(text)); });
+const [initMade, initNone] = await Promise.all([initAs(madeHome, join(WORK, 'init-made.json')), initAs(emptyHome, join(WORK, 'init-none.json'))]);
+const walletOf = (f: string) => (existsSync(f) ? (JSON.parse(readFileSync(f, 'utf8')) as { wallet?: string }).wallet : undefined);
+check('orrery provider init names the wallet orrery wallet new made and the address the node will be listed under; with none yet, it says how to make it, and the register step asks for no second file', walletOf(join(WORK, 'init-made.json')) === join(madeHome, 'wallet.json') && initMade.includes(`the node will be listed under ${madeAddress}`) && !initMade.includes('there is no') && walletOf(join(WORK, 'init-none.json')) === join(emptyHome, 'wallet.json') && /note: there is no wallet at \S+wallet\.json yet\. \S+ wallet new makes one there\./.test(initNone) && !initMade.includes('<keypair.json>'), `with a wallet: ${initMade.includes('listed under') ? 'listed under <address>' : 'no address line'} · without: ${(initNone.split('\n').find((l) => l.startsWith('note:')) ?? 'no note').replace(emptyHome, '<home>').slice(0, 78)}…`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
@@ -1122,14 +1127,22 @@ chs.settle = (p, rec) => {
 const ibAsk = (content: string) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': ibAddr, 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content }] }) }).then(async (r) => { await r.text(); return r.status; });
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 await ibAsk('Say hi.');
+// What the node's own book says at each step: what it is owed, and the signed total it holds.
+const owedHeld = () => { const l = (iron as unknown as { ledger: Map<string, { owed: bigint; best?: { cumulative: bigint } }> }).ledger.get(ibChannel); return { owed: l?.owed ?? 0n, held: l?.best?.cumulative ?? 0n }; };
+const shorted = owedHeld();
 chs.settle = settleReal;
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const beforeOwed = proxied.length;
 const afterUnpaid = await ibAsk('Say hi again.');
+// The router paid the answer it had skipped before the node served again; the voucher for the new answer follows it.
+const paidUp = owedHeld();
+for (let i = 0; i < 30 && owedHeld().held < owedHeld().owed; i++) await sleep(100);
+const madeWhole = owedHeld();
+writeFileSync(join(WORK, 'unpaid-gate.json'), JSON.stringify({ node: 'Ironbridge Compute', model: 'llama-3.3-70b', afterTheUnsignedAnswer: { owed: shorted.owed.toString(), held: shorted.held.toString() }, heldWhenServedAgain: paidUp.held.toString(), afterTheNextRequest: { owed: madeWhole.owed.toString(), held: madeWhole.held.toString(), status: afterUnpaid } }, null, 1));
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 const refusals = proxied.slice(beforeOwed).filter((x) => x.url.includes('/v1/chat/completions') && /payment_required/.test(x.answer ?? ''));
 const totalsInClear = refusals.filter((x) => /"(owed|paid|unpaid|deposit)"/.test(x.answer ?? ''));
-check('a node’s 402 for an unpaid answer is sealed to a router that pays inside the seal, and the router still pays it and goes on', !skipSettle && refusals.length >= 1 && totalsInClear.length === 0 && afterUnpaid === 200, `${refusals.length} payment_required answer${refusals.length === 1 ? '' : 's'} through the proxy, ${totalsInClear.length} with totals in the clear${totalsInClear[0] ? `: ${(totalsInClear[0].answer ?? '').slice(0, 90)}` : ''} · the request after it: ${afterUnpaid}`);
+check('a node’s 402 for an unpaid answer is sealed to a router that pays inside the seal, and the router still pays it and goes on', !skipSettle && refusals.length >= 1 && totalsInClear.length === 0 && afterUnpaid === 200 && shorted.owed > shorted.held && paidUp.held >= shorted.owed && madeWhole.held >= madeWhole.owed, `${refusals.length} payment_required answer${refusals.length === 1 ? '' : 's'} through the proxy, ${totalsInClear.length} with totals in the clear${totalsInClear[0] ? `: ${(totalsInClear[0].answer ?? '').slice(0, 90)}` : ''} · the request after it: ${afterUnpaid} · the node’s book: owed ${shorted.owed} and held a signature for ${shorted.held} after the unsigned answer, held ${paidUp.held} when it served again, owed ${madeWhole.owed} and holds ${madeWhole.held} once that answer was signed for`);
 // Each answer tells the client how its payment traveled: inside the seal to a node that reads it there, in headers
 // to one that does not.
 const insideLines: string[] = [];

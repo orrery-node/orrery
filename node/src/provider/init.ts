@@ -53,10 +53,28 @@ export function nextSteps(out: string, cli = 'orrery'): string {
   return [
     `  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)`,
     `  2. ${cli} provider compare --config ${out} to see where new prices would stand`,
-    `  3. ${cli} provider register --config ${out} --wallet <keypair.json> lists the node on chain (a one-time transaction from your wallet)`,
+    `  3. ${cli} provider register --config ${out} lists the node on chain (one transaction from the wallet named in ${out})`,
     `  4. ${cli} provider check --config ${out} says whether it is ready to earn`,
     `  5. ${cli} provider start --config ${out}, or ${cli} provider compose --config ${out} to run it in Docker`,
   ].join('\n');
+}
+
+/** Where the Solana tools keep a wallet. */
+export const SOLANA_WALLET = '~/.config/solana/id.json';
+
+/** The wallet file a draft names: the one asked for, else the one `orrery wallet new` made in the home folder, else
+ * the usual Solana file when it is there, else the home folder's place, where `orrery wallet new` will put one. */
+export function draftWallet(o: { asked?: string; home: string; homeExists: boolean; solanaExists: boolean }): string {
+  if (o.asked) return o.asked;
+  if (o.homeExists) return o.home;
+  return o.solanaExists ? SOLANA_WALLET : o.home;
+}
+
+/** What `provider init` says about the wallet its draft names: the address the node will be listed under, or, when
+ * the file is not there, how to get one. Saying it now beats an error at the next command. */
+export function walletNote(o: { wallet: string; exists: boolean; isHome: boolean; out: string; address?: string }, cli = 'orrery'): string {
+  if (o.exists) return `the node will be listed under ${o.address ? `${o.address}, the wallet at ${o.wallet}` : `the wallet at ${o.wallet}`}. It signs once, for provider register.`;
+  return `note: there is no wallet at ${o.wallet} yet. ${cli} wallet new${o.isHome ? '' : ` --out ${o.wallet}`} makes one there. Or point "wallet" in ${o.out} at a Solana wallet you have, or put its address in "authority".`;
 }
 
 /** Embedding models by their usual names; they are priced on input tokens only. */
@@ -76,7 +94,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     publicUrl: o.publicUrl ?? 'https://your-node.example.com',
     rpcUrl: 'https://api.mainnet-beta.solana.com',
     settleMint: USDC_MAINNET,
-    wallet: o.wallet ?? '~/.config/solana/id.json',
+    wallet: o.wallet ?? SOLANA_WALLET,
     dataDir: '~/.orrery/provider',
     upstream: { baseUrl: found.baseUrl },
     models: found.models.map((id) => (isEmbeddingModel(id) ? { id: networkId(id), upstreamModel: id, context: 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } } : { id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
