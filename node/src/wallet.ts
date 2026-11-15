@@ -26,6 +26,7 @@ export function walletNextSteps(path: string, address: string, depositUsd: strin
     `  USDC to spend    $${depositUsd} opens the first channel; close a channel and what you did not spend comes back`,
     `then  ${cli} router --wallet ${path}   (a wallet at the default place is used without --wallet)`,
     `      ${cli} doctor --wallet ${path}   reads its balances and says what is ready`,
-    `To run a node: ${cli} provider init --wallet ${path}   (writes the node’s config with this wallet in it)`,
+    `To run a node instead, send it about 0.013 SOL and no USDC: the listing’s rent and fee money for the node’s key.`,
+    `then  ${cli} provider init --wallet ${path}   (writes the node’s config with this wallet in it)`,
   ].join('\n');
 }

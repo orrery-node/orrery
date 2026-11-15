@@ -1311,6 +1311,59 @@ check('the Solana RPC goes through the same proxy: reads, and a transaction sent
   proxiedAfter === proxiedBalance + 1_000 && !proxiedTransfer.startsWith('failed') && rpcCalls.includes('sendTransaction') && rpcCalls.includes('getSignatureStatuses') && rpcCalls.includes('getBalance') && rpcGone === 'refused',
   `${rpcCalls.length} RPC calls through the proxy (${[...new Set(rpcCalls)].join(', ')}); proxy gone → ${rpcGone}${proxiedTransfer.startsWith('failed') ? ` · ${proxiedTransfer}` : ''}`);
 
+// The whole path of a new operator, with the real CLI in a home folder that has never seen Orrery or the Solana
+// tools: a wallet, a config, one transaction, a running node, and a router that never heard of it paying it.
+const walkHome = join(WORK, 'walk-in');
+mkdirSync(walkHome, { recursive: true });
+const walkEnv = Object.fromEntries(Object.entries({ ...process.env, ORRERY_HOME: join(walkHome, '.orrery'), HOME: walkHome }).filter(([k]) => k !== 'ORRERY_WALLET')) as NodeJS.ProcessEnv;
+const walkRun = (args: string[]) => new Promise<{ code: number | null; text: string; ms: number }>((done) => { const t0 = Date.now(); let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: walkEnv }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text: text.split('\n').filter((l) => !l.startsWith('bigint:')).join('\n'), ms: Date.now() - t0 })); });
+const walkCfg = join(walkHome, 'provider.json');
+const walk1 = await walkRun(['wallet', 'new']);
+const walkWallet = /address {2}(\S+)/.exec(walk1.text)?.[1];
+// The one deposit an operator makes. Here it is an airdrop; on mainnet it is a withdrawal from wherever their SOL is.
+if (walkWallet) await fund(new PublicKey(walkWallet), 1);
+const walk2 = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Walk-in Node', '--public-url', 'http://127.0.0.1:17288', '--out', walkCfg]);
+// The draft is written for mainnet. The rehearsal points it at its own validator, its own USDC and a free port, and
+// edits nothing else: the wallet, the models, the prices and the data folder are as init wrote them.
+if (existsSync(walkCfg)) writeFileSync(walkCfg, JSON.stringify({ ...(JSON.parse(readFileSync(walkCfg, 'utf8')) as object), rpcUrl: RPC, settleMint: usdc.toBase58(), listen: 17288 }, null, 2));
+const walk3 = await walkRun(['provider', 'register', '--config', walkCfg, '--rpc', RPC, '--fund-key']);
+let walkStarted = '';
+const walkT0 = Date.now();
+const walkNode = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'start', '--config', walkCfg, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'], env: walkEnv });
+walkNode.stdout!.on('data', (c) => (walkStarted += c));
+walkNode.stderr!.on('data', (c) => (walkStarted += c));
+for (let i = 0; i < 150 && !/\n(next|ready)[: ]/.test(`\n${walkStarted}`); i++) await sleep(200);
+const walkStartMs = Date.now() - walkT0;
+const walkSaid = walkStarted.split('\n').find((l) => /^(next|ready)/.test(l)) ?? 'started without a word about what is left';
+// A router that has never heard of this node reads the chain again and is asked for a model only this node lists.
+await registry.refresh();
+const walkListing = walkWallet ? pda.provider(new PublicKey(walkWallet)).toBase58() : '';
+const walkAskT0 = Date.now();
+const walkAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'llama3.1-8b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+const walkAnswer = await walkAsk.text();
+const walkAskMs = Date.now() - walkAskT0;
+const walkCost = walkAsk.headers.get('x-orrery-cost');
+await sleep(600); // the voucher for that answer follows it
+const walk5 = await walkRun(['provider', 'earnings', '--config', walkCfg, '--rpc', RPC]);
+walkNode.kill();
+const walkKey = /to the node’s key (\S+) /.exec(walk3.text)?.[1];
+const walkKeyLamports = walkKey ? await conn.getBalance(new PublicKey(walkKey)) : -1;
+const walkMask = (t: string) => t.split(walkHome).join('~').replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>').trim().split('\n');
+writeFileSync(join(WORK, 'walk-in.json'), JSON.stringify({
+  steps: [
+    { typed: 'orrery wallet new', ms: walk1.ms, exit: walk1.code, said: walkMask(walk1.text) },
+    { typed: 'orrery provider init', ms: walk2.ms, exit: walk2.code, said: walkMask(walk2.text) },
+    { typed: 'orrery provider register --config provider.json --fund-key', ms: walk3.ms, exit: walk3.code, said: walkMask(walk3.text) },
+    { typed: 'orrery provider start --config provider.json', ms: walkStartMs, said: walkMask(walkStarted) },
+  ],
+  firstPaidAnswer: { status: walkAsk.status, ms: walkAskMs, cost: walkCost, node: walkAsk.headers.get('x-orrery-provider-name'), found: walkAsk.headers.get('x-orrery-provider') === walkListing },
+  earnings: walkMask(walk5.text), nodeKeyLamports: walkKeyLamports, machineMs: walk1.ms + walk2.ms + walk3.ms + walkStartMs + walkAskMs,
+}, null, 1));
+check('a new operator with no Solana tools goes from nothing to a paid answer with four commands and one deposit: wallet new, provider init, register --fund-key, provider start',
+  walk1.code === 0 && !!walkWallet && walk2.code === 0 && walletOf(walkCfg) === join(walkHome, '.orrery', 'wallet.json') && walk3.code === 0 && walkKeyLamports === 10_000_000
+  && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,
+  `wallet new ${walk1.code} · init ${walk2.code} · register ${walk3.code}, key ${walkKeyLamports < 0 ? 'unfunded' : `${(walkKeyLamports / 1e9).toFixed(4)} SOL`} · start: ${walkSaid.slice(0, 60)} · a router that had never seen it: ${walkAsk.status}${walkAsk.status === 200 ? ` from ${walkAsk.headers.get('x-orrery-provider-name')}, paid $${walkCost}` : ` ${walkAnswer.slice(0, 120)}`} · ${((walk1.ms + walk2.ms + walk3.ms + walkStartMs + walkAskMs) / 1000).toFixed(1)} s of machine time`);
+
 // One address to fund: the listing wallet sends the node's key its fee money in the register transaction.
 await fund(brokeWallet.publicKey, 1);
 const fundedOut = await new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'register', '--config', join(brokeDir, 'provider.json'), '--rpc', RPC, '--fund-key', '0.02'], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });
