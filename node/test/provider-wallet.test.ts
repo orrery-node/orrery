@@ -34,4 +34,17 @@ describe('a node started before its wallet file exists', () => {
     const byFile = new ProviderNode(cfg(mkdtempSync(join(tmpdir(), 'orrery-wallet-')), { wallet: file }));
     assert.equal(byAddress.pda.toBase58(), byFile.pda.toBase58());
   });
+
+  it('takes the wallet’s address from ORRERY_AUTHORITY when the config has no authority and the wallet file is not there', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-wallet-'));
+    const wallet = Keypair.generate();
+    const byAddress = new ProviderNode(cfg(dir, { authority: wallet.publicKey.toBase58() }));
+    process.env.ORRERY_AUTHORITY = wallet.publicKey.toBase58();
+    try {
+      const inContainer = new ProviderNode(cfg(mkdtempSync(join(tmpdir(), 'orrery-wallet-')), { wallet: join(dir, 'not-mounted', 'wallet.json') }));
+      assert.equal(inContainer.pda.toBase58(), byAddress.pda.toBase58());
+    } finally {
+      delete process.env.ORRERY_AUTHORITY;
+    }
+  });
 });

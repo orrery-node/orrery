@@ -247,7 +247,11 @@ async function provider(sub: string) {
     const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
     // The package the container runs: this version from npm, or what --package names (a pinned version, a packed file).
     const pkg = flag('package', `orrery-node@${version}`)!;
-    const text = composeFile({ cfg: raw, configPath: resolvePath(expand(cfgPath)), home: process.env.HOME ?? '/root', pkg, port: cfg.listen });
+    // The wallet stays on this computer; the container node gets its address, read here from the file the config names.
+    const walletFile = !raw.authority && raw.wallet ? expand(raw.wallet) : null;
+    const authority = raw.authority ? undefined : walletFile && existsSync(walletFile) ? loadKeypair(walletFile).publicKey.toBase58() : undefined;
+    if (!raw.authority && !authority) console.log(`note: the node in the container needs its wallet’s address: put it in "authority" in ${cfgPath}${walletFile ? ` (there is no wallet at ${raw.wallet} to read it from)` : ''}`);
+    const text = composeFile({ cfg: raw, configPath: resolvePath(expand(cfgPath)), home: process.env.HOME ?? '/root', pkg, port: cfg.listen, authority });
     if (has('print')) return console.log(text);
     // A node told to listen on this computer only would do the same inside the container, where nothing could reach it.
     if (/^(127\.0\.0\.1|localhost|::1)$/.test((raw as { host?: string }).host ?? '')) console.log(`note: "host": "${(raw as { host?: string }).host}" in ${cfgPath} makes the node listen inside the container only; remove it so routers can reach the node`);

@@ -190,7 +190,9 @@ export class ProviderNode {
       ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretFromEnv(cfg.nodeKeyEnv, 'node key'))))
       : loadOrCreateKeypair(expand(cfg.nodeKey ?? `${this.dir}/node.json`));
     this.apiKey = cfg.upstream.apiKey ?? (cfg.upstream.apiKeyEnv ? secretFromEnv(cfg.upstream.apiKeyEnv, 'upstream key') : undefined);
-    this.authority = cfg.authority ? new PublicKey(cfg.authority) : walletAddress(expand(cfg.wallet ?? `${this.dir}/wallet.json`));
+    // In a container made by provider compose the wallet file is not there; its address comes in ORRERY_AUTHORITY.
+    const given = cfg.authority ?? process.env.ORRERY_AUTHORITY;
+    this.authority = given ? new PublicKey(given) : walletAddress(expand(cfg.wallet ?? `${this.dir}/wallet.json`));
     this.pda = pda.provider(this.authority);
     this.mint = new PublicKey(cfg.settleMint);
     const wirePath = `${this.dir}/wire.key`;

@@ -13,6 +13,9 @@ export type ComposeInput = {
   /** The package to run, e.g. orrery-node@0.1.17. */
   pkg: string;
   port: number;
+  /** The wallet's address, read on the host from the wallet file the config names when it has no "authority". The
+   * wallet stays out of the container; the node there only needs the address to find its listing. */
+  authority?: string;
 };
 
 const LOOPBACK = /^(127\.0\.0\.1|localhost|\[::1\])$/i;
@@ -40,7 +43,7 @@ export function composeFile(i: ComposeInput): string {
   // The node key, when it is a file outside the node's folder, comes along read-only.
   const nodeKey = i.cfg.nodeKey && !i.cfg.nodeKeyEnv ? at(i.cfg.nodeKey) : null;
   const volumes = [`${config}:${config}:ro`, `${dataDir}:${dataDir}`, ...(nodeKey && !nodeKey.startsWith(`${dataDir}/`) ? [`${nodeKey}:${nodeKey}:ro`] : [])];
-  const env = [`HOME=${i.home}`, ...(up.viaHost ? [`ORRERY_UPSTREAM_URL=${up.url}`] : [])];
+  const env = [`HOME=${i.home}`, ...(up.viaHost ? [`ORRERY_UPSTREAM_URL=${up.url}`] : []), ...(i.authority ? [`ORRERY_AUTHORITY=${i.authority}`] : [])];
   // Secrets the config reads from the environment are passed through by name: their values never land in this file.
   const passed = [i.cfg.nodeKeyEnv, i.cfg.upstream.apiKeyEnv].filter((n): n is string => !!n);
   // --package names what to install and `orrery` what to run, so a version, a tag or a packed file all work.

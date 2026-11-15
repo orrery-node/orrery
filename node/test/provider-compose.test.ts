@@ -36,4 +36,11 @@ describe('orrery provider compose', () => {
     const inside = composeFile({ ...base, cfg: { nodeKey: '~/.orrery/provider/node.json', upstream: { baseUrl: 'http://gpu-box:8000/v1' } } });
     assert.equal((inside.match(/node\.json/g) ?? []).length, 0, 'a key inside the folder is already mounted with it');
   });
+
+  it('gives the node its wallet’s address, since the wallet itself stays out of the container', () => {
+    const y = composeFile({ ...base, cfg: { upstream: { baseUrl: 'http://gpu-box:8000/v1' } }, authority: 'Wa11etAddre55' });
+    assert.match(y, /- "ORRERY_AUTHORITY=Wa11etAddre55"/);
+    assert.ok(!/wallet\.json/.test(y), 'the wallet file is not mounted');
+    assert.ok(!composeFile({ ...base, cfg: { upstream: { baseUrl: 'http://gpu-box:8000/v1' } } }).includes('ORRERY_AUTHORITY'));
+  });
 });
