@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codexProfile, contextFromRouter, instructions } from '../src/connect.ts';
+import { codexProfile, contextFromRouter, instructions, routerNote } from '../src/connect.ts';
 
 describe('orrery connect', () => {
   it('writes a Codex profile that points at the router over the Responses API', () => {
@@ -32,5 +32,34 @@ describe('orrery connect', () => {
     assert.equal(await contextFromRouter('http://127.0.0.1:7171', 'm', up), 131072);
     assert.equal(await contextFromRouter('http://127.0.0.1:7171', 'x', up), undefined);
     assert.equal(await contextFromRouter('http://127.0.0.1:7171', 'm', async () => { throw new Error('ECONNREFUSED'); }), undefined);
+  });
+
+  it('says when no router answers at that address, and how to start one', () => {
+    const withWallet = routerNote({ client: 'openai', router: 'http://127.0.0.1:7171/', models: null, model: 'gpt-oss-120b', asked: false, hasWallet: true }, 'orrery');
+    assert.equal(withWallet, 'note: no router answers at http://127.0.0.1:7171 yet, so nothing will connect with these settings. Start one first: orrery router');
+    const noWallet = routerNote({ client: 'mcp', router: 'http://127.0.0.1:7171', models: null, model: 'gpt-oss-120b', asked: false, hasWallet: false }, 'orrery');
+    assert.match(noWallet ?? '', /Start one first: orrery wallet new {3}\(makes the wallet that pays; send it SOL and USDC\), then orrery router$/);
+  });
+
+  it('says nothing when the router lists the model the settings name', () => {
+    assert.equal(routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: [{ id: 'gpt-oss-120b' }, { id: 'b' }], model: 'gpt-oss-120b', asked: false, hasWallet: true }), null);
+    assert.equal(routerNote({ client: 'claude', router: 'http://127.0.0.1:7171', models: [{ id: 'b' }], model: 'b', asked: true, hasWallet: false }), null);
+  });
+
+  it('says when a model asked for is not listed, and what is', () => {
+    const n = routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: [{ id: 'a' }, { id: 'b' }, {}], model: 'nope-1', asked: true, hasWallet: true });
+    assert.equal(n, 'note: your router does not list nope-1 right now, so requests for it will not be answered. It lists: a, b');
+    const many = routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: 'abcdefgh'.split('').map((id) => ({ id })), model: 'nope-1', asked: true, hasWallet: true });
+    assert.match(many ?? '', /It lists: a, b, c, d, e, f and 2 more$/);
+  });
+
+  it('says when it named another model because the usual one is not on the network', () => {
+    const n = routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: [{ id: 'llama-3.3-70b' }], model: 'llama-3.3-70b', asked: false, hasWallet: true });
+    assert.equal(n, 'note: gpt-oss-120b is not on the network right now, so these settings name llama-3.3-70b, which your router lists.');
+  });
+
+  it('says when the router is up but has found no node; an MCP client is told only what concerns it', () => {
+    assert.match(routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: [], model: 'gpt-oss-120b', asked: false, hasWallet: true }, 'orrery') ?? '', /^note: your router answers at http:\/\/127\.0\.0\.1:7171 but lists no model yet: it has found no node that answers\. orrery doctor shows what it sees\.$/);
+    assert.equal(routerNote({ client: 'mcp', router: 'http://127.0.0.1:7171', models: [{ id: 'a' }], model: 'nope-1', asked: true, hasWallet: true }), null);
   });
 });

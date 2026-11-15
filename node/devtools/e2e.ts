@@ -477,6 +477,17 @@ const madeAsk = await fetch('http://127.0.0.1:17290/v1/chat/completions', { meth
 const madeSaid = (await madeAsk.json().catch(() => ({}))) as { error?: { code?: string; message?: string } };
 madeRouter.kill();
 check('a router started with no --wallet uses the wallet made in its home folder, and says so', madeOut.includes(`wallet ${madeAddress?.slice(0, 6)}…`) && /using the wallet in .*wallet\.json/.test(madeOut) && madeAsk.status === 402 && (madeSaid.error?.message ?? '').startsWith(`your wallet ${madeAddress} has $0.00 USDC`), `${(madeOut.split('\n').find((l) => /router on/.test(l)) ?? 'no start line').replace(/.*route auto {2}· {2}/, '').slice(0, 40)} · asked: ${madeAsk.status} ${(madeSaid.error?.message ?? '').replace(madeAddress ?? '-', '<address>').slice(0, 70)}`);
+// `orrery connect` looks at the router it points at before it hands out settings.
+const connectOut = (args: string[], homeDir: string) => new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'connect', ...args], { stdio: ['ignore', 'pipe', 'ignore'], env: Object.fromEntries(Object.entries({ ...process.env, ORRERY_HOME: homeDir }).filter(([k]) => k !== 'ORRERY_WALLET')) }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const emptyHome = join(WORK, 'home-nothing');
+mkdirSync(emptyHome, { recursive: true });
+const [conDown, conDownNoWallet, conUp, conUnlisted] = await Promise.all([
+  connectOut(['openai', '--router', 'http://127.0.0.1:17997'], madeHome),
+  connectOut(['openai', '--router', 'http://127.0.0.1:17997'], emptyHome),
+  connectOut(['openai', '--router', ROUTER], madeHome),
+  connectOut(['openai', '--router', ROUTER, '--model', 'nope-1'], madeHome),
+]);
+check('orrery connect says when no router answers where its settings point, how to start one, and when the model asked for is not listed', /note: no router answers at http:\/\/127\.0\.0\.1:17997 yet.*Start one first: \S+ router$/.test(conDown) && /Start one first: \S+ wallet new .*then \S+ router$/.test(conDownNoWallet) && conUp.includes('model: gpt-oss-120b') && !conUp.includes('note:') && /note: your router does not list nope-1 right now.*It lists: /.test(conUnlisted), `nothing there: ${(conDown.split('\n').find((l) => l.startsWith('note:')) ?? 'no note').slice(0, 60)}… · running: ${conUp.includes('note:') ? 'a note' : 'no note'} · nope-1: ${(conUnlisted.split('\n').find((l) => l.startsWith('note:')) ?? 'no note').slice(0, 44)}…`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

@@ -3,6 +3,8 @@
 import { CLI } from './brand.ts';
 
 export const CLIENTS = ['codex', 'claude', 'openai', 'anthropic', 'mcp'] as const;
+/** The model the settings name when none is asked for. */
+export const USUAL_MODEL = 'gpt-oss-120b';
 export type Client = (typeof CLIENTS)[number];
 
 /** A Codex CLI profile file ($CODEX_HOME/orrery.config.toml, used with `codex --profile orrery`). It sits beside the
@@ -36,6 +38,24 @@ export function instructions(client: Client, router: string, model: string, code
     case 'mcp':
       return `Command for an MCP client: npx -y orrery-node mcp --router ${base}\nClaude Code: claude mcp add orrery -- npx -y orrery-node mcp --router ${base}`;
   }
+}
+
+/** How to start a router, for someone who has none running: with a wallet it is one command, without one the wallet
+ * comes first. */
+export const startRouter = (hasWallet: boolean, cli = CLI) => (hasWallet ? `${cli} router` : `${cli} wallet new   (makes the wallet that pays; send it SOL and USDC), then ${cli} router`);
+
+/** What `orrery connect` adds when the router it points at would not serve the settings it just printed: nothing
+ * answers there, the router has found no node, or the model is not listed. Null when the settings work as printed.
+ * `models` is what the router lists (null when nothing answers); `asked` is whether the model came from --model. */
+export function routerNote(o: { client: Client; router: string; models: { id?: string }[] | null; model: string; asked: boolean; hasWallet: boolean }, cli = CLI): string | null {
+  const base = o.router.replace(/\/$/, '');
+  if (!o.models) return `note: no router answers at ${base} yet, so nothing will connect with these settings. Start one first: ${startRouter(o.hasWallet, cli)}`;
+  const listed = o.models.map((m) => m.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (!listed.length) return `note: your router answers at ${base} but lists no model yet: it has found no node that answers. ${cli} doctor shows what it sees.`;
+  if (o.client === 'mcp') return null; // an MCP client picks its model per request, from the router's own list
+  if (!listed.includes(o.model)) return `note: your router does not list ${o.model} right now, so requests for it will not be answered. It lists: ${listed.slice(0, 6).join(', ')}${listed.length > 6 ? ` and ${listed.length - 6} more` : ''}`;
+  if (!o.asked && o.model !== USUAL_MODEL) return `note: ${USUAL_MODEL} is not on the network right now, so these settings name ${o.model}, which your router lists.`;
+  return null;
 }
 
 type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; json(): Promise<unknown> }>;

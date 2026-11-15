@@ -17,7 +17,7 @@ import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
 import { CACHE_REPORTING, draftConfig, findUpstream, isEmbeddingModel, nextSteps } from './provider/init.ts';
-import { CLIENTS, codexProfile, contextFromRouter, instructions, type Client } from './connect.ts';
+import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
@@ -460,15 +460,19 @@ async function main() {
   if (cmd === 'connect') {
     if (!sub || !(CLIENTS as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} connect <${CLIENTS.join('|')}> [--model <id>] [--write]`);
     const routerUrl = flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!;
-    const model = flag('model', 'gpt-oss-120b')!;
+    // The settings are only worth printing if the router they point at will serve them: is one answering, and does
+    // it list the model? With no --model, a model it does list is named.
+    const listed = await routerModels(routerUrl);
+    const model = flag('model') ?? (listed ? pickModel(listed) : undefined) ?? USUAL_MODEL;
+    const note = routerNote({ client: sub as Client, router: routerUrl, models: listed, model, asked: !!flag('model'), hasWallet: !!walletFlag() });
     const profilePath = `${expand(process.env.CODEX_HOME ?? '~/.codex')}/orrery.config.toml`;
-    if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath));
+    if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath) + (note ? `\n${note}` : ''));
     if (sub !== 'codex') throw new Error('--write is for codex; the others take environment variables');
     if (existsSync(profilePath) && !has('force')) throw new Error(`${profilePath} exists; pass --force to replace it`);
     mkdirSync(dirname(profilePath), { recursive: true });
     const ctx = await contextFromRouter(routerUrl, model);
     writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
-    return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery`);
+    return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery${note ? `\n${note}` : ''}`);
   }
   if (cmd === 'run') {
     // orrery run claude [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <the client's own arguments>]
@@ -481,7 +485,7 @@ async function main() {
     if ((client && !(RUNNABLE as readonly string[]).includes(client)) || (!client && !rest.length)) throw new Error(`usage: ${CLI} run <${RUNNABLE.join('|')}> [--budget <usd>] [--task <name>] [--model <id>] [--router <url>] [-- <its own arguments>]\n       ${CLI} run [--budget <usd>] [--task <name>] [--router <url>] -- <any command>`);
     const routerUrl = own('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!;
     const models = await routerModels(routerUrl);
-    if (!models) throw new Error(`no router answers at ${routerUrl}; start one first: ${CLI} router --wallet <keypair.json>`);
+    if (!models) throw new Error(`no router answers at ${routerUrl}; start one first: ${startRouter(!!walletFlag())}`);
     const model = own('model') ?? (client ? pickModel(models) : undefined);
     if (client && !model) throw new Error(`the router lists no model yet; see ${CLI} models`);
     // A job needs a budget from its first request, so one is always set: a dollar unless you say otherwise.

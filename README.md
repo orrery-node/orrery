@@ -242,6 +242,8 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
 The key is a placeholder: Claude Code will not start without one, and the router ignores it. To bill a job as one and stop it at a limit, add `ANTHROPIC_CUSTOM_HEADERS=$'x-orrery-task: my-job\nx-orrery-task-budget: 0.05'` and read the bill with `orrery spend --by task`.
 
 Codex CLI: `orrery connect codex --write`, then `codex --profile orrery`.
+
+`orrery connect <client>` prints the settings for any of them. (In main, next release: `connect` also looks at the router those settings point at. It says when none is answering and how to start one, and when a model you asked for is not listed.)
 </details>
 
 <details>

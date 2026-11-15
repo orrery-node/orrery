@@ -102,7 +102,7 @@ Claude Code works the same way through the Anthropic API. Run the router with `-
 ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
 ```
 
-The router has no API key, so any value works. `orrery connect claude|openai|anthropic|mcp` prints what each client needs. The rehearsal runs Codex CLI 0.167.0 and Claude Code 2.1.301 through the router (`E2E_CODEX=1 E2E_CLAUDE=1 npx tsx devtools/e2e.ts`) and checks each answer was paid for.
+The router has no API key, so any value works. `orrery connect claude|openai|anthropic|mcp` prints what each client needs. (In main, next release: `connect` also looks at the router those settings point at. It says when none is answering and how to start one, and when a model you asked for is not listed.) The rehearsal runs Codex CLI 0.167.0 and Claude Code 2.1.301 through the router (`E2E_CODEX=1 E2E_CLAUDE=1 npx tsx devtools/e2e.ts`) and checks each answer was paid for.
 
 Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
 
