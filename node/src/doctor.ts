@@ -133,7 +133,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const said = watchedText(p.watched);
     if (said) out.push({ ok: null, what: '  watched', detail: `${p.name ?? `${p.address.slice(0, 6)}…`} ${said}` });
     // And what the node did with the requests this router sent it.
-    const asked = answeredText(p.observed);
+    const asked = answeredText(p.watched) || answeredText(p.observed);
     if (asked) out.push({ ok: null, what: '  asked', detail: `${p.name ?? `${p.address.slice(0, 6)}…`} ${asked}` });
   }
   // What it paid in the last day, by its own log, and what it did not pay for.

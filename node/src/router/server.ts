@@ -495,7 +495,10 @@ export class Router {
           if (round === 0) tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
           if (!away(err)) allAway = false;
           // One request counts once against a node, however many rounds it took.
-          if (!counted.has(cand.entry.address)) this.stats.fail(cand.entry.address);
+          if (!counted.has(cand.entry.address)) {
+            this.stats.fail(cand.entry.address);
+            this.o.registry.noteRequest(cand.entry.address, false);
+          }
           counted.add(cand.entry.address);
           if (res.headersSent) {
             // The client already has part of the answer. Hand that text to the next provider that says it can continue it,
@@ -687,6 +690,7 @@ export class Router {
     this.handing.add(handed);
     void handed.finally(() => this.handing.delete(handed));
     this.stats.ok(address, ttft);
+    this.o.registry.noteRequest(address, true);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
       inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),

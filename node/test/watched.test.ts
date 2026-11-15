@@ -63,3 +63,27 @@ describe('a router’s own count of what a node did with its requests', () => {
     assert.equal(answeredText(undefined), '');
   });
 });
+
+describe('the count of answered requests, kept with the record on disk', () => {
+  it('survives a restart and says over how long', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-asked-'));
+    const path = join(dir, 'watched.json');
+    const now = Date.now();
+    saveWatched(path, new Map([['A', { checks: 10, up: 9, since: now - 7_200_000, sent: 43, answered: 41, askedSince: now - 3 * 86_400_000 } as never], ['B', { checks: 2, up: 2, since: now - 60_000 }]]));
+    const back = loadWatched(path);
+    assert.deepEqual(back.get('A'), { checks: 10, up: 9, since: now - 7_200_000, sent: 43, answered: 41, askedSince: now - 3 * 86_400_000 });
+    assert.deepEqual(back.get('B'), { checks: 2, up: 2, since: now - 60_000 });
+    assert.equal(answeredText(back.get('A') as never, now), 'answered 41 of 43 requests this router sent it over 3 days');
+    assert.equal(answeredText(back.get('B') as never, now), '');
+    assert.equal(answeredText({ checks: 1, up: 1, since: now, sent: 2, answered: 2, askedSince: now - 300_000 } as never, now), 'answered all 2 requests this router sent it over 5 min');
+  });
+
+  it('drops counts that cannot be true and keeps the rest of the record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-asked-'));
+    const path = join(dir, 'watched.json');
+    writeFileSync(path, JSON.stringify({ A: { checks: 3, up: 3, since: 5, sent: 2, answered: 9, askedSince: 5 }, B: { checks: 3, up: 3, since: 5, sent: -1, answered: 0, askedSince: 5 } }));
+    const back = loadWatched(path);
+    assert.deepEqual(back.get('A'), { checks: 3, up: 3, since: 5 });
+    assert.deepEqual(back.get('B'), { checks: 3, up: 3, since: 5 });
+  });
+});

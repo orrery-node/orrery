@@ -229,6 +229,18 @@ export class Registry {
     return this.watch.get(address) ?? null;
   }
 
+  /** One request this router sent a node, and whether the node answered it: counted in the same record as the
+   * health checks and written with it, so the count outlives the router. */
+  noteRequest(address: string, answered: boolean): void {
+    const now = Date.now();
+    const rec = this.watch.get(address) ?? { checks: 0, up: 0, since: now };
+    rec.askedSince ??= now;
+    rec.sent = (rec.sent ?? 0) + 1;
+    rec.answered = (rec.answered ?? 0) + (answered ? 1 : 0);
+    this.watch.set(address, rec);
+    if (this.watchPath) saveWatched(this.watchPath, this.watch);
+  }
+
   async checkHealth(): Promise<void> {
     await Promise.all(
       this.usable().map(async (e) => {
