@@ -86,4 +86,12 @@ describe('orrery provider init', () => {
     assert.ok(!steps.includes('<keypair.json>'), steps);
     assert.match(steps, /\n {2}3\. orrery provider register --config provider\.json lists the node on chain \(one transaction from the wallet named in provider\.json\)\n/);
   });
+
+  it('asks only for what is still missing: a public address given to init is not asked for again', () => {
+    const given = nextSteps('provider.json', 'orrery', { publicUrl: 'https://gpu.example.org' });
+    assert.match(given, /^ {2}1\. check your prices in provider\.json \(micro-USDC per million tokens; 500000 = \$0\.50\); routers will reach the node at https:\/\/gpu\.example\.org\n/);
+    assert.ok(!given.includes('set publicUrl'), given);
+    assert.match(nextSteps('provider.json'), /^ {2}1\. set publicUrl to an address routers can reach, and your prices/);
+    assert.match(nextSteps('provider.json', 'orrery', { publicUrl: 'https://your-node.example.com' }), /^ {2}1\. set publicUrl/);
+  });
 });

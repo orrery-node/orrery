@@ -464,7 +464,7 @@ async function main() {
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
-    console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI)}`);
+    console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl })}`);
     const walletFile = expand(cfg.wallet);
     const listedUnder = existsSync(walletFile) ? (() => { try { return loadKeypair(walletFile).publicKey.toBase58(); } catch { return undefined; } })() : undefined;
     console.log(walletNote({ wallet: cfg.wallet, exists: existsSync(walletFile), isHome: cfg.wallet === homeWallet, out, address: listedUnder }, CLI));

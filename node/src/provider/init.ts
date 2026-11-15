@@ -49,9 +49,13 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
 }
 
 /** What is left to do after `provider init` wrote a config, in order. */
-export function nextSteps(out: string, cli = 'orrery'): string {
+export function nextSteps(out: string, cli = 'orrery', o: { publicUrl?: string } = {}): string {
+  // An address given to init is not asked for again; the placeholder still is.
+  const addressSet = !!o.publicUrl && !/^https?:\/\/your-node\.example\.com\/?$/.test(o.publicUrl);
   return [
-    `  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)`,
+    addressSet
+      ? `  1. check your prices in ${out} (micro-USDC per million tokens; 500000 = $0.50); routers will reach the node at ${o.publicUrl}`
+      : `  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)`,
     `  2. ${cli} provider compare --config ${out} to see where new prices would stand`,
     `  3. ${cli} provider register --config ${out} lists the node on chain (one transaction from the wallet named in ${out})`,
     `  4. ${cli} provider check --config ${out} says whether it is ready to earn`,
