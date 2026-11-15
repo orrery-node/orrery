@@ -1,13 +1,15 @@
 // The page at http://127.0.0.1:7171/ — what the router did, read from /orrery/status. Plain HTML, no build step.
 import { NAME } from '../brand.ts';
+import { FONT_FACES } from './fonts.ts';
 
-/** The shared page head, styles and header bar of the local consoles (router and provider). */
+/** The shared page head, styles and header bar of the local consoles (router and provider). The page asks nothing of
+ * any other computer: its two typefaces are carried in the page (fonts.ts), where a font link would tell a third party
+ * every time a console is opened. */
 export function consoleHead(title: string, here: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
 <style>
+${FONT_FACES}
 :root{--bg:#000;--card:#0c0c0c;--well:#070707;--line:#1c1c1c;--line2:#2e2e2e;--fg:#f7f7f7;--fg2:#c6c6c6;--fg3:#9c9c9c;--green:#14f195;--purple:#b98aff;--warn:#f0a868;
 --sans:'Instrument Sans','Helvetica Neue',Arial,sans-serif;--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;padding:0 clamp(16px,4vw,48px) 64px}

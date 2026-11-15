@@ -213,4 +213,8 @@ The Solana program (`7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS`) only holds c
 - X: https://x.com/OrreryNode
 - Security: https://github.com/orrery-node/orrery/blob/main/SECURITY.md
 
+## Fonts
+
+The local console pages carry the Latin subsets of Instrument Sans and Geist Mono inside the page, so opening a console fetches nothing from another computer. Both typefaces are under the SIL Open Font License 1.1.
+
 MIT licensed.

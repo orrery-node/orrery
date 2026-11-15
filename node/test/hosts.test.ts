@@ -13,8 +13,6 @@ const MAY_NAME: Record<string, string> = {
   'certificates.trustedservices.intel.com': 'Intel root certificate, to verify a TDX enclave',
   'kdsintf.amd.com': 'AMD key service, to verify an SEV-SNP enclave',
   'lite-api.jup.ag': 'a node that pledged a burn buys the token here',
-  'fonts.googleapis.com': 'fonts for the local console page, loaded by the browser that opens it',
-  'fonts.gstatic.com': 'fonts for the local console page, loaded by the browser that opens it',
   'your-node.example.com': 'the placeholder address provider init writes',
   host: 'a stand-in base for parsing a path',
   x: 'a stand-in base for parsing a path',

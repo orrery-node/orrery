@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'everyone', text: 'The local console pages (your router’s and your node’s) ask nothing of any other computer. Their two typefaces now travel inside the page; before, the browser that opened a console fetched them from Google Fonts, which told a third party each time one was opened and left the page blank where that host is blocked.' },
   { who: 'router', text: 'Your router’s own record of each node now includes what the node did with your requests: `orrery doctor` and the MCP `status` tool say "answered 41 of 43 requests this router sent it since it started", beside how often its health checks found the node up and how many times the node has been paid out on chain.' },
   { who: 'router', text: '`orrery mcp`’s `ask` tells an agent when the model ran out of room. An answer cut off at `max_tokens` ends with a line saying so. And when a reasoning model spends the whole cap thinking and writes nothing, the tool says that in words ("no answer: the model used all 1024 output tokens before it wrote one") instead of handing back an empty answer.' },
   { who: 'router', text: '`orrery doctor` says what your running router paid in the last 24 hours, by its own log, and what it did not pay for: answers that came after a node did not answer, or that another node had to finish.' },

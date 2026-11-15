@@ -628,6 +628,10 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) lists good places to start. Before opening a pull request, run the program tests, `pnpm test` and `pnpm e2e` in `node/`, and keep the protocol document in step with any change to the program or the wire format. Security issues go through private reporting, not public issues: see [SECURITY.md](SECURITY.md).
 
+## Fonts
+
+The local console pages carry the Latin subsets of [Instrument Sans](https://github.com/Instrument/instrument-sans) and [Geist Mono](https://github.com/vercel/geist-font) inside the page, so opening a console fetches nothing. Both are under the SIL Open Font License 1.1; the files are in `node/assets/fonts`.
+
 ## License
 
 [MIT](LICENSE)

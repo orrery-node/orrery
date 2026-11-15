@@ -443,6 +443,10 @@ const spendOut = await new Promise<string>((done) => { let out = ''; const pc = 
 const spendSkipLine = spendOut.split('\n').find((l) => /did not answer/.test(l)) ?? '';
 check('orrery spend says how many answers came from the next node after another did not answer, and that such a node is signed nothing', skippedLogged.length > 0 && spendSkipLine.startsWith(`${skippedLogged.length} of these answers came from the next node after another did not answer`) && /signed nothing\.$/.test(spendSkipLine), spendSkipLine || `${skippedLogged.length} such answers in the log, and spend says nothing about them`);
 check('the router’s log keeps which answers another node finished after the first stopped mid-answer, and orrery spend says so apart from nodes that did not answer', resumedLogged.length >= 2 && spendSkipLine.includes(`; ${resumedLogged.length} were finished by another node after the first stopped mid-answer. A node that does not answer or does not finish is signed nothing.`), `${resumedLogged.length} in the log · ${spendSkipLine.split('; ')[1] ?? 'spend says nothing about them'}`);
+// The console page the router serves: the browser that opens it is sent nowhere else, not even for a font.
+const consoleHtml = await (await fetch(`${ROUTER}/`)).text();
+const consoleOutside = [...consoleHtml.matchAll(/(?:https?:)?\/\/([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)].map((m) => m[1]).filter((h) => h !== '127.0.0.1');
+check('the router’s console page asks nothing of any other computer and carries its typefaces itself', consoleOutside.length === 0 && (consoleHtml.match(/@font-face/g) ?? []).length === 2 && !/<link\b/i.test(consoleHtml), consoleOutside.length ? `the page points a browser at ${[...new Set(consoleOutside)].join(', ')}` : `${Math.round(consoleHtml.length / 1024)} kB page, 2 typefaces inside it, no host but this computer`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
