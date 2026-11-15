@@ -28,6 +28,8 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     const missing = cfg.models.filter((m) => have.size && !have.has(m.upstreamModel ?? m.id)).map((m) => m.upstreamModel ?? m.id);
     out.push({ ok: missing.length ? null : true, what: 'model server', detail: missing.length ? `answers at ${base}; its /models list does not name ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` and ${missing.length - 3} more` : ''} (fine if it accepts those names anyway)` : `answers at ${base}, serves all ${cfg.models.length} listed model${cfg.models.length === 1 ? '' : 's'}` });
   }
+  // Listed is not the same as answering: one small request to each model, straight to the model server.
+  if (models) out.push(await modelTest(base, { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(cfg.upstream.headers ?? {}) }, cfg.models));
 
   const t0 = Date.now();
   const health = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { provider?: string } | null;
@@ -82,6 +84,43 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   return out;
 }
 
+type TestFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
+const MODELS_TESTED = 3;
+const took = (ms: number) => (ms < 1_000 ? `${Math.round(ms)} ms` : `${(ms / 1_000).toFixed(1)} s`);
+
+/** Asks each listed model one small thing (the first three), the way the node itself would: a model that is listed
+ * but not loaded, not pulled or out of memory fails here, in front of the operator, and not later in front of a
+ * router. A model priced on input only is an embedding model and is asked for an embedding. */
+export async function modelTest(
+  base: string,
+  headers: Record<string, string>,
+  models: { id: string; upstreamModel?: string; price: { input: number; output: number } }[],
+  fetchFn: TestFetch = (url, init) => fetchWithTimeout(url, { ...init, timeoutMs: 60_000 }),
+): Promise<CheckLine> {
+  const good: string[] = [], bad: string[] = [];
+  for (const m of models.slice(0, MODELS_TESTED)) {
+    const name = m.upstreamModel ?? m.id, embeds = m.price.output === 0, t0 = performance.now();
+    const said = await fetchFn(`${base}/${embeds ? 'embeddings' : 'chat/completions'}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(embeds ? { model: name, input: 'ok' } : { model: name, messages: [{ role: 'user', content: 'Reply with the word ok.' }], max_tokens: 8, stream: false }),
+    })
+      .then(async (r) => {
+        const text = await r.text();
+        if (r.ok) return null;
+        const why = (() => { try { const j = JSON.parse(text) as { error?: { message?: string } | string }; return typeof j.error === 'string' ? j.error : j.error?.message; } catch { return undefined; } })();
+        return `${r.status}${why ? `: ${why.slice(0, 120)}` : ''}`;
+      })
+      // A model server loads a model on its first request, and a large one can take longer than this waits.
+      .catch((e) => (/^timeout after/.test((e as Error).message) ? 'no answer in 60 s; a model loading for the first time can take longer, so run the check again' : (e as Error).message.slice(0, 120)));
+    if (said === null) good.push(`${name} ${good.length ? '' : 'answered a test request '}in ${took(performance.now() - t0)}`);
+    else bad.push(`${name} did not answer a test request (${said})`);
+  }
+  if (bad.length && good.length) good[0] = good[0].replace('answered a test request in', 'answered in');
+  const left = models.length > MODELS_TESTED ? ` (the first ${MODELS_TESTED} of ${models.length} models)` : '';
+  return { ok: bad.length === 0, what: 'model test', detail: `${[...bad, ...good].join('; ')}${left}` };
+}
+
 /** The size of a node's listing on chain; what it costs to list is the rent for an account this big, paid once. */
 export const LISTING_BYTES = 419;
 
@@ -103,6 +142,8 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   const register = `orrery provider register --config ${at.config} --wallet <keypair.json>`;
   const server = bad('model server'), listing = bad('listing'), address = bad('public address');
   if (server) return `next: start your model server: ${server.detail}`;
+  const test = bad('model test');
+  if (test) return `next: get the model answering: ${test.detail}`;
   if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
   if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain: ${register} (a one-time transaction from your wallet)` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
   if (bad('node key')) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE})`;

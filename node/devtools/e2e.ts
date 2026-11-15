@@ -674,6 +674,8 @@ const haloNext = nextOf?.(haloCheck, { config: 'provider.json', publicUrl: nodes
 check('orrery provider check ends with the one next thing to do', /^next: start your model server: /.test(haloNext), haloNext.slice(0, 140));
 const ironFolder = lineOf(ironCheck, 'data folder');
 check('orrery provider check says where the node keeps what it is owed and has not redeemed, and how much is there', ironFolder?.ok === true && ironFolder.detail.includes(join(WORK, 'providers')) && /\$\d+\.\d{6} waiting there/.test(ironFolder.detail), ironFolder?.detail ?? 'no such line');
+const ironModelTest = lineOf(ironCheck, 'model test');
+check('orrery provider check sends each listed model one small request, straight to the model server, and says it answered', ironModelTest?.ok === true && /answered a test request in \d+ ms/.test(ironModelTest.detail) && !lineOf(haloCheck, 'model test'), ironModelTest ? ironModelTest.detail.slice(0, 150) : 'the check does not test the models');
 check('orrery provider check tells an operator whether the node is ready to earn', lineOf(ironCheck, 'model server')?.ok !== false && lineOf(ironCheck, 'listing')?.ok === true && lineOf(ironCheck, 'node key')?.ok === true && !!lineOf(ironCheck, 'burn pledge') && lineOf(haloCheck, 'model server')?.ok === false, `Ironbridge: ${ironCheck.filter((l) => l.ok === true).length} ready, ${ironCheck.filter((l) => l.ok === false).length} to fix · Halo (model server stopped): ${lineOf(haloCheck, 'model server')?.detail}`);
 
 // The same check, from behind a front that drops the signed flag from /v1/wire the way a hosting platform could: the
