@@ -126,6 +126,26 @@ export const FEE_FLOOR_LAMPORTS = 2_000_000;
 
 /** What one redeem transaction pays when nothing is added on top: Solana's base fee for its one signature. */
 export const REDEEM_FEE_LAMPORTS = 5_000;
+/** The size of a token account; its rent is what opening the wallet's USDC account costs the first payout. */
+export const TOKEN_ACCOUNT_BYTES = 165;
+
+const sol4 = (n: number) => (n / 1e9).toFixed(4);
+
+/** Why a payout failed, when it is the node key's money: the rent of the wallet's USDC account the first payout opens
+ * (`openingRent`, null when the account is there), or no SOL for the fee. Empty when the key has enough for both. */
+export function payoutFailureNote(o: { lamports: number; openingRent: number | null; nodeKey: string }): string {
+  if (o.openingRent && o.lamports < o.openingRent + 10_000) return `; the first payout also opens your wallet’s USDC account, which takes about ${sol4(o.openingRent)} SOL from the node key, and it has ${sol4(o.lamports)} SOL: send a little SOL to ${o.nodeKey}. What routers signed is safe and is redeemed once the key can pay`;
+  if (o.lamports < 10_000) return `; the node key has ${(o.lamports / 1e9).toFixed(6)} SOL for fees: send a little SOL to ${o.nodeKey}. What routers signed is safe and is redeemed once the key can pay`;
+  return '';
+}
+
+/** The fee money line of `provider status`: what the key holds and about how many payouts that is, after the one that
+ * opens the wallet's USDC account when it has to. */
+export function feesLine(o: { lamports: number; openingRent: number | null; nodeKey: string }): string {
+  const payouts = Math.floor(Math.max(0, o.lamports - (o.openingRent ?? 0)) / REDEEM_FEE_LAMPORTS);
+  const low = o.lamports < FEE_FLOOR_LAMPORTS + (o.openingRent ?? 0);
+  return `${sol4(o.lamports)} SOL on the node key, about ${payouts.toLocaleString('en-US')} payouts${o.openingRent ? '; the first also opens your wallet’s USDC account' : ''}${low ? `; running low, send a little SOL to ${o.nodeKey}` : ''}`;
+}
 
 /** The smallest amount worth a redemption's fee when the operator names none: five cents. */
 export const REDEEM_MIN_UNITS = 50_000;
@@ -635,6 +655,13 @@ export class ProviderNode {
     return (this.consoleKeyValue = made);
   }
 
+  /** The rent of the wallet's USDC account when the first payout still has to open it; null when it is there (or the
+   * RPC did not say). */
+  async payoutAccountRent(): Promise<number | null> {
+    const acct = await this.conn.getAccountInfo(pda.ata(this.authority, this.mint)).catch(() => undefined);
+    return acct === null ? await this.conn.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_BYTES).catch(() => null) : null;
+  }
+
   /** Says once, while payouts still go through, that the node key is running low on SOL for their fees. */
   private async feeHeadsUp(): Promise<void> {
     const lamports = await this.conn.getBalance(this.node.publicKey).catch(() => null);
@@ -666,9 +693,9 @@ export class ProviderNode {
       // The usual reason a redeem fails for good is a node key with no SOL for the fee, and the chain says it in its own
       // words. Say it plainly, with the address: to an operator it otherwise looks like the payments stopped.
       const lamports = await this.conn.getBalance(this.node.publicKey).catch(() => null);
-      const broke = lamports !== null && lamports < 10_000
-        ? `; the node key has ${(lamports / 1e9).toFixed(6)} SOL for fees: send a little SOL to ${this.node.publicKey.toBase58()}. What routers signed is safe and is redeemed once the key can pay`
-        : '';
+      // A wallet with no USDC account yet has it opened by the first payout, at the node key's cost.
+      const openingRent = lamports === null ? null : await this.payoutAccountRent();
+      const broke = lamports === null ? '' : payoutFailureNote({ lamports, openingRent, nodeKey: this.node.publicKey.toBase58() });
       const said = (err as Error).message.split('\n')[0].trim().replace(/[.\s]+$/, '');
       this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${said}${broke}`);
       return false;

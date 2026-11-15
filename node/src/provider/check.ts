@@ -8,7 +8,7 @@ import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
 import { folderRisk, folderWarning } from './folder.ts';
-import { FEE_FLOOR_LAMPORTS, type ProviderNode } from './node.ts';
+import { FEE_FLOOR_LAMPORTS, TOKEN_ACCOUNT_BYTES, type ProviderNode } from './node.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
@@ -17,8 +17,7 @@ export const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
 /** What a little SOL means for a node key: one payout is one transaction at the base fee. */
 const FEE_EXAMPLE = '0.01 SOL pays for about 2,000 payouts';
 
-/** The size of a token account; its rent is what opening the wallet's USDC account costs. */
-export const TOKEN_ACCOUNT_BYTES = 165;
+export { TOKEN_ACCOUNT_BYTES };
 
 /** The node key's line. `accountRent` is the rent of the wallet's USDC account when it does not exist yet (null when
  * it does): the first payout opens it and the node's key pays that, so the key needs it on top of its fee money. A

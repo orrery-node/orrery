@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fundKeyLamports, fundKeyNote, LISTING_BYTES, nodeKeyLine, registerProblem } from '../src/provider/check.ts';
+import { feesLine, payoutFailureNote } from '../src/provider/node.ts';
 
 const base = { publicUrl: 'https://gpu.example.org', exists: false, lamports: 10_000_000, rent: 2_778_760, wallet: 'Wallet111' };
 
@@ -53,5 +54,19 @@ describe('orrery provider register, before it sends anything', () => {
   it('says how many payouts --fund-key pays for, after the one that opens the wallet’s USDC account', () => {
     assert.equal(fundKeyNote(10_000_000, 'Key111', null), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 2,000 payouts)');
     assert.equal(fundKeyNote(10_000_000, 'Key111', 2_039_280), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 1,592 payouts; the first also opens your wallet’s USDC account)');
+  });
+
+  it('says why a first payout failed when the key could not also open the wallet’s USDC account', () => {
+    assert.equal(payoutFailureNote({ lamports: 1_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }),
+      '; the first payout also opens your wallet’s USDC account, which takes about 0.0020 SOL from the node key, and it has 0.0010 SOL: send a little SOL to Key111. What routers signed is safe and is redeemed once the key can pay');
+    assert.match(payoutFailureNote({ lamports: 5_000, openingRent: null, nodeKey: 'Key111' }), /^; the node key has 0\.000005 SOL for fees: send a little SOL to Key111\. What routers signed is safe/);
+    assert.equal(payoutFailureNote({ lamports: 50_000_000, openingRent: null, nodeKey: 'Key111' }), '');
+    assert.equal(payoutFailureNote({ lamports: 50_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }), '');
+  });
+
+  it('counts the payout that opens the wallet’s USDC account in what the fee money covers', () => {
+    assert.equal(feesLine({ lamports: 10_000_000, openingRent: null, nodeKey: 'Key111' }), '0.0100 SOL on the node key, about 2,000 payouts');
+    assert.equal(feesLine({ lamports: 10_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }), '0.0100 SOL on the node key, about 1,592 payouts; the first also opens your wallet’s USDC account');
+    assert.match(feesLine({ lamports: 1_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }), /about 0 payouts; the first also opens your wallet’s USDC account; running low, send a little SOL to Key111$/);
   });
 });

@@ -10,7 +10,7 @@ import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { newWallet, walletNextSteps } from './wallet.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
-import { FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
+import { feesLine, FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
@@ -323,13 +323,14 @@ async function provider(sub: string) {
     const unsigned = s.channels.reduce((n, c) => n + c.unsigned, 0);
     // The fee money, before it is a problem: every payout is one transaction the node key pays for.
     const lamports = await node.conn.getBalance(node.node.publicKey).catch(() => null);
-    const payoutsLeft = lamports === null ? null : Math.floor(lamports / REDEEM_FEE_LAMPORTS);
+    // The first payout to a wallet with no USDC account opens it, at the key's cost: counted before the payouts.
+    const openingRent = lamports === null ? null : await node.payoutAccountRent();
+    const payoutsLeft = lamports === null ? null : Math.floor(Math.max(0, lamports - (openingRent ?? 0)) / REDEEM_FEE_LAMPORTS);
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
-    const fees = lamports === null ? 'the RPC did not answer'
-      : `${(lamports / 1e9).toFixed(4)} SOL on the node key, about ${payoutsLeft!.toLocaleString('en-US')} payouts${lamports < FEE_FLOOR_LAMPORTS ? `; running low, send a little SOL to ${node.node.publicKey.toBase58()}` : ''}`;
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
       `  answers since start   ${s.answers}`,
