@@ -31,10 +31,24 @@ th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);whit
 th{color:var(--fg3);font-weight:500;font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;background:var(--well)}
 td{color:var(--fg2)}td:first-child{color:var(--fg)}tbody tr:hover td{background:#101010}
 td.rec{white-space:normal;min-width:300px;line-height:1.6}
-.go{color:var(--green)}.stop{color:var(--warn)}.sig{color:var(--purple)}.empty td{color:var(--fg3);font-family:var(--sans);font-size:14px;padding:22px 16px}
+.go{color:var(--green)}.stop{color:var(--warn)}.sig{color:var(--purple)}.dim{color:var(--fg3)}.empty td{color:var(--fg3);font-family:var(--sans);font-size:14px;padding:22px 16px}
 @media (max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats div:nth-child(3){border-left:0}.stats div:nth-child(n+3){border-top:1px solid var(--line)}.live{display:none}}
 </style></head><body>
 <header><span class="brand"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="g" x1="2" y1="18" x2="22" y2="6" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9945ff"/><stop offset=".5" stop-color="#5f8ff2"/><stop offset="1" stop-color="#14f195"/></linearGradient></defs><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3"/><ellipse cx="12" cy="12" rx="10.2" ry="4.3" fill="none" stroke="url(#g)" stroke-width="1.3" opacity=".6" transform="rotate(62 12 12)"/><circle cx="12" cy="12" r="2.5" fill="#f5f5f5"/><circle cx="20.6" cy="9.7" r="1.7" fill="#14f195"/></svg><span class="grad">${NAME}</span></span><span class="here">${here}</span><span class="live"><i></i>live from this computer</span></header>`;
+}
+
+/** The paid cell of one answer: what this router paid and, beside it, how the node's bill compared with what the
+ * prices it listed on chain come to (`billed`, `listed`, logged since 0.1.18). Its source goes into the page. */
+export function paidCell(t: { cost: string; billed?: string; listed?: string }): string {
+  if (typeof t.billed !== 'string' || typeof t.listed !== 'string') return '$' + t.cost;
+  if (Number(t.billed) > Number(t.listed)) return '$' + t.cost + ' <span class=sig>it asked $' + t.billed + '; paid its listed price</span>';
+  if (Number(t.billed) < Number(t.listed)) return '$' + t.cost + ' <span class=dim>under its list of $' + t.listed + '</span>';
+  return '$' + t.cost;
+}
+
+/** Beside an answer that came after other nodes failed: those nodes were paid nothing. Its source goes into the page. */
+export function failedNote(n: number): string {
+  return n ? ' <span class=sig>after ' + n + ' failed, ' + (n === 1 ? 'which was' : 'which were') + ' paid nothing</span>' : '';
 }
 
 export function consolePage(): string {
@@ -47,11 +61,13 @@ export function consolePage(): string {
 <section><h2>Providers</h2><div class="wrap"><table><thead><tr><th>name</th><th>models</th><th>settled on chain</th><th>enclave</th><th>model server</th><th>this router’s record</th><th>state</th></tr></thead><tbody id="prov"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>provider</th><th>channel</th><th>deposit</th><th>spent</th><th>left</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
+const paidCell=${paidCell.toString()};
+const failedNote=${failedNote.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function tick(){try{const s=await (await fetch('/orrery/status')).json();
 document.getElementById('base').textContent='http://127.0.0.1:'+location.port+'/v1';
 document.getElementById('sum').innerHTML='<div><b>'+esc(s.privateOnly?'private only':s.route)+'</b><span class=cap>'+(s.privateOnly?'every request sealed':'default route')+'</span></div><div><b class=go>$'+esc(s.spentToday)+'</b><span class=cap>spent today</span></div><div><b>'+s.providers.length+'</b><span class=cap>providers</span></div><div><b>'+s.channels.length+'</b><span class=cap>open channels</span></div>';
-document.getElementById('trips').innerHTML=s.trips.map(t=>'<tr><td>'+new Date(t.at).toLocaleTimeString()+'</td><td>'+esc(t.route)+(t.sealed?' <span class=go>sealed'+(t.enclave?' · '+esc(t.enclave.kind):'')+'</span>':t.wire?' <span class=sig>wire</span>':'')+(t.off?' <span class=go>holder −'+(t.off/100)+'%</span>':'')+'</td><td>'+esc(t.model)+'</td><td>'+esc(t.providerName)+(t.fellThrough?' <span class=sig>after '+t.fellThrough+' failed</span>':'')+(t.cacheKept?' <span class=go>kept for its cache</span>':'')+'</td><td>'+t.inputTokens+'+'+t.outputTokens+'</td><td class=go>$'+esc(t.cost)+'</td><td>'+t.ttftMs+' ms</td></tr>').join('')||'<tr class=empty><td colspan=7>No requests yet. Point a tool at http://127.0.0.1:'+location.port+'/v1</td></tr>';
+document.getElementById('trips').innerHTML=s.trips.map(t=>'<tr><td>'+new Date(t.at).toLocaleTimeString()+'</td><td>'+esc(t.route)+(t.sealed?' <span class=go>sealed'+(t.enclave?' · '+esc(t.enclave.kind):'')+'</span>':t.wire?' <span class=sig>wire</span>':'')+(t.off?' <span class=go>holder −'+(t.off/100)+'%</span>':'')+'</td><td>'+esc(t.model)+'</td><td>'+esc(t.providerName)+failedNote(t.fellThrough)+(t.cacheKept?' <span class=go>kept for its cache</span>':'')+'</td><td>'+t.inputTokens+'+'+t.outputTokens+'</td><td class=go>'+paidCell(t)+'</td><td>'+t.ttftMs+' ms</td></tr>').join('')||'<tr class=empty><td colspan=7>No requests yet. Point a tool at http://127.0.0.1:'+location.port+'/v1</td></tr>';
 document.getElementById('prov').innerHTML=s.providers.map(p=>'<tr><td>'+esc(p.name||p.address.slice(0,8))+'</td><td>'+p.models+'</td><td>$'+esc(p.settled)+' · '+p.redeems+' redeems</td><td>'+(p.tee?(p.tee.verified?'<span class=go>verified</span>':'<span class=stop>'+esc(p.tee.reason)+'</span>'):'—')+'</td><td>'+(p.modelServer==='up'?'<span class=go>up</span>'+(p.healthMs!=null?' · '+p.healthMs+' ms':''):p.modelServer==='down'?'<span class=stop>down, skipped</span>':'—')+'</td><td class=rec>'+(p.record&&p.record.length?p.record.map(esc).join('<br>'):p.observed.ok+' ok / '+p.observed.fail+' failed')+'</td><td>'+(p.problem?'<span class=stop>'+esc(p.problem)+'</span>':p.active?'<span class=go>open</span>':'closed')+'</td></tr>').join('');
 try{const sp=await (await fetch('/orrery/spend?since=24h&by=model')).json();const rows=[...sp.rows,{...sp.total,key:'total'}];document.getElementById('spend').innerHTML=sp.total.answers?rows.map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td><td>'+(r.cacheKept||'—')+'</td></tr>').join(''):'<tr class=empty><td colspan=6>Nothing paid in the last 24 hours.</td></tr>';}catch(e){}
 document.getElementById('ch').innerHTML=s.channels.map(c=>'<tr><td>'+esc(c.provider.slice(0,8))+'</td><td>'+esc(c.channel.slice(0,8))+'</td><td>$'+esc(c.deposit)+'</td><td>$'+esc(c.spent)+'</td><td>$'+esc(c.left)+'</td></tr>').join('')||'<tr class=empty><td colspan=5>None yet. The first request to a provider opens one.</td></tr>';

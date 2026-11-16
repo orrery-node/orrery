@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { fontFaces } from '../devtools/fonts.ts';
+import * as routerConsole from '../src/router/console.ts';
 import { consolePage } from '../src/router/console.ts';
 import { FONT_FACES } from '../src/router/fonts.ts';
 import { consoleKeyPage, providerConsolePage } from '../src/provider/console.ts';
@@ -40,5 +41,19 @@ describe('the local console pages', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');
     assert.ok(html.includes('p.record'), 'the record lines from /orrery/status');
+  });
+
+  it('shows, beside what each answer cost, how the node’s bill compared with its listed prices, and that nodes which failed first were paid nothing', () => {
+    const c = routerConsole as unknown as { paidCell?: (t: { cost: string; billed?: string; listed?: string }) => string; failedNote?: (n: number) => string };
+    assert.equal(typeof c.paidCell, 'function', 'console.ts renders the paid cell');
+    assert.equal(c.paidCell!({ cost: '0.000015', billed: '0.000020', listed: '0.000015' }), '$0.000015 <span class=sig>it asked $0.000020; paid its listed price</span>');
+    assert.equal(c.paidCell!({ cost: '0.000012', billed: '0.000012', listed: '0.000015' }), '$0.000012 <span class=dim>under its list of $0.000015</span>');
+    assert.equal(c.paidCell!({ cost: '0.000021', billed: '0.000021', listed: '0.000021' }), '$0.000021');
+    assert.equal(c.paidCell!({ cost: '0.000021' }), '$0.000021', 'an answer logged before 0.1.18');
+    assert.equal(c.failedNote!(1), ' <span class=sig>after 1 failed, which was paid nothing</span>');
+    assert.equal(c.failedNote!(2), ' <span class=sig>after 2 failed, which were paid nothing</span>');
+    assert.equal(c.failedNote!(0), '');
+    const html = consolePage();
+    assert.ok(html.includes('paidCell(t)') && html.includes('failedNote(t.fellThrough)'), 'the page uses both');
   });
 });
