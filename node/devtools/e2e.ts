@@ -549,6 +549,7 @@ check('orrery provider compose writes the file for the package it was given, and
 // What is waiting, and when it lands: the rehearsal's nodes redeem anything, once an hour.
 const waitingLine = statusOut.split('\n').find((l) => /^\s+waiting to redeem\s/.test(l)) ?? '';
 check('orrery provider status says when what is waiting gets paid out', Number(ibStatusNow.waiting) > 0 && /pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
+check('orrery provider status tells a node never paid out on chain that its first payout goes out at the next round', /\(your first payout: pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
 // The fee money too, before it is a problem: SOL on the node key and about how many payouts it pays for; and the same
 // as JSON for a monitor.
 const statusJson = await cliOut(['status', '--json']);

@@ -348,7 +348,7 @@ async function provider(sub: string) {
       `  answers since start   ${s.answers}`,
       `  signed to you         $${s.signed}`,
       `  redeemed on chain     $${s.redeemed}`,
-      `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath)}`,
+      `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
       `  fees                  ${fees}`,

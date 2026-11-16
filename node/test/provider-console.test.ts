@@ -51,6 +51,13 @@ describe('provider console access', () => {
     assert.equal(payoutHint('0.004000', 5_000, 300, 'p.json'), '  (pays out by itself at $0.005; orrery provider redeem --config p.json does it now)');
   });
 
+  it('says a node never paid out on chain gets its first payout at the next round, below its minimum', () => {
+    const hint = payoutHint as unknown as (waiting: string, minUnits: number, everySecs: number, configPath: string, firstPayout?: boolean) => string;
+    assert.equal(hint('0.000021', 50_000, 300, 'provider.json', true), '  (your first payout: pays out at the next round, every 5 min)');
+    assert.equal(hint('0.061000', 50_000, 300, 'provider.json', true), '  (your first payout: pays out at the next round, every 5 min)');
+    assert.equal(hint('0.000000', 50_000, 300, 'provider.json', true), '');
+  });
+
   it('refuses a page that points its own domain at this computer (DNS rebinding)', () => {
     assert.ok(!isLocal(req('127.0.0.1', { host: 'attacker.example:17282' })));
     assert.ok(isLocal(req('127.0.0.1', { host: 'localhost:17282' })));

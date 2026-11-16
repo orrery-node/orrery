@@ -34,11 +34,13 @@ export function consoleLine(port: number, key: string, toTerminal: boolean, conf
 }
 
 /** When what is waiting gets paid out, for the status line: by itself at the node's minimum, or at the next round once
- * it is there. Empty when nothing waits. */
-export function payoutHint(waiting: string, minUnits: number, everySecs: number, configPath: string): string {
+ * it is there, or, for a node never paid out on chain, at the next round whatever the minimum (its first payout goes
+ * out at once). Empty when nothing waits. */
+export function payoutHint(waiting: string, minUnits: number, everySecs: number, configPath: string, firstPayout = false): string {
   const units = Math.round(Number(waiting) * 1e6);
   if (!(units > 0)) return '';
   const every = everySecs < 60 ? `${everySecs} s` : `${Math.round(everySecs / 60)} min`;
+  if (firstPayout) return `  (your first payout: pays out at the next round, every ${every})`;
   if (units >= minUnits) return `  (pays out at the next round, every ${every})`;
   const min = (minUnits / 1e6).toFixed(6).replace(/0+$/, '').replace(/\.$/, '').replace(/^(\d+\.\d)$/, '$10');
   return `  (pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
