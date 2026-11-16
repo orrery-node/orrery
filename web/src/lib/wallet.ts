@@ -1,5 +1,7 @@
 // Server only. What one wallet did on Orrery, read from the program's accounts on Solana through the site's RPC
-// (SOLANA_RPC_URL, never sent to the browser). Each address is read at most once every five minutes.
+// (SOLANA_RPC_URL, never sent to the browser). Each address is read at most once every five minutes. Every node's
+// account is read in one list that all address pages share for five minutes, so a page asks the chain only for what
+// is this address's own: the channels it paid into, its balances, and (for a node) its account and its channels.
 import { unstable_cache } from 'next/cache';
 import { PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID } from '@/brand';
@@ -75,6 +77,32 @@ const gpa = (disc: Buffer, offset: number, key: string) =>
     { encoding: 'base64', filters: [{ memcmp: { offset: 0, bytes: disc.toString('base64'), encoding: 'base64' } }, { memcmp: { offset, bytes: key } }] },
   ]);
 
+const NODES = Symbol.for('orrery.web.node-accounts');
+export const NODES_KEPT_MS = 5 * 60_000;
+type HeldNodes = { at: number; list: Promise<Gpa | null> };
+
+/** Every provider account of the program, read once and shared by every address page for five minutes. A read that
+ * fails is not kept. */
+export function nodeAccounts(disc: Buffer, read: () => Promise<Gpa | null> = () => rpc<Gpa>('getProgramAccounts', [PROGRAM_ID, { encoding: 'base64', filters: [{ memcmp: { offset: 0, bytes: disc.toString('base64'), encoding: 'base64' } }] }]), now = Date.now()): Promise<Gpa | null> {
+  const box = globalThis as unknown as Record<symbol, HeldNodes | undefined>;
+  const held = box[NODES];
+  if (held && now - held.at < NODES_KEPT_MS) return held.list;
+  const list = read();
+  box[NODES] = { at: now, list };
+  const drop = () => {
+    if (box[NODES]?.list === list) box[NODES] = undefined;
+  };
+  list.then((l) => (l ? undefined : drop()), drop);
+  return list;
+}
+
+/** The node accounts whose authority (bytes 8..40, after the account type) is `address`: what a getProgramAccounts
+ * filtered on that offset returns, picked from the shared list. */
+export function ownedBy(list: Gpa, address: string): Gpa {
+  const key = new PublicKey(address).toBuffer();
+  return list.filter((a) => Buffer.from(a.account.data[0], 'base64').subarray(8, 40).equals(key));
+}
+
 async function manifestOf(endpoint: string): Promise<{ name: string | null; models: string[] }> {
   try {
     const r = await fetch(`${endpoint.replace(/\/$/, '')}/v1/manifest`, { signal: AbortSignal.timeout(4_000) });
@@ -92,26 +120,28 @@ async function read(address: string): Promise<Wallet> {
   if (!process.env.SOLANA_RPC_URL) return empty;
   try {
     const { ACCOUNT, decodeChannel, decodeProvider } = (await import('orrery-node/dist/chain/program.js')) as unknown as Decoders;
-    const [paid, owned, self, sol, usdc] = await Promise.all([
-      gpa(ACCOUNT.Channel, 8, address),
-      gpa(ACCOUNT.Provider, 8, address),
-      rpc<{ value: { owner: string; data: [string, string] } | null }>('getAccountInfo', [address, { encoding: 'base64' }]),
-      rpc<{ value: number }>('getBalance', [address]),
-      rpc<{ value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[] }>('getTokenAccountsByOwner', [address, { mint: USDC }, { encoding: 'jsonParsed' }]),
-    ]);
-    if (!paid || !owned) return empty;
-    const selfData = self?.value && self.value.owner === PROGRAM_ID ? Buffer.from(self.value.data[0], 'base64') : null;
-    const isNode = !!selfData && selfData.subarray(0, 8).equals(ACCOUNT.Provider);
-    const nodeAccounts: Gpa = isNode ? [{ pubkey: address, account: { data: [self!.value!.data[0], 'base64'] } }] : owned;
+    const [paid, all] = await Promise.all([gpa(ACCOUNT.Channel, 8, address), nodeAccounts(ACCOUNT.Provider)]);
+    if (!paid || !all) return empty;
+    // A node's own page shows its payouts, so its account is still read fresh; balances are shown only for a wallet.
+    const isNode = all.some((a) => a.pubkey === address);
+    const [self, sol, usdc] = isNode
+      ? [await rpc<{ value: { owner: string; data: [string, string] } | null }>('getAccountInfo', [address, { encoding: 'base64' }]), null, null]
+      : await Promise.all([
+          null,
+          rpc<{ value: number }>('getBalance', [address]),
+          rpc<{ value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[] }>('getTokenAccountsByOwner', [address, { mint: USDC }, { encoding: 'jsonParsed' }]),
+        ]);
+    if (isNode && !self?.value) return empty;
+    const mine: Gpa = isNode ? [{ pubkey: address, account: { data: [self!.value!.data[0], 'base64'] } }] : ownedBy(all, address);
 
     const providerKeys = [...new Set(paid.map((a) => decodeChannel(Buffer.from(a.account.data[0], 'base64')).provider.toBase58()))].slice(0, 12);
-    const infos = providerKeys.length ? await rpc<{ value: ({ data: [string, string] } | null)[] }>('getMultipleAccounts', [providerKeys, { encoding: 'base64' }]) : null;
+    const byKey = new Map(all.map((a) => [a.pubkey, a.account.data[0]]));
     const names = new Map<string, string | null>();
     await Promise.all(
-      providerKeys.map(async (k, i) => {
-        const info = infos?.value?.[i];
-        if (!info) return names.set(k, null);
-        const p = decodeProvider(Buffer.from(info.data[0], 'base64'));
+      providerKeys.map(async (k) => {
+        const data = byKey.get(k);
+        if (!data) return names.set(k, null);
+        const p = decodeProvider(Buffer.from(data, 'base64'));
         names.set(k, (await manifestOf(p.endpoint)).name);
       }),
     );
@@ -126,7 +156,7 @@ async function read(address: string): Promise<Wallet> {
     const channels = paid.map((a) => toChannel(a, names.get(decodeChannel(Buffer.from(a.account.data[0], 'base64')).provider.toBase58()) ?? null)).sort((x, y) => y.openedAt - x.openedAt);
 
     const nodes: WalletNode[] = await Promise.all(
-      nodeAccounts.slice(0, 4).map(async (a) => {
+      mine.slice(0, 4).map(async (a) => {
         const p = decodeProvider(Buffer.from(a.account.data[0], 'base64'));
         const [m, into] = await Promise.all([manifestOf(p.endpoint), gpa(ACCOUNT.Channel, 40, a.pubkey)]);
         return {
