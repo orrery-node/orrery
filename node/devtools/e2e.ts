@@ -569,6 +569,16 @@ const strangerFound = await (stranger as unknown as { recover(p: string): Promis
 check('a router that lost its channel records picks its channel back up from the node’s last voucher, and only with its own session key',
   picked.channel === ibBefore.channel && picked.cumulative === ibBefore.cumulative && picked.usageHash.equals(ibBefore.usageHash) && strangerFound === null,
   `Ironbridge channel ${picked.channel.slice(0, 6)}… resumed at $${usd(picked.cumulative)} signed · another session key: ${strangerFound === null ? 'not resumed' : 'resumed'}`);
+// A router whose session.json was replaced still remembers the channel, but every voucher it signs now is refused
+// by the node. It lets the channel go and says how to get the deposit back; with no wallet, it opens nothing.
+writeFileSync(join(WORK, 'home/router/channels-rekeyed.json'), readFileSync(join(WORK, 'home/router/channels.json')));
+const rekeyed = new Channels(conn, null, Keypair.generate(), usdc, join(WORK, 'home/router/channels-rekeyed.json'), { deposit: USD, topUpBelow: 0n, dailyCap: USD });
+const rekeyedSaid: string[] = [];
+(rekeyed as unknown as { note?: (line: string) => void }).note = (l) => rekeyedSaid.push(l);
+const rekeyedGot = await rekeyed.ensure(ib.pda.toBase58(), 1n).then((c) => `paid through ${c.channel === ibBefore.channel ? 'the old channel' : c.channel.slice(0, 6)}`, (e: Error) => `refused: ${e.message.slice(0, 60)}`);
+check('a router whose session key changed stops paying through the channel it opened under the old key, and says how to get that deposit back',
+  rekeyedGot.startsWith('refused') && rekeyed.get(ib.pda.toBase58()) === undefined && rekeyedSaid.some((l) => l.includes(ibBefore.channel) && /another session key/.test(l) && new RegExp(`close ${ibBefore.channel} --wallet`).test(l)),
+  `${rekeyedGot} · ${(rekeyedSaid[0] ?? 'nothing said').slice(0, 90)}`);
 // The node that went dark earlier still has this router's channel open on chain. A router that lost its records
 // finds that channel, cannot ask the node where it stands, and must not open (and fund) a second one on a guess.
 const dark = nodes[0].pda;

@@ -177,6 +177,7 @@ export class Router {
       return e?.wire ? { key: e.wire, inside: !!e.wireInside } : o.registry.pinned(p) ? 'missing' : null;
     };
     o.channels.rewire ??= (p) => o.registry.refreshWire(p);
+    o.channels.note ??= (l) => this.log(l);
   }
 
   async start(): Promise<Server> {

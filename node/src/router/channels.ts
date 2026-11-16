@@ -53,6 +53,8 @@ export class Channels {
   wireOf: ((provider: string) => { key: Buffer; inside: boolean } | 'missing' | null) | null = null;
   /** Reads a node's wire key again, after the node said a question was encrypted to a key it no longer holds. */
   rewire: ((provider: string) => Promise<void>) | null = null;
+  /** Where the router's lines go (its log). */
+  note: ((line: string) => void) | null = null;
 
   constructor(
     private conn: Connection,
@@ -120,7 +122,12 @@ export class Channels {
       const info = await this.conn.getAccountInfo(new PublicKey(have.channel));
       if (info) {
         const ch = decodeChannel(info.data);
-        if (ch.closingAt === 0n) {
+        // Opened under another session key (its session.json was replaced): the node refuses every voucher this router
+        // signs now, so the channel is let go and the wallet's owner is told how to take the deposit back.
+        if (ch.closingAt === 0n && !ch.sessionKey.equals(this.session.publicKey)) {
+          this.note?.(`channel ${have.channel} to ${provider} was opened under another session key, so this router cannot pay through it and finds or opens one under its own. Its deposit stays in it until you close it: orrery close ${have.channel} --wallet <keypair.json>`);
+          this.forget(provider);
+        } else if (ch.closingAt === 0n) {
           have.deposit = ch.deposit;
           have.checkedAt = Date.now();
           if (have.deposit - have.cumulative < need) await this.topUp(provider, need);
