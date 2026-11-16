@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import * as spend from '../src/spend.ts';
 import { appendTrip, paidInside, readTrips, sealedTrips, skipNote, skipped, speeds, speedText, summarize, windowMs } from '../src/spend.ts';
 
 const t = (at: number, model: string, providerName: string, cost: string, extra = {}) => ({ at, model, provider: providerName.toLowerCase(), providerName, inputTokens: 100, outputTokens: 20, cost, ...extra });
@@ -112,6 +113,31 @@ describe('orrery spend', () => {
     assert.equal(speedText({ answers: 2, medianTtftMs: 310 }), 'started answering in 310 ms (median of 2 answers in the last 24 h)');
     assert.equal(speedText({ answers: 1, medianTtftMs: 2040 }, '7 d'), 'started answering in 2.0 s (1 answer in the last 7 d)');
   });
+
+  it('counts, per node, the answers whose bill was within the prices it listed, from the router’s log', () => {
+    const bills = (spend as unknown as { bills?: (t: unknown[], since: number, now: number) => unknown }).bills;
+    assert.equal(typeof bills, 'function', 'spend.ts counts bills per node');
+    const now = 1_000_000_000_000;
+    const t = (provider: string, billed: string | undefined, listed: string | undefined, at = now - 1000) => ({ at, model: 'm', provider, providerName: provider === 'A' ? 'Alpha' : 'Beta', inputTokens: 1, outputTokens: 1, cost: '0.000010', ...(billed ? { billed } : {}), ...(listed ? { listed } : {}) });
+    const rows = bills!([t('A', '0.000010', '0.000010'), t('A', '0.000012', '0.000010'), t('B', '0.000005', '0.000006'), t('B', undefined, undefined), t('A', '0.000099', '0.000010', now - 2 * 86_400_000)], 86_400_000, now);
+    assert.deepEqual(rows, [{ provider: 'A', name: 'Alpha', checked: 2, over: 1 }, { provider: 'B', name: 'Beta', checked: 1, over: 0 }]);
+  });
+
+  it('says what the bills came to in words: all within the listed prices, or how many were above and that no more was paid', () => {
+    const billsText = (spend as unknown as { billsText?: (b: { checked: number; over: number }) => string }).billsText;
+    assert.equal(typeof billsText, 'function', 'spend.ts says the bills in words');
+    assert.equal(billsText!({ checked: 1234, over: 0 }), 'every bill was within its listed prices (1,234 answers in the last 24 h)');
+    assert.equal(billsText!({ checked: 1, over: 0 }), 'its bill was within its listed prices (1 answer in the last 24 h)');
+    assert.equal(billsText!({ checked: 41, over: 2 }), 'billed above its listed prices in 2 of 41 answers in the last 24 h; this router paid no more than those prices');
+  });
+
+  it('writes what the node billed and what its listed prices come to into the log, beside what was paid', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-bills-'));
+    const path = join(dir, 'trips.jsonl');
+    appendTrip(path, { at: 1, model: 'm', provider: 'A', providerName: 'Alpha', inputTokens: 1, outputTokens: 1, cost: '0.000010', billed: '0.000012', listed: '0.000010' } as Parameters<typeof appendTrip>[1]);
+    const back = readTrips(path)[0] as { billed?: string; listed?: string; cost: string };
+    assert.deepEqual([back.cost, back.billed, back.listed], ['0.000010', '0.000012', '0.000010']);
+  });
 });
 
 it('a node’s log keeps which answers were paid inside the seal, and counts them over a window', () => {
@@ -123,5 +149,4 @@ it('a node’s log keeps which answers were paid inside the seal, and counts the
   appendTrip(path, { ...base, at: now - 3_000, inside: true });
   appendTrip(path, { ...base, at: now - 48 * 3600_000, inside: true });
   assert.deepEqual(paidInside(readTrips(path), 24 * 3600_000, now), { answers: 3, inside: 2 });
-
 });

@@ -49,4 +49,14 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(routerMissing('http://127.0.0.1:7171', true), 'not running at http://127.0.0.1:7171; start it with orrery router');
     assert.equal(routerMissing('http://127.0.0.1:7171', false), 'not running at http://127.0.0.1:7171; start it with orrery wallet new   (makes the wallet that pays; send it SOL and USDC), then orrery router');
   });
+
+  it('gives each node what this router found when it checked its bills against the prices it listed', async () => {
+    const d = (await import('../src/doctor.ts')) as unknown as { billsLines?: (sp: unknown) => string[] };
+    assert.equal(typeof d.billsLines, 'function', 'doctor prints the bills record');
+    assert.deepEqual(d.billsLines!({ bills: [{ provider: 'a', name: 'Orrery Seed', checked: 42, over: 0 }, { provider: 'b', name: 'Vault Nine', checked: 3, over: 1 }] }), [
+      'Orrery Seed every bill was within its listed prices (42 answers in the last 24 h)',
+      'Vault Nine billed above its listed prices in 1 of 3 answers in the last 24 h; this router paid no more than those prices',
+    ]);
+    assert.deepEqual(d.billsLines!(null), []);
+  });
 });

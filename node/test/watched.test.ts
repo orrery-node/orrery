@@ -97,5 +97,10 @@ describe('the count of answered requests, kept with the record on disk', () => {
     ]);
     assert.deepEqual(recordLines({ watched: null, observed: { ok: 3, fail: 1 }, speed: null }, now), ['answered 3 of 4 requests this router sent it since it started']);
     assert.deepEqual(recordLines({ watched: null, observed: { ok: 0, fail: 0 }, speed: null }, now), []);
+    assert.deepEqual(recordLines({ watched: null, observed: { ok: 5, fail: 0 }, speed: { answers: 5, medianTtftMs: 731 }, bills: { checked: 5, over: 0 } } as Parameters<typeof recordLines>[0], now), [
+      'answered all 5 requests this router sent it since it started',
+      'started answering in 731 ms (median of 5 answers in the last 24 h)',
+      'every bill was within its listed prices (5 answers in the last 24 h)',
+    ]);
   });
 });

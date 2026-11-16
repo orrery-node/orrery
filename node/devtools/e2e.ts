@@ -502,6 +502,12 @@ const recordSaid = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { 
 const ironRecord = recordSaid.providers.find((p) => p.name === 'Ironbridge Compute');
 const recordConsole = await (await fetch(`${ROUTER}/`)).text();
 check('the router’s status and its console carry its own record of each node: checks, answers and speed, beside what the chain says', !!ironRecord?.speed && ironRecord.speed.answers >= 1 && (ironRecord.record ?? []).some((l) => /^started answering in \d/.test(l)) && (ironRecord.record ?? []).some((l) => /^answered /.test(l)) && recordConsole.includes('this router’s record'), `Ironbridge Compute: ${(ironRecord?.record ?? ['no record in /orrery/status']).join(' · ').slice(0, 170)}`);
+// What each node billed, beside what the prices it listed on chain come to: kept for every answer, counted per node.
+const billedLogged = readTrips(join(process.env.ORRERY_HOME ?? '', 'router', 'trips.jsonl')).filter((x) => typeof (x as { billed?: string }).billed === 'string' && typeof (x as { listed?: string }).listed === 'string');
+const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over: number }[] }).bills ?? [];
+check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
+  billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
+  `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
 check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];

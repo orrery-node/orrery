@@ -21,7 +21,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, readTrips, skipped, speeds, summarize, windowMs, type Speed } from '../spend.ts';
+import { appendTrip, bills, readTrips, skipped, speeds, summarize, windowMs, type Bills, type Speed } from '../spend.ts';
 import { recordLines } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
@@ -84,6 +84,9 @@ export type Trip = {
   resumed?: boolean;
   cacheKept?: boolean;
   off: number;
+  /** What the node billed for this answer, and what the prices it listed on chain come to for the same tokens. */
+  billed?: string;
+  listed?: string;
 };
 
 class Unserved extends Error {
@@ -296,7 +299,7 @@ export class Router {
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
         const skips = skipped(spendTrips, windowMs(since));
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, speed: speeds(spendTrips, windowMs(since)) });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -321,14 +324,24 @@ export class Router {
 
   /** How fast each node started answering over the last 24 hours, from the router's log; read again at most every
    * 30 seconds, since a console asks for its status every few. */
-  private speedKept: { at: number; rows: Speed[] } | null = null;
+  private speedKept: { at: number; rows: Speed[]; bills: Bills[] } | null = null;
   private speedNow(): Speed[] {
-    if (!this.speedKept || Date.now() - this.speedKept.at > 30_000) this.speedKept = { at: Date.now(), rows: speeds(readTrips(home('router', 'trips.jsonl')), windowMs('24h')) };
+    if (!this.speedKept || Date.now() - this.speedKept.at > 30_000) {
+      const trips = readTrips(home('router', 'trips.jsonl'));
+      this.speedKept = { at: Date.now(), rows: speeds(trips, windowMs('24h')), bills: bills(trips, windowMs('24h')) };
+    }
     return this.speedKept.rows;
+  }
+
+  /** What each node billed against what its listed prices come to, from the same read of the log. */
+  private billsNow(): Bills[] {
+    this.speedNow();
+    return this.speedKept!.bills;
   }
 
   private async status(res: ServerResponse) {
     const speedBy = new Map(this.speedNow().map((x) => [x.provider, { answers: x.answers, medianTtftMs: x.medianTtftMs }]));
+    const billsBy = new Map(this.billsNow().map((x) => [x.provider, { checked: x.checked, over: x.over }]));
     const providers = [...this.o.registry.entries.values()].map((e) => ({
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
@@ -338,7 +351,9 @@ export class Router {
       watched: this.o.registry.watched(e.address),
       // How fast it started answering this router, by the router's clock, and the whole record in lines a person reads.
       speed: speedBy.get(e.address) ?? null,
-      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address) }),
+      // Its bills in the last 24 hours against the prices it listed on chain: how many, and how many were above them.
+      bills: billsBy.get(e.address) ?? null,
+      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address) }),
       // Whether its last health check was answered (null before the first check), and since when it has not been.
       answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
       // How a request and its payment go to this node: inside (both sealed to its own key), request (sealed, payment in
@@ -718,7 +733,7 @@ export class Router {
     this.o.registry.noteRequest(address, true);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);

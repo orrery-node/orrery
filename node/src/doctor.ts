@@ -7,7 +7,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
-import { speedText, skipNote } from './spend.ts';
+import { billsText, speedText, skipNote } from './spend.ts';
 import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
@@ -30,7 +30,7 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[] };
+type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[]; bills?: { provider: string; name: string; checked: number; over: number }[] };
 
 /** The router line when none answers: how to start one the way it starts now. A wallet this command could read (from
  * --wallet, ORRERY_WALLET or the home folder) is the one the router uses without --wallet. */
@@ -39,6 +39,11 @@ export const routerMissing = (router: string, hasWallet: boolean) => `not runnin
 /** How fast each node started answering this router in the last 24 hours, by the router's own log: one line a node. */
 export function speedLines(sp: Spent | null): string[] {
   return (sp?.speed ?? []).map((s) => `${s.name} ${speedText(s)}`);
+}
+
+/** What this router found when it checked each node's bills against the prices the node listed on chain, last 24 hours. */
+export function billsLines(sp: Spent | null): string[] {
+  return (sp?.bills ?? []).filter((b) => b.checked > 0).map((b) => `${b.name} ${billsText(b)}`);
 }
 
 /** What a running router's /orrery/spend says about its last 24 hours, as one line: what it paid, and the answers
@@ -151,6 +156,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const spent = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/spend?since=24h`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as Spent | null;
     // And how fast each node started answering, timed by this router.
     for (const line of speedLines(spent)) out.push({ ok: null, what: '  speed', detail: line });
+    // And whether each node's bills were within the prices it listed.
+    for (const line of billsLines(spent)) out.push({ ok: null, what: '  bills', detail: line });
     const paid = paidLine(spent);
     if (paid) out.push({ ok: null, what: '  paid', detail: paid });
   }

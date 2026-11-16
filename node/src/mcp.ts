@@ -2,7 +2,7 @@
 // work to models on the network. Every call goes through the router, so each answer is routed and paid per answer
 // exactly like a request from any other tool.
 import { answeredText, span, watchedText } from './router/watched.ts';
-import { skipNote, speedText } from './spend.ts';
+import { billsText, skipNote, speedText } from './spend.ts';
 import { createInterface } from 'node:readline';
 
 type Json = Record<string, unknown>;
@@ -175,15 +175,17 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const sealing: Record<string, string> = { inside: ', request and payment sealed to it', request: ', request sealed, payment in headers its host can read', plain: ', plain JSON its host can read', withheld: ', nothing sent: its wire key went missing' };
       const ch = (j.channels ?? []).map((c) => `${c.provider.slice(0, 6)}…  spent $${c.spent}, $${c.left} left`);
       const nodes = (j.providers ?? []).filter((p) => p.modelServer === 'up' || p.modelServer === 'down' || p.answering === false).map((p) => `${p.name ?? `${p.address.slice(0, 6)}…`}: ${p.answering === false ? `not answering health checks${typeof p.unansweredSince === 'number' ? ` for ${span(Date.now() - p.unansweredSince)}` : ''}` : `model server ${p.modelServer === 'up' ? `up${typeof p.healthMs === 'number' ? ` (${p.healthMs} ms)` : ''}` : 'down, skipped'}`}${sealing[p.sealing ?? ''] ?? ''}${typeof p.redeems === 'number' ? `, paid out ${p.redeems === 1 ? 'once' : `${p.redeems} times`} on chain` : ''}${watchedText(p.watched) ? `, ${watchedText(p.watched)}` : ''}${(answeredText(p.watched) || answeredText(p.observed)) ? `, ${answeredText(p.watched) || answeredText(p.observed)}` : ''}`);
-      const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[]; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { name: string; answers: number; medianTtftMs: number }[] } | null;
+      const sp = (await fetchFn(`${router}/orrery/spend?since=24h&by=model`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { rows?: { key: string; answers: number; usd: string }[]; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { name: string; answers: number; medianTtftMs: number }[]; bills?: { name: string; checked: number; over: number }[] } | null;
       // How fast each node started answering, timed by this router: nobody reports it.
       const speed = (sp?.speed ?? []).map((s) => `${s.name} ${speedText(s)}`);
+      // And each node's bills against the prices it listed on chain: the router pays no more than those prices.
+      const billed = (sp?.bills ?? []).filter((b) => b.checked > 0).map((b) => `${b.name} ${billsText(b)}`);
       // Under the spend: answers that came from the next node after another did not answer. That node was signed nothing.
       const skips = sp?.afterANodeDidNotAnswer ? skipNote({ ...sp.afterANodeDidNotAnswer, resumed: sp.finishedByAnotherNode ?? 0 }) : '';
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
       const tk = (await fetchFn(`${router}/orrery/tasks`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { tasks?: { name: string; budget: string; spent: string; left: string; answers: number }[] } | null;
       const tasks = (tk?.tasks ?? []).slice(0, 10).map((t) => `${t.name}: $${t.spent} of $${t.budget} spent, $${t.left} left, ${t.answers} answer${t.answers === 1 ? '' : 's'}`);
-      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}${skips ? `\n${skips}` : ''}` : ''}${speed.length ? `\nspeed, by this router’s own clock:\n${speed.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
+      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}${skips ? `\n${skips}` : ''}` : ''}${speed.length ? `\nspeed, by this router’s own clock:\n${speed.join('\n')}` : ''}${billed.length ? `\nbills, checked by this router against each node’s listed prices:\n${billed.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {

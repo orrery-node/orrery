@@ -2,7 +2,7 @@
 // node answering with its model server up. Nobody vouches for it; each router keeps and shows its own.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { speedText } from '../spend.ts';
+import { billsText, speedText } from '../spend.ts';
 
 /** `sent`/`answered`: the requests this router sent the node and how many it answered, counted from `askedSince`. */
 export type Watched = { checks: number; up: number; since: number; sent?: number; answered?: number; askedSince?: number };
@@ -67,6 +67,6 @@ export function answeredText(o: { ok: number; fail: number; broke?: number } | W
 /** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when
  * this router checked, what it did with the requests it was sent (the record on disk, else the counts since start),
  * and how fast it started answering. Empty before there is anything to say. */
-export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined }, now = Date.now()): string[] {
-  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : ''].filter((l) => l.length > 0);
+export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined; bills?: { checked: number; over: number } | null }, now = Date.now()): string[] {
+  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : '', o.bills && o.bills.checked > 0 ? billsText(o.bills) : ''].filter((l) => l.length > 0);
 }

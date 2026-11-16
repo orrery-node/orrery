@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
 export type Enclave = { kind: string; image: string; verdict: string };
-export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number };
+export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number; billed?: string; listed?: string };
 
 /** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
 export const ROLL_BYTES = 10 * 1024 * 1024;
@@ -15,7 +15,7 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
-    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}) })}\n`);
+    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}), ...(typeof t.billed === 'string' ? { billed: t.billed } : {}), ...(typeof t.listed === 'string' ? { listed: t.listed } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
   }
@@ -115,6 +115,30 @@ export function speeds(trips: LoggedTrip[], sinceMs: number, now = Date.now()): 
 export function speedText(s: { answers: number; medianTtftMs: number }, window = '24 h'): string {
   const took = s.medianTtftMs < 1000 ? `${Math.round(s.medianTtftMs)} ms` : `${(s.medianTtftMs / 1000).toFixed(1)} s`;
   return `started answering in ${took} (${s.answers === 1 ? '1 answer' : `median of ${s.answers.toLocaleString('en-US')} answers`} in the last ${window})`;
+}
+
+export type Bills = { provider: string; name: string; checked: number; over: number };
+
+/** What each node billed this router, against what the prices it listed on chain come to for the same tokens, over the
+ * answers in the window that have both on record. `over` counts the bills above the listed prices; the router paid no
+ * more than those prices either way. Nodes with the most answers come first. */
+export function bills(trips: LoggedTrip[], sinceMs: number, now = Date.now()): Bills[] {
+  const by = new Map<string, Bills>();
+  for (const t of trips) {
+    if (now - t.at > sinceMs || typeof t.billed !== 'string' || typeof t.listed !== 'string') continue;
+    const b = by.get(t.provider) ?? { provider: t.provider, name: t.providerName, checked: 0, over: 0 };
+    b.name = t.providerName;
+    b.checked += 1;
+    if (units(t.billed) > units(t.listed)) b.over += 1;
+    by.set(t.provider, b);
+  }
+  return [...by.values()].sort((a, b) => b.checked - a.checked);
+}
+
+export function billsText(b: { checked: number; over: number }, window = '24 h'): string {
+  const n = (k: number) => k.toLocaleString('en-US');
+  if (b.over === 0) return b.checked === 1 ? `its bill was within its listed prices (1 answer in the last ${window})` : `every bill was within its listed prices (${n(b.checked)} answers in the last ${window})`;
+  return `billed above its listed prices in ${n(b.over)} of ${n(b.checked)} answers in the last ${window}; this router paid no more than those prices`;
 }
 
 export function paidInside(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; inside: number } {
