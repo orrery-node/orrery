@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
-import { ACCOUNT, decodeChannel, decodeProvider, ins, pda, programId } from '../chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from '../chain/program.ts';
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, encodeVoucher, signVoucher, verifyVoucher } from '../chain/voucher.ts';
 import { fetchNode } from '../proxy.ts';
@@ -41,6 +41,13 @@ export function walletProblem(o: { wallet: string | null; lamports: number; usdc
   if (o.usdc >= o.deposit && o.lamports >= 5_000_000) return null;
   const dollars = (u: bigint) => `$${(Number(u) / 1e6).toFixed(2)}`;
   return `your wallet ${o.wallet} has ${dollars(o.usdc)} USDC and ${(o.lamports / 1e9).toFixed(4)} SOL. Opening a channel locks ${dollars(o.deposit)} of USDC and takes about 0.005 SOL for rent and fees. Send it both and ask again`;
+}
+
+/** Why a deposit this small cannot open a channel (the program refuses one below its minimum), or null. */
+export function depositProblem(deposit: bigint, min: bigint): string | null {
+  if (deposit >= min) return null;
+  const shown = (u: bigint) => `$${(Number(u) / 1e6).toFixed(u % 10_000n === 0n ? 2 : 6)}`;
+  return `a payment channel needs a deposit of at least ${shown(min)} on this network and this router is set to ${shown(deposit)}, so it opened none. Start it with --deposit ${Number(min) / 1e6} or more; what you do not spend comes back when the channel closes`;
 }
 
 export class Channels {
@@ -246,7 +253,12 @@ export class Channels {
       // exists with our session key, it is open; opening another would lock a second deposit.
       const info = await this.conn.getAccountInfo(channel, 'confirmed').catch(() => null);
       if (!info || !decodeChannel(info.data).sessionKey.equals(this.session.publicKey)) {
-        // It did not open. When the wallet is why, say that: it is not the node's failure.
+        // It did not open. A deposit below the program's minimum fails whatever the wallet holds, so that is said
+        // first; the minimum is read only now, so a router whose channels open makes no extra call for it.
+        const min = await this.conn.getAccountInfo(pda.config()).then((i) => (i ? decodeConfig(i.data).minDeposit : null)).catch(() => null);
+        const small = min === null ? null : depositProblem(deposit, min);
+        if (small) throw new PayerProblem(small);
+        // When the wallet is why, say that: it is not the node's failure.
         const lamports = await this.conn.getBalance(wallet.publicKey).catch(() => null);
         const usdc = await this.conn.getTokenAccountBalance(pda.ata(wallet.publicKey, this.mint)).then((b) => BigInt(b.value.amount)).catch(() => 0n);
         const why = lamports === null ? null : walletProblem({ wallet: wallet.publicKey.toBase58(), lamports, usdc, deposit });

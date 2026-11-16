@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · A router started with a `--deposit` below the smallest channel the program allows says so: "a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more". Before, the request failed with the program’s raw error (`Simulation failed … DepositTooSmall`). The minimum is read from the program only after an open fails, so a router whose channels open makes no extra call.
+
 ## 0.1.18 · 2026-11-16 04:10 UTC
 
 **A node with no Solana tools: `orrery wallet new` makes the wallet, `provider init` asks only for what is missing, one `register --fund-key` lists the node and funds its key, and `provider compose` runs it in Docker. Your router keeps its own record of every node, across restarts: how often it was up, what it answered, how fast it started and whether its bills stayed within the prices it listed.**

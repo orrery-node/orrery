@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A router started with a `--deposit` below the smallest channel the program allows says so: "a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more". Before, the request failed with the program’s raw error (`Simulation failed … DepositTooSmall`). The minimum is read from the program only after an open fails, so a router whose channels open makes no extra call.' },
+];
 
 export const RELEASES: Release[] = [
   {

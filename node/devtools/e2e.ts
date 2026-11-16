@@ -585,6 +585,12 @@ const rekeyedGot = await rekeyed.ensure(ib.pda.toBase58(), 1n).then((c) => `paid
 check('a router whose session key changed stops paying through the channel it opened under the old key, and says how to get that deposit back',
   rekeyedGot.startsWith('refused') && rekeyed.get(ib.pda.toBase58()) === undefined && rekeyedSaid.some((l) => l.includes(ibBefore.channel) && /another session key/.test(l) && new RegExp(`close ${ibBefore.channel} --wallet`).test(l)),
   `${rekeyedGot} · ${(rekeyedSaid[0] ?? 'nothing said').slice(0, 90)}`);
+// A router set to a deposit below the program's minimum (USD / 10 here) says that, not the program's error code.
+const small = new Channels(conn, user, Keypair.generate(), usdc, join(WORK, 'home/router/channels-small.json'), { deposit: USD / 20n, topUpBelow: 0n, dailyCap: USD });
+const smallSaid = await small.ensure(ib.pda.toBase58(), 1n).then((c) => `opened ${c.channel.slice(0, 6)}…`, (e: Error) => e.message);
+check('a router set to a deposit below the program’s minimum says what the minimum is and which --deposit to use, and opens nothing',
+  /at least \$0\.10 on this network and this router is set to \$0\.05/.test(smallSaid) && /--deposit 0\.1 or more/.test(smallSaid) && !/Simulation failed|DepositTooSmall/.test(smallSaid) && small.get(ib.pda.toBase58()) === undefined,
+  smallSaid.split('\n')[0].slice(0, 140));
 // The node that went dark earlier still has this router's channel open on chain. A router that lost its records
 // finds that channel, cannot ask the node where it stands, and must not open (and fund) a second one on a guess.
 const dark = nodes[0].pda;

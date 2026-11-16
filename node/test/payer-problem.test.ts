@@ -19,4 +19,12 @@ describe('why a router could not open a payment channel, when the reason is its 
   it('is silent when the wallet can pay: the failure was something else', () => {
     assert.equal(walletProblem!({ wallet: 'Wallet111', lamports: 50_000_000, usdc: 2_000_000n, deposit: 2_000_000n }), null);
   });
+
+  it('says a deposit below the program’s minimum is why no channel opened, with the minimum and the flag to use', () => {
+    const depositProblem = (channels as unknown as { depositProblem?: (deposit: bigint, min: bigint) => string | null }).depositProblem;
+    assert.equal(typeof depositProblem, 'function', 'channels.ts explains a deposit below the minimum');
+    assert.equal(depositProblem!(50_000n, 100_000n), 'a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more; what you do not spend comes back when the channel closes');
+    assert.equal(depositProblem!(100_000n, 100_000n), null);
+    assert.equal(depositProblem!(2_000_000n, 100_000n), null);
+  });
 });
