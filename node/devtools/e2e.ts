@@ -242,6 +242,7 @@ check('an agent is told through orrery mcp when an answer was cut off at its max
 const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
+check('an agent is told through orrery mcp how what it paid compares with the prices the node listed on chain', /paid \$\d\.\d{6} for this answer(, what its listed prices come to|, under its listed \$\d\.\d{6}| \(it asked)/.test(mcpAnswer), (mcpAnswer.split('\n').find((l) => l.includes('paid $')) ?? 'no paid line').replace(/\(([1-9A-HJ-NP-Za-km-z]{6})…\)/, '($1…)').slice(0, 150));
 check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
 const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
 const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';

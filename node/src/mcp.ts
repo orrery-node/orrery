@@ -124,6 +124,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const rawName = r.headers.get('x-orrery-provider-name');
       const name = rawName ? (() => { try { return decodeURIComponent(rawName); } catch { return rawName; } })() : null;
       const cost = r.headers.get('x-orrery-cost');
+      // What the node asked against what the prices it listed on chain come to: the router paid no more than those.
+      const billed = r.headers.get('x-orrery-billed'), listed = r.headers.get('x-orrery-listed');
+      const checked = billed === null || listed === null ? ''
+        : Number(billed) > Number(listed) ? ` (it asked $${billed}; paid its listed price)`
+        : Number(billed) < Number(listed) ? `, under its listed $${listed}` : ', what its listed prices come to';
       // Nodes that failed before this one answered: the router moved on, and a node that does not answer is not paid.
       const skippedN = Number(r.headers.get('x-orrery-skipped') ?? 0);
       const skipped = skippedN > 0 ? `\n— ${skippedN} node${skippedN === 1 ? '' : 's'} failed before this one answered; a node that does not answer is not paid` : '';
@@ -134,7 +139,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const payment = r.headers.get('x-orrery-payment') === 'inside' ? 'payment inside the seal' : 'payment in headers its host can read';
       const traveled = r.headers.get('x-orrery-sealed') === '1' ? `sealed to a verified enclave (${r.headers.get('x-orrery-enclave') ?? 'enclave'}), ${payment}`
         : r.headers.get('x-orrery-wire') === '1' ? `sealed to the node’s own key, ${payment}` : 'as plain JSON inside TLS, which the node’s host can read';
-      return text(`${shown}\n\n— answered by ${name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider'}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${skipped}${cutOff}\n— traveled ${traveled}${task}`);
+      return text(`${shown}\n\n— answered by ${name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider'}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${checked}${skipped}${cutOff}\n— traveled ${traveled}${task}`);
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);

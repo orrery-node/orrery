@@ -745,7 +745,7 @@ export class Router {
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-billed': usd(record.cost), 'x-orrery-listed': usd(ours), 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

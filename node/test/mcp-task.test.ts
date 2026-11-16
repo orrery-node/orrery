@@ -197,4 +197,11 @@ describe('orrery mcp and task budgets', () => {
     });
     assert.match(out.result.content[0].text, /\ntasks:\nreview: \$0\.000046 of \$0\.000050 spent, \$0\.000004 left, 2 answers\ndocs: \$0\.000000 of \$0\.010000 spent, \$0\.010000 left, 0 answers/);
   });
+
+  it('tells the agent how what it paid compares with the node’s listed prices', async () => {
+    const said = async (billed: string, listed: string, cost: string) => (await call('ask', { model: 'm', prompt: 'hi' }, async () => reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-cost': cost, 'x-orrery-billed': billed, 'x-orrery-listed': listed }))).result.content[0].text;
+    assert.match(await said('0.000019', '0.000019', '0.000019'), /paid \$0\.000019 for this answer, what its listed prices come to\n/);
+    assert.match(await said('0.000012', '0.000015', '0.000012'), /paid \$0\.000012 for this answer, under its listed \$0\.000015\n/);
+    assert.match(await said('0.000020', '0.000015', '0.000015'), /paid \$0\.000015 for this answer \(it asked \$0\.000020; paid its listed price\)\n/);
+  });
 });
