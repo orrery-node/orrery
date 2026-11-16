@@ -464,7 +464,7 @@ async function main() {
     const found = await findUpstream(flag('upstream'));
     // The wallet the draft names is one the operator has, or the place `orrery wallet new` will put one.
     const homeWallet = home('wallet.json');
-    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }) });
+    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), rpcUrl: flag('rpc', process.env.ORRERY_RPC_URL), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }) });
     writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
     const emb = found.models.filter(isEmbeddingModel);
@@ -476,7 +476,7 @@ async function main() {
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
-    console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl })}`);
+    console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl, localCluster: privateAddress(cfg.rpcUrl) })}`);
     const walletFile = expand(cfg.wallet);
     const listedUnder = existsSync(walletFile) ? (() => { try { return loadKeypair(walletFile).publicKey.toBase58(); } catch { return undefined; } })() : undefined;
     console.log(walletNote({ wallet: cfg.wallet, exists: existsSync(walletFile), isHome: cfg.wallet === homeWallet, out, address: listedUnder }, CLI));

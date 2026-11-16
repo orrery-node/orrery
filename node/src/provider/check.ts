@@ -7,6 +7,7 @@ import { readWire } from '../router/registry.ts';
 import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
+import { privateAddress } from '../address.ts';
 import { folderRisk, folderWarning } from './folder.ts';
 import { FEE_FLOOR_LAMPORTS, TOKEN_ACCOUNT_BYTES, type ProviderNode } from './node.ts';
 
@@ -161,23 +162,7 @@ export function fundKeyLamports(text: string | undefined): number {
 /** How many payouts that much SOL pays for: one payout is one transaction at the base fee. */
 export const payoutsFor = (lamports: number) => Math.floor(lamports / 5_000);
 
-/** Whether a URL's host is one only machines on the same computer or network can reach: loopback, the private ranges,
- * link-local, carrier-grade NAT (100.64.0.0/10, where tailnets live), unique-local IPv6, and .local / localhost names. */
-export function privateAddress(url: string): boolean {
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  } catch {
-    return false;
-  }
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
-  const v4 = host.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-  }
-  return host === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(host) || /^fe[89ab][0-9a-f]?:/.test(host);
-}
+export { privateAddress } from '../address.ts';
 
 /** Why `provider register` should not send its transaction, in words, or null when it can: the address is still the
  * placeholder (the listing would point routers nowhere), it is one only the operator's own network can reach while

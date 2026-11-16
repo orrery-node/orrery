@@ -94,4 +94,17 @@ describe('orrery provider init', () => {
     assert.match(nextSteps('provider.json'), /^ {2}1\. set publicUrl to an address routers can reach, and your prices/);
     assert.match(nextSteps('provider.json', 'orrery', { publicUrl: 'https://your-node.example.com' }), /^ {2}1\. set publicUrl/);
   });
+
+  it('says, for an address only your own network reaches on a public cluster, to change it before listing', () => {
+    const lan = nextSteps('provider.json', 'orrery', { publicUrl: 'http://192.168.1.20:7272' });
+    assert.equal(lan.split('\n')[0], '  1. set publicUrl to a public domain or IP with this node’s port open: http://192.168.1.20:7272 reaches only machines on your own network (step 3 with --private-address lists it there alone), and check your prices (micro-USDC per million tokens; 500000 = $0.50)');
+    const local = nextSteps('provider.json', 'orrery', { publicUrl: 'http://127.0.0.1:7272', localCluster: true } as Parameters<typeof nextSteps>[2]);
+    assert.match(local, /^ {2}1\. check your prices in provider\.json .*routers will reach the node at http:\/\/127\.0\.0\.1:7272$/m, 'a local validator: as before');
+  });
+
+  it('writes the RPC it was given (--rpc or ORRERY_RPC_URL) into provider.json, and mainnet’s public one otherwise', () => {
+    const found = { name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b'] };
+    assert.equal((draftConfig(found, { rpcUrl: 'https://my-rpc.example.com' } as Parameters<typeof draftConfig>[1]) as { rpcUrl: string }).rpcUrl, 'https://my-rpc.example.com');
+    assert.equal(draftConfig(found).rpcUrl, 'https://api.mainnet-beta.solana.com');
+  });
 });

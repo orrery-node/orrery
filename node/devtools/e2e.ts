@@ -1354,7 +1354,7 @@ const walk1 = await walkRun(['wallet', 'new']);
 const walkWallet = /address {2}(\S+)/.exec(walk1.text)?.[1];
 // The one deposit an operator makes. Here it is an airdrop; on mainnet it is a withdrawal from wherever their SOL is.
 if (walkWallet) await fund(new PublicKey(walkWallet), 1);
-const walk2 = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Walk-in Node', '--public-url', 'http://127.0.0.1:17288', '--out', walkCfg]);
+const walk2 = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19102/v1', '--name', 'Walk-in Node', '--public-url', 'http://127.0.0.1:17288', '--rpc', RPC, '--out', walkCfg]);
 // The draft is written for mainnet. The rehearsal points it at its own validator, its own USDC and a free port, and
 // edits nothing else: the wallet, the models, the prices and the data folder are as init wrote them.
 if (existsSync(walkCfg)) writeFileSync(walkCfg, JSON.stringify({ ...(JSON.parse(readFileSync(walkCfg, 'utf8')) as object), rpcUrl: RPC, settleMint: usdc.toBase58(), listen: 17288 }, null, 2));

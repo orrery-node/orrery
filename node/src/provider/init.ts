@@ -1,5 +1,6 @@
 // `orrery provider init`: finds an OpenAI-compatible model server on this machine, lists its models and writes a starting
 // provider.json, so selling inference starts from a file that already points at the right upstream.
+import { privateAddress } from '../address.ts';
 import { PROVIDER_PORT, USDC_MAINNET } from '../brand.ts';
 
 type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
@@ -49,11 +50,15 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
 }
 
 /** What is left to do after `provider init` wrote a config, in order. */
-export function nextSteps(out: string, cli = 'orrery', o: { publicUrl?: string } = {}): string {
-  // An address given to init is not asked for again; the placeholder still is.
+export function nextSteps(out: string, cli = 'orrery', o: { publicUrl?: string; localCluster?: boolean } = {}): string {
+  // An address given to init is not asked for again; the placeholder still is, and so is one only the operator's own
+  // network reaches on a public cluster (register refuses it without --private-address).
   const addressSet = !!o.publicUrl && !/^https?:\/\/your-node\.example\.com\/?$/.test(o.publicUrl);
+  const unreachable = addressSet && !o.localCluster && privateAddress(o.publicUrl!);
   return [
-    addressSet
+    unreachable
+      ? `  1. set publicUrl to a public domain or IP with this node’s port open: ${o.publicUrl} reaches only machines on your own network (step 3 with --private-address lists it there alone), and check your prices (micro-USDC per million tokens; 500000 = $0.50)`
+      : addressSet
       ? `  1. check your prices in ${out} (micro-USDC per million tokens; 500000 = $0.50); routers will reach the node at ${o.publicUrl}`
       : `  1. set publicUrl to an address routers can reach, and your prices (micro-USDC per million tokens; 500000 = $0.50)`,
     `  2. ${cli} provider compare --config ${out} to see where new prices would stand`,
@@ -91,12 +96,12 @@ export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowe
  * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports.
  * Embedding models are priced on input tokens only ($0.02 per million to start). A new node lists payment inside the
  * seal in its price list from its first registration, so routers keep to it from their first request (README). */
-export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string } = {}) {
+export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string; rpcUrl?: string } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
     listen: PROVIDER_PORT,
     publicUrl: o.publicUrl ?? 'https://your-node.example.com',
-    rpcUrl: 'https://api.mainnet-beta.solana.com',
+    rpcUrl: o.rpcUrl ?? 'https://api.mainnet-beta.solana.com',
     settleMint: USDC_MAINNET,
     wallet: o.wallet ?? SOLANA_WALLET,
     dataDir: '~/.orrery/provider',
