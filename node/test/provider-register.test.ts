@@ -52,6 +52,12 @@ describe('orrery provider register, before it sends anything', () => {
     assert.equal(enough.detail, '0.0100 SOL for redeem fees; the first payout also opens your wallet’s USDC account, about 0.0020 SOL once from this key');
   });
 
+  it('says what 0.01 SOL pays for when the first payout must open the USDC account: that, and the payouts left after it', () => {
+    assert.match(nodeKeyLine({ lamports: 0, accountRent: 1_488_440, nodeKey: 'Key111' }).detail, /\(0\.01 SOL pays for that and about 1,700 payouts\)/, 'mainnet rent');
+    assert.match(nodeKeyLine({ lamports: 0, accountRent: 2_039_280, nodeKey: 'Key111' }).detail, /\(0\.01 SOL pays for that and about 1,600 payouts\)/, 'local validator rent');
+    assert.match(nodeKeyLine({ lamports: 0, accountRent: null, nodeKey: 'Key111' }).detail, /\(0\.01 SOL pays for about 2,000 payouts\)/, 'nothing to open');
+  });
+
   it('says how many payouts --fund-key pays for, after the one that opens the wallet’s USDC account', () => {
     assert.equal(fundKeyNote(10_000_000, 'Key111', null), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 2,000 payouts)');
     assert.equal(fundKeyNote(10_000_000, 'Key111', 2_039_280), 'sent 0.0100 SOL to the node’s key Key111 for redeem fees (about 1,592 payouts; the first also opens your wallet’s USDC account)');

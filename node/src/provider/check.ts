@@ -18,6 +18,14 @@ export const PLACEHOLDER_URL = /^https?:\/\/your-node\.example\.com\/?$/;
 /** What a little SOL means for a node key: one payout is one transaction at the base fee. */
 const FEE_EXAMPLE = '0.01 SOL pays for about 2,000 payouts';
 
+/** What 0.01 SOL on the node key pays for. When the first payout must open the wallet's USDC account, that rent comes
+ * first, and the payouts left after it are said instead (about 1,700 on mainnet, rounded to the hundred). */
+export function feeExample(accountRent: number | null): string {
+  if (!accountRent) return FEE_EXAMPLE;
+  const left = Math.max(0, 10_000_000 - accountRent);
+  return `0.01 SOL pays for that and about ${(Math.round(left / 5_000 / 100) * 100).toLocaleString('en-US')} payouts`;
+}
+
 export { TOKEN_ACCOUNT_BYTES };
 
 /** The node key's line. `accountRent` is the rent of the wallet's USDC account when it does not exist yet (null when
@@ -27,7 +35,7 @@ export function nodeKeyLine(o: { lamports: number; accountRent: number | null; n
   const sol = (n: number) => (n / LAMPORTS_PER_SOL).toFixed(4);
   const ok = o.lamports >= FEE_FLOOR_LAMPORTS + (o.accountRent ?? 0);
   const opens = o.accountRent ? `; the first payout also opens your wallet’s USDC account, about ${sol(o.accountRent)} SOL once from this key` : '';
-  return { ok, what: 'node key', detail: `${sol(o.lamports)} SOL for redeem fees${opens}${ok ? '' : `; send a little to ${o.nodeKey} (${FEE_EXAMPLE}), or have the listing wallet send it: provider register --fund-key`}` };
+  return { ok, what: 'node key', detail: `${sol(o.lamports)} SOL for redeem fees${opens}${ok ? '' : `; send a little to ${o.nodeKey} (${feeExample(o.accountRent)}), or have the listing wallet send it: provider register --fund-key`}` };
 }
 
 /** What `provider register --fund-key` says it sent, and how many payouts that is once the first has opened the
@@ -201,7 +209,8 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   const cost = listing ? /takes about ([\d.]+ SOL) once/.exec(listing.detail)?.[1] : undefined;
   // A new node's key has no fee money either: the same transaction can send it, so there is one address to fund.
   if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain${where}: ${register}${lowKey ? ' --fund-key' : ''} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'}${lowKey ? '; --fund-key also sends the node’s key 0.01 SOL for redeem fees' : ''})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
-  if (lowKey) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${FEE_EXAMPLE}), or from the listing wallet: ${register} --fund-key`;
+  // The node key line already worked out what 0.01 SOL pays for on this wallet; the next step says the same.
+  if (lowKey) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${/\((0\.01 SOL pays for [^)]*)\)/.exec(lowKey.detail)?.[1] ?? FEE_EXAMPLE}), or from the listing wallet: ${register} --fund-key`;
   if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
   const other = lines.find((l) => l.ok === false);

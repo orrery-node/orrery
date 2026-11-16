@@ -70,4 +70,9 @@ describe('the one next step provider check ends with', () => {
     assert.match(nextStep(lan, { ...atLan, localCluster: true } as Parameters<typeof nextStep>[1]), /^next: list the node on chain: /, 'a local validator lists local addresses');
     assert.doesNotMatch(nextStep(good.map((l) => (l.what === 'public address' ? L('public address', null, 'only machines on your network') : l)), atLan), /set "publicUrl"/, 'a node already listed for its own network is not told again');
   });
+
+  it('carries the node key line’s own count of what 0.01 SOL pays for into the next step', () => {
+    const key = L('node key', false, '0.0000 SOL for redeem fees; the first payout also opens your wallet’s USDC account, about 0.0015 SOL once from this key; send a little to NodeKey111 (0.01 SOL pays for that and about 1,700 payouts), or have the listing wallet send it: provider register --fund-key');
+    assert.equal(nextStep(good.map((l) => (l.what === 'node key' ? key : l)), at), 'next: send a little SOL to NodeKey111 for redeem fees (0.01 SOL pays for that and about 1,700 payouts), or from the listing wallet: orrery provider register --config provider.json --wallet <keypair.json> --fund-key');
+  });
 });

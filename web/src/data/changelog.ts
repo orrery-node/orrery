@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider check` says what 0.01 SOL on the node key really pays for when the first payout has to open your wallet’s USDC account: "pays for that and about 1,700 payouts" on mainnet. It said "about 2,000 payouts" in the same line that said the first payout spends about 0.0015 SOL on the account. The next step after it carries the same count.' },
+];
 
 export const RELEASES: Release[] = [
   {

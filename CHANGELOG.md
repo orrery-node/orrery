@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · `orrery provider check` says what 0.01 SOL on the node key really pays for when the first payout has to open your wallet’s USDC account: "pays for that and about 1,700 payouts" on mainnet. It said "about 2,000 payouts" in the same line that said the first payout spends about 0.0015 SOL on the account. The next step after it carries the same count.
+
 ## 0.1.19 · 2026-11-16 14:42 UTC
 
 **Setting up a node can no longer cost you for a typo: `provider init` keeps the RPC you give it, a node is not listed at an address the internet cannot reach (unless you ask for that), and a channel deposit below the program’s minimum is explained, not a failed transaction.**
