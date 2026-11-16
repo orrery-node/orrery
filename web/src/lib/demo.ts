@@ -19,6 +19,14 @@ export type Demo = {
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// How often the demo router goes back to the RPC on its own. It is one router on a server that is always on, so these
+// are set for what a page shows rather than for the minute-by-minute picture a router on someone's machine keeps:
+// the list of nodes every fifteen minutes, the wallet's token standing every ten (answered from memory meanwhile), and
+// the search for channels left over from earlier runs once an hour.
+export const DEMO_REFRESH_SECS = 15 * 60;
+export const DEMO_STANDING_MS = 10 * 60_000;
+export const DEMO_SWEEP_MS = 60 * 60_000;
+
 /** Opens (or checks) a channel to every usable provider before anyone asks, retrying the RPC's transient preflight
  * failures, and lifts the router's cool-down so a provider that only failed on our side is tried again. */
 export async function warm(d: Demo): Promise<void> {
@@ -117,8 +125,8 @@ async function start(): Promise<Demo | null> {
   });
   const registry = new Registry(conn, { allowDev: false, measurements: [] });
   const router = new Router({
-    port: DEMO_PORT, host: '127.0.0.1', route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 300,
-    holders: new HolderBook(conn), log: (l: string) => console.log(`[demo] ${l}`),
+    port: DEMO_PORT, host: '127.0.0.1', route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: DEMO_REFRESH_SECS,
+    holders: new HolderBook(conn, DEMO_STANDING_MS, undefined, { serveStale: true }), log: (l: string) => console.log(`[demo] ${l}`),
   });
   await router.start();
   const d = { router, channels, registry, wallet: wallet.publicKey.toBase58() } as unknown as Demo;
@@ -130,7 +138,7 @@ async function start(): Promise<Demo | null> {
   };
   await sweeper();
   await warm(d);
-  setInterval(() => void sweeper?.(), 15 * 60_000).unref();
+  setInterval(() => void sweeper?.(), DEMO_SWEEP_MS).unref();
   return d;
 }
 
@@ -139,5 +147,5 @@ let lastSweep = 0;
 
 /** The sweep also runs on the back of requests, in case the server's timers were paused between them. */
 export function sweepIfDue(): void {
-  if (sweeper && Date.now() - lastSweep > 15 * 60_000) void sweeper();
+  if (sweeper && Date.now() - lastSweep > DEMO_SWEEP_MS) void sweeper();
 }

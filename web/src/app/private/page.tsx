@@ -10,7 +10,7 @@ import '../prices/prices.css';
 import '../burn/burn.css';
 import './private.css';
 
-export const revalidate = 300;
+export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: `Private — ${NAME}`,

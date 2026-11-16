@@ -1,9 +1,10 @@
 // Server only. The burn, read the way a router reads it: every node that pledged a share of what it redeems, the USDC
 // its account says it redeemed, and each buy-and-burn it lists, counted only for what the two transactions show on
-// chain. Cached for five minutes.
+// chain. Cached for ten minutes; a transaction, once read, is never read again.
 import { unstable_cache } from 'next/cache';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { CA } from '@/brand';
+import { providers } from './providers';
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
@@ -17,6 +18,35 @@ type Ix = { parsed?: { type?: string; info?: { mint?: string; authority?: string
 type Tx = { blockTime?: number | null; meta: { err: unknown; preTokenBalances?: Bal[] | null; postTokenBalances?: Bal[] | null; innerInstructions?: { instructions: Ix[] }[] | null } | null; transaction: { message: { instructions: Ix[] } } } | null;
 
 const held = (l: Bal[] | null | undefined, owner: string, mint: string) => (l ?? []).filter((b) => b.owner === owner && b.mint === mint).reduce((n, b) => n + BigInt(b.uiTokenAmount.amount), 0n);
+
+const isBurn = (i: Ix) => i.parsed?.type === 'burnChecked' || i.parsed?.type === 'burn';
+
+/** What the page needs of a confirmed transaction: its time, its token balances and its burns. The rest is dropped so
+ * that thousands can be kept. */
+export function slim(tx: Tx): Tx {
+  if (!tx) return null;
+  return {
+    blockTime: tx.blockTime ?? null,
+    meta: tx.meta && { err: tx.meta.err, preTokenBalances: tx.meta.preTokenBalances, postTokenBalances: tx.meta.postTokenBalances, innerInstructions: (tx.meta.innerInstructions ?? []).map((x) => ({ instructions: x.instructions.filter(isBurn) })) },
+    transaction: { message: { instructions: tx.transaction.message.instructions.filter(isBurn) } },
+  };
+}
+
+const TXS = Symbol.for('orrery.web.burn-txs');
+const KEEP = 4000;
+
+/** A confirmed transaction does not change, so each signature is read from the RPC once. One that is not found yet is
+ * asked about again next time. */
+export async function readTx(conn: Pick<Connection, 'getParsedTransaction'>, sig: string, kept = ((globalThis as unknown as Record<symbol, Map<string, Tx>>)[TXS] ??= new Map())): Promise<Tx> {
+  const have = kept.get(sig);
+  if (have) return have;
+  const tx = slim((await conn.getParsedTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null)) as Tx);
+  if (tx) {
+    kept.set(sig, tx);
+    if (kept.size > KEEP) kept.delete(kept.keys().next().value!);
+  }
+  return tx;
+}
 
 function burnedIn(tx: Tx, mint: string, owner: string): bigint {
   if (!tx?.meta || tx.meta.err) return 0n;
@@ -37,11 +67,7 @@ async function read(): Promise<BurnState> {
   try {
     const conn = new Connection(url, 'confirmed');
     const supply = Number((await conn.getTokenSupply(new PublicKey(CA))).value.uiAmount ?? 0);
-    const { Registry } = (await import('orrery-node/dist/router/registry.js')) as unknown as {
-      Registry: new (c: Connection, o: { allowDev: boolean; measurements: string[] }) => { refresh(): Promise<void>; usable(): Entry[] };
-    };
-    const registry = new Registry(conn, { allowDev: false, measurements: [] });
-    await registry.refresh();
+    const registry = await providers<{ usable(): Entry[] }>(url);
     const pledgers: Pledger[] = [];
     const rows: BurnRow[] = [];
     const used = new Set<string>();
@@ -55,7 +81,7 @@ async function read(): Promise<BurnState> {
         if (typeof r?.swapTx !== 'string' || typeof r.burnTx !== 'string' || r.swapTx === r.burnTx || used.has(r.swapTx) || used.has(r.burnTx)) continue;
         used.add(r.swapTx);
         used.add(r.burnTx);
-        const [swap, burn] = (await Promise.all([r.swapTx, r.burnTx].map((s) => conn.getParsedTransaction(s, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null)))) as Tx[];
+        const [swap, burn] = await Promise.all([r.swapTx, r.burnTx].map((s) => readTx(conn, s)));
         const b = burnedIn(burn, CA, owner);
         if (!swap?.meta || swap.meta.err || b === 0n) continue;
         const usdcOut = held(swap.meta.preTokenBalances, owner, USDC) - held(swap.meta.postTokenBalances, owner, USDC);
@@ -77,4 +103,4 @@ async function read(): Promise<BurnState> {
   }
 }
 
-export const burnState = unstable_cache(read, ['burn-v1'], { revalidate: 300 });
+export const burnState = unstable_cache(read, ['burn-v1'], { revalidate: 600 });

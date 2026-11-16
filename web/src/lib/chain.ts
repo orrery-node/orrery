@@ -1,5 +1,7 @@
 // Server only. Reads Solana mainnet through the site's own RPC (SOLANA_RPC_URL, never sent to the browser).
-// The page revalidates every five minutes, so this runs at most once per five minutes per region.
+// The program's counters are read at most once per five minutes. Whether the program is deployed, the hash of its bytes
+// and the verifier's verdict change only with an upgrade, so those are read once an hour: the bytes are the largest
+// account the site reads.
 import { createHash } from 'node:crypto';
 import { unstable_cache } from 'next/cache';
 import { PublicKey } from '@solana/web3.js';
@@ -52,6 +54,37 @@ async function read(): Promise<ProgramStatus> {
   }
 }
 
+type ProgramBytes = { deployed: boolean; programHash: string | null; verified: boolean | null };
+
+/** The sha-256 of the deployed bytes (the hash `solana-verify get-program-hash` prints) and the public verifier's
+ * verdict. When the RPC does not answer, nothing is kept, so the next page asks again. */
+async function readProgramBytes(): Promise<ProgramBytes> {
+  const programData = PublicKey.findProgramAddressSync([new PublicKey(PROGRAM_ID).toBuffer()], LOADER)[0];
+  const pd = await account(programData.toBase58());
+  let programHash: string | null = null;
+  if (pd && pd.data.length > 45) {
+    let end = pd.data.length;
+    while (end > 45 && pd.data[end - 1] === 0) end--;
+    programHash = createHash('sha256').update(pd.data.subarray(45, end)).digest('hex');
+  }
+  const verified = await fetch(`https://verify.osec.io/status/${PROGRAM_ID}`, { signal: AbortSignal.timeout(5000) })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j: { is_verified?: boolean } | null) => (typeof j?.is_verified === 'boolean' ? j.is_verified : null))
+    .catch(() => null);
+  if (!pd) throw new Error('not read');
+  return { deployed: true, programHash, verified };
+}
+
+const programBytesHourly = unstable_cache(readProgramBytes, ['program-bytes-v1'], { revalidate: 3600 });
+
+async function programBytes(): Promise<ProgramBytes> {
+  try {
+    return await programBytesHourly();
+  } catch {
+    return { deployed: false, programHash: null, verified: null };
+  }
+}
+
 /** Live numbers from the program's Config account, plus the sha-256 of the deployed bytes (the hash
  * `solana-verify get-program-hash` prints) and the public verifier's verdict. */
 async function readMainnet(): Promise<Mainnet> {
@@ -62,18 +95,9 @@ async function readMainnet(): Promise<Mainnet> {
     const program = new PublicKey(PROGRAM_ID);
     const config = PublicKey.findProgramAddressSync([Buffer.from('config')], program)[0];
     const programData = PublicKey.findProgramAddressSync([program.toBuffer()], LOADER)[0];
-    const [cfg, pd] = await Promise.all([account(config.toBase58()), account(programData.toBase58())]);
-    let programHash: string | null = null;
-    if (pd && pd.data.length > 45) {
-      let end = pd.data.length;
-      while (end > 45 && pd.data[end - 1] === 0) end--;
-      programHash = createHash('sha256').update(pd.data.subarray(45, end)).digest('hex');
-    }
-    const verified = await fetch(`https://verify.osec.io/status/${PROGRAM_ID}`, { signal: AbortSignal.timeout(5000) })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { is_verified?: boolean } | null) => (typeof j?.is_verified === 'boolean' ? j.is_verified : null))
-      .catch(() => null);
-    if (!cfg || cfg.data.length < 184) return { ...empty, checked: true, deployed: !!pd, programHash, verified };
+    const [cfg, bytes] = await Promise.all([account(config.toBase58()), programBytes()]);
+    const { deployed, programHash, verified } = bytes;
+    if (!cfg || cfg.data.length < 184) return { ...empty, checked: true, deployed, programHash, verified };
     return {
       checked: true,
       at,
@@ -89,5 +113,5 @@ async function readMainnet(): Promise<Mainnet> {
   }
 }
 
-export const programStatus = unstable_cache(read, ['program-status'], { revalidate: 300 });
+export const programStatus = unstable_cache(read, ['program-status'], { revalidate: 3600 });
 export const mainnet = unstable_cache(readMainnet, ['mainnet-v1'], { revalidate: 300 });

@@ -105,7 +105,7 @@ export default async function Address({ params }: { params: Promise<{ wallet: st
         <div className="netp__head">
           <p className="netp__live">
             <span className="cap"><i aria-hidden="true" /> Read from Solana mainnet</span>
-            <span className="num">{w.checked ? `at ${new Date(w.at).toISOString().slice(11, 16)} UTC, again two minutes later` : 'the chain could not be read just now'}</span>
+            <span className="num">{w.checked ? `at ${new Date(w.at).toISOString().slice(11, 16)} UTC, again five minutes later` : 'the chain could not be read just now'}</span>
           </p>
           <h1 className="addr__h1">
             <span className="lead">{w.isNode ? `${w.nodes[0]?.name ?? 'A node'}.` : 'A wallet on Orrery.'}</span> <span className="num addr__addr">{short(address)}</span>

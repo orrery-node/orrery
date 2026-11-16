@@ -8,7 +8,7 @@ import { prices } from '@/lib/prices';
 import '../docs/docs.css';
 import './prices.css';
 
-export const revalidate = 300;
+export const revalidate = 600;
 
 export const metadata: Metadata = {
   title: `Prices — ${NAME}`,
@@ -43,7 +43,7 @@ export default async function Prices() {
         <p className="pcp__live">
           <span className="cap"><i aria-hidden="true" /> Read from Solana mainnet</span>
           <span className="num">
-            {p.checked ? `${nodes} ${nodes === 1 ? 'node' : 'nodes'} · ${models} models · at ${p.at.slice(11, 16)} UTC, again every five minutes` : 'the chain could not be read just now'} · program{' '}
+            {p.checked ? `${nodes} ${nodes === 1 ? 'node' : 'nodes'} · ${models} models · at ${p.at.slice(11, 16)} UTC, again every ten minutes` : 'the chain could not be read just now'} · program{' '}
             <a href={`https://solscan.io/account/${PROGRAM_ID}`} target="_blank" rel="noopener noreferrer">{PROGRAM_ID.slice(0, 4)}…{PROGRAM_ID.slice(-4)}</a>
           </span>
         </p>

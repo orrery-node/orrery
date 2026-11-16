@@ -1,5 +1,5 @@
 // Server only. What one wallet did on Orrery, read from the program's accounts on Solana through the site's RPC
-// (SOLANA_RPC_URL, never sent to the browser). Each address is read at most once every two minutes.
+// (SOLANA_RPC_URL, never sent to the browser). Each address is read at most once every five minutes.
 import { unstable_cache } from 'next/cache';
 import { PublicKey } from '@solana/web3.js';
 import { PROGRAM_ID } from '@/brand';
@@ -154,4 +154,4 @@ export function validAddress(s: string): string | null {
   }
 }
 
-export const wallet = (address: string) => unstable_cache(() => read(address), ['wallet-v1', address], { revalidate: 120 })();
+export const wallet = (address: string) => unstable_cache(() => read(address), ['wallet-v1', address], { revalidate: 300 })();
