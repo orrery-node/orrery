@@ -75,4 +75,10 @@ describe('the one next step provider check ends with', () => {
     const key = L('node key', false, '0.0000 SOL for redeem fees; the first payout also opens your wallet’s USDC account, about 0.0015 SOL once from this key; send a little to NodeKey111 (0.01 SOL pays for that and about 1,700 payouts), or have the listing wallet send it: provider register --fund-key');
     assert.equal(nextStep(good.map((l) => (l.what === 'node key' ? key : l)), at), 'next: send a little SOL to NodeKey111 for redeem fees (0.01 SOL pays for that and about 1,700 payouts), or from the listing wallet: orrery provider register --config provider.json --wallet <keypair.json> --fund-key');
   });
+
+  it('tells a ready node never paid out on chain when its first payout goes out', () => {
+    const first = { ...at, firstPayout: true, everySecs: 300 } as Parameters<typeof nextStep>[1];
+    assert.equal(nextStep(good, first), 'ready to earn: routers can find this node, reach it and pay it. Its first payout goes out at the next round after its first answer (every 5 min)');
+    assert.equal(nextStep(good, { ...at, firstPayout: false, everySecs: 300 } as Parameters<typeof nextStep>[1]), 'ready to earn: routers can find this node, reach it and pay it');
+  });
 });

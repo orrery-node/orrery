@@ -391,7 +391,7 @@ async function provider(sub: string) {
     process.exitCode = lines.some((l) => l.ok === false) ? 1 : 0;
     if (has('json')) return console.log(JSON.stringify(lines, null, 2));
     console.log(renderCheck(cfg.name, lines));
-    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), localCluster: privateAddress(node.conn.rpcEndpoint), ...walletWhere(cfg) }));
+    console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), localCluster: privateAddress(node.conn.rpcEndpoint), firstPayout: !(await node.paidOutBefore()), everySecs: cfg.redeem?.everySecs ?? 60, ...walletWhere(cfg) }));
     return;
   }
   if (sub === 'start') {
@@ -399,7 +399,7 @@ async function provider(sub: string) {
     console.log(`${NAME} provider "${cfg.name}" on :${cfg.listen}  ·  listing ${node.pda.toBase58()}  ·  ${cfg.models.length} models  ·  manifest ${node.manifestHash.toString('hex').slice(0, 12)}…`);
     console.log(consoleLine(cfg.listen, node.consoleKey(), !!process.stdout.isTTY, cfgPath));
     // Once it is up, the one thing left before it earns: a node that is not listed yet would otherwise wait in silence.
-    void providerCheck(node).then((lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true, localCluster: privateAddress(node.conn.rpcEndpoint), ...walletWhere(cfg) }))).catch(() => undefined);
+    void providerCheck(node).then(async (lines) => console.log(nextStep(lines, { config: cfgPath, publicUrl: cfg.publicUrl, nodeKey: node.node.publicKey.toBase58(), running: true, localCluster: privateAddress(node.conn.rpcEndpoint), firstPayout: !(await node.paidOutBefore()), everySecs: cfg.redeem?.everySecs ?? 60, ...walletWhere(cfg) }))).catch(() => undefined);
     return;
   }
   if (sub === 'register') {

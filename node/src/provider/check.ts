@@ -190,7 +190,7 @@ export function registerProblem(o: { publicUrl: string; exists: boolean; lamport
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
  * then the node itself. Nothing failing means routers can find it, reach it and pay it. */
-export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean; walletInConfig?: boolean; walletAway?: string; localCluster?: boolean }): string {
+export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean; walletInConfig?: boolean; walletAway?: string; localCluster?: boolean; firstPayout?: boolean; everySecs?: number }): string {
   const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
   // A config that names a wallet file which is there needs no --wallet: register reads it from the config.
   const register = `orrery provider register --config ${at.config}${at.walletInConfig || at.walletAway ? '' : ' --wallet <keypair.json>'}`;
@@ -214,7 +214,11 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
   const other = lines.find((l) => l.ok === false);
-  return other ? `next: ${other.what}: ${other.detail}` : 'ready to earn: routers can find this node, reach it and pay it';
+  if (other) return `next: ${other.what}: ${other.detail}`;
+  // A node never paid out on chain sends its first payout at its next round (provider/node.ts redeemRound).
+  const every = at.everySecs ?? 60;
+  const when = at.firstPayout ? `. Its first payout goes out at the next round after its first answer (every ${every < 60 ? `${every} s` : `${Math.round(every / 60)} min`})` : '';
+  return `ready to earn: routers can find this node, reach it and pay it${when}`;
 }
 
 export const renderCheck = (name: string, lines: CheckLine[]) => [`"${name}"`, ...lines.map((l) => `${l.ok === null ? '·' : l.ok ? '✓' : '✗'} ${l.what.padEnd(15)}${l.detail}`)].join('\n');
