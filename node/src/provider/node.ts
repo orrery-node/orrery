@@ -157,6 +157,12 @@ export function worthRedeeming(pending: bigint, minUnits: bigint, closing: boole
   return pending > 0n && (pending >= minUnits || closing || firstPayout);
 }
 
+/** Whether any channel has a signed total ahead of what is redeemed: the only time a payout round has anything to do. */
+export function anythingWaiting(entries: Iterable<{ best?: { cumulative: bigint }; redeemed: bigint }>): boolean {
+  for (const e of entries) if (e.best && e.best.cumulative > e.redeemed) return true;
+  return false;
+}
+
 export class ProviderNode {
   readonly conn: Connection;
   readonly node: Keypair;
@@ -779,6 +785,8 @@ export class ProviderNode {
   /** One round of the node's own payouts. The first payout of a node never paid out on chain goes out as soon as
    * anything is waiting; after that, payouts wait for redeem.minUnits. */
   async redeemRound(): Promise<{ channel: string; amount: bigint; tx: string }[]> {
+    // Nothing waiting, nothing to ask the chain: an idle node makes no RPC calls between answers.
+    if (!anythingWaiting(this.ledger.values())) return [];
     const first = !(await this.paidOutBefore());
     const done = await this.redeemDue(undefined, { firstPayout: first });
     if (first && done.length) {
