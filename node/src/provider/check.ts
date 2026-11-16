@@ -52,7 +52,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   const t0 = Date.now();
   const health = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { provider?: string } | null;
-  const local = /^https?:\/\/(127\.|localhost|0\.0\.0\.0|10\.|192\.168\.)/.test(cfg.publicUrl);
+  const local = privateAddress(cfg.publicUrl);
   out.push(!health ? { ok: false, what: 'public address', detail: PLACEHOLDER_URL.test(cfg.publicUrl) ? `${cfg.publicUrl} is still the placeholder from provider init: set publicUrl to the address routers will reach` : `${cfg.publicUrl} did not answer /health (is the node running, and reachable from outside?)` }
     : health.provider !== node.pda.toBase58() ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} answers as another listing` }
     : { ok: local ? null : true, what: 'public address', detail: `${cfg.publicUrl} answered in ${Date.now() - t0} ms${local ? ', but only machines on your network can reach that address' : ''}` });
@@ -161,10 +161,31 @@ export function fundKeyLamports(text: string | undefined): number {
 /** How many payouts that much SOL pays for: one payout is one transaction at the base fee. */
 export const payoutsFor = (lamports: number) => Math.floor(lamports / 5_000);
 
+/** Whether a URL's host is one only machines on the same computer or network can reach: loopback, the private ranges,
+ * link-local, carrier-grade NAT (100.64.0.0/10, where tailnets live), unique-local IPv6, and .local / localhost names. */
+export function privateAddress(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  const v4 = host.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return host === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(host) || /^fe[89ab][0-9a-f]?:/.test(host);
+}
+
 /** Why `provider register` should not send its transaction, in words, or null when it can: the address is still the
- * placeholder (the listing would point routers nowhere), or the wallet cannot pay for it. */
-export function registerProblem(o: { publicUrl: string; exists: boolean; lamports: number; rent: number; wallet: string; fund?: number }): string | null {
+ * placeholder (the listing would point routers nowhere), it is one only the operator's own network can reach while
+ * the cluster is a public one (`localCluster` is a validator on this machine or network; `privateOk` is
+ * --private-address), or the wallet cannot pay for it. */
+export function registerProblem(o: { publicUrl: string; exists: boolean; lamports: number; rent: number; wallet: string; fund?: number; localCluster?: boolean; privateOk?: boolean }): string | null {
   if (PLACEHOLDER_URL.test(o.publicUrl)) return 'set "publicUrl" first: it is still the placeholder from provider init, and the listing would send routers to an address that is not yours';
+  if (!o.localCluster && !o.privateOk && privateAddress(o.publicUrl)) return `"publicUrl" is ${o.publicUrl}, an address only machines on your own network can reach, so routers on the internet could not reach the node you would list. Set it to a public domain or IP with the node’s port open, or pass --private-address to list it for routers on your network only`;
   const fee = 10_000, sol = (n: number) => (n / 1e9).toFixed(4);
   const need = o.rent + fee + (o.fund ?? 0);
   if (o.lamports >= need) return null;

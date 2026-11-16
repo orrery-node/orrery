@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider register` will not list a node on a public cluster under an address only your own network can reach (127.0.0.1, 192.168.x, 10.x, 172.16–31.x, a .local name and the like). It says so before sending anything: routers on the internet could not reach that node, and the listing would cost its rent all the same. Set `publicUrl` to a public domain or IP, or pass `--private-address` to list it for routers on your own network. `orrery provider check` uses the same test for its note on the address.
 - **Router** · A router started with a `--deposit` below the smallest channel the program allows says so: "a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more". Before, the request failed with the program’s raw error (`Simulation failed … DepositTooSmall`). The minimum is read from the program only after an open fails, so a router whose channels open makes no extra call.
 
 ## 0.1.18 · 2026-11-16 04:10 UTC

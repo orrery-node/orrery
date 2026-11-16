@@ -26,7 +26,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { LISTING_BYTES, nextStep, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck } from './provider/check.ts';
+import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck } from './provider/check.ts';
 import { consoleLine, payoutHint, readOwnStatus } from './provider/console.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -109,7 +109,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider compose --config provider.json [--out docker-compose.yml] [--print]   a docker-compose file that runs this node in a container
   ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
   ${CLI} provider status  --config provider.json [--json]   what the console shows, in this terminal: answers, signed, redeemed, waiting, fee SOL
-  ${CLI} provider register --config provider.json [--wallet <keypair.json>] [--fund-key [sol]]   list or update on chain; --fund-key also sends the node’s key fee money
+  ${CLI} provider register --config provider.json [--wallet <keypair.json>] [--fund-key [sol]] [--private-address]   list or update on chain; --fund-key also sends the node’s key fee money
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
   ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
@@ -412,7 +412,7 @@ async function provider(sub: string) {
     const fund = fundAt < 0 ? 0 : fundKeyLamports(argv[fundAt + 1] && !argv[fundAt + 1].startsWith('--') ? argv[fundAt + 1] : undefined);
     const exists = await node.conn.getAccountInfo(node.pda);
     // Nothing is sent when it cannot work or would be wasted: the wallet cannot pay, or the address is the placeholder.
-    const problem = registerProblem({ publicUrl: cfg.publicUrl, exists: !!exists, lamports: await node.conn.getBalance(w.publicKey), rent: exists ? 0 : await node.conn.getMinimumBalanceForRentExemption(LISTING_BYTES), wallet: w.publicKey.toBase58(), fund });
+    const problem = registerProblem({ publicUrl: cfg.publicUrl, exists: !!exists, lamports: await node.conn.getBalance(w.publicKey), rent: exists ? 0 : await node.conn.getMinimumBalanceForRentExemption(LISTING_BYTES), wallet: w.publicKey.toBase58(), fund, localCluster: privateAddress(node.conn.rpcEndpoint), privateOk: has('private-address') });
     if (problem) throw new Error(problem);
     const ix = exists ? node.updateInstruction(w.publicKey) : node.registerInstruction(w.publicKey);
     const tx = new Transaction().add(ix);

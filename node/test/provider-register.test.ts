@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as check from '../src/provider/check.ts';
 import { fundKeyLamports, fundKeyNote, LISTING_BYTES, nodeKeyLine, registerProblem } from '../src/provider/check.ts';
 import { feesLine, payoutFailureNote } from '../src/provider/node.ts';
 
@@ -68,5 +69,22 @@ describe('orrery provider register, before it sends anything', () => {
     assert.equal(feesLine({ lamports: 10_000_000, openingRent: null, nodeKey: 'Key111' }), '0.0100 SOL on the node key, about 2,000 payouts');
     assert.equal(feesLine({ lamports: 10_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }), '0.0100 SOL on the node key, about 1,592 payouts; the first also opens your wallet’s USDC account');
     assert.match(feesLine({ lamports: 1_000_000, openingRent: 2_039_280, nodeKey: 'Key111' }), /about 0 payouts; the first also opens your wallet’s USDC account; running low, send a little SOL to Key111$/);
+  });
+
+  it('tells an address only machines on your own network can reach from one routers on the internet can', () => {
+    const privateAddress = (check as unknown as { privateAddress?: (url: string) => boolean }).privateAddress;
+    assert.equal(typeof privateAddress, 'function', 'check.ts tells private addresses apart');
+    for (const u of ['http://127.0.0.1:7272', 'http://localhost:7272', 'https://10.0.0.5', 'http://172.16.4.2:7272', 'http://172.31.255.1', 'http://192.168.1.20:7272', 'http://169.254.10.1', 'http://100.101.102.103:7272', 'http://0.0.0.0:7272', 'http://gpu-box.local:7272', 'http://[::1]:7272', 'http://[fd12:3456::1]:7272', 'http://[fe80::1]:7272'])
+      assert.equal(privateAddress!(u), true, u);
+    for (const u of ['https://gpu.example.org', 'http://203.0.113.7:7272', 'http://172.32.0.1', 'http://100.128.0.1', 'https://[2001:db8::1]:7272', 'not a url'])
+      assert.equal(privateAddress!(u), false, u);
+  });
+
+  it('sends nothing to list a node on a public cluster under an address only your own network can reach, and says how to fix it', () => {
+    const said = registerProblem({ ...base, publicUrl: 'http://192.168.1.20:7272' } as Parameters<typeof registerProblem>[0]) ?? '';
+    assert.equal(said, '"publicUrl" is http://192.168.1.20:7272, an address only machines on your own network can reach, so routers on the internet could not reach the node you would list. Set it to a public domain or IP with the node’s port open, or pass --private-address to list it for routers on your network only');
+    assert.equal(registerProblem({ ...base, publicUrl: 'http://192.168.1.20:7272', localCluster: true } as Parameters<typeof registerProblem>[0]), null, 'a local validator lists local addresses');
+    assert.equal(registerProblem({ ...base, publicUrl: 'http://192.168.1.20:7272', privateOk: true } as Parameters<typeof registerProblem>[0]), null, '--private-address lists it anyway');
+    assert.match(registerProblem({ ...base, publicUrl: 'http://127.0.0.1:7272', lamports: 0 } as Parameters<typeof registerProblem>[0]) ?? '', /only machines on your own network/, 'the address is said before the money');
   });
 });
