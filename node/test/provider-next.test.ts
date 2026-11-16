@@ -62,4 +62,12 @@ describe('the one next step provider check ends with', () => {
     assert.equal(nextStep(unlisted, { ...at, walletAway: '' }),
       'next: list the node on chain, on the computer that has your wallet: orrery provider register --config provider.json --wallet <keypair.json> (a one-time transaction from your wallet)');
   });
+
+  it('on a public cluster, says to change an address only your own network reaches before listing, and how to list it for your network anyway', () => {
+    const lan = [L('model server', true), L('public address', null, 'http://192.168.1.20:7272 answered in 3 ms, but only machines on your network can reach that address'), L('listing', false, 'not on chain yet'), L('node key', false), L('data folder', true)];
+    const atLan = { ...at, publicUrl: 'http://192.168.1.20:7272' };
+    assert.equal(nextStep(lan, atLan), 'next: set "publicUrl" in provider.json to a public domain or IP with this node’s port open: http://192.168.1.20:7272 reaches only machines on your own network, so routers on the internet could not reach it (to list it for your own network anyway: orrery provider register --config provider.json --wallet <keypair.json> --private-address)');
+    assert.match(nextStep(lan, { ...atLan, localCluster: true } as Parameters<typeof nextStep>[1]), /^next: list the node on chain: /, 'a local validator lists local addresses');
+    assert.doesNotMatch(nextStep(good.map((l) => (l.what === 'public address' ? L('public address', null, 'only machines on your network') : l)), atLan), /set "publicUrl"/, 'a node already listed for its own network is not told again');
+  });
 });

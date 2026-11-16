@@ -197,7 +197,7 @@ export function registerProblem(o: { publicUrl: string; exists: boolean; lamport
 
 /** The one next thing to do, in the order a new node goes through them: model server, address, listing, fee money,
  * then the node itself. Nothing failing means routers can find it, reach it and pay it. */
-export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean; walletInConfig?: boolean; walletAway?: string }): string {
+export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: string; nodeKey: string; running?: boolean; walletInConfig?: boolean; walletAway?: string; localCluster?: boolean }): string {
   const bad = (what: string) => lines.find((l) => l.what === what && l.ok === false);
   // A config that names a wallet file which is there needs no --wallet: register reads it from the config.
   const register = `orrery provider register --config ${at.config}${at.walletInConfig || at.walletAway ? '' : ' --wallet <keypair.json>'}`;
@@ -209,6 +209,10 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   const test = bad('model test');
   if (test) return `next: get the model answering: ${test.detail}`;
   if (address && PLACEHOLDER_URL.test(at.publicUrl)) return `next: set "publicUrl" in ${at.config} to the address routers will reach (a domain or IP with this node's port open)`;
+  // Not listed yet, under an address only its own network reaches, on a cluster routers reach over the internet:
+  // register would refuse it, so the address comes first (--private-address lists it for that network alone).
+  if (listing && /not on chain yet/.test(listing.detail) && !at.localCluster && privateAddress(at.publicUrl))
+    return `next: set "publicUrl" in ${at.config} to a public domain or IP with this node’s port open: ${at.publicUrl} reaches only machines on your own network, so routers on the internet could not reach it (to list it for your own network anyway: ${register} --private-address)`;
   const cost = listing ? /takes about ([\d.]+ SOL) once/.exec(listing.detail)?.[1] : undefined;
   // A new node's key has no fee money either: the same transaction can send it, so there is one address to fund.
   if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain${where}: ${register}${lowKey ? ' --fund-key' : ''} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'}${lowKey ? '; --fund-key also sends the node’s key 0.01 SOL for redeem fees' : ''})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
