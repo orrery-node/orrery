@@ -353,7 +353,7 @@ orrery provider show     --config provider.json                         # what t
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
-`orrery provider init` writes the wallet's address into provider.json and `register` reads it from there, so no step asks for `--wallet`. `--fund-key` sends the node's key its fee money (0.01 SOL unless you give an amount) in the transaction that lists the node, so there is one address to fund. A wallet file you already have works the same way with `--wallet <file>`.
+`orrery provider init` writes the wallet's address into provider.json and `register` reads it from there, so no step asks for `--wallet`. `--fund-key` sends the node's key its fee money (0.01 SOL unless you give an amount) in the transaction that lists the node, so there is one address to fund. A wallet file you already have works the same way with `--wallet <file>`. On a public cluster, `register` will not list a `publicUrl` only your own network reaches (127.0.0.1, 192.168.x, a .local name); `--private-address` lists it anyway for routers on that network.
 
 ```jsonc
 {

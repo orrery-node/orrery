@@ -6,13 +6,19 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
-  { who: 'provider', text: '`orrery provider init --rpc <url>` (or `ORRERY_RPC_URL`) writes that RPC into `provider.json`. It wrote Solana’s public mainnet RPC whatever you gave it, so a node set up with your own RPC ran on the public one until you edited the file.' },
-  { who: 'provider', text: '`orrery provider register` will not list a node on a public cluster under an address only your own network can reach (127.0.0.1, 192.168.x, 10.x, 172.16–31.x, a .local name and the like). It says so before sending anything: routers on the internet could not reach that node, and the listing would cost its rent all the same. Set `publicUrl` to a public domain or IP, or pass `--private-address` to list it for routers on your own network. `orrery provider check` uses the same test for its note on the address, and its next step says to change such an address before it says to list the node; `orrery provider init` says the same when it is given one.' },
-  { who: 'router', text: 'A router started with a `--deposit` below the smallest channel the program allows says so: "a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more". Before, the request failed with the program’s raw error (`Simulation failed … DepositTooSmall`). The minimum is read from the program only after an open fails, so a router whose channels open makes no extra call.' },
-];
+export const UNRELEASED: Change[] = [];
 
 export const RELEASES: Release[] = [
+  {
+    version: '0.1.19',
+    at: '2026-11-16T14:42:30Z',
+    headline: 'Setting up a node can no longer cost you for a typo: `provider init` keeps the RPC you give it, a node is not listed at an address the internet cannot reach (unless you ask for that), and a channel deposit below the program’s minimum is explained, not a failed transaction.',
+    changes: [
+      { who: 'provider', text: '`orrery provider init --rpc <url>` (or `ORRERY_RPC_URL`) writes that RPC into `provider.json`. It wrote Solana’s public mainnet RPC whatever you gave it, so a node set up with your own RPC ran on the public one until you edited the file.' },
+      { who: 'provider', text: '`orrery provider register` will not list a node on a public cluster under an address only your own network can reach (127.0.0.1, 192.168.x, 10.x, 172.16–31.x, a .local name and the like). It says so before sending anything: routers on the internet could not reach that node, and the listing would cost its rent all the same. Set `publicUrl` to a public domain or IP, or pass `--private-address` to list it for routers on your own network. `orrery provider check` uses the same test for its note on the address, and its next step says to change such an address before it says to list the node; `orrery provider init` says the same when it is given one.' },
+      { who: 'router', text: 'A router started with a `--deposit` below the smallest channel the program allows says so: "a payment channel needs a deposit of at least $0.10 on this network and this router is set to $0.05, so it opened none. Start it with --deposit 0.1 or more". Before, the request failed with the program’s raw error (`Simulation failed … DepositTooSmall`). The minimum is read from the program only after an open fails, so a router whose channels open makes no extra call.' },
+    ],
+  },
   {
     version: '0.1.18',
     at: '2026-11-16T04:10:40Z',
