@@ -147,16 +147,15 @@ orrery help
 **2. Fund a wallet** with a few USDC (each channel locks a $2 deposit by default; unspent USDC comes back when it closes) and about 0.05 SOL for fees and channel rent.
 
 ```bash
-solana-keygen new -o ~/.config/solana/orrery.json
-solana address -k ~/.config/solana/orrery.json
+orrery wallet new
 ```
 
-No Solana tools installed? `orrery wallet new` (in main, next release) makes the same kind of file at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it. It never writes over a file that is already there.
+That makes a Solana keypair at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it. It never writes over a file that is already there, and the router and `orrery doctor` use it without `--wallet`. A wallet file you already have (from `solana-keygen`, say) works with `--wallet <file>`.
 
 **3. Run the router**
 
 ```bash
-orrery router --wallet ~/.config/solana/orrery.json --rpc <your RPC URL> --daily-cap 5
+orrery router --rpc <your RPC URL> --daily-cap 5
 ```
 
 ```
@@ -235,7 +234,7 @@ Any other tool that reads `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` runs the sam
 By hand, on any version: Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it:
 
 ```bash
-orrery router --wallet ~/.config/solana/orrery.json --alias 'claude-*=gpt-oss-120b'
+orrery router --alias 'claude-*=gpt-oss-120b'
 ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
 ```
 
@@ -243,7 +242,7 @@ The key is a placeholder: Claude Code will not start without one, and the router
 
 Codex CLI: `orrery connect codex --write`, then `codex --profile orrery`.
 
-`orrery connect <client>` prints the settings for any of them. (In main, next release: `connect` also looks at the router those settings point at. It says when none is answering and how to start one, and when a model you asked for is not listed.)
+`orrery connect <client>` prints the settings for any of them. It also looks at the router those settings point at: it says when none is answering and how to start one, and when a model you asked for is not listed.
 </details>
 
 <details>
@@ -347,13 +346,14 @@ Providers add tiers to `provider.json`, in basis points (`share` of supply, `off
 Every provider is someone's own machine. Put a node in front of any OpenAI-compatible server, set your prices, and list it; routers anywhere can then pay you per answer.
 
 ```bash
+orrery wallet new                                                      # the wallet you are paid to (no Solana tools needed)
 orrery provider init                                                   # find Ollama, vLLM, llama.cpp, LM Studio or SGLang and write provider.json
-orrery provider register --config provider.json --wallet wallet.json   # list on chain; your wallet stays cold
+orrery provider register --config provider.json --fund-key             # list on chain and fund the node key, one transaction
 orrery provider show     --config provider.json                         # what the chain says, including your node key
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
-(In main, next release: no Solana tools needed. `orrery wallet new` makes the wallet, `orrery provider init` writes it into provider.json, and `orrery provider register --config provider.json` reads it from there, so the register step takes no `--wallet`. With `--fund-key` the same transaction also sends the node’s key its fee money, so there is one address to fund.)
+`orrery provider init` writes the wallet's address into provider.json and `register` reads it from there, so no step asks for `--wallet`. `--fund-key` sends the node's key its fee money (0.01 SOL unless you give an amount) in the transaction that lists the node, so there is one address to fund. A wallet file you already have works the same way with `--wallet <file>`.
 
 ```jsonc
 {
@@ -362,7 +362,7 @@ orrery provider start    --config provider.json                         # serve,
   "publicUrl": "https://gpu.example.org",
   "rpcUrl": "https://your-rpc.example.com",
   "settleMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "wallet": "~/.config/solana/provider-wallet.json",
+  "wallet": "~/.orrery/wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [
     { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/Llama-3.3-70B-Instruct",
@@ -406,7 +406,7 @@ WantedBy=multi-user.target
 
 - **Keep the data folder.** Between redemptions, what routers signed to you exists only in the ledger in `dataDir` (default `~/.orrery/provider`): up to `redeem.minUnits` per channel. In a container, mount a disk there. `orrery provider check` flags a temporary folder or a container's own disk, and the node says so when it starts (0.1.16).
 - **List payment inside on chain.** `"paymentInside": true` in `provider.json` puts in your price list, whose hash is on chain, that the node reads the channel and the voucher from inside the seal. Routers then keep payment out of headers from their first request to you, whatever your host or balancer does to `/v1/wire`, and send you nothing in the clear if your wire key goes missing. It changes the list, so run `orrery provider register` again after setting it. `orrery provider init` sets it for a new node, and the node's log line for an answer paid this way names no channel and no running total, since the log goes to whoever hosts the node (0.1.17).
-- **Run it in a container.** `orrery provider compose --config provider.json` writes a `docker-compose.yml` for your node: the official Node image running this package from npm, your config and the node's folder mounted where they already are, the port from your config, restart on failure and a health check. `docker compose up -d` starts it. A model server on the same machine is reached through the host, secrets your config reads from the environment are passed by name, and your wallet is never mounted. Nothing is built and no image of ours is pulled (in main, next release).
+- **Run it in a container.** `orrery provider compose --config provider.json` writes a `docker-compose.yml` for your node: the official Node image running this package from npm, your config and the node's folder mounted where they already are, the port from your config, restart on failure and a health check. `docker compose up -d` starts it. A model server on the same machine is reached through the host, secrets your config reads from the environment are passed by name, and your wallet is never mounted. Nothing is built and no image of ours is pulled.
 - **Your console has a key.** The node's own pages (its console, `/orrery/status`, `/orrery/earnings`) answer only on this computer, and only with the key in `console.key` in `dataDir`. `orrery provider start` prints the console's address with it in a terminal (in a log it names the command instead), and `orrery provider console --config provider.json` prints it again. On a server with no browser, `orrery provider status --config provider.json` prints the same numbers in the terminal, with the SOL your node key has for fees and about how many payouts that pays for (`--json` for a monitor). A balancer or proxy on the same machine that relays without forwarding headers (nginx with its defaults) looks like this computer; without the key it still reads nothing (0.1.17).
 - **Your wallet stays cold.** The node runs on its own key (`~/.orrery/provider/node.json`), which can redeem and post enclave claims but can never send what you earn anywhere except your wallet's USDC account. Give it ~0.01 SOL for redemption fees.
 - **Private nodes on AMD SEV-SNP.** In `provider.json`, `"tee": { "mode": "snp", "report": "report.bin", "vcek": "vcek.der" }` serves the report your CPU signed for the node's encryption key, with the chip's certificate. The node refuses to start on a report made for another key (it prints the report data to ask for) or on a VM launched with debugging allowed. Routers verify the report themselves against AMD's roots before they seal a prompt to you; check your own with `orrery enclave verify`.

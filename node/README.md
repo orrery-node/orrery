@@ -36,12 +36,13 @@ npm install -g orrery-node      # Node.js 22 or newer
 orrery help
 ```
 
-or run it once with `npx -y orrery-node router --wallet <keypair.json>`.
+or run it once with `npx -y orrery-node router`.
 
 ## Use the network in 30 seconds
 
 ```bash
-orrery router --wallet ~/.config/solana/orrery.json --rpc <your RPC URL> --daily-cap 5
+orrery wallet new                                  # once: send it a few USDC and a little SOL
+orrery router --rpc <your RPC URL> --daily-cap 5
 ```
 
 ```
@@ -51,7 +52,7 @@ session key 9WzDXw…AWWM signs vouchers; console at http://127.0.0.1:7171/
 
 Point anything that speaks the OpenAI API at `http://127.0.0.1:7171/v1`. Any API key works: your wallet is the account.
 
-The wallet is a Solana keypair file holding a little SOL and the USDC you want to spend. No such file yet? `orrery wallet new` (in main, next release) makes one at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it.
+The wallet is a Solana keypair file holding a little SOL and the USDC you want to spend. `orrery wallet new` makes one at `~/.orrery/wallet.json`, readable only by you, and prints its address and what to send it; the router uses it without `--wallet`. A wallet file you already have works with `--wallet <file>`.
 
 ```python
 from openai import OpenAI
@@ -82,7 +83,7 @@ codex --profile orrery
 
 `orrery spend --since 24h --by model|provider` sums what your router paid, from the log it keeps of every answer it signs for (`~/.orrery/router/trips.jsonl`). The rehearsal checks that the log adds up to exactly what the router signed.
 
-`orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router. With a router running it also prints that router's own record of each node: the checks it made, the requests the node answered and, in main (next release), how fast it started answering (`speed`, the median time to the first token over the last 24 hours by the router's clock).
+`orrery doctor` checks a setup without changing anything: it times the RPC, reads the program's config, fetches every listing's price list and checks it against the hash on chain, pings each node's `/health`, reads a wallet's SOL and USDC (`--wallet` or just `--address`) and looks for a local router. With a router running it also prints that router's own record of each node: the checks it made, the requests the node answered and, how fast it started answering (`speed`, the median time to the first token over the last 24 hours by the router's clock).
 
 A request can name fallbacks: `"model": "deepseek-v3|qwen3-32b"` or an OpenRouter-style `"models": [...]` (up to four). When no provider of one model can answer (none lists it, none fits the price ceiling, all cooling down or all failed before the first token) the router moves to the next, and logs why. The daily cap and bad requests still stop the request.
 
@@ -102,7 +103,7 @@ Claude Code works the same way through the Anthropic API. Run the router with `-
 ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude
 ```
 
-The router has no API key, so any value works. `orrery connect claude|openai|anthropic|mcp` prints what each client needs. (In main, next release: `connect` also looks at the router those settings point at. It says when none is answering and how to start one, and when a model you asked for is not listed.) The rehearsal runs Codex CLI 0.167.0 and Claude Code 2.1.301 through the router (`E2E_CODEX=1 E2E_CLAUDE=1 npx tsx devtools/e2e.ts`) and checks each answer was paid for.
+The router has no API key, so any value works. `orrery connect claude|openai|anthropic|mcp` prints what each client needs. It also looks at the router those settings point at: it says when none is answering and how to start one, and when a model you asked for is not listed. The rehearsal runs Codex CLI 0.167.0 and Claude Code 2.1.301 through the router (`E2E_CODEX=1 E2E_CLAUDE=1 npx tsx devtools/e2e.ts`) and checks each answer was paid for.
 
 Anthropic clients work too. The router serves the Anthropic Messages API at the same address, streamed or not, with tool use:
 
@@ -155,12 +156,13 @@ The router tries the top three providers in order, so a slow or dead one is skip
 Put a node in front of any OpenAI-compatible server — **vLLM, SGLang, Ollama, llama.cpp**, or API capacity you hold — set your prices, and list it. Routers anywhere can then pay you per answer. No application, no stake, and nothing in the program can delist you.
 
 ```bash
+orrery wallet new                                                      # the wallet you are paid to (no Solana tools needed)
 orrery provider init                                                   # find Ollama, vLLM, llama.cpp, LM Studio or SGLang and write provider.json
-orrery provider register --config provider.json --wallet wallet.json   # list on chain; the wallet stays cold
+orrery provider register --config provider.json --fund-key             # list on chain and fund the node key, one transaction
 orrery provider start    --config provider.json                         # serve, check vouchers, redeem
 ```
 
-(In main, next release: no Solana tools needed. `orrery wallet new` makes the wallet, `orrery provider init` writes it into provider.json, and `orrery provider register --config provider.json` reads it from there, so the register step takes no `--wallet`. With `--fund-key` the same transaction also sends the node’s key its fee money, so there is one address to fund.)
+`orrery provider init` writes the wallet's address into provider.json and `register` reads it from there, so no step asks for `--wallet`. `--fund-key` sends the node's key its fee money (0.01 SOL unless you give an amount) in the transaction that lists the node, so there is one address to fund. A wallet file you already have works the same way with `--wallet <file>`.
 
 For vLLM and SGLang, `init` also lists a cached-input price (a quarter of the input price to start) for the prompt prefixes agents resend every turn. Turn on the server's cache report so hits reach Orrery: `--enable-prompt-tokens-details` for vLLM, `--enable-cache-report` for SGLang. Without a report every token is billed at the input price; a report can only lower a bill.
 
@@ -168,7 +170,7 @@ For vLLM and SGLang, `init` also lists a cached-input price (a quarter of the in
 {
   "name": "My GPU", "region": "eu-west", "publicUrl": "https://gpu.example.org",
   "rpcUrl": "https://your-rpc.example.com", "settleMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "wallet": "~/.config/solana/provider-wallet.json",
+  "wallet": "~/.orrery/wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [{ "id": "llama-3.3-70b", "context": 131072, "maxOutput": 8192,
                "price": { "input": 120000, "output": 300000 } }]     // USDC base units per million tokens

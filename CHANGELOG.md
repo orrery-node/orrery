@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.18 · 2026-11-16 04:10 UTC
+
+**A node with no Solana tools: `orrery wallet new` makes the wallet, `provider init` asks only for what is missing, one `register --fund-key` lists the node and funds its key, and `provider compose` runs it in Docker. Your router keeps its own record of every node, across restarts: how often it was up, what it answered, how fast it started and whether its bills stayed within the prices it listed.**
 
 - **Router** · Your router checks every bill against the prices the node listed on Solana, and now keeps what it found. Each answer in its log carries what the node billed and what its listed prices come to for the same tokens, and its record of each node says "every bill was within its listed prices (41 answers in the last 24 h)", or how many were above them and that it paid no more than those prices. `orrery doctor` prints it as a `bills` line; the console, `GET /orrery/status` (`bills`), `/orrery/spend` and the MCP `status` tool carry it too.
 - **Router** · A router whose session key changed (its `router/session.json` was replaced or deleted) stops paying through a channel it opened under the old key. The node refuses every voucher the new key signs, so each request through that channel failed with "voucher signature does not match the channel session key" while the router kept choosing it. Now the router lets that channel go, finds or opens one under its own key, and its log names the old channel with the command that returns the deposit: `orrery close <channel> --wallet <keypair.json>`.
@@ -42,6 +44,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · `orrery provider status` says when your node last answered ("last answer 3 min ago"), and `--json` gives `lastAnswerAt`, so a monitor can tell when a node has stopped getting work.
 - **Router** · The `ask` tool of `orrery mcp` says how soon each answer started, as the router timed it: "answered by Orrery Seed (76Udba…) in 703 ms".
 - **Node** · `orrery provider start` prints your console’s key only to a terminal. When its output goes to a log, which is where a host keeps it, the line gives the address and `orrery provider console` to print the key.
+
+`npx -y orrery-node@0.1.18`
 
 ## 0.1.17 · 2026-11-14 02:43 UTC
 

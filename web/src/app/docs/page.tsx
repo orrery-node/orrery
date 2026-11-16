@@ -21,13 +21,13 @@ const INSTALL = `node --version          # v22 or newer
 npm install -g ${PKG}
 orrery help`;
 
-const NPX = `npx -y ${PKG} router --wallet ~/.config/solana/id.json`;
+const NPX = `npx -y ${PKG} wallet new   # once
+npx -y ${PKG} router`;
 
-const WALLET = `solana-keygen new -o ~/.config/solana/orrery.json   # or use a wallet file you already have
-solana address -k ~/.config/solana/orrery.json      # send USDC and a little SOL here`;
+const WALLET = `orrery wallet new   # a Solana keypair at ~/.orrery/wallet.json, readable only by you
+                    # it prints the address: send USDC and a little SOL there`;
 
 const RUN = `orrery router \\
-  --wallet ~/.config/solana/orrery.json \\
   --rpc https://your-rpc.example.com \\
   --daily-cap 5`;
 
@@ -35,7 +35,7 @@ const CODEX = `# writes ~/.codex/orrery.config.toml and leaves your config.toml 
 npx -y orrery-node connect codex --write
 codex --profile orrery`;
 
-const CLAUDE = `orrery router --wallet ~/.config/solana/id.json --alias 'claude-*=gpt-oss-120b'
+const CLAUDE = `orrery router --alias 'claude-*=gpt-oss-120b'
 
 ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude`;
 
@@ -100,10 +100,10 @@ gpt-oss-120b                               1 providers  from $0.030/M in · $0.1
 const CHANNELS = `$ orrery channels
 5HURjz…  provider CakCxW…  deposit $2.00  you signed $0.000136  redeemed $0.000136  open
 
-$ orrery close 5HURjz… --wallet ~/.config/solana/orrery.json
+$ orrery close 5HURjz…
 closing 5HURjz…; the provider has 3600s to redeem, then run: orrery close 5HURjz… --wallet … --finish
 
-$ orrery close 5HURjz… --wallet ~/.config/solana/orrery.json --finish
+$ orrery close 5HURjz… --finish
 closed 5HURjz…; $1.999864 and the account rent are back in your wallet`;
 
 const PROVIDER_JSON = `{
@@ -113,7 +113,7 @@ const PROVIDER_JSON = `{
   "publicUrl": "https://gpu.example.org",
   "rpcUrl": "https://your-rpc.example.com",
   "settleMint": "${USDC}",
-  "wallet": "~/.config/solana/provider-wallet.json",
+  "wallet": "~/.orrery/wallet.json",
   "upstream": { "baseUrl": "http://127.0.0.1:8000/v1" },
   "models": [
     { "id": "llama-3.3-70b", "upstreamModel": "meta-llama/Llama-3.3-70B-Instruct",
@@ -129,7 +129,8 @@ Ollama      "baseUrl": "http://127.0.0.1:11434/v1"
 llama.cpp   "baseUrl": "http://127.0.0.1:8080/v1"
 OpenRouter  "baseUrl": "https://openrouter.ai/api/v1", "apiKeyEnv": "OPENROUTER_API_KEY"`;
 
-const PROVIDE = `orrery provider register --config provider.json --wallet ~/.config/solana/provider-wallet.json
+const PROVIDE = `orrery wallet new                                      # the wallet you are paid to, if you have none
+orrery provider register --config provider.json --fund-key   # list the node and fund its key, one transaction
 orrery provider show     --config provider.json      # what the chain now says, including your node key
 orrery provider start    --config provider.json`;
 
@@ -238,7 +239,7 @@ export default function Docs() {
           <ol className="d-steps">
             <li><b>Install</b> the router from npm: <code>npm install -g {PKG}</code> (Node 22 or newer).</li>
             <li><b>Fund</b> a Solana wallet with a few USDC and a little SOL.</li>
-            <li><b>Run</b> <code>orrery router --wallet &lt;keypair.json&gt; --rpc &lt;your RPC&gt;</code>.</li>
+            <li><b>Run</b> <code>orrery router --rpc &lt;your RPC&gt;</code>.</li>
             <li><b>Point</b> any OpenAI-compatible tool at <code>{ROUTER_URL}</code> with any API key, and add <code>:cheap</code>, <code>:fast</code>, <code>:trusted</code> or <code>:private</code> to the model name when you care.</li>
           </ol>
           <p>That is the whole setup. There is no account, no sign-up and no API key to buy: your wallet is the account, and each answer is paid to the machine that served it.</p>
@@ -251,7 +252,7 @@ export default function Docs() {
           <p>Everything the router keeps lives in <code>~/.orrery</code> (set <code>ORRERY_HOME</code> to move it): the session key that signs your running totals and the list of your open channels. Updating is <code>npm install -g {PKG}@latest</code>; uninstalling is <code>npm uninstall -g {PKG}</code> after you close your channels.</p>
 
           <H2 id="wallet" n={n('wallet')}>Fund a wallet</H2>
-          <p>The router pays from an ordinary Solana wallet file (the JSON keypair the Solana CLI writes). Use a dedicated wallet with only what you plan to spend.</p>
+          <p>The router pays from an ordinary Solana wallet file. <code>orrery wallet new</code> makes one, and the router uses it without <code>--wallet</code>; a keypair you already have (from <code>solana-keygen</code>, say) works with <code>--wallet &lt;file&gt;</code>. Use a dedicated wallet with only what you plan to spend.</p>
           <Code lang="bash" copy>{WALLET}</Code>
           <table className="d-table">
             <thead>
@@ -364,7 +365,7 @@ export default function Docs() {
             <li><b>Serve a model</b> locally with an OpenAI-compatible server, or have an API key.</li>
             <li><b>Make it reachable</b> at a public HTTPS URL (a reverse proxy, a tunnel, or a host with a public IP). Routers call <code>/v1/manifest</code>, <code>/v1/chat/completions</code> and <code>/orrery/voucher</code> on it.</li>
             <li><b>Write</b> <code>provider.json</code> with your prices (next section).</li>
-            <li><b>Register</b> with your wallet, then <b>start</b> the node.</li>
+            <li><b>Register</b>, then <b>start</b> the node. <code>orrery provider init</code> writes <code>provider.json</code> for you, with your wallet in it.</li>
           </ol>
           <Code lang="bash" copy>{PROVIDE}</Code>
           <p>Registering lists you on chain with your endpoint and the sha-256 of your price list; routers ignore a price list that does not match it. Your wallet stays cold: the node runs on its own key (created at <code>~/.orrery/provider/node.json</code>), which can redeem and post enclave claims but never touches what you have earned. Send the node key about 0.01 SOL for redemption fees. Redemptions go straight to your wallet&apos;s USDC account. To change prices or the URL, edit the file and run <code>register</code> again; it updates the listing.</p>
@@ -469,9 +470,10 @@ export default function Docs() {
 
           <H2 id="status" n={n('status')}>Status</H2>
           <ul>
-            <li>Built and tested: the program (13 tests), the router and provider node (218 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (104 of 104 checks).</li>
+            <li>Built and tested: the program (13 tests), the router and provider node (306 tests), and a full local rehearsal of the program, four providers (one with holder prices, one switched off mid-run) and a router: every API including embeddings, fallbacks, resumed streams, cached prices and cache affinity, price ceilings, 400 answers 16 at a time, logs that add up to what was signed, DNS-rebinding refusal, and Codex CLI and Claude Code through the router (144 of 144 checks).</li>
             <li>Package: <code>{PKG}</code> on npm. Source: {REPO_URL ? <a href={REPO_URL}>{REPO_URL.replace('https://', '')}</a> : 'at launch'} (MIT).</li>
             <li>On mainnet: the program is deployed and initialized, and its bytes hash to the same value as a reproducible build of the repo (<code>solana-verify get-program-hash</code>). The first provider, Orrery Seed, is listed and has settled its first answers on chain.</li>
+            <li>New in 0.1.18: a node with no Solana tools: <code>orrery wallet new</code> makes the wallet, <code>orrery provider init</code> asks only for what is still missing, <code>orrery provider register --fund-key</code> lists the node and funds its key in one transaction, and <code>orrery provider compose</code> runs it in Docker; your router keeps its own record of every node across restarts (how often it was up, what it answered, how fast it started and whether its bills stayed within the prices it listed), shown in its console, <code>orrery doctor</code> and the MCP <code>status</code> tool; <code>orrery connect</code> checks the router its settings point at; a router whose session key changed stops paying through a channel opened under the old one.</li>
             <li>New in 0.1.17: a node can list payment inside in its price list on chain, and routers keep to it from the first request; <code>orrery doctor</code> and the MCP <code>status</code> tool give every node its track record, how many times it has been paid out on chain; a node&apos;s console, <code>/orrery/status</code> and <code>/orrery/earnings</code> need the key in its folder, and its log line for an answer paid inside the seal names no channel; <code>orrery provider console</code> and <code>orrery provider status</code> (with the fee SOL and <code>--json</code>); a node says when its key runs low on SOL for redeem fees and when it has run out; every answer names its node, and the MCP <code>ask</code> tool can stay with one by name.</li>
             <li>New in 0.1.16: payment travels inside the seal to a node that says it reads it there (a flag signed by its node key, which a router keeps to once it has seen it); requests are padded to a size class and answer frames to 256-byte blocks; picking a channel back up, the voucher hand-over and a node&apos;s 402 are sealed too; <code>orrery doctor</code>, the router&apos;s status and the MCP <code>status</code> tool say how each node gets your request and payment, and every answer carries <code>x-orrery-payment</code>; a router behind <code>--proxy</code> checks it from the far side before it pays, waits a moment for a node that is briefly away, finishes paying before it stops, and opens no second channel to a node it cannot reach; <code>orrery provider check</code> reads the node&apos;s wire key from its public address, and <code>provider earnings</code> says how many answers were paid inside the seal.</li>
             <li>New in 0.1.15: a node says what address it saw (<code>GET /v1/seen</code>), and <code>orrery doctor</code> asks it through your proxy and prints a <code>seen as</code> line, so the proxy is checked from the far side; one connection to a node carries answer after answer; a request refused for a job&apos;s budget carries <code>x-orrery-task-spent</code> and <code>x-orrery-task-left</code>; a node with no minimum set waits for five cents before it redeems.</li>
