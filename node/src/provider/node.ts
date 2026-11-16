@@ -150,10 +150,11 @@ export function feesLine(o: { lamports: number; openingRent: number | null; node
 /** The smallest amount worth a redemption's fee when the operator names none: five cents. */
 export const REDEEM_MIN_UNITS = 50_000;
 
-/** Whether a channel is redeemed now: it has something waiting, and either enough to be worth the fee or the user is
- * closing it (after the grace period what was not redeemed goes back to them). */
-export function worthRedeeming(pending: bigint, minUnits: bigint, closing: boolean): boolean {
-  return pending > 0n && (pending >= minUnits || closing);
+/** Whether a channel is redeemed now: it has something waiting, and either enough to be worth the fee, or the user is
+ * closing it (after the grace period what was not redeemed goes back to them), or the node has never been paid out on
+ * chain (its first payout goes out at once, so a new operator sees money land minutes after the first answer). */
+export function worthRedeeming(pending: bigint, minUnits: bigint, closing: boolean, firstPayout = false): boolean {
+  return pending > 0n && (pending >= minUnits || closing || firstPayout);
 }
 
 export class ProviderNode {
@@ -599,7 +600,7 @@ export class ProviderNode {
   /** Redeems every channel whose signed total is ahead of what is redeemed. Channels are re-read from chain first
    * (a closed one leaves the ledger), packed into transactions that fit Solana's 1232-byte limit, and a batch that
    * fails is retried one channel at a time so one bad channel never holds up the rest. */
-  async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS)): Promise<{ channel: string; amount: bigint; tx: string }[]> {
+  async redeemDue(minUnits = BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS), o: { firstPayout?: boolean } = {}): Promise<{ channel: string; amount: bigint; tx: string }[]> {
     const due: [string, Entry][] = [];
     for (const [k, e] of [...this.ledger]) {
       if (!e.best || e.best.cumulative <= e.redeemed) continue;
@@ -616,7 +617,7 @@ export class ProviderNode {
       }
       const pending = (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) - e.redeemed;
       const closing = e.channel.closingAt !== 0n;
-      if (worthRedeeming(pending, minUnits, closing)) due.push([k, e]);
+      if (worthRedeeming(pending, minUnits, closing, o.firstPayout)) due.push([k, e]);
     }
     const ixs = (batch: [string, Entry][]) => batch.flatMap(([k, e]) => redeemInstructions({ caller: this.node.publicKey, providerAuthority: this.authority, channel: new PublicKey(k), mint: this.mint, sessionKey: e.channel.sessionKey, voucher: e.best! }));
     const fits = (batch: [string, Entry][]) => {
@@ -760,8 +761,32 @@ export class ProviderNode {
       if (warning) this.log(warning);
       void this.feeHeadsUp();
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
-      this.timer = setInterval(() => void this.redeemDue().then(() => this.burnDue()).catch(() => undefined), every);
+      this.timer = setInterval(() => void this.redeemRound().then(() => this.burnDue()).catch(() => undefined), every);
     });
+  }
+
+  /** Whether this node's listing has been paid out on chain at least once. Read until it has, then remembered. */
+  private paidOut = false;
+  async paidOutBefore(): Promise<boolean> {
+    if (this.paidOut) return true;
+    const info = await this.conn.getAccountInfo(this.pda).catch(() => null);
+    // Not listed, or not read: keep the usual floor rather than spend a fee on a guess.
+    if (!info) return true;
+    this.paidOut = decodeProvider(info.data).redeems > 0n;
+    return this.paidOut;
+  }
+
+  /** One round of the node's own payouts. The first payout of a node never paid out on chain goes out as soon as
+   * anything is waiting; after that, payouts wait for redeem.minUnits. */
+  async redeemRound(): Promise<{ channel: string; amount: bigint; tx: string }[]> {
+    const first = !(await this.paidOutBefore());
+    const done = await this.redeemDue(undefined, { firstPayout: first });
+    if (first && done.length) {
+      this.paidOut = true;
+      const floor = BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS);
+      this.log(`first payout: $${usd(done.reduce((n, d) => n + d.amount, 0n))} went out at once so you can see it land in your wallet; later payouts wait for $${usd(floor, 2)} each (redeem.minUnits)`);
+    }
+    return done;
   }
 
   close(): Promise<void> {

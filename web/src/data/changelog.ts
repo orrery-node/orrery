@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'A new node’s first payout goes out at its next round of payouts (every 5 minutes by default), as soon as anything is waiting, so you see USDC land in your wallet minutes after the first answer. Before, it waited for `redeem.minUnits` ($0.05), which at a few millionths of a dollar an answer could take thousands of answers. Later payouts wait for `redeem.minUnits` as before, and the node’s log says which was which.' },
   { who: 'router', text: 'Your router’s console says, beside what each answer cost, how the node’s bill compared with the prices it listed on chain: "it asked $0.000020; paid its listed price", or "under its list of $0.000015" when a node charged less. An answer that came after other nodes failed says those were paid nothing.' },
   { who: 'provider', text: '`orrery provider check` says what 0.01 SOL on the node key really pays for when the first payout has to open your wallet’s USDC account: "pays for that and about 1,700 payouts" on mainnet. It said "about 2,000 payouts" in the same line that said the first payout spends about 0.0015 SOL on the account. The next step after it carries the same count.' },
 ];

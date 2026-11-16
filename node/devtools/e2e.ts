@@ -657,6 +657,20 @@ if (process.env.E2E_HOLD) {
 }
 console.log('\nsettlement');
 const redeemTx: Record<string, string> = {};
+// A node never paid out on chain sends its first payout at the next round of its own, below its usual floor, so its
+// operator sees money land minutes after the first answer. Halo has a few millionths waiting and the default floor.
+const haloNode = nodes[providerSpecs.findIndex((s) => s.name === 'Halo Compute')];
+const haloCfg = haloNode.cfg as { redeem?: { everySecs?: number; minUnits?: number } };
+const haloFloor = haloCfg.redeem;
+haloCfg.redeem = { ...(haloFloor ?? {}), minUnits: 50_000 };
+const haloPaidBefore = await conn.getAccountInfo(haloNode.pda).then((i) => (i ? decodeProvider(i.data).redeems : -1n));
+const haloFirst = await ((haloNode as unknown as { redeemRound?: () => Promise<{ amount: bigint; tx: string }[]> }).redeemRound?.() ?? Promise.resolve(null)).catch((e: Error) => e.message);
+const haloPaidAfter = await conn.getAccountInfo(haloNode.pda).then((i) => (i ? decodeProvider(i.data).redeems : -1n));
+haloCfg.redeem = haloFloor;
+if (Array.isArray(haloFirst)) for (const d of haloFirst) redeemTx[haloNode.pda.toBase58()] = d.tx;
+check('a node never paid out on chain sends its first payout at its next round, below its usual $0.05 floor, so its operator sees money land',
+  haloPaidBefore === 0n && Array.isArray(haloFirst) && haloFirst.length >= 1 && haloFirst.every((d) => d.amount < 50_000n) && haloPaidAfter >= 1n,
+  Array.isArray(haloFirst) ? `Halo: ${haloPaidBefore} payouts before, ${haloFirst.length} sent now ($${haloFirst.map((d) => (Number(d.amount) / 1e6).toFixed(6)).join(', ')}), ${haloPaidAfter} on chain after` : `Halo: ${haloFirst ?? 'no redeemRound'}`);
 for (const n of nodes) for (const d of await n.redeemDue(1n)) redeemTx[n.pda.toBase58()] = d.tx;
 const signed = Object.fromEntries(channels.list().map((c) => [c.provider, { channel: c.channel, cumulative: c.cumulative.toString(), usageHash: c.usageHash.toString('hex'), voucher: c.voucher }]));
 const balance = async (owner: PublicKey) => {
