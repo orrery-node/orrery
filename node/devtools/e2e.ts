@@ -436,6 +436,20 @@ const signedAll = channels.list().reduce((a, c) => a + c.cumulative, 0n);
 const servedUnits = providerSpecs.map((ps) => summarize(readTrips(join(WORK, 'providers', ps.name.split(' ')[0].toLowerCase(), 'served.jsonl')), 'model', Infinity).total).reduce((a, t) => ({ answers: a.answers + t.answers, units: a.units + t.units }), { answers: 0, units: 0n });
 check('every provider’s own log of what it billed adds up to what the router signed', servedUnits.answers === trips.length && servedUnits.units === signedAll, `${servedUnits.answers} answers billed across 4 providers · $${usd(servedUnits.units)} billed · $${usd(signedAll)} signed`);
 check('orrery spend adds up to exactly what the router signed across its channels', logged.total.answers === trips.length && logged.total.units === signedAll, `${logged.total.answers} answers · $${usd(logged.total.units)} logged · $${usd(signedAll)} signed`);
+// orrery channels, run against this router's home: every channel it paid through says what is unspent, which is the
+// deposit on chain less what the router signed, and the last line adds those up.
+const chOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'channels', '--rpc', RPC, '--mint', usdc.toBase58()], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const chLines = chOut.split('\n');
+let chRight = 0, chSum = 0n;
+for (const c of channels.list()) {
+  const line = chLines.find((l) => l.startsWith(c.channel)) ?? '';
+  const info = await conn.getAccountInfo(new PublicKey(c.channel));
+  const unspent = info ? decodeChannel(info.data).deposit - c.cumulative : 0n;
+  if (info && line.includes(`you signed $${usd(c.cumulative)}  unspent $${usd(unspent)}`)) chRight++;
+}
+for (const l of chLines) { const m = / unspent (?:up to )?\$(\d+\.\d{6})/.exec(l); if (m) chSum += BigInt(m[1].replace('.', '')); }
+const chTotal = chLines.find((l) => l.startsWith('Unspent')) ?? '';
+check('orrery channels says how much of each deposit is unspent, what closing it gives back, and adds it up', chRight === channels.list().filter((c) => chLines.some((l) => l.startsWith(c.channel) && !l.includes('closed'))).length && chRight > 0 && new RegExp(`^Unspent: (up to )?\\$${usd(chSum).replace('.', '\\.')} across \\d+ channels?\\.`).test(chTotal), `${chRight} channels right · ${chTotal.slice(0, 120) || chLines.slice(-1)[0]?.slice(0, 120)}`);
 // What the router logged about nodes that did not answer, as orrery spend prints it: the count is the log's own.
 const skippedLogged = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t.fellThrough ?? 0) > 0 && !(t as { resumed?: boolean }).resumed);
 // Two streams in this run were dropped mid-answer and finished by another node: the log on disk says which.

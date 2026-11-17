@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery channels` says how much of each deposit is unspent, which is what closing the channel gives back, and adds it up on a last line: "Unspent: $1.999864 across 1 channel." For a channel your router has no record of, it says "up to", since the node may hold vouchers it has not redeemed yet.' },
+];
 
 export const RELEASES: Release[] = [
   {

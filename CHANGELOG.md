@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · `orrery channels` says how much of each deposit is unspent, which is what closing the channel gives back, and adds it up on a last line: "Unspent: $1.999864 across 1 channel." For a channel your router has no record of, it says "up to", since the node may hold vouchers it has not redeemed yet.
+
 ## 0.1.20 · 2026-11-17 01:36 UTC
 
 **A new node’s first payout lands in your wallet minutes after its first answer, and every bill is checked where you look: your agent gets the receipt with each answer, and your router’s console shows each bill against the prices the node listed.**

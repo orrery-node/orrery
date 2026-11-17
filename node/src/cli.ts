@@ -218,6 +218,9 @@ async function listChannels() {
     console.log(`No channels yet. The first request to a provider opens one.${address ? '' : ` Add --wallet <keypair.json> or --address <pubkey> to look on chain as well as in ${home('router', 'channels.json')}.`}`);
     return;
   }
+  // What is unspent in a channel comes back with its deposit when it is closed: the deposit less what this router
+  // signed, or, for a channel it has no record of, at most the deposit less what the node has redeemed.
+  let unspentAll = 0n, open = 0, guessed = false;
   for (const [channel, { a, signed }] of rows) {
     if (!a) {
       console.log(`${channel}  closed`);
@@ -225,18 +228,25 @@ async function listChannels() {
     }
     const state = a.closingAt === 0n ? 'open' : `closing, ready after ${new Date(Number(a.closingAt) * 1000).toISOString()}`;
     const head = `${channel}  provider ${a.provider.toBase58().slice(0, 8)}…  deposit $${usd(a.deposit, 2)}  redeemed $${usd(a.redeemed)}  ${state}`;
+    open++;
     if (signed !== null) {
-      console.log(`${head}  you signed $${usd(signed)}`);
+      const unspent = a.deposit > signed ? a.deposit - signed : 0n;
+      unspentAll += unspent;
+      console.log(`${head}  you signed $${usd(signed)}  unspent $${usd(unspent)}`);
       continue;
     }
+    const upTo = a.deposit > a.redeemed ? a.deposit - a.redeemed : 0n;
+    unspentAll += upTo;
+    guessed = true;
     const mine = a.sessionKey.equals(session.publicKey);
     const note = a.closingAt !== 0n
       ? 'not in your records'
       : mine
         ? 'not in your records; the router picks it back up on its next request to this provider'
         : `not in your records and signed by another session key; to get the deposit back: ${CLI} close ${channel} --wallet <keypair.json>`;
-    console.log(`${head}  ${note}`);
+    console.log(`${head}  unspent up to $${usd(upTo)}  ${note}`);
   }
+  if (open) console.log(`Unspent: ${guessed ? 'up to ' : ''}$${usd(unspentAll)} across ${open} channel${open === 1 ? '' : 's'}. Closing one gives its unspent deposit and its account rent back to the wallet that opened it: ${CLI} close <channel>`);
   if (!address) console.log(`Add --wallet <keypair.json> or --address <pubkey> to include channels this router has no record of.`);
 }
 
