@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { fitting, textTokensAtLeast } from '../src/router/context.ts';
+import { fitting, textTokensAtLeast, tooLong } from '../src/router/context.ts';
 
 const chat = (content: unknown, system?: string) => ({ model: 'm', messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content }] });
 
@@ -22,5 +22,15 @@ describe('a prompt and the context a node lists', () => {
     assert.deepEqual(fitting(chat('hi'), [small, big]).map((o) => o.name), ['small', 'big']);
     // Nothing fits: every node stays, and the model server says what it says, as before.
     assert.deepEqual(fitting(long, [small]).map((o) => o.name), ['small']);
+  });
+
+  it('says when a prompt is clearly longer than every node lists, in the words OpenAI and Anthropic clients act on', () => {
+    const small = { offer: { context: 8_192 } }, big = { offer: { context: 131_072 } };
+    const long = chat('word '.repeat(10_000));
+    assert.deepEqual(tooLong(long, [small]), { floor: 10_000, largest: 8_192, openai: "This model's maximum context length is 8192 tokens. However, your messages resulted in at least 10000 tokens. Please reduce the length of the messages.", anthropic: 'prompt is too long: 10000 tokens > 8192 maximum' });
+    assert.equal(tooLong(long, [small, big]), null);
+    assert.equal(tooLong(chat('hi'), [small]), null);
+    // A node that lists no context is not measured against.
+    assert.equal(tooLong(long, [small, { offer: { context: 0 } }]), null);
   });
 });

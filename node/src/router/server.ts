@@ -1,6 +1,6 @@
 // The router: an OpenAI-compatible endpoint on 127.0.0.1. Point any tool at http://127.0.0.1:7171/v1 and it picks a
 // provider per request, pays it through a channel, and falls back to the next provider if one fails.
-import { fitting, textTokensAtLeast } from './context.ts';
+import { fitting, textTokensAtLeast, tooLong } from './context.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
@@ -409,7 +409,7 @@ export class Router {
         return await this.serveOne({ ...rest, model: m }, req, res, anth);
       } catch (e) {
         const u = e as Unserved;
-        if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'over_budget', 'no_provider', 'all_failed'].includes(u.code)) throw e;
+        if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'over_budget', 'no_provider', 'all_failed', 'context_length_exceeded'].includes(u.code)) throw e;
         last = u;
         if (list.length > 1) this.log(`${m}: ${u.message}; trying the next model`);
       }
@@ -442,6 +442,9 @@ export class Router {
     if (!answering.length) throw new Unserved(`every provider of ${model} reports its model server down right now`, 503, 'no_provider');
     // A prompt clearly longer than the context a node lists goes to a node that lists enough: the first would refuse
     // it, and that would count against it. Nothing changes when no node lists enough.
+    // Longer than every context on offer: no node is asked, and the client gets the error it shortens its conversation on.
+    const over = tooLong(body, answering);
+    if (over) throw new Unserved(anth?.kind === 'anthropic' ? over.anthropic : over.openai, 400, 'context_length_exceeded');
     const roomy = fitting(body, answering);
     if (roomy.length < answering.length) this.log(`${model}: a prompt of at least ${textTokensAtLeast(body).toLocaleString('en-US')} tokens passes over ${answering.length - roomy.length} node${answering.length - roomy.length === 1 ? '' : 's'} that list${answering.length - roomy.length === 1 ? 's' : ''} less context`);
     offers = roomy;

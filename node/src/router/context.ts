@@ -27,3 +27,17 @@ export function fitting<T extends { offer: { context: number } }>(body: unknown,
   const fit = offers.filter((o) => !(o.offer.context > 0) || at <= o.offer.context);
   return fit.length ? fit : offers;
 }
+
+/** When the prompt's text alone is beyond every context on offer: the numbers, and the error each kind of client acts
+ * on (OpenAI clients read context_length_exceeded and this sentence; Anthropic clients read "prompt is too long").
+ * Otherwise null. A node that lists no context is not measured against. */
+export function tooLong(body: unknown, offers: { offer: { context: number } }[]): { floor: number; largest: number; openai: string; anthropic: string } | null {
+  if (!offers.length || offers.some((o) => !(o.offer.context > 0))) return null;
+  const floor = textTokensAtLeast(body), largest = Math.max(...offers.map((o) => o.offer.context));
+  if (floor <= largest) return null;
+  return {
+    floor, largest,
+    openai: `This model's maximum context length is ${largest} tokens. However, your messages resulted in at least ${floor} tokens. Please reduce the length of the messages.`,
+    anthropic: `prompt is too long: ${floor} tokens > ${largest} maximum`,
+  };
+}

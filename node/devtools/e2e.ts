@@ -166,6 +166,21 @@ check('/v1/models lists the network catalog, with a cached-input price where one
   check('a prompt longer than the context a node lists goes to a node that lists enough, and the node passed over is not counted against', nameOf(short.provider) === 'Kestrel GPU Co-op' && longR.status === 200 && nameOf(longR.headers.get('x-orrery-provider')) === 'Vault Nine' && !longR.headers.get('x-orrery-skipped') && failsAfter === failsBefore,
     `short prompt: ${nameOf(short.provider)} · ${prompt.length.toLocaleString('en-US')}-character prompt: ${nameOf(longR.headers.get('x-orrery-provider'))} (${longR.status}${longR.headers.get('x-orrery-skipped') ? `, skipped ${longR.headers.get('x-orrery-skipped')}` : ''}) · Kestrel failures ${failsBefore} → ${failsAfter}`);
 }
+// The same long prompt, sent where only Kestrel may answer: longer than any context on offer. The router says so in the
+// error OpenAI and Anthropic clients already act on (an agent shortens its conversation), and asks no node.
+{
+  const kestrel = nodes[0].pda.toBase58();
+  const failsBefore = router.stats.get(kestrel)?.fail ?? 0;
+  const prompt = `${'The router signs a running total and the node redeems it on Solana. '.repeat(700)}In one sentence, what happens?`;
+  const pinned = { 'content-type': 'application/json', 'x-orrery-provider': kestrel };
+  const oa = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: pinned, body: JSON.stringify({ model: 'qwen3-32b', max_tokens: 64, messages: [{ role: 'user', content: prompt }] }) });
+  const oaj = await oa.json().catch(() => ({}));
+  const an = await fetch(`${ROUTER}/v1/messages`, { method: 'POST', headers: pinned, body: JSON.stringify({ model: 'qwen3-32b', max_tokens: 64, messages: [{ role: 'user', content: prompt }] }) });
+  const anj = await an.json().catch(() => ({}));
+  const failsAfter = router.stats.get(kestrel)?.fail ?? 0;
+  check('a prompt longer than every context on offer gets the error OpenAI and Anthropic clients act on, and no node is asked', oa.status === 400 && oaj.error?.code === 'context_length_exceeded' && /maximum context length is 8192 tokens/.test(oaj.error?.message ?? '') && an.status === 400 && anj.type === 'error' && /^prompt is too long: \d+ tokens > 8192 maximum$/.test(anj.error?.message ?? '') && failsAfter === failsBefore,
+    `chat/completions ${oa.status} ${oaj.error?.code ?? '-'} · messages ${an.status} "${(anj.error?.message ?? '').slice(0, 50)}" · Kestrel failures ${failsBefore} → ${failsAfter}`);
+}
 let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
 r = await ask('deepseek-v3', { stream: true });
