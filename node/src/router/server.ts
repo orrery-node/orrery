@@ -22,7 +22,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, bills, readTrips, skipped, speeds, summarize, windowMs, type Bills, type Speed } from '../spend.ts';
+import { appendTrip, bills, readTrips, skipped, speeds, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
@@ -303,7 +303,7 @@ export class Router {
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
         const skips = skipped(spendTrips, windowMs(since));
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -577,6 +577,8 @@ export class Router {
     // The client's SDK reads Retry-After before it tries again; by now this request has already waited its own share.
     // Nothing a node did: the router's own wallet could not pay. Said as that, with what to do.
     if (payer && !tried.length) throw new Unserved(payer.message, 402, 'wallet');
+    // Kept so the router's spend can say what went unanswered, and that nothing was signed for it.
+    if (tried.length) appendUnanswered(home('router', 'unanswered.jsonl'), { at: Date.now(), model, asked: tried.length });
     throw new Unserved(`all providers failed: ${tried.join('; ')}${payer ? `; and ${payer.message}` : ''}`, 502, 'all_failed', { 'retry-after': '3' });
   }
 

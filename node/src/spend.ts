@@ -21,6 +21,45 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   }
 }
 
+/** A request no node answered: every node asked failed, and the client was told so. Nothing was signed for it. */
+export type Unanswered = { at: number; model: string; asked: number };
+
+export function appendUnanswered(path: string, u: Unanswered, rollBytes = ROLL_BYTES / 10) {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
+    appendFileSync(path, `${JSON.stringify({ at: u.at, model: u.model, asked: u.asked })}\n`);
+  } catch {
+    // a convenience, like the log of answers
+  }
+}
+
+export function readUnanswered(path: string): Unanswered[] {
+  const text = [`${path}.1`, path].filter((p) => existsSync(p)).map((p) => readFileSync(p, 'utf8')).join('\n');
+  return text.split('\n').flatMap((line) => {
+    try {
+      const u = JSON.parse(line) as Unanswered;
+      return typeof u.at === 'number' && typeof u.asked === 'number' ? [u] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function unansweredIn(list: Unanswered[], sinceMs: number, now = Date.now()): { requests: number; nodes: number } {
+  const recent = list.filter((u) => now - u.at <= sinceMs);
+  return { requests: recent.length, nodes: recent.reduce((a, u) => a + u.asked, 0) };
+}
+
+/** The line under a spend total for requests no node answered, or nothing. A node is paid by a voucher the router
+ * signs after an answer, so a request with no answer cost nothing. */
+export function unansweredNote(u: { requests: number; nodes: number }): string {
+  if (!u.requests) return '';
+  const one = u.requests === 1;
+  const who = one && u.nodes <= 1 ? 'the node asked' : `any node asked${u.nodes > u.requests ? ` (${u.nodes} nodes asked in all)` : ''}`;
+  return `${u.requests} request${one ? '' : 's'} got no answer from ${who}; nothing was signed or paid for ${one ? 'it' : 'them'}.`;
+}
+
 export function readTrips(path: string): LoggedTrip[] {
   const out: LoggedTrip[] = [];
   const text = [`${path}.1`, path].filter((p) => existsSync(p)).map((p) => readFileSync(p, 'utf8')).join('\n');

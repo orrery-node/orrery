@@ -1428,6 +1428,17 @@ await proxyGone.text();
 const rpcGone = await proxiedRpc.getSlot().then(() => 'answered', () => 'refused');
 setNodeProxy(null);
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+// Every request that no node answered is in the router's own log of them, and orrery spend says how many and that
+// nothing was signed or paid for them.
+{
+  const { readUnanswered } = await import('../src/spend.ts') as unknown as { readUnanswered?: (p: string) => { at: number; model: string; asked: number }[] };
+  const unanswered = readUnanswered?.(join(WORK, 'home/router/unanswered.jsonl')) ?? [];
+  const asked = unanswered.reduce((a, u) => a + u.asked, 0);
+  const unOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', '--since', '7d'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const unLine = unOut.split('\n').find((l) => /got no answer/.test(l)) ?? '';
+  check('orrery spend says how many requests no node answered, from the router’s own log of them, and that nothing was paid for them', unanswered.length >= 2 && unLine === `${unanswered.length} requests got no answer from any node asked${asked > unanswered.length ? ` (${asked} nodes asked in all)` : ''}; nothing was signed or paid for them.`,
+    `${unanswered.length} logged · ${unLine || 'no line in orrery spend'}`);
+}
 check('when no node could answer, the refusal tells the client when to ask again, in the header its SDK already reads', proxyGone.status === 502 && proxyGone.headers.get('retry-after') === '3', `${proxyGone.status} with retry-after: ${proxyGone.headers.get('retry-after')}`);
 check('with a proxy set the router reaches nodes only through it: the proxy carries a request it cannot read, and with the proxy gone the request fails instead of going out directly',
   throughProxy.status === 200 && throughProxy.content.length > 20 && tripsAfterThrough === tripsBeforeProxy + 1 && proxyCarried.length >= 1 && proxyCarried.every((x) => x.body.length > 100) && !proxyRead
