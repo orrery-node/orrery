@@ -131,7 +131,8 @@ const session = loadOrCreateKeypair(join(WORK, 'home/router/session.json'));
 const WATCHED = join(WORK, 'home/router/watched.json');
 const registry = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(conn, { allowDev: true, measurements: [] }, undefined, WATCHED);
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b') });
+const OBSERVED = join(WORK, 'home/router/observed.json');
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, observedPath: OBSERVED, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b') });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
@@ -541,6 +542,18 @@ check('orrery provider init names the wallet orrery wallet new made and the addr
 const spendSaid = (await (await fetch(`${ROUTER}/orrery/spend?since=24h`)).json()) as { speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[] };
 const loggedWithTime = readTrips(join(process.env.ORRERY_HOME ?? '', 'router', 'trips.jsonl')).filter((x) => typeof (x as { ttftMs?: number }).ttftMs === 'number').length;
 check('the router keeps how fast each node started answering, by its own clock, and gives each node its median', (spendSaid.speed ?? []).length >= 3 && (spendSaid.speed ?? []).every((x) => x.answers >= 1 && x.medianTtftMs >= 0 && x.name.length > 0) && loggedWithTime >= 20 && doc.some((l) => l.what.trim() === 'speed' && /started answering in \d/.test(l.detail)), `${(spendSaid.speed ?? []).slice(0, 3).map((x) => `${x.name} ${x.medianTtftMs} ms over ${x.answers}`).join(' · ') || 'no speed in /orrery/spend'} · doctor: ${doc.find((l) => l.what.trim() === 'speed')?.detail.slice(0, 80) ?? 'no speed line'}`);
+// What the router counted of each node (answers, failures, speed) is on disk, so a router started again from the same
+// home goes on from it: a fresh count read from the file matches the running one, and no cooldown comes with it.
+{
+  (router.stats as unknown as { flush?: () => void }).flush?.();
+  const { Stats } = await import('../src/router/policy.ts');
+  const again = new (Stats as unknown as new (path?: string) => InstanceType<typeof Stats>)(OBSERVED);
+  const live = [...router.stats.all().entries()];
+  const same = live.filter(([a, o]) => { const b = again.get(a); return b.ok === o.ok && b.fail === o.fail && b.ttftMs === o.ttftMs && (b.broke ?? 0) === (o.broke ?? 0) && b.cooldownUntil === 0; });
+  const failed = live.filter(([, o]) => o.fail > 0).length;
+  check('the router keeps its own count of each node’s answers, failures and speed in its home, so a restart does not forget a node that failed it', live.length >= 3 && failed >= 1 && same.length === live.length,
+    `${same.length} of ${live.length} nodes read back the same from ${existsSync(OBSERVED) ? 'router/observed.json' : 'no file'} · ${failed} with failures on record`);
+}
 // The same record in the status a console or an agent reads: lines a person can read, and the speed as numbers.
 const recordSaid = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { name: string | null; record?: string[]; speed?: { answers: number; medianTtftMs: number } | null }[] };
 const ironRecord = recordSaid.providers.find((p) => p.name === 'Ironbridge Compute');

@@ -54,6 +54,8 @@ export type RouterOptions = {
   /** Private only: every request is sealed to an enclave this router verified, or refused. No route suffix or header
    * can turn it off, so a tool pointed at this router cannot send a prompt in the clear. */
   privateOnly?: boolean;
+  /** Where the router keeps its own count of each node (router/observed.json in its home), so a restart goes on from it. */
+  observedPath?: string;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -135,7 +137,7 @@ const send = (res: ServerResponse, status: number, body: unknown, headers: Recor
 };
 
 export class Router {
-  readonly stats = new Stats();
+  readonly stats: Stats;
   readonly affinity = new Affinity();
   readonly trips: Trip[] = [];
   private server: Server | null = null;
@@ -174,6 +176,7 @@ export class Router {
   private log: (line: string) => void;
 
   constructor(private o: RouterOptions) {
+    this.stats = new Stats(o.observedPath);
     this.log = o.log ?? ((l) => console.log(l));
     // Channels asks a node about a channel it lost track of sealed when the node reads payment inside the seal.
     o.channels.wireOf ??= (p) => {

@@ -4,6 +4,8 @@ import type { ModelOffer } from '../manifest.ts';
 import { discounted } from '../holder.ts';
 import { costOf } from '../pricing.ts';
 import type { ProviderEntry } from './registry.ts';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 export const ROUTES = ['auto', 'price', 'speed', 'reputation', 'privacy', 'burn'] as const;
 export type Route = (typeof ROUTES)[number];
@@ -43,8 +45,53 @@ export function applyAlias(model: string, aliases: Alias[] | undefined): string 
  * unanswered plus `broke`, the ones it answered against its own listing. */
 export type Observed = { ttftMs: number | null; ok: number; fail: number; cooldownUntil: number; broke?: number };
 
+/** A node this router has not seen for this long is let go of when the count is read back. */
+const KEEP_MS = 30 * 86_400_000;
+
+/** This router's own count of each node. With a path it is kept in the router's home, written a moment after it
+ * changes (not on every request) and read back on start, so a restart does not forget a node that failed it.
+ * Cooldowns are not kept: they are for the moment. */
 export class Stats {
   private m = new Map<string, Observed>();
+  private at = new Map<string, number>();
+  private timer: NodeJS.Timeout | null = null;
+  constructor(private path?: string, private delayMs = 2_000) {
+    if (!path || !existsSync(path)) return;
+    try {
+      const j = JSON.parse(readFileSync(path, 'utf8')) as Record<string, { ttftMs?: unknown; ok?: unknown; fail?: unknown; broke?: unknown; at?: unknown }>;
+      const count = (n: unknown) => (Number.isSafeInteger(n) && (n as number) >= 0 ? (n as number) : null);
+      for (const [address, o] of Object.entries(j)) {
+        const ok = count(o?.ok), fail = count(o?.fail), at = typeof o?.at === 'number' ? o.at : 0;
+        if (ok === null || fail === null || Date.now() - at > KEEP_MS) continue;
+        const ttftMs = typeof o.ttftMs === 'number' && o.ttftMs >= 0 ? o.ttftMs : null, broke = count(o.broke);
+        this.m.set(address, { ttftMs, ok, fail, cooldownUntil: 0, ...(broke ? { broke } : {}) });
+        this.at.set(address, at);
+      }
+    } catch {
+      // a broken file is read as no record
+    }
+  }
+  private changed(address: string) {
+    this.at.set(address, Date.now());
+    if (!this.path || this.timer) return;
+    this.timer = setTimeout(() => this.flush(), this.delayMs);
+    this.timer.unref?.();
+  }
+  /** Writes the count now, whole, through a temporary file. A count that cannot be written is not worth stopping a
+   * router for. */
+  flush() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.path) return;
+    try {
+      mkdirSync(dirname(this.path), { recursive: true });
+      const out = Object.fromEntries([...this.m].map(([a, o]) => [a, { ttftMs: o.ttftMs, ok: o.ok, fail: o.fail, ...(o.broke ? { broke: o.broke } : {}), at: this.at.get(a) ?? Date.now() }]));
+      writeFileSync(`${this.path}.tmp`, JSON.stringify(out));
+      renameSync(`${this.path}.tmp`, this.path);
+    } catch {
+      // kept in memory only
+    }
+  }
   get(address: string): Observed {
     return this.m.get(address) ?? { ttftMs: null, ok: 0, fail: 0, cooldownUntil: 0 };
   }
@@ -53,6 +100,7 @@ export class Stats {
     o.ttftMs = o.ttftMs === null ? ttftMs : Math.round(o.ttftMs * 0.7 + ttftMs * 0.3);
     o.ok += 1;
     this.m.set(address, o);
+    this.changed(address);
   }
   /** Counts against this router's success rate without a cooldown: the provider answered, but not as it promised. */
   penalize(address: string) {
@@ -60,12 +108,14 @@ export class Stats {
     o.fail += 1;
     o.broke = (o.broke ?? 0) + 1;
     this.m.set(address, o);
+    this.changed(address);
   }
   fail(address: string) {
     const o = this.get(address);
     o.fail += 1;
     o.cooldownUntil = Date.now() + Math.min(300_000, 15_000 * 2 ** Math.min(4, o.fail - 1));
     this.m.set(address, o);
+    this.changed(address);
   }
   all() {
     return this.m;
