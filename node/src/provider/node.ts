@@ -21,6 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
+import { refusal } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
 import { appendTrip, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
@@ -543,7 +544,11 @@ export class ProviderNode {
         headers: upHeaders,
         body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), model: offer.upstreamModel ?? offer.id, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) }),
       });
-      if (!up.ok) return fail(res, 502, 'upstream_error', `upstream answered ${up.status}`);
+      if (!up.ok) {
+        const why = refusal(up.status, (await up.text().catch(() => '')).slice(0, 4_000), offer);
+        this.log(why.log);
+        return fail(res, why.status, why.code, why.message);
+      }
       const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
       const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
@@ -559,7 +564,12 @@ export class ProviderNode {
       headers: upHeaders,
       body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), ...upstreamBody(body, offer.upstreamModel ?? offer.id, maxOut) }),
     });
-    if (!upstream.ok || !upstream.body) return fail(res, 502, 'upstream_error', `upstream answered ${upstream.status}`);
+    if (!upstream.ok || !upstream.body) {
+      // What the server said is read only to tell what kind of refusal it was; it goes no further.
+      const why = refusal(upstream.status, upstream.ok ? '' : (await upstream.text().catch(() => '')).slice(0, 4_000), offer);
+      this.log(why.log);
+      return fail(res, why.status, why.code, why.message);
+    }
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
     // Each sealed frame is padded to whole blocks: its length on the way says nothing about the token in it.

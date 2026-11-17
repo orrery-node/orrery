@@ -668,8 +668,11 @@ export class Router {
       throw new Error(`payment refused: ${j.error.code}`);
     }
     if (!r.ok || !r.body) {
-      drop(r);
-      throw new Error(`provider answered ${r.status}`);
+      // The node's code says what kind of failure it was (context_length_exceeded, upstream_error); a body that is not
+      // its JSON error is dropped unread.
+      const code = r.ok ? null : ((await r.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code;
+      if (r.ok) drop(r);
+      throw new Error(`provider answered ${r.status}${typeof code === 'string' && /^[a-z_]{1,40}$/.test(code) ? ` (${code})` : ''}`);
     }
     const theirs = nodeSaid(r.headers.get('server-timing'));
 

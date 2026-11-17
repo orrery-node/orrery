@@ -48,6 +48,12 @@ createServer(async (req, res) => {
   noteIdentity(body);
   const prompt = JSON.stringify(body.messages ?? '');
   const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
+  // With MOCK_MAX_MODEL_LEN a prompt and its max_tokens beyond that are refused the way vLLM refuses them.
+  const limit = Number(process.env.MOCK_MAX_MODEL_LEN ?? 0), asked = Number(body.max_tokens ?? 64);
+  if (limit > 0 && promptTokens + asked > limit) {
+    res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'error', message: `This model's maximum context length is ${limit} tokens. However, you requested ${promptTokens + asked} tokens (${promptTokens} in the messages, ${asked} in the completion). Please reduce the length of the messages or completion.`, type: 'BadRequestError', param: null, code: 400 }));
+    return;
+  }
   const max = Math.min(Number(body.max_tokens ?? 64), 64);
   const n = Math.min(words.length, Math.max(4, Math.min(max, 24)));
   const msgs = (body.messages ?? []) as { role: string; content: unknown }[];

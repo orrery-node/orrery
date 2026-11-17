@@ -80,7 +80,8 @@ const HOLDER_TIERS = [{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
 const upstreams: [number, number, string][] = [[19101, 220, 'kestrel'], [19102, 40, 'ironbridge'], [19103, 90, 'vault-nine'], [19104, 70, 'halo']];
 const mockOf: Record<string, ChildProcess> = {};
 for (const [port, delay, label] of upstreams) {
-  const m = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), String(port), String(delay), label], { stdio: 'ignore' });
+  // Ironbridge's model server serves 131,072 tokens of context, what its listings say, and refuses past it as vLLM does.
+  const m = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), String(port), String(delay), label], { stdio: 'ignore', env: label === 'ironbridge' ? { ...process.env, MOCK_MAX_MODEL_LEN: '131072' } : process.env });
   mockOf[label] = m;
   procs.push(m);
 }
@@ -1132,6 +1133,21 @@ await sleep(200);
 stopOld();
 ibEntry.wireInside = hadInside;
 const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/completions'));
+// A prompt under the router's floor for Ironbridge's 131,072 tokens but over what its model server counts: the server
+// refuses it. The node says why in its own log, without the server's text, and the router hears context_length_exceeded.
+{
+  const lines: string[] = [];
+  const stop = ibLogged(lines);
+  const big = `${'Payment channels settle on Solana. '.repeat(17_200)}Done?`;
+  const rr = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': iron.pda.toBase58() }, body: JSON.stringify({ model: 'deepseek-v3', max_tokens: 64, messages: [{ role: 'user', content: big }] }) });
+  const rrj = await rr.json().catch(() => ({})) as { error?: { message?: string } };
+  await sleep(100);
+  stop();
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const said = lines.find((l) => l.includes('model server')) ?? '';
+  check('a node says in its own log why its model server turned a request away, without the server’s words, and the router hears it as context_length_exceeded', said === 'the model server refused a deepseek-v3 request as longer than it serves (400); provider.json lists 131,072 tokens of context for it: set "context" to what the server serves (orrery provider check compares them)' && /provider answered 400 \(context_length_exceeded\)/.test(rrj.error?.message ?? ''),
+    `${said.slice(0, 110) || 'nothing in the node log'} · router: ${(rrj.error?.message ?? '').replace(/^.*?: /, '').slice(0, 90)}`);
+}
 // A router that lost its records finds its channel on chain and asks the node where it stands. To a node that reads
 // payment inside the seal, that question is sealed as well: nothing reaching the node's front names the channel.
 const beforeRecover = proxied.length;
