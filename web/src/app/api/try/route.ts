@@ -61,7 +61,9 @@ export async function POST(req: Request) {
   const ask = () =>
     fetch(`http://127.0.0.1:${DEMO_PORT}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // A node that restarts (the seed does on each deploy, for about 40 s) is away, not gone: a visitor's question
+      // waits for it, up to the 30 s a request may ask for, instead of coming back as an error.
+      headers: { 'content-type': 'application/json', 'x-orrery-patience': '30' },
       body: JSON.stringify({
         model,
         // Room for a reasoning model to think and still answer: at 220 one question in six came back empty.
