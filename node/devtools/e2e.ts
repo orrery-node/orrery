@@ -709,6 +709,15 @@ const ironAsked = askedOf('Ironbridge Compute'), kestrelAsked = askedOf('Kestrel
 check('the router keeps count of what each node did with its requests, and doctor shows it beside the health checks', !!ironAsked && ironAsked.answered >= 20 && ironAsked.sent - ironAsked.answered >= 1 && ironAsked.sent - ironAsked.answered <= 3 && !!kestrelAsked && kestrelAsked.answered < kestrelAsked.sent && kestrelAsked.sent - kestrelAsked.answered >= 2, `${askedLine('Ironbridge Compute') || 'doctor says nothing about Ironbridge'} · ${askedLine('Kestrel GPU Co-op') || 'nothing about Kestrel'}`);
 check('the router keeps its own record of each node: how many health checks it made and how many found the node up, in status and in doctor', !!ironW && ironW.checks >= 2 && ironW.up === ironW.checks && !!haloW && haloW.checks >= 2 && haloW.up < haloW.checks && haloW.up >= 1 && new RegExp(`^Ironbridge Compute up in ${ironW.up} of ${ironW.checks} checks this router made over `).test(watchedLine('Ironbridge Compute') ?? '') && /^Halo Compute up in \d+ of \d+ checks/.test(watchedLine('Halo Compute') ?? ''), `Ironbridge ${ironW ? `${ironW.up}/${ironW.checks}` : 'no record'} · Halo ${haloW ? `${haloW.up}/${haloW.checks}` : 'no record'} · doctor: ${watchedLine('Halo Compute') ?? 'no line'}`);
 check('the router reports each node’s model server in its status and console', stateOf('Halo Compute')?.modelServer === 'down' && stateOf('Ironbridge Compute')?.modelServer === 'up' && typeof stateOf('Ironbridge Compute')?.healthMs === 'number', `/orrery/status · Halo ${stateOf('Halo Compute')?.modelServer} · Ironbridge ${stateOf('Ironbridge Compute')?.modelServer} in ${stateOf('Ironbridge Compute')?.healthMs} ms`);
+// orrery providers, run against the same home: under each node, what this router saw of it, read from the records the
+// router keeps there, beside what the chain says.
+(router.stats as unknown as { flush?: () => void }).flush?.();
+const provOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'providers', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const provLines = provOut.split('\n');
+const ironAt = provLines.findIndex((l) => l.includes('Ironbridge Compute'));
+const ironSaw = ironAt >= 0 ? provLines[ironAt + 1] ?? '' : '';
+check('orrery providers shows under each node what your own router saw of it, from the records it keeps', /^ {4}what your router saw: up in \d+ of \d+ checks this router made over .+; answered (\d+ of \d+|all \d+) requests this router sent it over .+; first token in about \d+ ms lately$/.test(ironSaw) && provLines.filter((l) => l.startsWith('    what your router saw:')).length >= 3,
+  ironSaw.trim().slice(0, 170) || 'no line under Ironbridge');
 if (process.env.E2E_HOLD) {
   console.log(`holding the network for ${process.env.E2E_HOLD}s before settlement: router console at ${ROUTER}/`);
   await sleep(Number(process.env.E2E_HOLD) * 1000);

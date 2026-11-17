@@ -471,7 +471,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 | `orrery provider price --config provider.json [--beat 5] [--floor in/out] [--write]` | undercut the cheapest other listing of each model by a margin, never below your floor |
 | `orrery provider check --config provider.json` | is this node ready to earn: model server, public address, the wire key routers read there, listing, fee money, enclave, pledge |
 | `orrery enclave verify --node <listing>` | audit a private node: its claim from chain, its report from the node, every check a router runs (`--report --vcek` and `--quote` check a file) |
-| `orrery providers` | every listing, what the chain says about it and whether its model server answers |
+| `orrery providers` | every listing, what the chain says about it, whether its model server answers, and what your own router saw of it |
 | `orrery channels` | your channels: deposit, what you signed, what was redeemed, what is unspent (what closing gives back) |
 | `orrery close <channel> --wallet <keypair>` | start closing (the provider gets a grace period to redeem) |
 | `orrery close <channel> --wallet <keypair> --finish` | after the grace period, the rest comes back to you |

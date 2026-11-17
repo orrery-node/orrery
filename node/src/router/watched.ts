@@ -3,6 +3,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { billsText, speedText } from '../spend.ts';
+import type { Observed } from './policy.ts';
 
 /** `sent`/`answered`: the requests this router sent the node and how many it answered, counted from `askedSince`. */
 export type Watched = { checks: number; up: number; since: number; sent?: number; answered?: number; askedSince?: number };
@@ -62,6 +63,13 @@ export function answeredText(o: { ok: number; fail: number; broke?: number } | W
   const n = (x: number) => x.toLocaleString('en-US');
   const of = answered === sent ? (sent === 1 ? 'the 1 request' : `all ${n(sent)} requests`) : `${n(answered)} of ${n(sent)} requests`;
   return `answered ${of} this router sent it ${kept ? `over ${span(now - o.askedSince!)}` : 'since it started'}`;
+}
+
+/** One line for `orrery providers` under a node: what this router saw of it, from the records it keeps in its home
+ * (health checks and requests from watched.json, first-token speed from observed.json). Empty for a node it never saw. */
+export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now()): string {
+  const parts = [watchedText(w, now), answeredText(w, now), o && o.ttftMs !== null ? `first token in about ${Math.round(o.ttftMs).toLocaleString('en-US')} ms lately` : ''].filter((p) => p.length > 0);
+  return parts.length ? `what your router saw: ${parts.join('; ')}` : '';
 }
 
 /** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when

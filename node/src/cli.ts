@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { loadWatched, sawLine } from './router/watched.ts';
 import { rpcConnection } from './chain/connect.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
@@ -12,7 +13,7 @@ import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { feesLine, FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
-import { parseAliases, parseCeiling, ROUTES, type Route } from './router/policy.ts';
+import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
@@ -187,9 +188,14 @@ async function listProviders() {
   await registry.refresh();
   await registry.checkHealth();
   const serverText = (e: { upstream?: 'up' | 'down'; healthMs?: number }) => (e.upstream === 'up' ? `model server up (${e.healthMs} ms)  ` : e.upstream === 'down' ? 'model server down, routers skip it  ' : '');
+  // What this computer's router saw of each node, from the records it keeps in its home: no request is made for it.
+  const watched = loadWatched(home('router', 'watched.json'));
+  const seen = new Stats(home('router', 'observed.json'));
   for (const e of registry.entries.values()) {
     const a = e.account;
     console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${serverText(e)}${e.manifest?.burn ? `pledges ${e.manifest.burn.share / 100}% to the burn  ` : ''}${tiersText(e.manifest?.holder?.tiers)}${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
+    const saw = sawLine(watched.get(e.address), seen.all().get(e.address));
+    if (saw) console.log(`    ${saw}`);
   }
 }
 
