@@ -109,8 +109,15 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
           headers['x-orrery-provider'] = hit.address;
         }
       }
-      const r = await fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
-      const j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { message?: string } };
+      const send = () => fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
+      let r = await send();
+      let j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { code?: string; message?: string } };
+      // No node answered within the wait: a restart can outlast it (the seed's takes about 40 s), so ask once more,
+      // unless the agent asked not to wait at all.
+      if (r.status === 502 && j.error?.code === 'all_failed' && headers['x-orrery-patience'] !== '0') {
+        r = await send();
+        j = (await r.json()) as typeof j;
+      }
       // Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal.
       const spent = r.headers.get('x-orrery-task-spent'), left = r.headers.get('x-orrery-task-left');
       const task = typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';

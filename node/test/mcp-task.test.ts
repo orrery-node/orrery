@@ -225,4 +225,16 @@ describe('orrery mcp and task budgets', () => {
     await call('embed', { model: 'e', input: 'hi' }, fetchFn as never);
     assert.deepEqual(sent, ['30', '0', '30', '30']);
   });
+
+  it('ask asks once more when no node answered within its patience, since a restart can outlast one wait', async () => {
+    let calls = 0;
+    const away = async () => { calls++; return calls === 1 ? reply({ error: { code: 'all_failed', message: 'all providers failed: Seed: provider answered 502' } }, 502) : reply({ choices: [{ message: { content: 'Back.' } }] }, 200, { 'x-orrery-cost': '0.000010' }); };
+    const out = await call('ask', { model: 'm', prompt: 'hi' }, away as never);
+    assert.equal(calls, 2);
+    assert.match(out.result.content[0].text, /^Back\./);
+    calls = 0;
+    const quick = await call('ask', { model: 'm', prompt: 'hi', patience: 0 }, away as never);
+    assert.equal(calls, 1);
+    assert.equal(quick.result.isError, true);
+  });
 });
