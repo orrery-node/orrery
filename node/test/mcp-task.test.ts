@@ -204,4 +204,15 @@ describe('orrery mcp and task budgets', () => {
     assert.match(await said('0.000012', '0.000015', '0.000012'), /paid \$0\.000012 for this answer, under its listed \$0\.000015\n/);
     assert.match(await said('0.000020', '0.000015', '0.000015'), /paid \$0\.000015 for this answer \(it asked \$0\.000020; paid its listed price\)\n/);
   });
+
+  it('status tells an agent how many requests no node answered, and that nothing was paid for them', async () => {
+    const withUnanswered = async (unanswered: unknown) => (await call('status', {}, async (url) => {
+      if (url.endsWith('/orrery/status')) return reply({ spentToday: '0.000100', channels: [], providers: [] });
+      if (url.includes('/orrery/spend')) return reply({ rows: [{ key: 'llama-3.3-70b', answers: 5, usd: '0.000100' }], ...(unanswered ? { unanswered } : {}) });
+      return reply({ tasks: [] });
+    })).result.content[0].text as string;
+    assert.match(await withUnanswered({ requests: 2, nodes: 3 }), /last 24h by model:\nllama-3\.3-70b: 5 answers, \$0\.000100\n2 requests got no answer from any node asked \(3 nodes asked in all\); nothing was signed or paid for them\.$/);
+    assert.ok(!/got no answer/.test(await withUnanswered({ requests: 0, nodes: 0 })));
+    assert.ok(!/got no answer/.test(await withUnanswered(null)));
+  });
 });

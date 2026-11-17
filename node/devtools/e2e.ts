@@ -1436,6 +1436,17 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
   const asked = unanswered.reduce((a, u) => a + u.asked, 0);
   const unOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', '--since', '7d'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
   const unLine = unOut.split('\n').find((l) => /got no answer/.test(l)) ?? '';
+  // An agent asking orrery mcp for status is told the same, from a fresh mcp process now that there are some.
+  const mcp2 = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'mcp', '--router', ROUTER], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const out2: Record<number, { result?: { content?: { text?: string }[] } }> = {};
+  let buf2 = '';
+  mcp2.stdout!.on('data', (c) => { buf2 += c; let i; while ((i = buf2.indexOf('\n')) >= 0) { const line = buf2.slice(0, i); buf2 = buf2.slice(i + 1); try { const m = JSON.parse(line) as { id?: number }; if (typeof m.id === 'number') out2[m.id] = m as never; } catch { /* not a message */ } } });
+  mcp2.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } })}\n${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'status', arguments: {} } })}\n`);
+  for (let i = 0; i < 75 && !out2[2]; i++) await sleep(200);
+  mcp2.kill();
+  const mcpUnLine = (out2[2]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => /got no answer/.test(l)) ?? '';
+  check('an agent is told through orrery mcp how many requests no node answered, and that nothing was paid for them', unanswered.length >= 2 && mcpUnLine === unLine,
+    mcpUnLine || 'no such line in the status tool');
   check('orrery spend says how many requests no node answered, from the router’s own log of them, and that nothing was paid for them', unanswered.length >= 2 && unLine === `${unanswered.length} requests got no answer from any node asked${asked > unanswered.length ? ` (${asked} nodes asked in all)` : ''}; nothing was signed or paid for them.`,
     `${unanswered.length} logged · ${unLine || 'no line in orrery spend'}`);
 }
