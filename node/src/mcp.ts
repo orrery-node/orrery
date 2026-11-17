@@ -24,6 +24,7 @@ const TOOLS = [
         task: { type: 'string', description: 'optional name for the job this call belongs to; every call with the same task draws from one budget' },
         task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call; when it is spent the router refuses further calls under the task. Every answer and refusal under a task says what it has spent and has left' },
         node: { type: 'string', description: 'optional: ask this node only, by the name status lists (e.g. Orrery Seed) or by its address' },
+        patience: { type: 'number', description: 'optional: seconds to wait for a node that is away, restarting say, before giving up, 0 to 30; 30 when not given, 0 to fail at once' },
       },
       required: ['model', 'prompt'],
     },
@@ -95,7 +96,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     if (name === 'ask') {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
-      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}), ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
+      const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-patience': patienceOf(a.patience), ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}), ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
       // Staying with one node: an address goes as is; a name is looked up in the router's own list of nodes.
       if (typeof a.node === 'string' && a.node.trim()) {
         const wanted = a.node.trim();
@@ -143,7 +144,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
-      const headers: Record<string, string> = { 'content-type': 'application/json', ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
+      const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-patience': patienceOf(a.patience), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
       const r = await fetchFn(`${router}/v1/embeddings`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, input: a.input }) });
       const j = (await r.json()) as { data?: { embedding: number[] }[]; usage?: { prompt_tokens?: number }; error?: { message?: string } };
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
@@ -202,6 +203,12 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       return text(`no Orrery router is answering at ${router}. Start one with: npx -y orrery-node router --wallet <your keypair.json> (it pays providers from that wallet's USDC). If one runs elsewhere, start orrery mcp with --router <its address>.`, true);
     return text(`the router at ${router} answered with something unexpected: ${(e as Error).message}`, true);
   }
+}
+
+/** The x-orrery-patience an agent's call carries: its own 0 to 30 seconds, or 30. An agent would rather wait half a
+ * minute for a node that is restarting than get an error it has to retry. */
+export function patienceOf(p: unknown): string {
+  return typeof p === 'number' && p >= 0 && p <= 30 ? String(p) : '30';
 }
 
 /** Runs the server on stdin/stdout: one JSON-RPC message per line, as the MCP stdio transport expects. */

@@ -215,4 +215,14 @@ describe('orrery mcp and task budgets', () => {
     assert.ok(!/got no answer/.test(await withUnanswered({ requests: 0, nodes: 0 })));
     assert.ok(!/got no answer/.test(await withUnanswered(null)));
   });
+
+  it('ask and embed wait up to 30 s for a node that is restarting, unless the agent asks for less', async () => {
+    const sent: (string | undefined)[] = [];
+    const fetchFn = async (url: string, init?: unknown) => { sent.push(((init as { headers?: Record<string, string> } | undefined)?.headers ?? {})['x-orrery-patience']); return url.includes('/embeddings') ? reply({ data: [{ embedding: [0.1] }], usage: { prompt_tokens: 1 } }, 200, { 'x-orrery-cost': '0.000001' }) : reply({ choices: [{ message: { content: 'Hi.' } }] }, 200, { 'x-orrery-cost': '0.000001' }); };
+    await call('ask', { model: 'm', prompt: 'hi' }, fetchFn as never);
+    await call('ask', { model: 'm', prompt: 'hi', patience: 0 }, fetchFn as never);
+    await call('ask', { model: 'm', prompt: 'hi', patience: 90 }, fetchFn as never);
+    await call('embed', { model: 'e', input: 'hi' }, fetchFn as never);
+    assert.deepEqual(sent, ['30', '0', '30', '30']);
+  });
 });
