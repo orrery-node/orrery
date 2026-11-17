@@ -1,4 +1,5 @@
 // The page at http://127.0.0.1:7171/ — what the router did, read from /orrery/status. Plain HTML, no build step.
+import { skipNote, unansweredNote } from '../spend.ts';
 import { NAME } from '../brand.ts';
 import { FONT_FACES } from './fonts.ts';
 
@@ -51,25 +52,34 @@ export function failedNote(n: number): string {
   return n ? ' <span class=sig>after ' + n + ' failed, ' + (n === 1 ? 'which was' : 'which were') + ' paid nothing</span>' : '';
 }
 
+/** Under the 24-hour spend: answers that came after a node did not answer or finish, and requests no node answered,
+ * all of them signed nothing; empty when there were none. Its source goes into the page, with the two it uses. */
+export function spendNotes(sp: { afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; unanswered?: { requests: number; nodes: number } }): string {
+  return [skipNote({ answers: sp.afterANodeDidNotAnswer?.answers ?? 0, nodes: sp.afterANodeDidNotAnswer?.nodes ?? 0, resumed: sp.finishedByAnotherNode ?? 0 }), sp.unanswered ? unansweredNote(sp.unanswered) : ''].filter((x) => x).join(' ');
+}
+
 export function consolePage(): string {
   return `${consoleHead(`${NAME} router`, 'Router console')}
 <main>
 <div><h1><span>Your router.</span> Every request, straight to a provider.</h1><p class="lede">Point any OpenAI-compatible tool at <code id="base">http://127.0.0.1/v1</code>, or an Anthropic client at the same address without <code>/v1</code>. Each answer is paid from your channel to the machine that served it; nothing in between.</p></div>
 <div class="stats" id="sum"></div>
 <section><h2>Recent requests</h2><div class="wrap"><table><thead><tr><th>time</th><th>route</th><th>model</th><th>provider</th><th>tokens</th><th>paid</th><th>first token</th></tr></thead><tbody id="trips"></tbody></table></div></section>
-<section><h2>Last 24 hours, by model</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>paid</th><th>kept for cache</th></tr></thead><tbody id="spend"></tbody></table></div></section>
+<section><h2>Last 24 hours, by model</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>paid</th><th>kept for cache</th></tr></thead><tbody id="spend"></tbody></table></div><p class="lede" id="spendnote" hidden></p></section>
 <section><h2>Providers</h2><div class="wrap"><table><thead><tr><th>name</th><th>models</th><th>settled on chain</th><th>enclave</th><th>model server</th><th>this router’s record</th><th>state</th></tr></thead><tbody id="prov"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>provider</th><th>channel</th><th>deposit</th><th>spent</th><th>left</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
 const paidCell=${paidCell.toString()};
 const failedNote=${failedNote.toString()};
+const skipNote=${skipNote.toString()};
+const unansweredNote=${unansweredNote.toString()};
+const spendNotes=${spendNotes.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function tick(){try{const s=await (await fetch('/orrery/status')).json();
 document.getElementById('base').textContent='http://127.0.0.1:'+location.port+'/v1';
 document.getElementById('sum').innerHTML='<div><b>'+esc(s.privateOnly?'private only':s.route)+'</b><span class=cap>'+(s.privateOnly?'every request sealed':'default route')+'</span></div><div><b class=go>$'+esc(s.spentToday)+'</b><span class=cap>spent today</span></div><div><b>'+s.providers.length+'</b><span class=cap>providers</span></div><div><b>'+s.channels.length+'</b><span class=cap>open channels</span></div>';
 document.getElementById('trips').innerHTML=s.trips.map(t=>'<tr><td>'+new Date(t.at).toLocaleTimeString()+'</td><td>'+esc(t.route)+(t.sealed?' <span class=go>sealed'+(t.enclave?' · '+esc(t.enclave.kind):'')+'</span>':t.wire?' <span class=sig>wire</span>':'')+(t.off?' <span class=go>holder −'+(t.off/100)+'%</span>':'')+'</td><td>'+esc(t.model)+'</td><td>'+esc(t.providerName)+failedNote(t.fellThrough)+(t.cacheKept?' <span class=go>kept for its cache</span>':'')+'</td><td>'+t.inputTokens+'+'+t.outputTokens+'</td><td class=go>'+paidCell(t)+'</td><td>'+t.ttftMs+' ms</td></tr>').join('')||'<tr class=empty><td colspan=7>No requests yet. Point a tool at http://127.0.0.1:'+location.port+'/v1</td></tr>';
 document.getElementById('prov').innerHTML=s.providers.map(p=>'<tr><td>'+esc(p.name||p.address.slice(0,8))+'</td><td>'+p.models+'</td><td>$'+esc(p.settled)+' · '+p.redeems+' redeems</td><td>'+(p.tee?(p.tee.verified?'<span class=go>verified</span>':'<span class=stop>'+esc(p.tee.reason)+'</span>'):'—')+'</td><td>'+(p.modelServer==='up'?'<span class=go>up</span>'+(p.healthMs!=null?' · '+p.healthMs+' ms':''):p.modelServer==='down'?'<span class=stop>down, skipped</span>':'—')+'</td><td class=rec>'+(p.record&&p.record.length?p.record.map(esc).join('<br>'):p.observed.ok+' ok / '+p.observed.fail+' failed')+'</td><td>'+(p.problem?'<span class=stop>'+esc(p.problem)+'</span>':p.active?'<span class=go>open</span>':'closed')+'</td></tr>').join('');
-try{const sp=await (await fetch('/orrery/spend?since=24h&by=model')).json();const rows=[...sp.rows,{...sp.total,key:'total'}];document.getElementById('spend').innerHTML=sp.total.answers?rows.map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td><td>'+(r.cacheKept||'—')+'</td></tr>').join(''):'<tr class=empty><td colspan=6>Nothing paid in the last 24 hours.</td></tr>';}catch(e){}
+try{const sp=await (await fetch('/orrery/spend?since=24h&by=model')).json();const rows=[...sp.rows,{...sp.total,key:'total'}];document.getElementById('spend').innerHTML=sp.total.answers?rows.map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td><td>'+(r.cacheKept||'—')+'</td></tr>').join(''):'<tr class=empty><td colspan=6>Nothing paid in the last 24 hours.</td></tr>';const note=spendNotes(sp),el=document.getElementById('spendnote');el.textContent=note;el.hidden=!note;}catch(e){}
 document.getElementById('ch').innerHTML=s.channels.map(c=>'<tr><td>'+esc(c.provider.slice(0,8))+'</td><td>'+esc(c.channel.slice(0,8))+'</td><td>$'+esc(c.deposit)+'</td><td>$'+esc(c.spent)+'</td><td>$'+esc(c.left)+'</td></tr>').join('')||'<tr class=empty><td colspan=5>None yet. The first request to a provider opens one.</td></tr>';
 }catch(e){}}tick();setInterval(tick,2000);
 </script></body></html>`;

@@ -1457,6 +1457,13 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
   const keptTrips = readTrips(join(routerDir, 'trips.jsonl')).length;
   check('orrery doctor says what the router keeps on this computer, counted from its own files, and that no prompt or answer is in it', keptSaid.startsWith(`${routerDir}: ${keptTrips.toLocaleString('en-US')} answers, ${unanswered.length} unanswered requests, a record of `) && keptSaid.endsWith(' · models, token counts, prices and timings, never a prompt or an answer'),
     keptSaid.replace(routerDir, '<router home>').slice(0, 170) || 'no such line in doctor');
+  // The router's console says the same under its 24-hour spend: the page carries the note, and what it writes there
+  // from this router's /orrery/spend ends with that line.
+  const consoleNow = await (await fetch(`${ROUTER}/`)).text();
+  const spendNow = await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=model`)).json();
+  const consoleMod = await import('../src/router/console.ts') as unknown as { spendNotes?: (sp: unknown) => string };
+  const consoleNote = consoleMod.spendNotes?.(spendNow) ?? '';
+  check('the router console says under its spend how many requests no node answered, and that nothing was paid for them', consoleNow.includes('id="spendnote"') && consoleNow.includes('const spendNotes=') && consoleNote.endsWith(unLine), consoleNote.slice(-140) || 'no note');
   check('orrery doctor’s paid line says how many requests no node answered, and that nothing was paid for them', unLine.length > 0 && docUnPaid.endsWith(` · ${unLine}`), docUnPaid.slice(-150) || 'no paid line');
   check('an agent is told through orrery mcp how many requests no node answered, and that nothing was paid for them', unanswered.length >= 2 && mcpUnLine === unLine,
     mcpUnLine || 'no such line in the status tool');
