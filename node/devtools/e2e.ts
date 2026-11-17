@@ -1169,6 +1169,10 @@ const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/com
   const said = lines.find((l) => l.includes('model server')) ?? '';
   check('a node says in its own log why its model server turned a request away, without the server’s words, and the router hears it as context_length_exceeded', said === 'the model server refused a deepseek-v3 request as longer than it serves (400); provider.json lists 131,072 tokens of context for it: set "context" to what the server serves (orrery provider check compares them)' && /provider answered 400 \(context_length_exceeded\)/.test(rrj.error?.message ?? ''),
     `${said.slice(0, 110) || 'nothing in the node log'} · router: ${(rrj.error?.message ?? '').replace(/^.*?: /, '').slice(0, 90)}`);
+  // The node keeps that refusal, and orrery provider status says it, for an operator who is not reading the log.
+  const refusedStatus = await cliOut(['status']);
+  const refusedLine = refusedStatus.split('\n').find((l) => l.trim().startsWith('model server refused')) ?? '';
+  check('orrery provider status counts what the model server refused in the last 24 hours, by kind', /^ {2}model server refused {2}\d+ in the last 24 h: (\d+ longer than it serves)$/.test(refusedLine) && Number(/(\d+) longer/.exec(refusedLine)?.[1]) >= 1, refusedLine.trim() || 'no such line in provider status');
 }
 // A router that lost its records finds its channel on chain and asks the node where it stands. To a node that reads
 // payment inside the seal, that question is sealed as well: nothing reaching the node's front names the channel.

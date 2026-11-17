@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { refusal } from './refusal.ts';
+import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
 import { appendTrip, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
@@ -327,6 +327,8 @@ export class ProviderNode {
       provider: this.pda.toBase58(), name: this.manifest.name, answers: this.answers,
       signed: usd(signed), redeemed: usd(redeemed), waiting: usd(signed > redeemed ? signed - redeemed : 0n),
       channels, recent: this.served.slice().reverse().map((r) => ({ ...r, cost: usd(r.cost) })),
+      // What the model server turned away in the last day, by kind: kept in refused.jsonl, so a restart keeps it.
+      refused: refusedCounts(readRefused(`${this.dir}/refused.jsonl`), 86_400_000),
     };
   }
 
@@ -547,6 +549,7 @@ export class ProviderNode {
       if (!up.ok) {
         const why = refusal(up.status, (await up.text().catch(() => '')).slice(0, 4_000), offer);
         this.log(why.log);
+        appendRefused(`${this.dir}/refused.jsonl`, { at: Date.now(), model: offer.id, kind: why.kind });
         return fail(res, why.status, why.code, why.message);
       }
       const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
@@ -568,6 +571,7 @@ export class ProviderNode {
       // What the server said is read only to tell what kind of refusal it was; it goes no further.
       const why = refusal(upstream.status, upstream.ok ? '' : (await upstream.text().catch(() => '')).slice(0, 4_000), offer);
       this.log(why.log);
+      appendRefused(`${this.dir}/refused.jsonl`, { at: Date.now(), model: offer.id, kind: why.kind });
       return fail(res, why.status, why.code, why.message);
     }
 

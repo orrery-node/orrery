@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { refusedText } from './provider/refusal.ts';
 import { loadWatched, sawLine } from './router/watched.ts';
 import { rpcConnection } from './chain/connect.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -367,6 +368,8 @@ async function provider(sub: string) {
       `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
+      // What the model server turned away, from the node's own record of it: the log says each one as it happens.
+      ...(s.refused ? [`  model server refused  ${refusedText(s.refused as Parameters<typeof refusedText>[0])}`] : []),
       `  fees                  ${fees}`,
     ].join('\n'));
   }

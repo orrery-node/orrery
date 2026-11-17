@@ -46,7 +46,7 @@ export function payoutHint(waiting: string, minUnits: number, everySecs: number,
   return `  (pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[] };
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>> };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
