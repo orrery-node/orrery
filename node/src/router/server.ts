@@ -1,5 +1,6 @@
 // The router: an OpenAI-compatible endpoint on 127.0.0.1. Point any tool at http://127.0.0.1:7171/v1 and it picks a
 // provider per request, pays it through a channel, and falls back to the next provider if one fails.
+import { fitting, textTokensAtLeast } from './context.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, tierOff, type HolderBook, type Standing } from '../holder.ts';
@@ -439,7 +440,11 @@ export class Router {
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
     const answering = offers.filter((o) => o.entry.upstream !== 'down');
     if (!answering.length) throw new Unserved(`every provider of ${model} reports its model server down right now`, 503, 'no_provider');
-    offers = answering;
+    // A prompt clearly longer than the context a node lists goes to a node that lists enough: the first would refuse
+    // it, and that would count against it. Nothing changes when no node lists enough.
+    const roomy = fitting(body, answering);
+    if (roomy.length < answering.length) this.log(`${model}: a prompt of at least ${textTokensAtLeast(body).toLocaleString('en-US')} tokens passes over ${answering.length - roomy.length} node${answering.length - roomy.length === 1 ? '' : 's'} that list${answering.length - roomy.length === 1 ? 's' : ''} less context`);
+    offers = roomy;
     let ceiling: Ceiling | undefined;
     try {
       ceiling = req.headers['x-orrery-max-price'] ? parseCeiling(String(req.headers['x-orrery-max-price'])) : this.o.maxPrice;

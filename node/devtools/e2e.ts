@@ -104,7 +104,7 @@ for (const s of providerSpecs) {
   const node = new ProviderNode({
     name: s.name, region: s.region, listen: s.port, host: '127.0.0.1', publicUrl: `http://127.0.0.1:${s.port}`, rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
-    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) } }; }),
+    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) } }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
@@ -153,6 +153,19 @@ console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
 check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 6 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
+// Kestrel lists qwen3-32b at 8,192 tokens of context and Vault Nine at 131,072. Kestrel is the cheaper, so a short
+// prompt goes there; one clearly longer than 8,192 tokens goes to Vault Nine, and Kestrel is not counted against.
+{
+  const kestrel = nodes[0].pda.toBase58();
+  const failsBefore = router.stats.get(kestrel)?.fail ?? 0;
+  const short = await ask('qwen3-32b:cheap');
+  const prompt = `${'The router signs a running total and the node redeems it on Solana. '.repeat(700)}In one sentence, what happens?`;
+  const longR = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'qwen3-32b:cheap', max_tokens: 64, messages: [{ role: 'user', content: prompt }] }) });
+  await longR.text();
+  const failsAfter = router.stats.get(kestrel)?.fail ?? 0;
+  check('a prompt longer than the context a node lists goes to a node that lists enough, and the node passed over is not counted against', nameOf(short.provider) === 'Kestrel GPU Co-op' && longR.status === 200 && nameOf(longR.headers.get('x-orrery-provider')) === 'Vault Nine' && !longR.headers.get('x-orrery-skipped') && failsAfter === failsBefore,
+    `short prompt: ${nameOf(short.provider)} · ${prompt.length.toLocaleString('en-US')}-character prompt: ${nameOf(longR.headers.get('x-orrery-provider'))} (${longR.status}${longR.headers.get('x-orrery-skipped') ? `, skipped ${longR.headers.get('x-orrery-skipped')}` : ''}) · Kestrel failures ${failsBefore} → ${failsAfter}`);
+}
 let r = await ask('llama-3.3-70b:cheap');
 check('price route picks the cheapest llama', nameOf(r.provider) === 'Kestrel GPU Co-op' && r.content.length > 20, `${nameOf(r.provider)}, $${r.cost}`);
 r = await ask('deepseek-v3', { stream: true });
@@ -523,7 +536,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 41 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 43 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
