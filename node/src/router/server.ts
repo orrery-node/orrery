@@ -407,16 +407,22 @@ export class Router {
     const rest: Record<string, unknown> = { ...body };
     delete rest.models;
     let last: Unserved | null = null;
+    // Nodes asked for this request that did not answer, across its models: counted once the request has no answer at all.
+    let asked = 0;
     for (const m of list.slice(0, 4)) {
       try {
         return await this.serveOne({ ...rest, model: m }, req, res, anth);
       } catch (e) {
-        const u = e as Unserved;
+        const u = e as Unserved & { asked?: number };
+        asked += u.asked ?? 0;
         if (res.headersSent || !['model_not_found', 'over_price_ceiling', 'over_budget', 'no_provider', 'all_failed', 'context_length_exceeded'].includes(u.code)) throw e;
         last = u;
         if (list.length > 1) this.log(`${m}: ${u.message}; trying the next model`);
       }
     }
+    // Kept so the router's spend can say what went unanswered, and that nothing was signed for it. A request a fallback
+    // model answered is not one of them.
+    if (asked > 0) appendUnanswered(home('router', 'unanswered.jsonl'), { at: Date.now(), model: list[0], asked });
     throw last ?? new Unserved('model is required', 400, 'bad_request');
   }
 
@@ -577,9 +583,7 @@ export class Router {
     // The client's SDK reads Retry-After before it tries again; by now this request has already waited its own share.
     // Nothing a node did: the router's own wallet could not pay. Said as that, with what to do.
     if (payer && !tried.length) throw new Unserved(payer.message, 402, 'wallet');
-    // Kept so the router's spend can say what went unanswered, and that nothing was signed for it.
-    if (tried.length) appendUnanswered(home('router', 'unanswered.jsonl'), { at: Date.now(), model, asked: tried.length });
-    throw new Unserved(`all providers failed: ${tried.join('; ')}${payer ? `; and ${payer.message}` : ''}`, 502, 'all_failed', { 'retry-after': '3' });
+    throw Object.assign(new Unserved(`all providers failed: ${tried.join('; ')}${payer ? `; and ${payer.message}` : ''}`, 502, 'all_failed', { 'retry-after': '3' }), { asked: tried.length });
   }
 
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {

@@ -59,4 +59,10 @@ describe('orrery doctor, what the running router paid', () => {
     ]);
     assert.deepEqual(d.billsLines!(null), []);
   });
+
+  it('the paid line also says how many requests no node answered, and that nothing was paid for them', () => {
+    assert.equal(paidLine({ total: { answers: 6, usd: '0.000192' }, unanswered: { requests: 2, nodes: 3 } } as Parameters<typeof paidLine>[0]), '$0.000192 for 6 answers in the last 24 h · 2 requests got no answer from any node asked (3 nodes asked in all); nothing was signed or paid for them.');
+    assert.equal(paidLine({ total: { answers: 0, usd: '0.000000' }, unanswered: { requests: 1, nodes: 1 } } as Parameters<typeof paidLine>[0]), 'nothing in the last 24 h · 1 request got no answer from the node asked; nothing was signed or paid for it.');
+    assert.equal(paidLine({ total: { answers: 6, usd: '0.000192' }, unanswered: { requests: 0, nodes: 0 } } as Parameters<typeof paidLine>[0]), '$0.000192 for 6 answers in the last 24 h');
+  });
 });

@@ -415,7 +415,7 @@ const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
 const docPaid = doc.find((l) => l.what.trim() === 'paid')?.detail ?? '';
-check('orrery doctor says what the running router paid in the last 24 hours, and what it did not pay for', /^\$0\.\d{6} for \d+ answers in the last 24 h · \d+ of these answers came from the next node after another did not answer/.test(docPaid) && /signed nothing\.$/.test(docPaid), docPaid.slice(0, 170) || 'doctor says nothing about it');
+check('orrery doctor says what the running router paid in the last 24 hours, and what it did not pay for', /^\$0\.\d{6} for \d+ answers in the last 24 h · \d+ of these answers came from the next node after another did not answer/.test(docPaid) && /signed nothing\.( · \d+ requests? got no answer from [^;]+; nothing was signed or paid for (it|them)\.)?$/.test(docPaid), docPaid.slice(0, 170) || 'doctor says nothing about it');
 check('orrery doctor reads the chain, every listing, the wallet and the router, and flags the provider that went dark', docBad.length === 1 && docBad[0] === nodes[0].pda.toBase58().slice(0, 8) && doc.some((l) => l.what === 'router' && l.ok) && doc.some((l) => l.what === 'wallet USDC' && l.ok), `${doc.filter((l) => l.ok).length} ok · flagged: ${docBad.join(', ') || 'none'} (Kestrel, dark: ${doc.find((l) => l.ok === false)?.detail ?? ''})`);
 // How a request and its payment travel to each node: doctor says, from the node's own signed answers.
 const nodeLines = doc.filter((l) => /^  \S/.test(l.what) && l.ok === true);
@@ -1445,6 +1445,9 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
   for (let i = 0; i < 75 && !out2[2]; i++) await sleep(200);
   mcp2.kill();
   const mcpUnLine = (out2[2]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => /got no answer/.test(l)) ?? '';
+  // orrery doctor's paid line says the same, beside what was paid.
+  const docUnPaid = (await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'paid')?.detail ?? '';
+  check('orrery doctor’s paid line says how many requests no node answered, and that nothing was paid for them', unLine.length > 0 && docUnPaid.endsWith(` · ${unLine}`), docUnPaid.slice(-150) || 'no paid line');
   check('an agent is told through orrery mcp how many requests no node answered, and that nothing was paid for them', unanswered.length >= 2 && mcpUnLine === unLine,
     mcpUnLine || 'no such line in the status tool');
   check('orrery spend says how many requests no node answered, from the router’s own log of them, and that nothing was paid for them', unanswered.length >= 2 && unLine === `${unanswered.length} requests got no answer from any node asked${asked > unanswered.length ? ` (${asked} nodes asked in all)` : ''}; nothing was signed or paid for them.`,

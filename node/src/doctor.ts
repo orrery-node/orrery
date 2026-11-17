@@ -7,7 +7,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
-import { billsText, speedText, skipNote } from './spend.ts';
+import { billsText, speedText, skipNote, unansweredNote } from './spend.ts';
 import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
@@ -30,7 +30,7 @@ const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
 /** The lines to print. ok null means information only, nothing to fix. */
-type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[]; bills?: { provider: string; name: string; checked: number; over: number }[] };
+type Spent = { total?: { answers: number; usd: string }; afterANodeDidNotAnswer?: { answers: number; nodes: number }; finishedByAnotherNode?: number; unanswered?: { requests: number; nodes: number }; speed?: { provider: string; name: string; answers: number; medianTtftMs: number }[]; bills?: { provider: string; name: string; checked: number; over: number }[] };
 
 /** The router line when none answers: how to start one the way it starts now. A wallet this command could read (from
  * --wallet, ORRERY_WALLET or the home folder) is the one the router uses without --wallet. */
@@ -50,9 +50,11 @@ export function billsLines(sp: Spent | null): string[] {
  * where a node did not answer or did not finish (signed nothing). Null when the router did not say. */
 export function paidLine(sp: Spent | null): string | null {
   if (!sp?.total) return null;
-  if (!sp.total.answers) return 'nothing in the last 24 h';
+  // Requests no node answered: no voucher was signed for them.
+  const none = sp.unanswered ? unansweredNote(sp.unanswered) : '';
+  if (!sp.total.answers) return `nothing in the last 24 h${none ? ` · ${none}` : ''}`;
   const note = skipNote({ answers: sp.afterANodeDidNotAnswer?.answers ?? 0, nodes: sp.afterANodeDidNotAnswer?.nodes ?? 0, resumed: sp.finishedByAnotherNode ?? 0 });
-  return `$${sp.total.usd} for ${sp.total.answers} answer${sp.total.answers === 1 ? '' : 's'} in the last 24 h${note ? ` · ${note}` : ''}`;
+  return `$${sp.total.usd} for ${sp.total.answers} answer${sp.total.answers === 1 ? '' : 's'} in the last 24 h${note ? ` · ${note}` : ''}${none ? ` · ${none}` : ''}`;
 }
 
 export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
