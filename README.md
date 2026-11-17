@@ -207,7 +207,11 @@ Every answer carries who served it and what you paid:
 x-orrery-provider: 5Tq7…
 x-orrery-route: price
 x-orrery-cost: 0.000009
+x-orrery-billed: 0.000009
+x-orrery-listed: 0.000009
 ```
+
+`x-orrery-billed` is what the node asked and `x-orrery-listed` what the prices it listed on chain come to for the same tokens; the router pays no more than the listed figure.
 
 and the body's `usage` has the same bill: `{"prompt_tokens": 91, "completion_tokens": 102, "total_tokens": 193, "cost": 0.000018}`. Streams end with it when you set `"stream_options": {"include_usage": true}`.
 </details>
@@ -627,6 +631,8 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] A node that is away for a moment: the request waits and goes round again (`--patience`, 8 seconds by default, or `x-orrery-patience: <seconds>` on one request), and a cooldown no longer refuses a model's only node (0.1.16)
 - [x] A router behind a proxy asks a node what it sees before it pays for anything, shows it on `/orrery/status`, and does not send while the node sees this computer's own public address (0.1.16)
 - [x] A node does not redeem dust: with no `redeem.minUnits` set, a channel is redeemed once five cents are waiting on it (0.1.15)
+- [x] A new node's first payout goes out at its next round, minutes after its first answer; later payouts wait for `redeem.minUnits` (0.1.20)
+- [x] Every answer carries what the node billed and what its listed prices come to; `orrery mcp` tells the agent and the router console flags any difference (0.1.20)
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
 
