@@ -1528,6 +1528,11 @@ writeFileSync(ctxCfgPath, JSON.stringify({ ...(ctxCfg as object), rpcUrl: RPC, p
 const ctxCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
 const ctxLine = ctxCheck.text.split('\n').find((l) => /^\S context /.test(l)) ?? '';
 check('orrery provider check says when provider.json lists more context than the model server serves', /^· context +provider\.json lists 32,768 tokens of context for qwen3-32b, but the model server serves 8,192\. Longer requests fail there and count against this node: set "context" to 8,192 or less$/.test(ctxLine), ctxLine.slice(0, 160) || 'no context line');
+// The same listing with maxOutput as large as its context: nothing left for a prompt. Check says so, as a failure.
+writeFileSync(ctxCfgPath, JSON.stringify({ ...(JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as object), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 8_192, maxOutput: 8_192 })) }, null, 2));
+const roomCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
+const roomLine = roomCheck.text.split('\n').find((l) => /^\S max output /.test(l)) ?? '';
+check('orrery provider check fails a listing whose maxOutput leaves no room for the prompt, and says what to set', /^✗ max output +qwen3-32b lists a maxOutput of 8,192 in a context of 8,192: nothing is left for the prompt, .* Set maxOutput to a quarter of context or less \(2,048\)$/.test(roomLine), roomLine.slice(0, 150) || 'no max output line');
 ctxMock.kill('SIGTERM');
 check('a node that knows its wallet only by its address sends the register step to the computer that has the wallet', /^next: list the node on chain, on the computer that has your wallet \(\S+wallet\.json\): \S+ provider register --config /.test(awayNext) && !awayNext.includes('<keypair.json>'), awayNext.split(walkHome).join('~').slice(0, 150) || 'no next line');
 // The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.

@@ -58,6 +58,19 @@ export function contextNote(listed: { id: string; upstreamModel?: string; contex
   return `provider.json lists more context than the model server serves for ${each.slice(0, -1).join(', ')} and ${each[each.length - 1]}. Longer requests fail there and count against this node: set each "context" to what the server serves`;
 }
 
+/** Listings whose maxOutput leaves no room for a prompt in their context, or null. A request that leaves max_tokens
+ * to the node gets maxOutput, and the model server refuses a prompt plus that much beyond its context. Embedding
+ * models (priced on input only) write no output and are left alone. */
+export function roomNote(models: { id: string; context: number; maxOutput: number; price: { output: number } }[]): string | null {
+  const n = (x: number) => x.toLocaleString('en-US');
+  const tight = models.filter((m) => m.price.output > 0 && m.context > 0 && m.maxOutput >= m.context);
+  if (!tight.length) return null;
+  const what = tight.length === 1
+    ? `${tight[0].id} lists a maxOutput of ${n(tight[0].maxOutput)} in a context of ${n(tight[0].context)}`
+    : `${tight.slice(0, -1).map((m) => `${m.id} (maxOutput ${n(m.maxOutput)}, context ${n(m.context)})`).join(', ')} and ${(([m]) => `${m.id} (maxOutput ${n(m.maxOutput)}, context ${n(m.context)})`)(tight.slice(-1))} list a maxOutput as large as their context`;
+  return `${what}: nothing is left for the prompt, so a request that leaves max_tokens to the node fails at the model server. Set maxOutput to a quarter of context or less${tight.length === 1 ? ` (${n(Math.max(1, Math.floor(tight[0].context / 4)))})` : ''}`;
+}
+
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
   const base = cfg.upstream.baseUrl.replace(/\/$/, '');
@@ -69,6 +82,8 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     const missing = cfg.models.filter((m) => have.size && !have.has(m.upstreamModel ?? m.id)).map((m) => m.upstreamModel ?? m.id);
     out.push({ ok: missing.length ? null : true, what: 'model server', detail: missing.length ? `answers at ${base}; its /models list does not name ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` and ${missing.length - 3} more` : ''} (fine if it accepts those names anyway)` : `answers at ${base}, serves all ${cfg.models.length} listed model${cfg.models.length === 1 ? '' : 's'}` });
   }
+  const room = roomNote(cfg.models);
+  if (room) out.push({ ok: false, what: 'max output', detail: room });
   const tooLong = models ? contextNote(cfg.models, models.data ?? []) : null;
   if (tooLong) out.push({ ok: null, what: 'context', detail: tooLong });
   // Listed is not the same as answering: one small request to each model, straight to the model server.
