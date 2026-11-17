@@ -1,5 +1,7 @@
 // `orrery doctor`: reads everything a router needs and says what is ready. It only reads: the RPC, the program's config,
 // every listing and the manifest it points to, your wallet's balances and the local router, if one is running.
+import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { rpcConnection } from './chain/connect.ts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from './chain/program.ts';
@@ -7,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
-import { billsText, speedText, skipNote, unansweredNote } from './spend.ts';
+import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
@@ -57,7 +59,21 @@ export function paidLine(sp: Spent | null): string | null {
   return `$${sp.total.usd} for ${sp.total.answers} answer${sp.total.answers === 1 ? '' : 's'} in the last 24 h${note ? ` · ${note}` : ''}${none ? ` · ${none}` : ''}`;
 }
 
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string }): Promise<Check[]> {
+/** What the router keeps in its folder on this computer, counted from the files: the answers it paid for, the
+ * requests no node answered, the nodes it has its own record of, its channels. None of it holds a prompt or an
+ * answer: models, token counts, prices and timings. Null when there is no such folder. */
+export function keptLine(dir: string): Check | null {
+  if (!existsSync(dir)) return null;
+  const n = (x: number, one: string, many: string) => `${x.toLocaleString('en-US')} ${x === 1 ? one : many}`;
+  const read = (file: string) => { try { return JSON.parse(readFileSync(join(dir, file), 'utf8')) as unknown; } catch { return null; } };
+  const keys = (j: unknown) => (j && typeof j === 'object' && !Array.isArray(j) ? Object.keys(j).length : 0);
+  // channels.json holds { channels: [...], spend }: the channels are the list.
+  const ch = read('channels.json') as { channels?: unknown[] } | null;
+  const parts = [n(readTrips(join(dir, 'trips.jsonl')).length, 'answer', 'answers'), n(readUnanswered(join(dir, 'unanswered.jsonl')).length, 'unanswered request', 'unanswered requests'), `a record of ${n(keys(read('observed.json')), 'node', 'nodes')}`, n(Array.isArray(ch?.channels) ? ch.channels.length : 0, 'channel', 'channels')];
+  return { ok: null, what: 'kept here', detail: `${dir}: ${parts.join(', ')} · models, token counts, prices and timings, never a prompt or an answer` };
+}
+
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string; routerHome?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
     const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
@@ -163,6 +179,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const paid = paidLine(spent);
     if (paid) out.push({ ok: null, what: '  paid', detail: paid });
   }
+  const kept = o.routerHome ? keptLine(o.routerHome) : null;
+  if (kept) out.push(kept);
   return out;
 }
 

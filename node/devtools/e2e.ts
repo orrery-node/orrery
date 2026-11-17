@@ -1451,6 +1451,12 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
   const mcpUnLine = (out2[2]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => /got no answer/.test(l)) ?? '';
   // orrery doctor's paid line says the same, beside what was paid.
   const docUnPaid = (await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'paid')?.detail ?? '';
+  // And what the router keeps on this computer: the counts are the files' own, and none of them holds a prompt.
+  const routerDir = join(WORK, 'home/router');
+  const keptSaid = (await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD, routerHome: routerDir } as Parameters<typeof doctor>[0])).find((l) => l.what === 'kept here')?.detail ?? '';
+  const keptTrips = readTrips(join(routerDir, 'trips.jsonl')).length;
+  check('orrery doctor says what the router keeps on this computer, counted from its own files, and that no prompt or answer is in it', keptSaid.startsWith(`${routerDir}: ${keptTrips.toLocaleString('en-US')} answers, ${unanswered.length} unanswered requests, a record of `) && keptSaid.endsWith(' · models, token counts, prices and timings, never a prompt or an answer'),
+    keptSaid.replace(routerDir, '<router home>').slice(0, 170) || 'no such line in doctor');
   check('orrery doctor’s paid line says how many requests no node answered, and that nothing was paid for them', unLine.length > 0 && docUnPaid.endsWith(` · ${unLine}`), docUnPaid.slice(-150) || 'no paid line');
   check('an agent is told through orrery mcp how many requests no node answered, and that nothing was paid for them', unanswered.length >= 2 && mcpUnLine === unLine,
     mcpUnLine || 'no such line in the status tool');

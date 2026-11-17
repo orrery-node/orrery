@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { newer, render, versionCheck } from '../src/doctor.ts';
-import { paidLine } from '../src/doctor.ts';
+import { keptLine, paidLine } from '../src/doctor.ts';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('orrery doctor version line', () => {
   it('compares dotted versions', () => {
@@ -64,5 +67,17 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(paidLine({ total: { answers: 6, usd: '0.000192' }, unanswered: { requests: 2, nodes: 3 } } as Parameters<typeof paidLine>[0]), '$0.000192 for 6 answers in the last 24 h · 2 requests got no answer from any node asked (3 nodes asked in all); nothing was signed or paid for them.');
     assert.equal(paidLine({ total: { answers: 0, usd: '0.000000' }, unanswered: { requests: 1, nodes: 1 } } as Parameters<typeof paidLine>[0]), 'nothing in the last 24 h · 1 request got no answer from the node asked; nothing was signed or paid for it.');
     assert.equal(paidLine({ total: { answers: 6, usd: '0.000192' }, unanswered: { requests: 0, nodes: 0 } } as Parameters<typeof paidLine>[0]), '$0.000192 for 6 answers in the last 24 h');
+  });
+
+  it('says what the router keeps on this computer, and that no prompt or answer is in it', () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'orrery-kept-')), 'router');
+    mkdirSync(dir, { recursive: true });
+    const trip = { at: 1, model: 'm', provider: 'P', providerName: 'p', inputTokens: 1, outputTokens: 1, cost: '0.000001' };
+    writeFileSync(join(dir, 'trips.jsonl'), `${JSON.stringify(trip)}\n${JSON.stringify(trip)}\n`);
+    writeFileSync(join(dir, 'unanswered.jsonl'), `${JSON.stringify({ at: 1, model: 'm', asked: 1 })}\n`);
+    writeFileSync(join(dir, 'observed.json'), JSON.stringify({ A: { ok: 1, fail: 0, ttftMs: 9, at: 1 }, B: { ok: 0, fail: 1, ttftMs: null, at: 1 } }));
+    writeFileSync(join(dir, 'channels.json'), JSON.stringify({ channels: [{ provider: 'A' }], spend: { day: '2026-11-17', units: '0' } }));
+    assert.deepEqual(keptLine(dir), { ok: null, what: 'kept here', detail: `${dir}: 2 answers, 1 unanswered request, a record of 2 nodes, 1 channel · models, token counts, prices and timings, never a prompt or an answer` });
+    assert.equal(keptLine(join(dir, 'nowhere')), null);
   });
 });
