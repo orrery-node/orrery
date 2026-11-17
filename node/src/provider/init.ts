@@ -14,7 +14,13 @@ export const KNOWN_UPSTREAMS: [string, string][] = [
   ['SGLang', 'http://127.0.0.1:30000/v1'],
 ];
 
-export type Found = { name: string; baseUrl: string; models: string[] };
+/** `contexts`: the tokens of context the server says it serves each model with, where it says (vLLM and SGLang list
+ * max_model_len in /models; Ollama and LM Studio do not). */
+export type Found = { name: string; baseUrl: string; models: string[]; contexts?: Record<string, number> };
+
+/** The context a /models entry says its model is served with, or null when it does not say. */
+export const servedContext = (m: { max_model_len?: unknown }): number | null =>
+  typeof m.max_model_len === 'number' && Number.isSafeInteger(m.max_model_len) && m.max_model_len > 0 ? m.max_model_len : null;
 
 /** The command that gives a fresh Ollama its first model, for the messages that point a new operator at one. */
 const FIRST_MODEL = 'ollama pull llama3.1:8b';
@@ -35,9 +41,11 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
     try {
       const r = await fetchFn(`${baseUrl}/models`, { signal: AbortSignal.timeout(1_500) });
       if (!r.ok) continue;
-      const j = (await r.json()) as { data?: { id?: string }[] };
-      const models = (j.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
-      if (models.length) return { name, baseUrl, models };
+      const j = (await r.json()) as { data?: { id?: string; max_model_len?: unknown }[] };
+      const listed = (j.data ?? []).filter((m): m is { id: string; max_model_len?: unknown } => typeof m.id === 'string' && m.id.length > 0);
+      const models = listed.map((m) => m.id);
+      const contexts = Object.fromEntries(listed.flatMap((m) => { const c = servedContext(m); return c ? [[m.id, c]] : []; }));
+      if (models.length) return { name, baseUrl, models, ...(Object.keys(contexts).length ? { contexts } : {}) };
       empty ??= [name, baseUrl];
     } catch {
       continue;
@@ -106,7 +114,14 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     wallet: o.wallet ?? SOLANA_WALLET,
     dataDir: '~/.orrery/provider',
     upstream: { baseUrl: found.baseUrl },
-    models: found.models.map((id) => (isEmbeddingModel(id) ? { id: networkId(id), upstreamModel: id, context: 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } } : { id: networkId(id), upstreamModel: id, context: 32_768, maxOutput: 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } })),
+    // The context the server says it serves, where it says: a router's clients size their prompts to the listed
+    // number, and a longer one fails at the server. A quarter of it is kept for the answer, up to 4,096 tokens.
+    models: found.models.map((id) => {
+      const served = found.contexts?.[id];
+      return isEmbeddingModel(id)
+        ? { id: networkId(id), upstreamModel: id, context: served ?? 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } }
+        : { id: networkId(id), upstreamModel: id, context: served ?? 32_768, maxOutput: served ? Math.max(1, Math.min(4_096, Math.floor(served / 4))) : 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } };
+    }),
     redeem: { everySecs: 300, minUnits: 50_000 },
     paymentInside: true,
   };

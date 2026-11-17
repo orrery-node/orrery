@@ -7,6 +7,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 ## Unreleased (in main)
 
 - **Router** · `orrery channels` says how much of each deposit is unspent, which is what closing the channel gives back, and adds it up on a last line: "Unspent: $1.999864 across 1 channel." For a channel your router has no record of, it says "up to", since the node may hold vouchers it has not redeemed yet.
+- **Node** · `orrery provider init` lists the context your model server says it serves each model with (vLLM and SGLang report `max_model_len`), keeping a quarter of it, up to 4,096 tokens, for the answer. Before, every model was listed at 32,768 tokens, so a server started with `--max-model-len 8192` failed every longer request routers sent it, and those failures counted against the node. `orrery provider check` says when provider.json lists more context than the server serves.
 
 ## 0.1.20 · 2026-11-17 01:36 UTC
 

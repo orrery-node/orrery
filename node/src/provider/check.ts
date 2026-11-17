@@ -8,6 +8,7 @@ import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
 import { privateAddress } from '../address.ts';
+import { servedContext } from './init.ts';
 import { folderRisk, folderWarning } from './folder.ts';
 import { FEE_FLOOR_LAMPORTS, TOKEN_ACCOUNT_BYTES, type ProviderNode } from './node.ts';
 
@@ -45,17 +46,31 @@ export function fundKeyNote(lamports: number, nodeKey: string, accountRent: numb
   return `sent ${(lamports / LAMPORTS_PER_SOL).toFixed(4)} SOL to the node’s key ${nodeKey} for redeem fees (about ${Math.floor(left / 5_000).toLocaleString('en-US')} payouts${accountRent ? '; the first also opens your wallet’s USDC account' : ''})`;
 }
 
+/** What provider.json lists as context beyond what the model server says it serves (max_model_len in /models), or
+ * null. Clients size their prompts to the listed number, and a longer prompt fails at the server. */
+export function contextNote(listed: { id: string; upstreamModel?: string; context: number }[], served: { id: string; max_model_len?: unknown }[]): string | null {
+  const at = new Map(served.flatMap((m) => { const c = servedContext(m); return c ? [[m.id, c] as const] : []; }));
+  const over = listed.flatMap((m) => { const c = at.get(m.upstreamModel ?? m.id); return c && m.context > c ? [{ id: m.id, listed: m.context, served: c }] : []; });
+  const n = (x: number) => x.toLocaleString('en-US');
+  if (!over.length) return null;
+  if (over.length === 1) return `provider.json lists ${n(over[0].listed)} tokens of context for ${over[0].id}, but the model server serves ${n(over[0].served)}. Longer requests fail there and count against this node: set "context" to ${n(over[0].served)} or less`;
+  const each = over.map((o) => `${o.id} (${n(o.listed)}; it serves ${n(o.served)})`);
+  return `provider.json lists more context than the model server serves for ${each.slice(0, -1).join(', ')} and ${each[each.length - 1]}. Longer requests fail there and count against this node: set each "context" to what the server serves`;
+}
+
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
   const base = cfg.upstream.baseUrl.replace(/\/$/, '');
   const key = cfg.upstream.apiKey ?? (cfg.upstream.apiKeyEnv ? process.env[cfg.upstream.apiKeyEnv] : undefined);
-  const models = (await fetchWithTimeout(`${base}/models`, { timeoutMs: 5_000, headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(cfg.upstream.headers ?? {}) } }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { data?: { id: string }[] } | null;
+  const models = (await fetchWithTimeout(`${base}/models`, { timeoutMs: 5_000, headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(cfg.upstream.headers ?? {}) } }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { data?: { id: string; max_model_len?: unknown }[] } | null;
   if (!models) out.push({ ok: false, what: 'model server', detail: `${base} did not answer /models` });
   else {
     const have = new Set((models.data ?? []).map((m) => m.id));
     const missing = cfg.models.filter((m) => have.size && !have.has(m.upstreamModel ?? m.id)).map((m) => m.upstreamModel ?? m.id);
     out.push({ ok: missing.length ? null : true, what: 'model server', detail: missing.length ? `answers at ${base}; its /models list does not name ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` and ${missing.length - 3} more` : ''} (fine if it accepts those names anyway)` : `answers at ${base}, serves all ${cfg.models.length} listed model${cfg.models.length === 1 ? '' : 's'}` });
   }
+  const tooLong = models ? contextNote(cfg.models, models.data ?? []) : null;
+  if (tooLong) out.push({ ok: null, what: 'context', detail: tooLong });
   // Listed is not the same as answering: one small request to each model, straight to the model server.
   if (models) out.push(await modelTest(base, { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(cfg.upstream.headers ?? {}) }, cfg.models));
 

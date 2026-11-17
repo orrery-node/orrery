@@ -1458,6 +1458,20 @@ writeFileSync(awayCfg, JSON.stringify({ ...(JSON.parse(readFileSync(walkCfg, 'ut
 const awayAddress = Keypair.generate().publicKey.toBase58();
 const awayCheck = await new Promise<string>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'check', '--config', awayCfg, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...walkEnv, ORRERY_AUTHORITY: awayAddress } }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', () => done(text)); });
 const awayNext = awayCheck.split('\n').find((l) => l.startsWith('next:')) ?? '';
+// A model server that says how much context it serves (vLLM's max_model_len, here 8,192): init lists that, and a
+// provider.json that lists more is caught by provider check before routers send it requests that fail.
+const ctxMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19109', '5', 'served-context'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'Qwen/Qwen3-32B', MOCK_MAX_MODEL_LEN: '8192' } });
+procs.push(ctxMock);
+await sleep(1_200);
+const ctxCfgPath = join(walkHome, 'provider-context.json');
+const ctxInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', ctxCfgPath, '--force']);
+const ctxCfg = existsSync(ctxCfgPath) ? JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as { models: { id: string; context: number; maxOutput: number }[] } : null;
+check('orrery provider init lists the context the model server says it serves, and leaves room for the answer', ctxInit.code === 0 && ctxCfg?.models.length === 1 && ctxCfg.models[0].id === 'qwen3-32b' && ctxCfg.models[0].context === 8192 && ctxCfg.models[0].maxOutput === 2048, ctxCfg ? ctxCfg.models.map((m) => `${m.id} context ${m.context} · max output ${m.maxOutput}`).join(', ') : ctxInit.text.slice(0, 120));
+writeFileSync(ctxCfgPath, JSON.stringify({ ...(ctxCfg as object), rpcUrl: RPC, publicUrl: 'http://127.0.0.1:17991', dataDir: join(walkHome, 'context-data'), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 32_768, maxOutput: 4_096 })) }, null, 2));
+const ctxCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
+const ctxLine = ctxCheck.text.split('\n').find((l) => /^\S context /.test(l)) ?? '';
+check('orrery provider check says when provider.json lists more context than the model server serves', /^· context +provider\.json lists 32,768 tokens of context for qwen3-32b, but the model server serves 8,192\. Longer requests fail there and count against this node: set "context" to 8,192 or less$/.test(ctxLine), ctxLine.slice(0, 160) || 'no context line');
+ctxMock.kill('SIGTERM');
 check('a node that knows its wallet only by its address sends the register step to the computer that has the wallet', /^next: list the node on chain, on the computer that has your wallet \(\S+wallet\.json\): \S+ provider register --config /.test(awayNext) && !awayNext.includes('<keypair.json>'), awayNext.split(walkHome).join('~').slice(0, 150) || 'no next line');
 // The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.
 const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
