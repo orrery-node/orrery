@@ -1172,6 +1172,10 @@ const oldAsk = proxied.slice(beforeOld).find((x) => x.url.includes('/v1/chat/com
   // The node keeps that refusal, and orrery provider status says it, for an operator who is not reading the log.
   const refusedStatus = await cliOut(['status']);
   const refusedLine = refusedStatus.split('\n').find((l) => l.trim().startsWith('model server refused')) ?? '';
+  // And provider check, the command an operator runs most, says the same.
+  const refusedCheck = await cliOut(['check']);
+  const refusedCheckLine = refusedCheck.split('\n').find((l) => /^\S refusals /.test(l)) ?? '';
+  check('orrery provider check says what the model server refused in the last 24 hours', /^· refusals +the model server refused \d+ in the last 24 h: \d+ longer than it serves/.test(refusedCheckLine), refusedCheckLine.slice(0, 150) || 'no refusals line in provider check');
   check('orrery provider status counts what the model server refused in the last 24 hours, by kind', /^ {2}model server refused {2}\d+ in the last 24 h: (\d+ longer than it serves)$/.test(refusedLine) && Number(/(\d+) longer/.exec(refusedLine)?.[1]) >= 1, refusedLine.trim() || 'no such line in provider status');
 }
 // A router that lost its records finds its channel on chain and asks the node where it stands. To a node that reads

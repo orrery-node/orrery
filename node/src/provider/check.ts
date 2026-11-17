@@ -1,5 +1,6 @@
 // `orrery provider check`: everything a node needs to earn, looked at from the operator's side before (or after) it
 // lists: the model server, the address routers will call, the listing on chain, the fee money, the enclave, the pledge.
+import { readRefused, refusedCounts, refusedText } from './refusal.ts';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { decodeProvider, pda } from '../chain/program.ts';
 import { usd } from '../pricing.ts';
@@ -84,6 +85,9 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   }
   const room = roomNote(cfg.models);
   if (room) out.push({ ok: false, what: 'max output', detail: room });
+  // What the model server turned away lately, from the node's own record of it: the node's log says each one.
+  const refused = refusedCounts(readRefused(`${node.dir}/refused.jsonl`), 86_400_000);
+  if (Object.keys(refused).length) out.push({ ok: null, what: 'refusals', detail: `the model server refused ${refusedText(refused)} (orrery provider status shows it too; the node's log says each one)` });
   const tooLong = models ? contextNote(cfg.models, models.data ?? []) : null;
   if (tooLong) out.push({ ok: null, what: 'context', detail: tooLong });
   // Listed is not the same as answering: one small request to each model, straight to the model server.
