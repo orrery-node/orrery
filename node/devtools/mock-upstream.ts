@@ -20,7 +20,9 @@ createServer(async (req, res) => {
     const ids = (process.env.MOCK_MODELS ?? 'llama3.1:8b,qwen2.5:7b').split(',');
     // MOCK_MAX_MODEL_LEN makes it say, as vLLM and SGLang do, how many tokens of context each model is served with.
     const served = Number(process.env.MOCK_MAX_MODEL_LEN ?? 0);
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: ids.map((id) => ({ id, ...(served > 0 ? { max_model_len: served } : {}) })) }));
+    // MOCK_OWNED_BY says who owns each model, as Ollama does with the model's namespace ("library").
+    const owner = process.env.MOCK_OWNED_BY;
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', data: ids.map((id) => ({ id, ...(owner ? { object: 'model', owned_by: owner } : {}), ...(served > 0 ? { max_model_len: served } : {}) })) }));
     return;
   }
   if (req.method === 'GET' && req.url?.endsWith('/seen-identity')) {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { draftConfig, findUpstream } from '../src/provider/init.ts';
+import { draftConfig, findUpstream, OLLAMA_NOTE } from '../src/provider/init.ts';
 import { contextNote } from '../src/provider/check.ts';
 
 // A model server whose /models lists these entries, wherever it is asked.
@@ -15,8 +15,8 @@ describe('the context a model server says it serves', () => {
   });
 
   it('keeps the starting numbers when the server does not say', async () => {
-    const f = await findUpstream('http://127.0.0.1:11434/v1', serves([{ id: 'llama3.1:8b' }, { id: 'odd', max_model_len: 'lots' }, { id: 'zero', max_model_len: 0 }]));
-    assert.deepEqual(f, { name: 'your server', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b', 'odd', 'zero'] });
+    const f = await findUpstream('http://127.0.0.1:1234/v1', serves([{ id: 'llama3.1:8b' }, { id: 'odd', max_model_len: 'lots' }, { id: 'zero', max_model_len: 0 }]));
+    assert.deepEqual(f, { name: 'your server', baseUrl: 'http://127.0.0.1:1234/v1', models: ['llama3.1:8b', 'odd', 'zero'] });
     assert.deepEqual(draftConfig(f).models.map((m) => [m.context, m.maxOutput]), [[32768, 4096], [32768, 4096], [32768, 4096]]);
   });
 
@@ -27,5 +27,15 @@ describe('the context a model server says it serves', () => {
       'provider.json lists more context than the model server serves for a (65,536; it serves 16,384) and b (32,768; it serves 8,192). Longer requests fail there and count against this node: set each "context" to what the server serves');
     assert.equal(contextNote([{ id: 'qwen3-32b', upstreamModel: 'Qwen/Qwen3-32B', context: 8192 }], [{ id: 'Qwen/Qwen3-32B', max_model_len: 8192 }]), null);
     assert.equal(contextNote([{ id: 'llama3.1-8b', upstreamModel: 'llama3.1:8b', context: 32768 }], [{ id: 'llama3.1:8b' }]), null);
+  });
+
+  it('on Ollama, lists a context Ollama reads whole, since Ollama does not say and drops the rest quietly', async () => {
+    const o = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['llama3.1:8b', 'nomic-embed-text'] });
+    assert.deepEqual(o.models.map((m) => [m.id, m.context, m.maxOutput]), [['llama3.1-8b', 4096, 1024], ['nomic-embed-text', 8192, 1]]);
+    assert.equal(OLLAMA_NOTE, 'Ollama reads only as much of a prompt as its own context setting allows (OLLAMA_CONTEXT_LENGTH when it starts) and drops the rest without an error, so provider.json lists 4,096 tokens to stay within it. Start Ollama with more and raise "context" to match, with "maxOutput" at a quarter of it');
+    // Behind --upstream, Ollama is known by its answer (owned_by is the model's namespace) or by its port.
+    assert.equal((await findUpstream('http://10.0.0.7:8080/v1', serves([{ id: 'llama3.1:8b', object: 'model', owned_by: 'library' }]))).name, 'Ollama');
+    assert.equal((await findUpstream('http://gpu-box:11434/v1', serves([{ id: 'my/model' }]))).name, 'Ollama');
+    assert.equal((await findUpstream('http://10.0.0.7:8000/v1', serves([{ id: 'Qwen/Qwen3-32B', owned_by: 'vllm' }]))).name, 'your server');
   });
 });

@@ -1543,6 +1543,17 @@ const roomCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '-
 const roomLine = roomCheck.text.split('\n').find((l) => /^\S max output /.test(l)) ?? '';
 check('orrery provider check fails a listing whose maxOutput leaves no room for the prompt, and says what to set', /^✗ max output +qwen3-32b lists a maxOutput of 8,192 in a context of 8,192: nothing is left for the prompt, .* Set maxOutput to a quarter of context or less \(2,048\)$/.test(roomLine), roomLine.slice(0, 150) || 'no max output line');
 ctxMock.kill('SIGTERM');
+// A model server that answers /models the way Ollama does (owned_by "library"), given to init with --upstream: init
+// knows it for Ollama, lists a context Ollama reads whole, and says how to raise it.
+const ollamaLike = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19110', '5', 'ollama-like'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'llama3.1:8b', MOCK_OWNED_BY: 'library' } });
+procs.push(ollamaLike);
+await sleep(1_200);
+const olPath = join(walkHome, 'provider-ollama.json');
+const olInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19110/v1', '--out', olPath, '--force']);
+const olCfg = existsSync(olPath) ? JSON.parse(readFileSync(olPath, 'utf8')) as { models: { id: string; context: number; maxOutput: number }[] } : null;
+ollamaLike.kill('SIGTERM');
+check('orrery provider init knows Ollama by its answer, lists a context Ollama reads whole, and says how to raise it', /^found Ollama at http:\/\/127\.0\.0\.1:19110\/v1/.test(olInit.text.split('\n').find((l) => l.startsWith('found')) ?? '') && olCfg?.models[0]?.context === 4096 && olCfg.models[0]?.maxOutput === 1024 && olInit.text.includes('drops the rest without an error, so provider.json lists 4,096 tokens'),
+  `${(olInit.text.split('\n').find((l) => l.startsWith('found')) ?? 'no found line').slice(0, 60)} · ${olCfg ? olCfg.models.map((m) => `${m.id} context ${m.context} · max output ${m.maxOutput}`).join(', ') : 'no file'} · ${olInit.text.includes('OLLAMA_CONTEXT_LENGTH') ? 'says how to raise it' : 'says nothing about it'}`);
 check('a node that knows its wallet only by its address sends the register step to the computer that has the wallet', /^next: list the node on chain, on the computer that has your wallet \(\S+wallet\.json\): \S+ provider register --config /.test(awayNext) && !awayNext.includes('<keypair.json>'), awayNext.split(walkHome).join('~').slice(0, 150) || 'no next line');
 // The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.
 const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);

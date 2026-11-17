@@ -18,6 +18,15 @@ export const KNOWN_UPSTREAMS: [string, string][] = [
  * max_model_len in /models; Ollama and LM Studio do not). */
 export type Found = { name: string; baseUrl: string; models: string[]; contexts?: Record<string, number> };
 
+/** Ollama does not say in /models how much context it serves, and reads only as much of a prompt as its own setting
+ * allows, dropping the rest without an error. A listing it can always read whole, until the operator raises both. */
+export const OLLAMA_CONTEXT = 4_096;
+export const OLLAMA_NOTE = `Ollama reads only as much of a prompt as its own context setting allows (OLLAMA_CONTEXT_LENGTH when it starts) and drops the rest without an error, so provider.json lists ${OLLAMA_CONTEXT.toLocaleString('en-US')} tokens to stay within it. Start Ollama with more and raise "context" to match, with "maxOutput" at a quarter of it`;
+
+/** A server given with --upstream that is Ollama: it lists each model's namespace as owned_by ("library" for its
+ * own models), or it listens on Ollama's port. */
+const looksLikeOllama = (baseUrl: string, data: { owned_by?: unknown }[]) => data.some((m) => m.owned_by === 'library') || /:11434(\/|$)/.test(baseUrl);
+
 /** The context a /models entry says its model is served with, or null when it does not say. */
 export const servedContext = (m: { max_model_len?: unknown }): number | null =>
   typeof m.max_model_len === 'number' && Number.isSafeInteger(m.max_model_len) && m.max_model_len > 0 ? m.max_model_len : null;
@@ -41,11 +50,11 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
     try {
       const r = await fetchFn(`${baseUrl}/models`, { signal: AbortSignal.timeout(1_500) });
       if (!r.ok) continue;
-      const j = (await r.json()) as { data?: { id?: string; max_model_len?: unknown }[] };
+      const j = (await r.json()) as { data?: { id?: string; max_model_len?: unknown; owned_by?: unknown }[] };
       const listed = (j.data ?? []).filter((m): m is { id: string; max_model_len?: unknown } => typeof m.id === 'string' && m.id.length > 0);
       const models = listed.map((m) => m.id);
       const contexts = Object.fromEntries(listed.flatMap((m) => { const c = servedContext(m); return c ? [[m.id, c]] : []; }));
-      if (models.length) return { name, baseUrl, models, ...(Object.keys(contexts).length ? { contexts } : {}) };
+      if (models.length) return { name: explicit && looksLikeOllama(baseUrl, j.data ?? []) ? 'Ollama' : name, baseUrl, models, ...(Object.keys(contexts).length ? { contexts } : {}) };
       empty ??= [name, baseUrl];
     } catch {
       continue;
@@ -117,7 +126,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     // The context the server says it serves, where it says: a router's clients size their prompts to the listed
     // number, and a longer one fails at the server. A quarter of it is kept for the answer, up to 4,096 tokens.
     models: found.models.map((id) => {
-      const served = found.contexts?.[id];
+      const served = found.contexts?.[id] ?? (found.name === 'Ollama' && !isEmbeddingModel(id) ? OLLAMA_CONTEXT : undefined);
       return isEmbeddingModel(id)
         ? { id: networkId(id), upstreamModel: id, context: served ?? 8_192, maxOutput: 1, price: { input: 20_000, output: 0 } }
         : { id: networkId(id), upstreamModel: id, context: served ?? 32_768, maxOutput: served ? Math.max(1, Math.min(4_096, Math.floor(served / 4))) : 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } };
