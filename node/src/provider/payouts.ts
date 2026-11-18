@@ -137,13 +137,19 @@ export function landedUnits(tx: PayoutTx, wallet: string, mint: string): Landed 
   return { state: 'landed', units: (after ? BigInt(after.uiTokenAmount.amount) : 0n) - (before ? BigInt(before.uiTokenAmount.amount) : 0n) };
 }
 
+/** What the wallet's USDC account held right after the payout, from the same record; null when it is not in it. */
+export function balanceAfter(tx: PayoutTx, wallet: string, mint: string): bigint | null {
+  const after = (tx?.meta?.postTokenBalances ?? []).find((b) => b.owner === wallet && b.mint === mint);
+  return after ? BigInt(after.uiTokenAmount.amount) : null;
+}
+
 /** The log line once a payout's transaction is read back from the chain:
  *   $0.050123 arrived in your wallet: the chain's record of tx 5GhKq2abcdef… shows it in your USDC account */
-export function arrivalNote(p: Payout, c: Landed): string {
+export function arrivalNote(p: Payout, c: Landed, after: bigint | null = null): string {
   const tx = `tx ${p.tx.slice(0, 12)}…`;
   if (c.state === 'failed') return `${tx} failed on chain: nothing of the $${usd(BigInt(p.units))} reached your wallet. See orrery provider payouts`;
   if (c.state === 'missing') return `the RPC has no record of ${tx} yet`;
-  if (c.units === BigInt(p.units)) return `$${usd(c.units)} arrived in your wallet: the chain's record of ${tx} shows it in your USDC account`;
+  if (c.units === BigInt(p.units)) return `$${usd(c.units)} arrived in your wallet: the chain's record of ${tx} shows it in your USDC account${after === null ? '' : `, which then held $${usd(after)}`}`;
   return `${tx} put $${usd(c.units)} in your wallet, not the $${usd(BigInt(p.units))} this node redeemed. See orrery provider payouts`;
 }
 
@@ -163,15 +169,21 @@ type TxReader = { getTransaction: (sig: string, opts: { commitment: 'confirmed';
 
 /** Each payout beside what the chain's record of its transaction says reached the wallet, five lookups at a time; null
  * where the RPC did not answer. A payout found to have arrived as kept goes into `known` and is not looked up again. */
-export async function checkPayouts(conn: TxReader, list: Payout[], wallet: string, mint: string, known?: Map<string, Landed>): Promise<{ p: Payout; chain: Landed | null }[]> {
-  const rows: { p: Payout; chain: Landed | null }[] = [];
+export async function checkPayouts(conn: TxReader, list: Payout[], wallet: string, mint: string, known?: Map<string, Landed>): Promise<{ p: Payout; chain: Landed | null; after: bigint | null }[]> {
+  const rows: { p: Payout; chain: Landed | null; after: bigint | null }[] = [];
   for (let i = 0; i < list.length; i += 5) {
     const part = list.slice(i, i + 5);
-    const looked = await Promise.all(part.map((p) => known?.get(p.tx) ?? conn.getTransaction(p.tx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).then((tx) => landedUnits(tx as PayoutTx, wallet, mint)).catch(() => null)));
+    const looked = await Promise.all(part.map((p): Promise<{ chain: Landed | null; after: bigint | null }> => {
+      const seen = known?.get(p.tx);
+      if (seen) return Promise.resolve({ chain: seen, after: null });
+      return conn.getTransaction(p.tx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 })
+        .then((tx) => ({ chain: landedUnits(tx as PayoutTx, wallet, mint), after: balanceAfter(tx as PayoutTx, wallet, mint) }))
+        .catch(() => ({ chain: null, after: null }));
+    }));
     part.forEach((p, j) => {
-      const c = looked[j];
+      const { chain: c, after } = looked[j];
       if (known && c?.state === 'landed' && c.units === BigInt(p.units)) known.set(p.tx, c);
-      rows.push({ p, chain: c });
+      rows.push({ p, chain: c, after });
     });
   }
   return rows;

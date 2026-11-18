@@ -730,7 +730,7 @@ export class ProviderNode {
   private async confirmArrival(p: Payout): Promise<void> {
     for (let i = 0; i < 3; i++) {
       const [r] = await checkPayouts(this.conn, [p], this.authority.toBase58(), this.mint.toBase58(), this.payoutsOnChain);
-      if (r?.chain && r.chain.state !== 'missing') return this.log(arrivalNote(p, r.chain));
+      if (r?.chain && r.chain.state !== 'missing') return this.log(arrivalNote(p, r.chain, r.after));
       await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
     }
   }

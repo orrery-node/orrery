@@ -881,8 +881,10 @@ check('the node’s console lists each payout to the wallet with its transaction
 const arrivals = async () => providerSpecs.map((s, i) => {
   const kept = readPayouts(join(WORK, 'providers', s.name.split(' ')[0].toLowerCase(), 'payouts.jsonl'));
   const marked = ((nodes[i].status() as { payouts?: { checked?: Record<string, { units: string }> } | null }).payouts?.checked) ?? {};
-  const told = kept.filter((p) => nodeSaid[i].includes(`$${usd(BigInt(p.units))} arrived in your wallet: the chain's record of tx ${p.tx.slice(0, 12)}… shows it in your USDC account`) && marked[p.tx]?.units === p.units);
-  return { kept: kept.length, told: told.length };
+  const said = (p: { units: string; tx: string }) => nodeSaid[i].find((l) => l.startsWith(`$${usd(BigInt(p.units))} arrived in your wallet: the chain's record of tx ${p.tx.slice(0, 12)}… shows it in your USDC account`));
+  const told = kept.filter((p) => said(p) && marked[p.tx]?.units === p.units);
+  const lastKept = kept.slice().sort((a, b) => a.at - b.at).at(-1);
+  return { kept: kept.length, told: told.length, held: lastKept ? said(lastKept)?.match(/, which then held \$([0-9.]+)$/)?.[1] ?? null : null };
 });
 let arrived = await arrivals();
 for (let t = 0; t < 20 && arrived.some((a) => a.told < a.kept); t++) {
@@ -891,6 +893,10 @@ for (let t = 0; t < 20 && arrived.some((a) => a.told < a.kept); t++) {
 }
 check('each node reads every payout it sent back from the chain on its own and says it arrived in the wallet', arrived.some((a) => a.kept > 0) && arrived.every((a) => a.told === a.kept),
   arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} ${a.told}/${a.kept}`).join(', '));
+// The line for each node's latest payout says what its wallet then held, from the same record: what the wallet holds now.
+const heldNow = await Promise.all(providerSpecs.map((_, i) => balance(wallets[i].publicKey)));
+check('each node says what its wallet held after its latest payout, and the chain agrees', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || a.held === usd(heldNow[i])),
+  arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} said $${a.held ?? '—'}, chain $${usd(heldNow[i])}`).join(', '));
 // And `provider status`, for a node on a server with no browser, says the same of the last payout.
 const lastPaidLine = (await cliOut(['status'])).split('\n').find((l) => /^\s+last payout\s/.test(l)) ?? '';
 const ironLastKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at)[0];

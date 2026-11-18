@@ -162,6 +162,19 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(arrivalNote!(p, { state: 'landed', units: 50_123n }), "$0.050123 arrived in your wallet: the chain's record of tx 5Gh4kQp9xTn2… shows it in your USDC account");
     assert.equal(arrivalNote!(p, { state: 'landed', units: 40_000n }), 'tx 5Gh4kQp9xTn2… put $0.040000 in your wallet, not the $0.050123 this node redeemed. See orrery provider payouts');
     assert.equal(arrivalNote!(p, { state: 'failed' }), 'tx 5Gh4kQp9xTn2… failed on chain: nothing of the $0.050123 reached your wallet. See orrery provider payouts');
+    const withBalance = arrivalNote as unknown as (p: unknown, c: unknown, after: bigint | null) => string;
+    assert.equal(withBalance(p, { state: 'landed', units: 50_123n }, 1_250_123n), "$0.050123 arrived in your wallet: the chain's record of tx 5Gh4kQp9xTn2… shows it in your USDC account, which then held $1.250123");
+    assert.equal(withBalance(p, { state: 'landed', units: 40_000n }, 1_250_123n), 'tx 5Gh4kQp9xTn2… put $0.040000 in your wallet, not the $0.050123 this node redeemed. See orrery provider payouts');
+  });
+
+  it('reads from the same record what the wallet’s USDC account held right after the payout', () => {
+    const balanceAfter = (payouts as unknown as { balanceAfter?: (tx: unknown, wallet: string, mint: string) => bigint | null }).balanceAfter;
+    assert.equal(typeof balanceAfter, 'function', 'payouts.ts reads it');
+    const wallet = 'Wa11etWa11etWa11etWa11etWa11etWa11et', mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    const bal = (owner: string, amount: string, m = mint) => ({ accountIndex: 4, mint: m, owner, uiTokenAmount: { amount } });
+    assert.equal(balanceAfter!({ meta: { err: null, preTokenBalances: [bal(wallet, '1200000')], postTokenBalances: [bal('other', '9'), bal(wallet, '1250123', 'otherMint'), bal(wallet, '1250123')] } }, wallet, mint), 1_250_123n);
+    assert.equal(balanceAfter!({ meta: { err: null, preTokenBalances: [], postTokenBalances: [bal('other', '9')] } }, wallet, mint), null);
+    assert.equal(balanceAfter!(null, wallet, mint), null);
   });
 
   it('marks in the status each listed payout the node has seen arrive as kept, for the console', () => {
