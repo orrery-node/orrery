@@ -646,11 +646,25 @@ const editedCfgPath = join(WORK, 'ironbridge-edited.json');
 writeFileSync(editedCfgPath, JSON.stringify({ ...nodes[1].cfg, models: nodes[1].cfg.models.map((m, i) => (i === 0 ? { ...m, price: { ...m.price, input: m.price.input + 1_000 } } : m)) }));
 const editedOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'status', '--config', editedCfgPath], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
 const listingEdited = editedOut.split('\n').find((l) => /^\s+listing\s/.test(l)) ?? '';
+// Whether anything outside is reaching the node: a check from this computer does not count, nor does the operator's
+// own provider check going out and back through the public address; a request relayed from outside does.
+const ibPort = providerSpecs[1].port;
+const reachNow = async () => ((await (await fetch(`http://127.0.0.1:${ibPort}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { reach?: { lastHour: number; lastAt: number | null } }).reach;
+const reachBefore = await reachNow();
+await rawRead(ibPort, '/health', { host: `127.0.0.1:${ibPort}` });
+await rawRead(ibPort, '/health', { host: 'gpu.example.org', 'x-orrery-own-check': '1' });
+const reachOwn = await reachNow();
+await rawRead(ibPort, '/health', { host: 'gpu.example.org', 'x-forwarded-for': '203.0.113.9' });
+await rawRead(ibPort, '/health', { host: 'gpu.example.org' });
+const reachOutside = await reachNow();
+const reachSaid = (await cliOut(['status'])).split('\n').find((l) => /^\s+checked from outside\s/.test(l)) ?? '';
+check('orrery provider status says how often something outside this computer checked the node, and its own checks do not count', !!reachBefore && reachOwn?.lastHour === reachBefore.lastHour && reachOutside?.lastHour === reachBefore.lastHour + 2 && /checked from outside\s+\d+ times? in the last hour, the last \d+ s ago$/.test(reachSaid), reachSaid.trim().replace(/\s{2,}/g, ' ') || `no such line (${JSON.stringify(reachOutside ?? null)})`);
 // Listed but not restarted: a node still serving a price list the chain has moved on from. Routers refuse it, and
 // provider.json agrees with the chain, so only what the running node serves can show it.
+let staleOwnCheck = '';
 const staleNode = createHttpServer((req, res) => {
   if (req.url?.startsWith('/orrery/status')) return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ...ibStatusNow, manifestHash: 'ff'.repeat(32) }));
-  if (req.url === '/health') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ provider: nodes[1].pda.toBase58() }));
+  if (req.url === '/health') { staleOwnCheck = String(req.headers['x-orrery-own-check'] ?? ''); return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ provider: nodes[1].pda.toBase58() })); }
   if (req.url === '/v1/manifest') return void res.writeHead(200, { 'content-type': 'application/json' }).end('{"stale":true}');
   res.writeHead(404).end();
 }).listen(0, '127.0.0.1');
@@ -947,7 +961,7 @@ const stripCheck = await providerCheck(behindStrip);
 const behindStale = Object.assign(Object.create(iron) as typeof iron, { cfg: { ...iron.cfg, publicUrl: `http://127.0.0.1:${stalePort}` } });
 const staleCheck = await providerCheck(behindStale);
 staleNode.close();
-check('orrery provider check fetches the price list a router would read, and fails when the public address serves another than the chain has', lineOf(staleCheck, 'manifest')?.ok === false && /is not the one on chain, so routers refuse this node/.test(lineOf(staleCheck, 'manifest')?.detail ?? '') && lineOf(ironCheck, 'manifest') === undefined, (lineOf(staleCheck, 'manifest')?.detail ?? 'no manifest line').replace(/http:\/\/127\.0\.0\.1:\d+/, '<node>').slice(0, 130));
+check('orrery provider check fetches the price list a router would read, and fails when the public address serves another than the chain has', lineOf(staleCheck, 'manifest')?.ok === false && /is not the one on chain, so routers refuse this node/.test(lineOf(staleCheck, 'manifest')?.detail ?? '') && lineOf(ironCheck, 'manifest') === undefined && staleOwnCheck === '1', (lineOf(staleCheck, 'manifest')?.detail ?? 'no manifest line').replace(/http:\/\/127\.0\.0\.1:\d+/, '<node>').slice(0, 130));
 stripFront.close();
 const wireDirect = lineOf(ironCheck, 'wire key'), wireStripped = lineOf(stripCheck, 'wire key');
 const haloWire = lineOf(haloCheck, 'wire key');

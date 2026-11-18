@@ -31,6 +31,7 @@ import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { payoutLines } from './provider/payouts.ts';
+import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
@@ -364,7 +365,7 @@ async function provider(sub: string) {
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, day: day ? { answers: day.answers, billed: day.usd } : null, payouts: s.payouts ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd } : null, payouts: s.payouts ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
@@ -378,6 +379,7 @@ async function provider(sub: string) {
       ...(s.payouts === undefined ? [] : payoutLines(s.payouts, Date.now(), !s.payouts && (await node.paidOutBefore()))),
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
+      ...(s.reach ? [reachLine(s.reach, cfgPath)] : []),
       // What the model server turned away, from the node's own record of it: the log says each one as it happens.
       ...(s.refused ? [`  model server refused  ${refusedText(s.refused as Parameters<typeof refusedText>[0])}`] : []),
       `  fees                  ${fees}`,

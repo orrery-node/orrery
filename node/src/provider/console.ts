@@ -1,6 +1,7 @@
 // The provider's own page at http://127.0.0.1:<port>/ — what this node served, what routers signed for it, what is
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
 import { payoutRows, type PayoutSummary } from './payouts.ts';
+import type { ReachNow } from './reach.ts';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { NAME } from '../brand.ts';
@@ -47,7 +48,7 @@ export function payoutHint(waiting: string, minUnits: number, everySecs: number,
   return `  (pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string };
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */

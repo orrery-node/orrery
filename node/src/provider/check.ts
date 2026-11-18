@@ -144,7 +144,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   if (models) out.push(await modelTest(base, { ...(key ? { authorization: `Bearer ${key}` } : {}), ...(cfg.upstream.headers ?? {}) }, cfg.models));
 
   const t0 = Date.now();
-  const health = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/health`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { provider?: string } | null;
+  const health = (await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/health`, { timeoutMs: 5_000, headers: { 'x-orrery-own-check': '1' } }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as { provider?: string } | null;
   const local = privateAddress(cfg.publicUrl);
   out.push(!health ? { ok: false, what: 'public address', detail: PLACEHOLDER_URL.test(cfg.publicUrl) ? `${cfg.publicUrl} is still the placeholder from provider init: set publicUrl to the address routers will reach` : `${cfg.publicUrl} did not answer /health (is the node running, and reachable from outside?)` }
     : health.provider !== node.pda.toBase58() ? { ok: false, what: 'public address', detail: `${cfg.publicUrl} answers as another listing` }

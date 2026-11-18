@@ -22,6 +22,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { appendPayout, payoutSummary, readPayouts } from './payouts.ts';
+import { Reach } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
@@ -183,6 +184,7 @@ export class ProviderNode {
   private ledger = new Map<string, Entry>();
   private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
   private answers = 0;
+  private readonly reach = new Reach();
   private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -334,6 +336,8 @@ export class ProviderNode {
       refused: refusedCounts(readRefused(`${this.dir}/refused.jsonl`), 86_400_000),
       // The last payout to the wallet and the last day's, from payouts.jsonl: null until the first one.
       payouts: payoutSummary(readPayouts(`${this.dir}/payouts.jsonl`)),
+      // How often something outside this computer checked this node in the last hour.
+      reach: this.reach.read(),
     };
   }
 
@@ -373,6 +377,8 @@ export class ProviderNode {
         return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
+        // Something outside this computer asked: the operator's own provider check says it is theirs.
+        if (!isLocal(req) && !req.headers['x-orrery-own-check']) this.reach.note();
         const upstream = await this.upstreamUp();
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
