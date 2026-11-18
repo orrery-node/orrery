@@ -145,4 +145,21 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(payoutCheckLines!('ironbridge', [{ p: a, chain: null }], 1).at(-1), 'the RPC did not answer; nothing was checked');
     assert.match(payoutCheckLines!('ironbridge', [], 0)[0], /^"ironbridge" has kept no payout yet\./);
   });
+
+  it('says in the log what the chain shows reached the wallet once a payout is sent', () => {
+    const arrivalNote = (payouts as unknown as { arrivalNote?: (p: unknown, c: unknown) => string }).arrivalNote;
+    assert.equal(typeof arrivalNote, 'function', 'payouts.ts writes the line');
+    const p = { at: 0, units: '50123', channels: 2, tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' };
+    assert.equal(arrivalNote!(p, { state: 'landed', units: 50_123n }), "$0.050123 arrived in your wallet: the chain's record of tx 5Gh4kQp9xTn2… shows it in your USDC account");
+    assert.equal(arrivalNote!(p, { state: 'landed', units: 40_000n }), 'tx 5Gh4kQp9xTn2… put $0.040000 in your wallet, not the $0.050123 this node redeemed. See orrery provider payouts');
+    assert.equal(arrivalNote!(p, { state: 'failed' }), 'tx 5Gh4kQp9xTn2… failed on chain: nothing of the $0.050123 reached your wallet. See orrery provider payouts');
+  });
+
+  it('marks in the status each listed payout the node has seen arrive as kept, for the console', () => {
+    const withChecked = (payouts as unknown as { withChecked?: (s: unknown, known: Map<string, unknown>) => { checked: unknown } | null }).withChecked;
+    assert.equal(typeof withChecked, 'function', 'payouts.ts marks them');
+    const s = { last: { at: 2, units: '5', channels: 1, tx: 'B' }, day: { units: '9', count: 2 }, recent: [{ at: 2, units: '5', channels: 1, tx: 'B' }, { at: 1, units: '4', channels: 1, tx: 'A' }] };
+    assert.deepEqual(withChecked!(s, new Map([['A', { state: 'landed', units: 4n }], ['Z', { state: 'landed', units: 1n }]]))?.checked, { A: { state: 'landed', units: '4' } });
+    assert.equal(withChecked!(null, new Map()), null);
+  });
 });

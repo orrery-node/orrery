@@ -101,6 +101,28 @@ export function landedUnits(tx: PayoutTx, wallet: string, mint: string): Landed 
   return { state: 'landed', units: (after ? BigInt(after.uiTokenAmount.amount) : 0n) - (before ? BigInt(before.uiTokenAmount.amount) : 0n) };
 }
 
+/** The log line once a payout's transaction is read back from the chain:
+ *   $0.050123 arrived in your wallet: the chain's record of tx 5GhKq2abcdef… shows it in your USDC account */
+export function arrivalNote(p: Payout, c: Landed): string {
+  const tx = `tx ${p.tx.slice(0, 12)}…`;
+  if (c.state === 'failed') return `${tx} failed on chain: nothing of the $${usd(BigInt(p.units))} reached your wallet. See orrery provider payouts`;
+  if (c.state === 'missing') return `the RPC has no record of ${tx} yet`;
+  if (c.units === BigInt(p.units)) return `$${usd(c.units)} arrived in your wallet: the chain's record of ${tx} shows it in your USDC account`;
+  return `${tx} put $${usd(c.units)} in your wallet, not the $${usd(BigInt(p.units))} this node redeemed. See orrery provider payouts`;
+}
+
+/** The status's payouts, with each listed one the node has seen arrive as kept marked for the console's "on chain"
+ * column. */
+export function withChecked(s: PayoutSummary | null, known: Map<string, Landed>): (PayoutSummary & { checked: Record<string, { state: 'landed'; units: string }> }) | null {
+  if (!s) return null;
+  const checked: Record<string, { state: 'landed'; units: string }> = {};
+  for (const r of s.recent) {
+    const c = known.get(r.tx);
+    if (c?.state === 'landed') checked[r.tx] = { state: 'landed', units: c.units.toString() };
+  }
+  return { ...s, checked };
+}
+
 type TxReader = { getTransaction: (sig: string, opts: { commitment: 'confirmed'; maxSupportedTransactionVersion: 0 }) => Promise<unknown> };
 
 /** Each payout beside what the chain's record of its transaction says reached the wallet, five lookups at a time; null

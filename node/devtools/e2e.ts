@@ -97,6 +97,7 @@ const providerSpecs = [
 
 const nodes: InstanceType<typeof ProviderNode>[] = [];
 const wallets: Keypair[] = [];
+const nodeSaid: string[][] = [];
 for (const s of providerSpecs) {
   const wallet = Keypair.generate();
   wallets.push(wallet);
@@ -112,7 +113,12 @@ for (const s of providerSpecs) {
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
     paymentInside: 'inside' in s ? (s.inside as boolean) : undefined,
   });
-  node.log = (l) => console.log(`    [${s.name.split(' ')[0]}] ${l}`);
+  const said: string[] = [];
+  nodeSaid.push(said);
+  node.log = (l) => {
+    said.push(l);
+    console.log(`    [${s.name.split(' ')[0]}] ${l}`);
+  };
   await fund(wallet.publicKey);
   await fund(node.node.publicKey);
   await sendAndConfirmTransaction(conn, new Transaction().add(node.registerInstruction(wallet.publicKey)), [wallet]);
@@ -863,6 +869,21 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// Each node read every payout it sent back from the chain on its own, said in its log that it arrived, and its status
+// marks it for the console's "on chain" column, before anyone pressed the button below.
+const arrivals = async () => providerSpecs.map((s, i) => {
+  const kept = readPayouts(join(WORK, 'providers', s.name.split(' ')[0].toLowerCase(), 'payouts.jsonl'));
+  const marked = ((nodes[i].status() as { payouts?: { checked?: Record<string, { units: string }> } | null }).payouts?.checked) ?? {};
+  const told = kept.filter((p) => nodeSaid[i].includes(`$${usd(BigInt(p.units))} arrived in your wallet: the chain's record of tx ${p.tx.slice(0, 12)}… shows it in your USDC account`) && marked[p.tx]?.units === p.units);
+  return { kept: kept.length, told: told.length };
+});
+let arrived = await arrivals();
+for (let t = 0; t < 20 && arrived.some((a) => a.told < a.kept); t++) {
+  await new Promise((r) => setTimeout(r, 500));
+  arrived = await arrivals();
+}
+check('each node reads every payout it sent back from the chain on its own and says it arrived in the wallet', arrived.some((a) => a.kept > 0) && arrived.every((a) => a.told === a.kept),
+  arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} ${a.told}/${a.kept}`).join(', '));
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.
 const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);

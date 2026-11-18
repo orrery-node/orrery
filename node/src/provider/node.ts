@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { appendPayout, checkPayouts, payoutCheckLines, payoutSummary, readPayouts, type Landed } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, payoutCheckLines, payoutSummary, readPayouts, withChecked, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -337,7 +337,7 @@ export class ProviderNode {
       // What the model server turned away in the last day, by kind: kept in refused.jsonl, so a restart keeps it.
       refused: refusedCounts(readRefused(`${this.dir}/refused.jsonl`), 86_400_000),
       // The last payout to the wallet and the last day's, from payouts.jsonl: null until the first one.
-      payouts: payoutSummary(readPayouts(`${this.dir}/payouts.jsonl`)),
+      payouts: withChecked(payoutSummary(readPayouts(`${this.dir}/payouts.jsonl`)), this.payoutsOnChain),
       // How often something outside this computer checked this node in the last hour.
       reach: this.reach.read(),
     };
@@ -719,6 +719,17 @@ export class ProviderNode {
     this.log(`the node key is running low on SOL for redeem fees: ${(lamports / 1e9).toFixed(6)} SOL, about ${Math.floor(lamports / REDEEM_FEE_LAMPORTS)} more payouts. Send a little SOL to ${this.node.publicKey.toBase58()} before it runs out`);
   }
 
+  /** Reads a payout's transaction back from the chain once it is sent and says in the log what reached the wallet, so
+   * the operator sees the money arrive, not only leave. One lookup, tried again a few seconds later when the RPC has
+   * no record yet; the console's "on chain" column shows it from then on. */
+  private async confirmArrival(p: Payout): Promise<void> {
+    for (let i = 0; i < 3; i++) {
+      const [r] = await checkPayouts(this.conn, [p], this.authority.toBase58(), this.mint.toBase58(), this.payoutsOnChain);
+      if (r?.chain && r.chain.state !== 'missing') return this.log(arrivalNote(p, r.chain));
+      await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
+    }
+  }
+
   private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
     try {
       const sig = await sendFresh(this.conn, () => new Transaction().add(...ixs(batch)), [this.node]);
@@ -737,7 +748,11 @@ export class ProviderNode {
         this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
       }
       // Kept beside the ledger, so `provider status` can say when money last landed and what the day came to.
-      if (units > 0n) appendPayout(`${this.dir}/payouts.jsonl`, { at: Date.now(), units: units.toString(), channels: paidFrom, tx: sig });
+      if (units > 0n) {
+        const payout = { at: Date.now(), units: units.toString(), channels: paidFrom, tx: sig };
+        appendPayout(`${this.dir}/payouts.jsonl`, payout);
+        void this.confirmArrival(payout);
+      }
       this.save();
       return true;
     } catch (err) {

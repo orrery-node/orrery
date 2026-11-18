@@ -61,7 +61,7 @@ describe('the local console pages', () => {
 
   it('the node’s console checks its payouts against the chain when asked, and the inlined rows say what arrived', () => {
     const html = providerConsolePage();
-    assert.ok(html.includes('id="check"') && html.includes("fetch('/orrery/payouts/check',K)") && html.includes('s.payouts.checked=checked') && html.includes('<th>on chain</th>'), 'the button, the call and the column');
+    assert.ok(html.includes('id="check"') && html.includes("fetch('/orrery/payouts/check',K)") && html.includes('s.payouts.checked=Object.assign({},s.payouts.checked,checked)') && html.includes('<th>on chain</th>'), 'the button, the call and the column');
     const src = html.slice(html.indexOf('const payoutRows=') + 'const payoutRows='.length, html.indexOf(';\nconst esc='));
     const tx = '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2';
     const p = { day: { units: '120000', count: 1 }, recent: [{ at: 0, units: '120000', channels: 1, tx }], checked: { [tx]: { state: 'landed', units: '120000' } } };
