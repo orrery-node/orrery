@@ -73,6 +73,29 @@ export function roomNote(models: { id: string; context: number; maxOutput: numbe
   return `${what}: nothing is left for the prompt, so a request that leaves max_tokens to the node fails at the model server. Set maxOutput to a quarter of context or less${tight.length === 1 ? ` (${n(Math.max(1, Math.floor(tight[0].context / 4)))})` : ''}`;
 }
 
+export type ListingState = 'listed' | 'missing' | 'closed' | 'prices_changed' | 'address_changed';
+
+/** Where this node's listing stands on chain against what its provider.json says. */
+export function listingState(acct: { active: boolean; manifestHash: Uint8Array; endpoint: string } | null, node: { manifestHash: Buffer; publicUrl: string }): ListingState {
+  if (!acct) return 'missing';
+  if (!acct.active) return 'closed';
+  if (!node.manifestHash.equals(acct.manifestHash)) return 'prices_changed';
+  return acct.endpoint === node.publicUrl ? 'listed' : 'address_changed';
+}
+
+/** The line `provider status` prints for it: what the state means for routers, and the command that clears it. */
+export function listingLine(state: ListingState, o: { config: string; endpoint?: string }): string {
+  const register = `orrery provider register --config ${o.config}`;
+  const said: Record<ListingState, string> = {
+    listed: 'on chain, with this node’s prices and address',
+    missing: `not on chain yet, so no router can find this node: ${register}`,
+    closed: 'closed on chain, so no router uses this node',
+    prices_changed: `provider.json has prices the chain does not, so a router reading them now refuses this node: ${register}`,
+    address_changed: `on chain under ${o.endpoint}, so routers go there: ${register}`,
+  };
+  return `  listing               ${said[state]}`;
+}
+
 /** Each model against the other listings of it, for the request the :cheap route compares (2,000 tokens in, 500 out):
  * the cheapest, or how many list it cheaper and the lowest, or that nobody else lists it; and, when some list it
  * cheaper, the command that suggests prices under them. Four models at most; null when there are none. */
@@ -131,8 +154,8 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     out.push({ ok: false, what: 'listing', detail: `not on chain yet: orrery provider register --config … lists it${rent === null ? '' : ` (takes about ${((rent + 10_000) / LAMPORTS_PER_SOL).toFixed(4)} SOL once, the rent for the listing)`}` });
   }
   else {
-    const same = acct.manifestHash.equals(node.manifestHash), url = acct.endpoint === cfg.publicUrl;
-    out.push({ ok: same && url && acct.active, what: 'listing', detail: !acct.active ? 'on chain but closed' : !same ? 'your price list changed since you listed; run provider register again so routers accept it' : !url ? `on chain with another address (${acct.endpoint}); run provider register again` : `on chain, price list matches, $${usd(acct.settled)} settled in ${acct.redeems} redeems` });
+    const state = listingState(acct, { manifestHash: node.manifestHash, publicUrl: cfg.publicUrl });
+    out.push({ ok: state === 'listed', what: 'listing', detail: state === 'closed' ? 'on chain but closed' : state === 'prices_changed' ? 'your price list changed since you listed; run provider register again so routers accept it' : state === 'address_changed' ? `on chain with another address (${acct.endpoint}); run provider register again` : `on chain, price list matches, $${usd(acct.settled)} settled in ${acct.redeems} redeems` });
   }
 
   // Where each price stands among the other listings of the same model, as a router on this cluster reads them. A node

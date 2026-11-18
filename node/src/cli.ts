@@ -28,7 +28,7 @@ import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck } from './provider/check.ts';
+import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { payoutLines } from './provider/payouts.ts';
 import { composeFile } from './provider/compose.ts';
@@ -351,6 +351,9 @@ async function provider(sub: string) {
       return console.log(`no node is answering on 127.0.0.1:${cfg.listen}. Start it with: ${CLI} provider start --config ${cfgPath}`);
     }
     const unsigned = s.channels.reduce((n, c) => n + c.unsigned, 0);
+    // Where the listing stands on chain: a node edited and not listed again gets no routers and no error.
+    const onChain = await node.conn.getAccountInfo(node.pda).then((i) => (i ? decodeProvider(i.data) : null)).catch(() => undefined);
+    const listing = onChain === undefined ? null : listingState(onChain, { manifestHash: node.manifestHash, publicUrl: cfg.publicUrl });
     // The last day from the node's own log of answers: a restart resets the count since start, not this.
     const day = await readOwnDay(cfg.listen, node.consoleKey());
     // The fee money, before it is a problem: every payout is one transaction the node key pays for.
@@ -361,10 +364,11 @@ async function provider(sub: string) {
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, day: day ? { answers: day.answers, billed: day.usd } : null, payouts: s.payouts ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, day: day ? { answers: day.answers, billed: day.usd } : null, payouts: s.payouts ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
+      ...(listing ? [listingLine(listing, { config: cfgPath, endpoint: onChain?.endpoint })] : []),
       `  answers since start   ${s.answers}`,
       ...(day ? [dayLine(day)] : []),
       `  signed to you         $${s.signed}`,
