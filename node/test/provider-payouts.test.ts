@@ -81,4 +81,41 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(paidOutLine!(list.slice(0, 1), 3_600_000, '1h', now), 'paid out: none in the last 1h; the last was 2026-11-16 14:17 UTC');
     assert.equal(paidOutLine!([], 86_400_000, '24h', now), null);
   });
+
+  it('reads from the chain’s record of a payout what reached the wallet’s USDC account, counting an opened account from zero', () => {
+    const landedUnits = (payouts as unknown as { landedUnits?: (tx: unknown, wallet: string, mint: string) => unknown }).landedUnits;
+    assert.equal(typeof landedUnits, 'function', 'payouts.ts reads the chain’s record');
+    const wallet = 'Wa11etWa11etWa11etWa11etWa11etWa11et', mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', other = 'OtherOtherOtherOtherOtherOtherOther1';
+    const bal = (accountIndex: number, owner: string, amount: string, m = mint) => ({ accountIndex, mint: m, owner, uiTokenAmount: { amount } });
+    const tx = { meta: { err: null, preTokenBalances: [bal(3, other, '900000'), bal(4, wallet, '1000000')], postTokenBalances: [bal(3, other, '849877'), bal(4, wallet, '1050123')] } };
+    assert.deepEqual(landedUnits!(tx, wallet, mint), { state: 'landed', units: 50_123n });
+    const opened = { meta: { err: null, preTokenBalances: [bal(3, other, '900000')], postTokenBalances: [bal(3, other, '849877'), bal(5, wallet, '50123')] } };
+    assert.deepEqual(landedUnits!(opened, wallet, mint), { state: 'landed', units: 50_123n });
+    const otherMint = { meta: { err: null, preTokenBalances: [bal(4, wallet, '0', other)], postTokenBalances: [bal(4, wallet, '50123', other)] } };
+    assert.deepEqual(landedUnits!(otherMint, wallet, mint), { state: 'landed', units: 0n });
+    assert.deepEqual(landedUnits!({ meta: { err: { InstructionError: [0, 'Custom'] }, preTokenBalances: [], postTokenBalances: [] } }, wallet, mint), { state: 'failed' });
+    assert.deepEqual(landedUnits!(null, wallet, mint), { state: 'missing' });
+  });
+
+  it('lists each kept payout beside what the chain says arrived, and adds up the ones that arrived as kept', () => {
+    const payoutCheckLines = (payouts as unknown as { payoutCheckLines?: (name: string, rows: unknown[], total: number) => string[] }).payoutCheckLines;
+    assert.equal(typeof payoutCheckLines, 'function', 'payouts.ts writes the lines');
+    const at = Date.parse('2026-11-18T14:05:11Z');
+    const a = { at, units: '50123', channels: 2, tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' };
+    const b = { at: at - 3_600_000, units: '69877', channels: 1, tx: '3xR4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' };
+    assert.deepEqual(payoutCheckLines!('ironbridge', [{ p: a, chain: { state: 'landed', units: 50_123n } }, { p: b, chain: { state: 'landed', units: 69_877n } }], 7), [
+      '"ironbridge", the last 2 of 7 payouts kept here, each checked against the chain',
+      '  2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5Gh4kQp9xTn2…  arrived $0.050123',
+      '  2026-11-18 13:05:11 UTC  $0.069877  1 channel   tx 3xR4kQp9xTn2…  arrived $0.069877',
+      '2 of 2 arrived in your wallet as kept here, $0.120000 in all',
+    ]);
+    const mixed = payoutCheckLines!('ironbridge', [{ p: a, chain: { state: 'landed', units: 40_000n } }, { p: b, chain: { state: 'missing' } }, { p: { ...b, tx: 'FAILFAILFAILFAILFAILFAILFAILFAIL' }, chain: { state: 'failed' } }, { p: b, chain: null }], 4);
+    assert.equal(mixed[1], '  2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5Gh4kQp9xTn2…  arrived $0.040000, kept here as $0.050123');
+    assert.equal(mixed[2].endsWith('the RPC has no record of it'), true);
+    assert.equal(mixed[3].endsWith('failed on chain'), true);
+    assert.equal(mixed[4].endsWith('not checked'), true);
+    assert.equal(mixed[5], '0 of 3 arrived in your wallet as kept here, $0.000000 in all; 3 did not (see above); 1 not checked, the RPC did not answer');
+    assert.equal(payoutCheckLines!('ironbridge', [{ p: a, chain: null }], 1).at(-1), 'the RPC did not answer; nothing was checked');
+    assert.match(payoutCheckLines!('ironbridge', [], 0)[0], /^"ironbridge" has kept no payout yet\./);
+  });
 });

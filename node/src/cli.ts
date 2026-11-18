@@ -30,7 +30,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
-import { paidOutLine, payoutLines, readPayouts } from './provider/payouts.ts';
+import { landedUnits, paidOutLine, payoutCheckLines, payoutLines, readPayouts, type Landed, type PayoutTx } from './provider/payouts.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -117,7 +117,8 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
   ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
-  ${CLI} provider price   --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
+  ${CLI} provider payouts --config provider.json [--last 5] [--json]   each payout this node kept, checked against what the chain says reached your wallet
+  ${CLI} provider price  --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
 
   --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
@@ -347,6 +348,24 @@ async function provider(sub: string) {
     return;
   }
   const node = new ProviderNode(cfg);
+  // Each payout this node kept, next to what the chain's record of its transaction says reached the wallet: the books
+  // checked against the chain, one transaction lookup per payout shown.
+  if (sub === 'payouts') {
+    const kept = readPayouts(`${node.dir}/payouts.jsonl`).sort((a, b) => b.at - a.at);
+    const last = Math.min(50, Math.max(1, Math.floor(Number(flag('last', '5')) || 5)));
+    const shown = kept.slice(0, last);
+    const wallet = node.authority.toBase58(), mint = node.mint.toBase58();
+    const rows: { p: (typeof kept)[number]; chain: Landed | null }[] = [];
+    for (let i = 0; i < shown.length; i += 5) {
+      const part = shown.slice(i, i + 5);
+      const looked = await Promise.all(part.map((p) => node.conn.getTransaction(p.tx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).then((tx) => landedUnits(tx as PayoutTx, wallet, mint)).catch(() => null)));
+      part.forEach((p, j) => rows.push({ p, chain: looked[j] }));
+    }
+    if (has('json')) return console.log(JSON.stringify({ name: cfg.name, wallet, kept: kept.length, payouts: rows.map(({ p, chain }) => ({ ...p, chain: chain ? { state: chain.state, units: chain.state === 'landed' ? chain.units.toString() : null } : null })) }, null, 2));
+    const lines = payoutCheckLines(cfg.name, rows, kept.length);
+    if (rows.some((r) => r.chain && !(r.chain.state === 'landed' && r.chain.units === BigInt(r.p.units)))) process.exitCode = 1;
+    return console.log(lines.join('\n'));
+  }
   // The console's address with its key, from this node's folder: for an operator whose start output is gone.
   if (sub === 'console') return console.log(`http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
   // What the console shows, in a terminal: for a node on a server with no browser. Read from the running node.

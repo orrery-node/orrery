@@ -91,7 +91,7 @@ Four limits keep an unattended agent in bounds: `--max-price 0.50/1.50` (never r
 
 `orrery provider compare --config provider.json` puts your price list next to every other listing of the same models on chain and says where each one stands on a typical request (cheapest of N, how far under the next, or that nobody else lists it), before you register or change prices.
 
-On the provider side, `orrery provider earnings --config provider.json --since 24h` sums what the node billed, by model or by channel, from the log it keeps of every answer it serves (`served.jsonl` in its data directory). Routers sign the lower of a bill and their own math, so the console's signed total is the number that redeems.
+On the provider side, `orrery provider earnings --config provider.json --since 24h` sums what the node billed, by model or by channel, from the log it keeps of every answer it serves (`served.jsonl` in its data directory). Routers sign the lower of a bill and their own math, so the console's signed total is the number that redeems. `orrery provider payouts --config provider.json` checks the other end: each payout the node kept (`payouts.jsonl`), beside what the chain's record of its transaction says reached your wallet's USDC account.
 
 Both sides get a local console. The router serves one at `http://127.0.0.1:7171/` (every answer, its provider, cost and why it went there), and a provider node serves one at its own port: answers served, totals signed by routers, what is redeemed on chain and what is waiting. The provider page answers only on that computer, and a request relayed by a proxy on the same machine gets a 404.
 

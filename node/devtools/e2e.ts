@@ -844,6 +844,13 @@ for (let i = 0; i < nodes.length; i++) {
     const earnOut = await cliOut(['earnings', '--since', '24h']);
     const earnPaid = earnOut.split('\n').find((l) => l.startsWith('paid out: ')) ?? '';
     check('orrery provider earnings says what reached the wallet in the same window, from the payouts the node keeps', earnPaid.startsWith(`paid out: $${usd(keptUnits)} to your wallet in ${kept.length} payout${kept.length === 1 ? '' : 's'} in the last 24h, the last `) && earnPaid.includes(`(tx ${kept[kept.length - 1]?.tx.slice(0, 12)}…)`), earnPaid || 'no such line');
+    // And `provider payouts` looks each kept payout up on chain: what the transaction put in the wallet's USDC account
+    // is what the node wrote down, for every one it shows.
+    const payOut = await cliOut(['payouts', '--last', '50']);
+    const shownKept = kept.slice().sort((a, b) => b.at - a.at).slice(0, 50);
+    const shownUnits = shownKept.reduce((a, p) => a + BigInt(p.units), 0n);
+    check('orrery provider payouts checks each kept payout against the chain: every one arrived in the wallet as kept', shownKept.length > 0 && payOut.split('\n').at(-1) === `${shownKept.length} of ${shownKept.length} arrived in your wallet as kept here, $${usd(shownUnits)} in all` && shownKept.every((p) => payOut.includes(`tx ${p.tx.slice(0, 12)}…  arrived $${usd(BigInt(p.units))}`)),
+      payOut.split('\n').at(-1) || 'no output');
   }
   if (acct.settled > 0n) check(`${providerSpecs[i].name} keeps each payout it sent: they add up to what the chain says it redeemed, and its status names the last`, keptUnits === acct.settled && BigInt(keptChannels) === acct.redeems && lastKept === kept[kept.length - 1]?.tx,
     `${kept.length} payout(s) kept, $${usd(keptUnits)} over ${keptChannels} channel redeem(s); chain $${usd(acct.settled)} over ${acct.redeems}`);

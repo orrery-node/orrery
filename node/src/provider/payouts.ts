@@ -82,3 +82,40 @@ export function paidOutLine(list: Payout[], sinceMs: number, since: string, now 
   const ago = ms < 60_000 ? `${Math.round(ms / 1000)} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 172_800_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`;
   return `paid out: $${usd(units)} to your wallet in ${inside.length} payout${inside.length === 1 ? '' : 's'} in the last ${since}, the last ${ago} ago (tx ${newest.tx.slice(0, 12)}…)`;
 }
+
+export type TokenBalance = { accountIndex: number; mint: string; owner?: string; uiTokenAmount: { amount: string } };
+export type PayoutTx = { meta: { err: unknown; preTokenBalances?: TokenBalance[] | null; postTokenBalances?: TokenBalance[] | null } | null } | null;
+export type Landed = { state: 'landed'; units: bigint } | { state: 'failed' } | { state: 'missing' };
+
+/** What a payout's transaction put into the wallet's USDC account, from the chain's own record of it: the account's
+ * balance after the transaction minus before (an account the payout opened counts from zero). */
+export function landedUnits(tx: PayoutTx, wallet: string, mint: string): Landed {
+  if (!tx?.meta) return { state: 'missing' };
+  if (tx.meta.err) return { state: 'failed' };
+  const of = (list: TokenBalance[] | null | undefined) => (list ?? []).find((b) => b.owner === wallet && b.mint === mint);
+  const after = of(tx.meta.postTokenBalances);
+  const before = of(tx.meta.preTokenBalances);
+  return { state: 'landed', units: (after ? BigInt(after.uiTokenAmount.amount) : 0n) - (before ? BigInt(before.uiTokenAmount.amount) : 0n) };
+}
+
+/** `provider payouts`: each payout this node kept, newest first, next to what the chain says reached the wallet,
+ *   2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5GhKq2abcdef…  arrived $0.050123
+ * then a line that adds them up and says whether every one arrived as kept. */
+export function payoutCheckLines(name: string, rows: { p: Payout; chain: Landed | null }[], total: number): string[] {
+  if (!rows.length) return [`"${name}" has kept no payout yet. Each payout it sends to your wallet is kept in payouts.jsonl in its folder, with its transaction.`];
+  const said = (c: Landed | null, p: Payout) => {
+    if (!c) return 'not checked';
+    if (c.state === 'missing') return 'the RPC has no record of it';
+    if (c.state === 'failed') return 'failed on chain';
+    return c.units === BigInt(p.units) ? `arrived $${usd(c.units)}` : `arrived $${usd(c.units)}, kept here as $${usd(BigInt(p.units))}`;
+  };
+  const lines = rows.map(({ p, chain }) => `  ${new Date(p.at).toISOString().slice(0, 19).replace('T', ' ')} UTC  $${usd(BigInt(p.units))}  ${p.channels} channel${p.channels === 1 ? ' ' : 's'}  tx ${p.tx.slice(0, 12)}…  ${said(chain, p)}`);
+  const head = `"${name}", the last ${rows.length} of ${total} payout${total === 1 ? '' : 's'} kept here, each checked against the chain`;
+  const checked = rows.filter((r) => r.chain);
+  if (!checked.length) return [head, ...lines, 'the RPC did not answer; nothing was checked'];
+  const asKept = checked.filter((r) => r.chain!.state === 'landed' && (r.chain as { units: bigint }).units === BigInt(r.p.units));
+  const sum = asKept.reduce((n, r) => n + BigInt(r.p.units), 0n);
+  const rest = checked.length - asKept.length;
+  const unchecked = rows.length - checked.length;
+  return [head, ...lines, `${asKept.length} of ${checked.length} arrived in your wallet as kept here, $${usd(sum)} in all${rest ? `; ${rest} did not (see above)` : ''}${unchecked ? `; ${unchecked} not checked, the RPC did not answer` : ''}`];
+}
