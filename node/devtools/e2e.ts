@@ -651,6 +651,15 @@ const listingEdited = editedOut.split('\n').find((l) => /^\s+listing\s/.test(l))
 const ibPort = providerSpecs[1].port;
 const reachNow = async () => ((await (await fetch(`http://127.0.0.1:${ibPort}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { reach?: { lastHour: number; lastAt: number | null } }).reach;
 const reachBefore = await reachNow();
+// A fresh node in the same rehearsal says in its own log when something outside first reaches it, and only once.
+const firstLines: string[] = [];
+const freshReach = Object.assign(Object.create(nodes[1]) as object, { reach: new (await import('../src/provider/reach.ts')).Reach(), log: (l: string) => void firstLines.push(l) }) as unknown as { handle: (req: never, res: never) => Promise<void> };
+const asOutside = { headers: { host: 'gpu.example.org' }, socket: { remoteAddress: '127.0.0.1' }, method: 'GET', url: '/health' };
+const sink = () => ({ writeHead: () => sink(), end: () => undefined, setHeader: () => undefined }) as never;
+await freshReach.handle(asOutside as never, sink());
+await freshReach.handle(asOutside as never, sink());
+await freshReach.handle({ ...asOutside, headers: { host: `127.0.0.1:${providerSpecs[1].port}` } } as never, sink());
+check('a node says in its own log when something outside first reaches it, once', firstLines.filter((l) => /^reached from outside \d+ s after starting: the public address works/.test(l)).length === 1, firstLines.find((l) => l.startsWith('reached')) ?? 'no such line');
 await rawRead(ibPort, '/health', { host: `127.0.0.1:${ibPort}` });
 await rawRead(ibPort, '/health', { host: 'gpu.example.org', 'x-orrery-own-check': '1' });
 const reachOwn = await reachNow();

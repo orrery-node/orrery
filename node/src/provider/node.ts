@@ -22,7 +22,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { appendPayout, payoutSummary, readPayouts } from './payouts.ts';
-import { Reach } from './reach.ts';
+import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
@@ -185,6 +185,7 @@ export class ProviderNode {
   private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
   private answers = 0;
   private readonly reach = new Reach();
+  private quietTimer: NodeJS.Timeout | null = null;
   private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -378,7 +379,7 @@ export class ProviderNode {
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         // Something outside this computer asked: the operator's own provider check says it is theirs.
-        if (!isLocal(req) && !req.headers['x-orrery-own-check']) this.reach.note();
+        if (!isLocal(req) && !req.headers['x-orrery-own-check'] && this.reach.note()) this.log(firstReachNote(this.reach.read().upMs));
         const upstream = await this.upstreamUp();
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
@@ -800,6 +801,11 @@ export class ProviderNode {
       void this.feeHeadsUp();
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
       this.timer = setInterval(() => void this.redeemRound().then(() => this.burnDue()).catch(() => undefined), every);
+      // Three minutes in, an operator watching this log learns whether anything outside has found the node yet.
+      this.quietTimer = setTimeout(() => {
+        if (!this.reach.ever) this.log(quietNote(this.reach.read().upMs));
+      }, 180_000);
+      this.quietTimer.unref?.();
     });
   }
 
@@ -831,6 +837,7 @@ export class ProviderNode {
 
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    if (this.quietTimer) clearTimeout(this.quietTimer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 }

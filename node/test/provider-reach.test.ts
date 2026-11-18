@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as reach from '../src/provider/reach.ts';
 import { Reach, reachLine } from '../src/provider/reach.ts';
 
 describe('whether anything outside is reaching the node', () => {
@@ -25,5 +26,20 @@ describe('whether anything outside is reaching the node', () => {
     assert.equal(reachLine({ lastHour: 1, lastAt: now - 180_000, upMs: 7_200_000 }, 'provider.json', now), '  checked from outside  1 time in the last hour, the last 3 min ago');
     assert.equal(reachLine({ lastHour: 0, lastAt: null, upMs: 45_000 }, 'provider.json', now), '  checked from outside  not yet, 45 s since this node started');
     assert.equal(reachLine({ lastHour: 0, lastAt: null, upMs: 720_000 }, 'provider.json', now), '  checked from outside  not in the last hour. A router that knows this node asks every 30 s, so either none is running or the public address does not reach it: orrery provider check --config provider.json');
+  });
+
+  it('says in the node log when something outside first reaches it, and once when nothing has after three minutes', () => {
+    const r = reach as unknown as { firstReachNote?: (upMs: number) => string; quietNote?: (upMs: number) => string };
+    assert.equal(typeof r.firstReachNote, 'function', 'reach.ts writes the lines');
+    assert.equal(r.firstReachNote!(42_000), 'reached from outside 42 s after starting: the public address works, and routers that know this node check it every 30 s');
+    assert.equal(r.firstReachNote!(380_000), 'reached from outside 6 min after starting: the public address works, and routers that know this node check it every 30 s');
+    assert.equal(r.quietNote!(180_000), 'nothing outside this computer has checked this node in the 3 min since it started; routers that know it check every 30 s, so either none is running or the public address does not reach it: orrery provider check says which');
+  });
+
+  it('says first reach once, however many checks come', () => {
+    const r = new Reach(0) as unknown as { note: (now: number) => boolean };
+    assert.equal(r.note(1_000), true);
+    assert.equal(r.note(2_000), false);
+    assert.equal(r.note(3_000), false);
   });
 });
