@@ -48,8 +48,35 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(typeof rows, 'function', 'payouts.ts renders the console rows');
     const tx = '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2abcdefXYZ';
     const p = { last: { at: Date.parse('2026-11-18T14:05:11Z'), units: '50123', channels: 2, tx }, day: { units: '120000', count: 3 }, recent: [{ at: Date.parse('2026-11-18T14:05:11Z'), units: '50123', channels: 2, tx }] };
-    assert.equal(rows!(p), `<tr><td>2026-11-18 14:05:11 UTC</td><td class=go>$0.050123</td><td>2</td><td title="${tx}">5GhKq2abcdef…</td></tr><tr><td>last 24 h</td><td class=go>$0.120000</td><td colspan=2>3 payouts</td></tr>`);
-    assert.equal(rows!(null), '<tr class=empty><td colspan=4>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>');
+    assert.equal(rows!(p), `<tr><td>2026-11-18 14:05:11 UTC</td><td class=go>$0.050123</td><td>2</td><td title="${tx}">5GhKq2abcdef…</td><td></td></tr><tr><td>last 24 h</td><td class=go>$0.120000</td><td colspan=3>3 payouts</td></tr>`);
+    assert.equal(rows!(null), '<tr class=empty><td colspan=5>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>');
+  });
+
+  it('says beside each payout what the chain says reached the wallet, once the console has checked', () => {
+    const rows = (payouts as unknown as { payoutRows?: (p: unknown) => string }).payoutRows!;
+    const t = (c: string) => `${c}${'x'.repeat(40)}`;
+    const at = Date.parse('2026-11-18T14:05:11Z');
+    const recent = [{ at, units: '50123', channels: 2, tx: t('A') }, { at, units: '70000', channels: 1, tx: t('B') }, { at, units: '1000', channels: 1, tx: t('C') }, { at, units: '2000', channels: 1, tx: t('D') }, { at, units: '3000', channels: 1, tx: t('E') }];
+    const checked = { [t('A')]: { state: 'landed', units: '50123' }, [t('B')]: { state: 'landed', units: '60000' }, [t('C')]: { state: 'missing', units: null }, [t('D')]: { state: 'failed', units: null } };
+    const cells = rows({ day: { units: '126123', count: 5 }, recent, checked }).split('</tr>').slice(0, 5).map((r) => r.slice(r.lastIndexOf('<td>') + 4, -'</td>'.length));
+    assert.deepEqual(cells, ['<span class=go>arrived $0.050123</span>', '<span class=stop>arrived $0.060000</span>', '<span class=stop>no record on chain</span>', '<span class=stop>failed on chain</span>', '']);
+  });
+
+  it('checks each payout against the chain five at a time, and does not ask again about one that arrived as kept', async () => {
+    const checkPayouts = (payouts as unknown as { checkPayouts?: (conn: unknown, list: unknown[], wallet: string, mint: string, known?: Map<string, unknown>) => Promise<{ chain: unknown }[]> }).checkPayouts;
+    assert.equal(typeof checkPayouts, 'function', 'payouts.ts checks against the chain');
+    const wallet = 'Wa11etWa11etWa11etWa11etWa11etWa11et', mint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    const bal = (amount: string) => ({ accountIndex: 4, mint, owner: wallet, uiTokenAmount: { amount } });
+    const asked: string[] = [];
+    const conn = { getTransaction: async (sig: string) => { asked.push(sig); if (sig === 'down') throw new Error('rpc down'); return sig === 'gone' ? null : { meta: { err: null, preTokenBalances: [bal('0')], postTokenBalances: [bal('500')] } }; } };
+    const list = ['ok1', 'ok2', 'gone', 'down', 'ok3', 'ok4', 'short'].map((tx, i) => ({ at: i, units: tx === 'short' ? '600' : '500', channels: 1, tx }));
+    const known = new Map();
+    const first = await checkPayouts!(conn, list, wallet, mint, known);
+    assert.deepEqual(first.map((r) => r.chain), [{ state: 'landed', units: 500n }, { state: 'landed', units: 500n }, { state: 'missing' }, null, { state: 'landed', units: 500n }, { state: 'landed', units: 500n }, { state: 'landed', units: 500n }]);
+    assert.deepEqual([...known.keys()], ['ok1', 'ok2', 'ok3', 'ok4']);
+    asked.length = 0;
+    await checkPayouts!(conn, list, wallet, mint, known);
+    assert.deepEqual(asked, ['gone', 'down', 'short']);
   });
 
   it('drops a kept line whose transaction is not a signature, so nothing from the file reaches the page as markup', () => {

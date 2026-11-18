@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { appendPayout, payoutSummary, readPayouts } from './payouts.ts';
+import { appendPayout, checkPayouts, payoutCheckLines, payoutSummary, readPayouts, type Landed } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -185,6 +185,7 @@ export class ProviderNode {
   private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
   private answers = 0;
   private readonly reach = new Reach();
+  private readonly payoutsOnChain = new Map<string, Landed>();
   private quietTimer: NodeJS.Timeout | null = null;
   private warnedNoCacheReport = false;
   private server: Server | null = null;
@@ -365,6 +366,14 @@ export class ProviderNode {
           return void res.end(providerConsolePage());
         }
         return json(res, 200, this.status());
+      }
+      // The console's "check against the chain": the payouts it lists, each beside what the chain's record of its
+      // transaction says reached the wallet. Asked for by the operator, not polled; one found as kept is not asked again.
+      if (req.method === 'GET' && url.pathname === '/orrery/payouts/check') {
+        if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');
+        const kept = readPayouts(`${this.dir}/payouts.jsonl`).sort((a, b) => b.at - a.at);
+        const rows = await checkPayouts(this.conn, kept.slice(0, 12), this.authority.toBase58(), this.mint.toBase58(), this.payoutsOnChain);
+        return json(res, 200, { rows: rows.map(({ p, chain }) => ({ tx: p.tx, state: chain?.state ?? 'unchecked', units: chain?.state === 'landed' ? chain.units.toString() : null })), line: rows.length ? payoutCheckLines(this.cfg.name, rows, kept.length).at(-1) : null });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/earnings') {
         if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');

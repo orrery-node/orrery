@@ -82,7 +82,7 @@ export function providerConsolePage(): string {
 <div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p><p class="lede" id="reach" hidden></p></div>
 <div class="stats" id="sum"></div>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div></section>
-<section><h2>Payouts to your wallet, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th></tr></thead><tbody id="payouts"></tbody></table></div></section>
+<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="checked" hidden></p></section>
 <section><h2>Last 24 hours, by model (billed)</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>billed</th></tr></thead><tbody id="earn"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>channel</th><th>deposit</th><th>signed to you</th><th>redeemed</th><th>waiting</th><th>unsigned answers</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
@@ -90,10 +90,14 @@ const K={headers:{'x-orrery-console-key':new URLSearchParams(location.search).ge
 const reachSentence=${reachSentence.toString()};
 const payoutRows=${payoutRows.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const checked={};
+document.getElementById('check').onclick=async()=>{const b=document.getElementById('check'),l=document.getElementById('checked');b.disabled=true;b.textContent='Reading the chain…';
+try{const c=await (await fetch('/orrery/payouts/check',K)).json();for(const r of c.rows)if(r.state!=='unchecked')checked[r.tx]={state:r.state,units:r.units};l.textContent=c.line?c.line+' (checked '+new Date().toISOString().slice(11,19)+' UTC)':'';l.hidden=!c.line;tick();}
+catch(e){l.textContent='The RPC did not answer. Try again in a moment.';l.hidden=false;}b.disabled=false;b.textContent='Check against the chain';};
 async function tick(){try{const s=await (await fetch('/orrery/status',K)).json();
 document.getElementById('sum').innerHTML='<div><b>'+s.answers+'</b><span class=cap>answers since start</span></div><div><b class=go>$'+esc(s.signed)+'</b><span class=cap>signed to you</span></div><div><b>$'+esc(s.redeemed)+'</b><span class=cap>redeemed on chain</span></div><div><b class=sig>$'+esc(s.waiting)+'</b><span class=cap>waiting to redeem</span></div>';
 document.getElementById('recent').innerHTML=s.recent.slice(0,12).map(r=>'<tr><td>'+new Date(r.at).toLocaleTimeString()+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.channel.slice(0,8))+'</td><td>'+r.inputTokens+'+'+r.outputTokens+'</td><td class=go>$'+esc(r.cost)+'</td><td>'+(r.sealed?'<span class=go>sealed</span> ':'')+(r.off?'<span class=go>holder −'+(r.off/100)+'%</span>':'')+'</td></tr>').join('')||'<tr class=empty><td colspan=6>No answers yet. Routers find you through your listing on chain.</td></tr>';
-document.getElementById('payouts').innerHTML=payoutRows(s.payouts);
+if(s.payouts)s.payouts.checked=checked;document.getElementById('payouts').innerHTML=payoutRows(s.payouts);document.getElementById('check').hidden=!(s.payouts&&s.payouts.recent.length);
 const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;
 try{const e=await (await fetch('/orrery/earnings?since=24h',K)).json();document.getElementById('earn').innerHTML=e.total.answers?[...e.rows,{...e.total,key:'total'}].map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served in the last 24 hours.</td></tr>';}catch(err){}
 document.getElementById('ch').innerHTML=s.channels.map(c=>'<tr><td>'+esc(c.channel.slice(0,8))+'</td><td>$'+esc(c.deposit)+'</td><td class=go>$'+esc(c.signed)+'</td><td>$'+esc(c.redeemed)+'</td><td class=sig>$'+esc(c.waiting)+'</td><td>'+c.unsigned+'</td></tr>').join('')||'<tr class=empty><td colspan=6>None yet. A router opens one with its first request.</td></tr>';

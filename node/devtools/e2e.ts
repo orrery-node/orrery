@@ -863,6 +863,16 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
+// the node kept, and the line under the table says so. Without the console key it is not there.
+const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);
+const ibCheck = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/payouts/check`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { rows?: { tx: string; state: string; units: string | null }[]; line?: string | null } | null;
+const ibCheckNoKey = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/payouts/check`).then((r) => r.status).catch(() => 0);
+const ibKeptUnits = ibKept.reduce((a, p) => a + BigInt(p.units), 0n);
+check('the node’s console checks each payout against the chain: every one arrived in the wallet as kept, and only with the key', ibKept.length > 0 && ibCheckNoKey === 404
+  && ibCheck?.rows?.length === ibKept.length && ibCheck.rows.every((r, j) => r.tx === ibKept[j].tx && r.state === 'landed' && r.units === ibKept[j].units)
+  && ibCheck.line === `${ibKept.length} of ${ibKept.length} arrived in your wallet as kept here, $${usd(ibKeptUnits)} in all`,
+  ibCheck?.line ?? `no answer (without the key: ${ibCheckNoKey})`);
 
 const iron = nodes[1];
 const ironCh = channels.get(iron.pda.toBase58())!;

@@ -30,7 +30,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
-import { landedUnits, paidOutLine, payoutCheckLines, payoutLines, readPayouts, type Landed, type PayoutTx } from './provider/payouts.ts';
+import { checkPayouts, paidOutLine, payoutCheckLines, payoutLines, readPayouts } from './provider/payouts.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -355,12 +355,7 @@ async function provider(sub: string) {
     const last = Math.min(50, Math.max(1, Math.floor(Number(flag('last', '5')) || 5)));
     const shown = kept.slice(0, last);
     const wallet = node.authority.toBase58(), mint = node.mint.toBase58();
-    const rows: { p: (typeof kept)[number]; chain: Landed | null }[] = [];
-    for (let i = 0; i < shown.length; i += 5) {
-      const part = shown.slice(i, i + 5);
-      const looked = await Promise.all(part.map((p) => node.conn.getTransaction(p.tx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).then((tx) => landedUnits(tx as PayoutTx, wallet, mint)).catch(() => null)));
-      part.forEach((p, j) => rows.push({ p, chain: looked[j] }));
-    }
+    const rows = await checkPayouts(node.conn, shown, wallet, mint);
     if (has('json')) return console.log(JSON.stringify({ name: cfg.name, wallet, kept: kept.length, payouts: rows.map(({ p, chain }) => ({ ...p, chain: chain ? { state: chain.state, units: chain.state === 'landed' ? chain.units.toString() : null } : null })) }, null, 2));
     const lines = payoutCheckLines(cfg.name, rows, kept.length);
     if (rows.some((r) => r.chain && !(r.chain.state === 'landed' && r.chain.units === BigInt(r.p.units)))) process.exitCode = 1;

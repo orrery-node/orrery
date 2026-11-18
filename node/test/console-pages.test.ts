@@ -59,6 +59,15 @@ describe('the local console pages', () => {
     assert.ok(html.includes('const payoutRows=') && html.includes('payoutRows(s.payouts)'), 'the rows from /orrery/status');
   });
 
+  it('the node’s console checks its payouts against the chain when asked, and the inlined rows say what arrived', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="check"') && html.includes("fetch('/orrery/payouts/check',K)") && html.includes('s.payouts.checked=checked') && html.includes('<th>on chain</th>'), 'the button, the call and the column');
+    const src = html.slice(html.indexOf('const payoutRows=') + 'const payoutRows='.length, html.indexOf(';\nconst esc='));
+    const tx = '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2';
+    const p = { day: { units: '120000', count: 1 }, recent: [{ at: 0, units: '120000', channels: 1, tx }], checked: { [tx]: { state: 'landed', units: '120000' } } };
+    assert.match(String(runInNewContext(`(${src})(p)`, { p })), /<span class=go>arrived \$0\.120000<\/span>/, 'the inlined rows run on their own');
+  });
+
   it('shows the router’s own record of each node, not only what it counted since it started', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');

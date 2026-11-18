@@ -61,11 +61,14 @@ export function payoutLines(s: PayoutSummary | null, now = Date.now(), paidBefor
 /** The console's payout rows: the latest payouts, newest first, each with its transaction (whole in the title), then
  * the last 24 hours. Its source goes into the page, so it uses nothing from outside itself and names no local function
  * (tsx would wrap one in a helper the browser does not have); what it prints is digits
- * and base58, which readPayouts checks. */
-export function payoutRows(p: { day: { units: string; count: number }; recent: { at: number; units: string; channels: number; tx: string }[] } | null): string {
-  if (!p || !p.recent.length) return '<tr class=empty><td colspan=4>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>';
-  return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '">' + r.tx.slice(0, 12) + '…</td></tr>').join('')
-    + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=2>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>';
+ * and base58, which readPayouts checks. `checked`, which the page fills from /orrery/payouts/check, says beside each
+ * payout what the chain says reached the wallet; only its state is compared and only numbers from it are printed. */
+export function payoutRows(p: { day: { units: string; count: number }; recent: { at: number; units: string; channels: number; tx: string }[]; checked?: Record<string, { state: string; units: string | null }> } | null): string {
+  if (!p || !p.recent.length) return '<tr class=empty><td colspan=5>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>';
+  return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '">' + r.tx.slice(0, 12) + '…</td><td>'
+    + (!p.checked || !p.checked[r.tx] ? '' : p.checked[r.tx].state === 'missing' ? '<span class=stop>no record on chain</span>' : p.checked[r.tx].state === 'failed' ? '<span class=stop>failed on chain</span>'
+      : p.checked[r.tx].state !== 'landed' ? '' : (p.checked[r.tx].units === r.units ? '<span class=go>arrived $' : '<span class=stop>arrived $') + (Number(p.checked[r.tx].units) / 1e6).toFixed(6) + '</span>') + '</td></tr>').join('')
+    + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=3>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>';
 }
 
 /** What reached the wallet in the window `provider earnings` looks at:
@@ -96,6 +99,24 @@ export function landedUnits(tx: PayoutTx, wallet: string, mint: string): Landed 
   const after = of(tx.meta.postTokenBalances);
   const before = of(tx.meta.preTokenBalances);
   return { state: 'landed', units: (after ? BigInt(after.uiTokenAmount.amount) : 0n) - (before ? BigInt(before.uiTokenAmount.amount) : 0n) };
+}
+
+type TxReader = { getTransaction: (sig: string, opts: { commitment: 'confirmed'; maxSupportedTransactionVersion: 0 }) => Promise<unknown> };
+
+/** Each payout beside what the chain's record of its transaction says reached the wallet, five lookups at a time; null
+ * where the RPC did not answer. A payout found to have arrived as kept goes into `known` and is not looked up again. */
+export async function checkPayouts(conn: TxReader, list: Payout[], wallet: string, mint: string, known?: Map<string, Landed>): Promise<{ p: Payout; chain: Landed | null }[]> {
+  const rows: { p: Payout; chain: Landed | null }[] = [];
+  for (let i = 0; i < list.length; i += 5) {
+    const part = list.slice(i, i + 5);
+    const looked = await Promise.all(part.map((p) => known?.get(p.tx) ?? conn.getTransaction(p.tx, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).then((tx) => landedUnits(tx as PayoutTx, wallet, mint)).catch(() => null)));
+    part.forEach((p, j) => {
+      const c = looked[j];
+      if (known && c?.state === 'landed' && c.units === BigInt(p.units)) known.set(p.tx, c);
+      rows.push({ p, chain: c });
+    });
+  }
+  return rows;
 }
 
 /** `provider payouts`: each payout this node kept, newest first, next to what the chain says reached the wallet,
