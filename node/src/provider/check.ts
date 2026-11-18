@@ -3,6 +3,7 @@
 import { readRefused, refusedCounts, refusedText } from './refusal.ts';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { decodeProvider, pda } from '../chain/program.ts';
+import { manifestHash } from '../manifest.ts';
 import { usd } from '../pricing.ts';
 import { Registry, readWire } from '../router/registry.ts';
 import { compare, type CompareRow } from './compare.ts';
@@ -73,14 +74,26 @@ export function roomNote(models: { id: string; context: number; maxOutput: numbe
   return `${what}: nothing is left for the prompt, so a request that leaves max_tokens to the node fails at the model server. Set maxOutput to a quarter of context or less${tight.length === 1 ? ` (${n(Math.max(1, Math.floor(tight[0].context / 4)))})` : ''}`;
 }
 
-export type ListingState = 'listed' | 'missing' | 'closed' | 'prices_changed' | 'address_changed';
+export type ListingState = 'listed' | 'missing' | 'closed' | 'prices_changed' | 'prices_pending' | 'restart_needed' | 'address_changed';
 
-/** Where this node's listing stands on chain against what its provider.json says. */
-export function listingState(acct: { active: boolean; manifestHash: Uint8Array; endpoint: string } | null, node: { manifestHash: Buffer; publicUrl: string }): ListingState {
+/** Where this node's listing stands on chain. Routers read the price list the running node serves, so that decides
+ * whether they accept it; provider.json only says what comes next. Without a running node's word, provider.json
+ * stands in for it. */
+export function listingState(acct: { active: boolean; manifestHash: Uint8Array; endpoint: string } | null, node: { manifestHash: Buffer; runningHash?: Buffer | null; publicUrl: string }): ListingState {
   if (!acct) return 'missing';
   if (!acct.active) return 'closed';
-  if (!node.manifestHash.equals(acct.manifestHash)) return 'prices_changed';
+  const inConfig = node.manifestHash.equals(acct.manifestHash), served = (node.runningHash ?? node.manifestHash).equals(acct.manifestHash);
+  if (!served) return inConfig ? 'restart_needed' : 'prices_changed';
+  if (!inConfig) return 'prices_pending';
   return acct.endpoint === node.publicUrl ? 'listed' : 'address_changed';
+}
+
+/** What a router would make of the price list at the public address, read as a router reads it. Null when it matches
+ * the hash on chain. */
+export function servedManifestLine(served: Buffer | null, chain: Uint8Array, url: string): CheckLine | null {
+  if (!served) return { ok: false, what: 'manifest', detail: `${url}/v1/manifest did not answer, so routers cannot read this node’s prices` };
+  if (served.equals(chain)) return null;
+  return { ok: false, what: 'manifest', detail: `the price list ${url} serves is not the one on chain, so routers refuse this node: run provider register if the new prices are right, and restart the node so it serves what is listed` };
 }
 
 /** The line `provider status` prints for it: what the state means for routers, and the command that clears it. */
@@ -90,7 +103,9 @@ export function listingLine(state: ListingState, o: { config: string; endpoint?:
     listed: 'on chain, with this node’s prices and address',
     missing: `not on chain yet, so no router can find this node: ${register}`,
     closed: 'closed on chain, so no router uses this node',
-    prices_changed: `provider.json has prices the chain does not, so a router reading them now refuses this node: ${register}`,
+    prices_changed: `this node serves prices the chain does not have, so a router reading them now refuses it: ${register}`,
+    prices_pending: `provider.json has new prices that are not live yet, and routers still get the listed ones: ${register}, then restart the node`,
+    restart_needed: `this node still serves its old prices, so a router reading them now refuses it: restart it with orrery provider start --config ${o.config}`,
     address_changed: `on chain under ${o.endpoint}, so routers go there: ${register}`,
   };
   return `  listing               ${said[state]}`;
@@ -167,6 +182,14 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   })().catch(() => null);
   const prices = network ? pricesLine(compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), network, node.pda.toBase58())) : null;
   if (prices) out.push(prices);
+
+  // The price list as a router reads it, from the public address: a node listed anew and not restarted still serves the
+  // old one, and provider.json cannot show that.
+  if (acct?.active && health?.provider === node.pda.toBase58()) {
+    const served = await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? Buffer.from(await r.arrayBuffer()) : null)).catch(() => null);
+    const line = servedManifestLine(served ? manifestHash(served) : null, acct.manifestHash, cfg.publicUrl);
+    if (line) out.push(line);
+  }
 
   // Payouts go to the wallet's USDC account. A wallet made by `orrery wallet new` has none yet: the first payout opens it.
   const payoutAccount = await node.conn.getAccountInfo(pda.ata(node.authority, node.mint)).catch(() => undefined);

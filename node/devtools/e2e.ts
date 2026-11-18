@@ -646,8 +646,22 @@ const editedCfgPath = join(WORK, 'ironbridge-edited.json');
 writeFileSync(editedCfgPath, JSON.stringify({ ...nodes[1].cfg, models: nodes[1].cfg.models.map((m, i) => (i === 0 ? { ...m, price: { ...m.price, input: m.price.input + 1_000 } } : m)) }));
 const editedOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'status', '--config', editedCfgPath], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
 const listingEdited = editedOut.split('\n').find((l) => /^\s+listing\s/.test(l)) ?? '';
-check('orrery provider status says where the listing stands, and when provider.json has prices the chain does not, the command that clears it', /on chain, with this node’s prices and address$/.test(listingNow) && listingEdited.includes('provider.json has prices the chain does not') && listingEdited.endsWith(`orrery provider register --config ${editedCfgPath}`) && (parsedStatus as { listing?: string } | null)?.listing === 'listed',
-  `${listingNow.trim().replace(/\s{2,}/g, ' ')} · edited: ${listingEdited.trim().replace(/\s{2,}/g, ' ').replace(editedCfgPath, '<config>').slice(0, 130)}`);
+// Listed but not restarted: a node still serving a price list the chain has moved on from. Routers refuse it, and
+// provider.json agrees with the chain, so only what the running node serves can show it.
+const staleNode = createHttpServer((req, res) => {
+  if (req.url?.startsWith('/orrery/status')) return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ...ibStatusNow, manifestHash: 'ff'.repeat(32) }));
+  if (req.url === '/health') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ provider: nodes[1].pda.toBase58() }));
+  if (req.url === '/v1/manifest') return void res.writeHead(200, { 'content-type': 'application/json' }).end('{"stale":true}');
+  res.writeHead(404).end();
+}).listen(0, '127.0.0.1');
+await new Promise((r) => staleNode.once('listening', r));
+const stalePort = (staleNode.address() as { port: number }).port;
+const staleCfgPath = join(WORK, 'ironbridge-stale.json');
+writeFileSync(staleCfgPath, JSON.stringify({ ...nodes[1].cfg, listen: stalePort }));
+const staleOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'status', '--config', staleCfgPath], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const listingStale = staleOut.split('\n').find((l) => /^\s+listing\s/.test(l)) ?? '';
+check('orrery provider status judges the listing by what the running node serves: edited and not listed yet, routers still get the listed prices; listed and not restarted, routers refuse it', /on chain, with this node’s prices and address$/.test(listingNow) && listingEdited.includes('new prices that are not live yet, and routers still get the listed ones') && listingEdited.endsWith('then restart the node') && listingStale.includes('still serves its old prices, so a router reading them now refuses it') && listingStale.endsWith(`orrery provider start --config ${staleCfgPath}`) && (parsedStatus as { listing?: string } | null)?.listing === 'listed',
+  `edited: ${listingEdited.trim().replace(/\s{2,}/g, ' ').replace(editedCfgPath, '<config>').slice(0, 90)} · not restarted: ${listingStale.trim().replace(/\s{2,}/g, ' ').replace(staleCfgPath, '<config>').slice(0, 90)}`);
 check('orrery provider status prints what the console shows, from the running node, and says plainly when no node is running', statusOut.includes(nodes[1].pda.toBase58()) && new RegExp(`answers since start\\s+${ibStatusNow.answers}\\b`).test(statusOut) && statusOut.includes(`$${ibStatusNow.signed}`) && statusOut.includes(`$${ibStatusNow.waiting}`) && new RegExp(`channels\\s+${ibStatusNow.channels.length}\\b`).test(statusOut) && /no node is answering on 127\.0\.0\.1:17998/.test(statusDown) && /provider start --config/.test(statusDown), `${statusOut ? statusOut.split('\n').slice(1).map((l) => l.trim().replace(/\s{2,}/g, ' ')).join(' · ') : 'printed nothing'} · with no node: ${statusDown.split('.')[0] || 'printed nothing'}`);
 check('orrery provider console prints the console’s address with its key, and that address opens the console', !!ibKey && consoleUrl === `http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}` && consoleOpened?.status === 200 && /Your node/.test(consoleOpened.body) && (asFront[2]?.body ?? '').includes('provider console'), `${consoleUrl ? consoleUrl.replace(/key=[0-9a-f]+/, 'key=<32 hex>') : 'printed nothing'} → ${consoleOpened?.status ?? 'not opened'} · the keyless page ${(asFront[2]?.body ?? '').includes('provider console') ? 'names the command' : 'does not name the command'}`);
 check('the provider console shows what routers signed to it, and only on its own computer', ibStatus.signed === usd(ibSigned) && ibStatus.waiting === usd(ibSigned) && ibStatus.answers > 0 && relayed.status === 404, `Ironbridge: ${ibStatus.answers} answers · $${ibStatus.signed} signed · $${ibStatus.waiting} waiting · relayed request ${relayed.status}`);
@@ -923,6 +937,11 @@ const stripFront = createHttpServer((req, res) => {
 await new Promise<void>((done) => stripFront.listen(0, '127.0.0.1', () => done()));
 const behindStrip = Object.assign(Object.create(iron) as typeof iron, { cfg: { ...iron.cfg, publicUrl: `http://127.0.0.1:${(stripFront.address() as { port: number }).port}` } });
 const stripCheck = await providerCheck(behindStrip);
+// provider check reads the price list from the public address, as a router does, and fails the way a router would.
+const behindStale = Object.assign(Object.create(iron) as typeof iron, { cfg: { ...iron.cfg, publicUrl: `http://127.0.0.1:${stalePort}` } });
+const staleCheck = await providerCheck(behindStale);
+staleNode.close();
+check('orrery provider check fetches the price list a router would read, and fails when the public address serves another than the chain has', lineOf(staleCheck, 'manifest')?.ok === false && /is not the one on chain, so routers refuse this node/.test(lineOf(staleCheck, 'manifest')?.detail ?? '') && lineOf(ironCheck, 'manifest') === undefined, (lineOf(staleCheck, 'manifest')?.detail ?? 'no manifest line').replace(/http:\/\/127\.0\.0\.1:\d+/, '<node>').slice(0, 130));
 stripFront.close();
 const wireDirect = lineOf(ironCheck, 'wire key'), wireStripped = lineOf(stripCheck, 'wire key');
 const haloWire = lineOf(haloCheck, 'wire key');

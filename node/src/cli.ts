@@ -353,7 +353,7 @@ async function provider(sub: string) {
     const unsigned = s.channels.reduce((n, c) => n + c.unsigned, 0);
     // Where the listing stands on chain: a node edited and not listed again gets no routers and no error.
     const onChain = await node.conn.getAccountInfo(node.pda).then((i) => (i ? decodeProvider(i.data) : null)).catch(() => undefined);
-    const listing = onChain === undefined ? null : listingState(onChain, { manifestHash: node.manifestHash, publicUrl: cfg.publicUrl });
+    const listing = onChain === undefined ? null : listingState(onChain, { manifestHash: node.manifestHash, runningHash: s.manifestHash ? Buffer.from(s.manifestHash, 'hex') : null, publicUrl: cfg.publicUrl });
     // The last day from the node's own log of answers: a restart resets the count since start, not this.
     const day = await readOwnDay(cfg.listen, node.consoleKey());
     // The fee money, before it is a problem: every payout is one transaction the node key pays for.

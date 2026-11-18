@@ -326,6 +326,8 @@ export class ProviderNode {
     });
     return {
       provider: this.pda.toBase58(), name: this.manifest.name, answers: this.answers,
+      // The price list this process serves: what routers read, whatever provider.json says by now.
+      manifestHash: this.manifestHash.toString('hex'),
       signed: usd(signed), redeemed: usd(redeemed), waiting: usd(signed > redeemed ? signed - redeemed : 0n),
       channels, recent: this.served.slice().reverse().map((r) => ({ ...r, cost: usd(r.cost) })),
       // What the model server turned away in the last day, by kind: kept in refused.jsonl, so a restart keeps it.
