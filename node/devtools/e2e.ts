@@ -868,6 +868,11 @@ for (let i = 0; i < nodes.length; i++) {
     const shownUnits = shownKept.reduce((a, p) => a + BigInt(p.units), 0n);
     check('orrery provider payouts checks each kept payout against the chain: every one arrived in the wallet as kept', shownKept.length > 0 && payOut.split('\n').at(-1) === `${shownKept.length} of ${shownKept.length} arrived in your wallet as kept here, $${usd(shownUnits)} in all` && shownKept.every((p) => payOut.includes(`tx ${p.tx.slice(0, 12)}…  arrived $${usd(BigInt(p.units))}`)),
       payOut.split('\n').at(-1) || 'no output');
+    // Each row says what the wallet then held, from the same record; the newest is what the wallet holds now.
+    const newestRow = payOut.split('\n').find((l) => l.includes(`tx ${shownKept[0]?.tx.slice(0, 12)}…`)) ?? '';
+    const walletNow = await balance(wallets[i].publicKey);
+    check('orrery provider payouts says what the wallet held after each payout, and the newest is what the chain holds now', shownKept.length > 0 && newestRow.endsWith(`, wallet then $${usd(walletNow)}`),
+      newestRow.trim().replace(/\s{2,}/g, ' ') || 'no such row');
   }
   if (acct.settled > 0n) check(`${providerSpecs[i].name} keeps each payout it sent: they add up to what the chain says it redeemed, and its status names the last`, keptUnits === acct.settled && BigInt(keptChannels) === acct.redeems && lastKept === kept[kept.length - 1]?.tx,
     `${kept.length} payout(s) kept, $${usd(keptUnits)} over ${keptChannels} channel redeem(s); chain $${usd(acct.settled)} over ${acct.redeems}`);

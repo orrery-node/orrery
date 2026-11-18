@@ -190,9 +190,9 @@ export async function checkPayouts(conn: TxReader, list: Payout[], wallet: strin
 }
 
 /** `provider payouts`: each payout this node kept, newest first, next to what the chain says reached the wallet,
- *   2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5GhKq2abcdef…  arrived $0.050123
+ *   2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5GhKq2abcdef…  arrived $0.050123, wallet then $1.250123
  * then a line that adds them up and says whether every one arrived as kept. */
-export function payoutCheckLines(name: string, rows: { p: Payout; chain: Landed | null }[], total: number): string[] {
+export function payoutCheckLines(name: string, rows: { p: Payout; chain: Landed | null; after?: bigint | null }[], total: number): string[] {
   if (!rows.length) return [`"${name}" has kept no payout yet. Each payout it sends to your wallet is kept in payouts.jsonl in its folder, with its transaction.`];
   const said = (c: Landed | null, p: Payout) => {
     if (!c) return 'not checked';
@@ -200,7 +200,7 @@ export function payoutCheckLines(name: string, rows: { p: Payout; chain: Landed 
     if (c.state === 'failed') return 'failed on chain';
     return c.units === BigInt(p.units) ? `arrived $${usd(c.units)}` : `arrived $${usd(c.units)}, kept here as $${usd(BigInt(p.units))}`;
   };
-  const lines = rows.map(({ p, chain }) => `  ${new Date(p.at).toISOString().slice(0, 19).replace('T', ' ')} UTC  $${usd(BigInt(p.units))}  ${p.channels} channel${p.channels === 1 ? ' ' : 's'}  tx ${p.tx.slice(0, 12)}…  ${said(chain, p)}`);
+  const lines = rows.map(({ p, chain, after }) => `  ${new Date(p.at).toISOString().slice(0, 19).replace('T', ' ')} UTC  $${usd(BigInt(p.units))}  ${p.channels} channel${p.channels === 1 ? ' ' : 's'}  tx ${p.tx.slice(0, 12)}…  ${said(chain, p)}${chain?.state === 'landed' && after != null ? `, wallet then $${usd(after)}` : ''}`);
   const head = `"${name}", the last ${rows.length} of ${total} payout${total === 1 ? '' : 's'} kept here, each checked against the chain`;
   const checked = rows.filter((r) => r.chain);
   if (!checked.length) return [head, ...lines, 'the RPC did not answer; nothing was checked'];

@@ -153,6 +153,8 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(mixed[5], '0 of 3 arrived in your wallet as kept here, $0.000000 in all; 3 did not (see above); 1 not checked, the RPC did not answer');
     assert.equal(payoutCheckLines!('ironbridge', [{ p: a, chain: null }], 1).at(-1), 'the RPC did not answer; nothing was checked');
     assert.match(payoutCheckLines!('ironbridge', [], 0)[0], /^"ironbridge" has kept no payout yet\./);
+    assert.equal(payoutCheckLines!('ironbridge', [{ p: a, chain: { state: 'landed', units: 50_123n }, after: 1_250_123n }], 1)[1], '  2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5Gh4kQp9xTn2…  arrived $0.050123, wallet then $1.250123');
+    assert.equal(payoutCheckLines!('ironbridge', [{ p: a, chain: { state: 'failed' }, after: 1_250_123n }], 1)[1].endsWith('failed on chain'), true);
   });
 
   it('says in the log what the chain shows reached the wallet once a payout is sent', () => {
