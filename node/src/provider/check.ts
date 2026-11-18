@@ -4,7 +4,8 @@ import { readRefused, refusedCounts, refusedText } from './refusal.ts';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { decodeProvider, pda } from '../chain/program.ts';
 import { usd } from '../pricing.ts';
-import { readWire } from '../router/registry.ts';
+import { Registry, readWire } from '../router/registry.ts';
+import { compare, type CompareRow } from './compare.ts';
 import { fetchWithTimeout } from '../sse.ts';
 import { verifySnp } from '../tee/snp.ts';
 import { verifyTdx } from '../tee/tdx.ts';
@@ -72,6 +73,17 @@ export function roomNote(models: { id: string; context: number; maxOutput: numbe
   return `${what}: nothing is left for the prompt, so a request that leaves max_tokens to the node fails at the model server. Set maxOutput to a quarter of context or less${tight.length === 1 ? ` (${n(Math.max(1, Math.floor(tight[0].context / 4)))})` : ''}`;
 }
 
+/** Each model against the other listings of it, for the request the :cheap route compares (2,000 tokens in, 500 out):
+ * the cheapest, or how many list it cheaper and the lowest, or that nobody else lists it; and, when some list it
+ * cheaper, the command that suggests prices under them. Four models at most; null when there are none. */
+export function pricesLine(rows: CompareRow[]): CheckLine | null {
+  if (!rows.length) return null;
+  const say = (r: CompareRow) => (!r.others ? `${r.model} listed by no other node` : !r.cheaper ? `${r.model} the cheapest of ${r.others + 1}` : r.others === 1 ? `${r.model} at $${usd(r.myCost)}, the one other listing cheaper at $${usd(r.lowestCost!)}` : `${r.model} at $${usd(r.myCost)}, ${r.cheaper} of ${r.others} other listings cheaper, the lowest $${usd(r.lowestCost!)}`);
+  const more = rows.length > 4 ? `; and ${rows.length - 4} more` : '';
+  const under = rows.some((r) => r.cheaper > 0) ? ' · orrery provider price suggests prices under the cheapest' : '';
+  return { ok: null, what: 'prices', detail: `a 2,000-in / 500-out request: ${rows.slice(0, 4).map(say).join('; ')}${more}${under}` };
+}
+
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
   const base = cfg.upstream.baseUrl.replace(/\/$/, '');
@@ -122,6 +134,16 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     const same = acct.manifestHash.equals(node.manifestHash), url = acct.endpoint === cfg.publicUrl;
     out.push({ ok: same && url && acct.active, what: 'listing', detail: !acct.active ? 'on chain but closed' : !same ? 'your price list changed since you listed; run provider register again so routers accept it' : !url ? `on chain with another address (${acct.endpoint}); run provider register again` : `on chain, price list matches, $${usd(acct.settled)} settled in ${acct.redeems} redeems` });
   }
+
+  // Where each price stands among the other listings of the same model, as a router on this cluster reads them. A node
+  // priced above every other listing of its models waits longest for its first answer; info only, never a failure.
+  const network = await (async () => {
+    const r = new Registry(node.conn, { allowDev: !!privateAddress(node.conn.rpcEndpoint), measurements: [] });
+    await r.refresh();
+    return r.usable();
+  })().catch(() => null);
+  const prices = network ? pricesLine(compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), network, node.pda.toBase58())) : null;
+  if (prices) out.push(prices);
 
   // Payouts go to the wallet's USDC account. A wallet made by `orrery wallet new` has none yet: the first payout opens it.
   const payoutAccount = await node.conn.getAccountInfo(pda.ata(node.authority, node.mint)).catch(() => undefined);

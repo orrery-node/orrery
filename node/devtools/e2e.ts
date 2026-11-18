@@ -837,6 +837,17 @@ const haloCheck = await providerCheck(nodes[3]);
 console.log(renderCheck('Ironbridge Compute', ironCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 console.log(renderCheck('Halo Compute', haloCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 const lineOf = (ls: { what: string; ok: boolean | null; detail: string }[], w: string) => ls.find((l) => l.what === w);
+// Where each price stands: read from the same listings a router on this cluster reads, Ironbridge against the
+// others, and Halo's one model, which nobody else lists.
+const priceSight = new Registry(conn, { allowDev: true, measurements: [] });
+await priceSight.refresh();
+const { compare: comparePrices } = await import('../src/provider/compare.ts');
+const ironStands = comparePrices(iron.cfg.models.map((m) => ({ id: m.id, price: m.price })), priceSight.usable(), iron.pda.toBase58()).slice(0, 4);
+const ironPrices = lineOf(ironCheck, 'prices')?.detail ?? '';
+const haloPrices = lineOf(haloCheck, 'prices')?.detail ?? '';
+check('orrery provider check says where each model’s price stands among the other listings of it, and points to provider price when some list it cheaper',
+  haloPrices === 'a 2,000-in / 500-out request: gemma-3-27b listed by no other node' && ironStands.length > 0 && ironStands.every((r) => ironPrices.includes(!r.others ? `${r.model} listed by no other node` : !r.cheaper ? `${r.model} the cheapest of ${r.others + 1}` : r.others === 1 ? `${r.model} at $${usd(r.myCost)}, the one other listing cheaper at $${usd(r.lowestCost!)}` : `${r.model} at $${usd(r.myCost)}, ${r.cheaper} of ${r.others} other listings cheaper`)) && ironPrices.endsWith('orrery provider price suggests prices under the cheapest') === ironStands.some((r) => r.cheaper > 0),
+  ironPrices.slice(0, 200) || 'no prices line');
 // Registering from the command line with a wallet that has no SOL: stopped before anything is sent, with what a
 // listing takes, and the size the rent is worked out from is the size of a real listing.
 const brokeDir = join(WORK, 'providers', 'broke');
