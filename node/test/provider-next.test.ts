@@ -26,6 +26,10 @@ describe('the one next step provider check ends with', () => {
     assert.match(nextStep([L('model server', true), L('public address', false), L('listing', false, 'not on chain yet'), L('node key', false)], { ...at, running: true }), /^next: list the node on chain: /);
   });
 
+  it('tells a node that just started that a host still switching over can take a minute, and that its log will say when it is reached', () => {
+    assert.equal(nextStep(but('public address', false), { ...at, running: true }), 'next: make sure https://gpu.example.org reaches this node from outside: it did not answer from here (orrery provider check --config provider.json looks again). A host that is still switching to this process can take a minute; this log says when the first check from outside arrives');
+  });
+
   it('says what listing costs when the check could read it', () => {
     const unlisted = (detail: string) => [L('model server', true), L('public address', true), L('listing', false, detail), L('node key', true)];
     assert.equal(nextStep(unlisted('not on chain yet: orrery provider register --config … --wallet … (takes about 0.0028 SOL once, the rent for the listing)'), at),

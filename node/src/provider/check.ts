@@ -313,7 +313,9 @@ export function nextStep(lines: CheckLine[], at: { config: string; publicUrl: st
   if (listing) return /not on chain yet/.test(listing.detail) ? `next: list the node on chain${where}: ${register}${lowKey ? ' --fund-key' : ''} (${cost ? `one transaction from your wallet, about ${cost} once for the listing’s rent` : 'a one-time transaction from your wallet'}${lowKey ? '; --fund-key also sends the node’s key 0.01 SOL for redeem fees' : ''})` : `next: run ${register} again: ${listing.detail.split(';')[0]}`;
   // The node key line already worked out what 0.01 SOL pays for on this wallet; the next step says the same.
   if (lowKey) return `next: send a little SOL to ${at.nodeKey} for redeem fees (${/\((0\.01 SOL pays for [^)]*)\)/.exec(lowKey.detail)?.[1] ?? FEE_EXAMPLE}), or from the listing wallet: ${register} --fund-key`;
-  if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again)`;
+  // Run as the node starts, this can come before the host routes traffic to the new process (Render takes about 40 s):
+  // the node says in the same log when the first check from outside arrives.
+  if (address && at.running) return `next: make sure ${at.publicUrl} reaches this node from outside: it did not answer from here (orrery provider check --config ${at.config} looks again). A host that is still switching to this process can take a minute; this log says when the first check from outside arrives`;
   if (address) return `next: start the node (orrery provider start --config ${at.config}, or provider compose for Docker) and make sure ${at.publicUrl} reaches it from outside`;
   const other = lines.find((l) => l.ok === false);
   if (other) return `next: ${other.what}: ${other.detail}`;
