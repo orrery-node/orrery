@@ -884,6 +884,10 @@ for (let t = 0; t < 20 && arrived.some((a) => a.told < a.kept); t++) {
 }
 check('each node reads every payout it sent back from the chain on its own and says it arrived in the wallet', arrived.some((a) => a.kept > 0) && arrived.every((a) => a.told === a.kept),
   arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} ${a.told}/${a.kept}`).join(', '));
+// And `provider status`, for a node on a server with no browser, says the same of the last payout.
+const lastPaidLine = (await cliOut(['status'])).split('\n').find((l) => /^\s+last payout\s/.test(l)) ?? '';
+const ironLastKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at)[0];
+check('orrery provider status says the last payout arrived, once the node has read it back from the chain', !!ironLastKept && lastPaidLine.includes(`tx ${ironLastKept.tx.slice(0, 12)}…`) && lastPaidLine.endsWith('  arrived, per the chain'), lastPaidLine.trim() || 'no such line');
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.
 const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);

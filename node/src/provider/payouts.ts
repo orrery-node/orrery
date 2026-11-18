@@ -45,15 +45,16 @@ export function payoutSummary(list: Payout[], now = Date.now()): PayoutSummary |
  *   last payout           $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2…
  *   paid out, last 24 h   $0.120000 in 3 payouts
  * and, before the first one kept, a line that says so: none yet, or none kept since this node began keeping them when
- * the listing was paid out on chain before. */
-export function payoutLines(s: PayoutSummary | null, now = Date.now(), paidBefore = false): string[] {
+ * the listing was paid out on chain before. A last payout the node has read back from the chain as kept ends with
+ * "arrived, per the chain". */
+export function payoutLines(s: (PayoutSummary & { checked?: Record<string, { units: string }> }) | null, now = Date.now(), paidBefore = false): string[] {
   if (!s) return [paidBefore ? '  last payout           none recorded here yet; this listing was paid out on chain before' : '  last payout           none yet'];
   const ms = Math.max(0, now - s.last.at);
   const ago = ms < 60_000 ? `${Math.round(ms / 1000)} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 172_800_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`;
   const when = new Date(s.last.at).toISOString();
   const at = ms < 86_400_000 ? `${when.slice(11, 19)} UTC` : `${when.slice(0, 10)} ${when.slice(11, 16)} UTC`;
   return [
-    `  last payout           $${usd(BigInt(s.last.units))} to your wallet ${ago} ago (${at})  tx ${s.last.tx.slice(0, 12)}…`,
+    `  last payout           $${usd(BigInt(s.last.units))} to your wallet ${ago} ago (${at})  tx ${s.last.tx.slice(0, 12)}…${s.checked?.[s.last.tx]?.units === s.last.units ? '  arrived, per the chain' : ''}`,
     `  paid out, last 24 h   $${usd(BigInt(s.day.units))} in ${s.day.count} payout${s.day.count === 1 ? '' : 's'}`,
   ];
 }

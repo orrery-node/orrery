@@ -43,6 +43,15 @@ describe('what a node has paid out to its wallet', () => {
     assert.deepEqual(payoutLines(null, now, true), ['  last payout           none recorded here yet; this listing was paid out on chain before']);
   });
 
+  it('says the last payout arrived once the node has read it back from the chain as kept, and not otherwise', () => {
+    const now = Date.parse('2026-11-18T14:17:11Z');
+    const s = { last: { at: Date.parse('2026-11-18T14:05:11Z'), units: '50123', channels: 1, tx: '5GhKq2abcdefXYZ' }, day: { units: '120000', count: 3 }, recent: [] };
+    const lines = (checked: Record<string, { units: string }>) => (payoutLines as (x: unknown, n: number) => string[])({ ...s, checked }, now)[0];
+    assert.equal(lines({ '5GhKq2abcdefXYZ': { units: '50123' } }), '  last payout           $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…  arrived, per the chain');
+    assert.equal(lines({ '5GhKq2abcdefXYZ': { units: '40000' } }), '  last payout           $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…');
+    assert.equal(lines({ other: { units: '50123' } }), '  last payout           $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…');
+  });
+
   it('lists the latest payouts for the console, each with its transaction, and the last day under them', () => {
     const rows = (payouts as unknown as { payoutRows?: (p: unknown) => string }).payoutRows;
     assert.equal(typeof rows, 'function', 'payouts.ts renders the console rows');
