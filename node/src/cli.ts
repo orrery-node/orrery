@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -194,10 +194,12 @@ async function listProviders() {
   // What this computer's router saw of each node, from the records it keeps in its home: no request is made for it.
   const watched = loadWatched(home('router', 'watched.json'));
   const seen = new Stats(home('router', 'observed.json'));
+  // And each node's bills against the prices it listed, from the router's log of the answers it paid for.
+  const billsBy = new Map(bills(readTrips(home('router', 'trips.jsonl')), 86_400_000).map((x) => [x.provider, x]));
   for (const e of registry.entries.values()) {
     const a = e.account;
     console.log(`${e.address}  ${(e.manifest?.name ?? '?').padEnd(24)} ${a.active ? 'open  ' : 'closed'}  settled $${usd(a.settled, 2)} in ${a.redeems} redeems  ${e.manifest?.models.length ?? 0} models  ${serverText(e)}${e.manifest?.burn ? `pledges ${e.manifest.burn.share / 100}% to the burn  ` : ''}${tiersText(e.manifest?.holder?.tiers)}${e.tee ? `enclave: ${e.tee.reason}` : ''}${e.problem ? `  ✗ ${e.problem}` : ''}`);
-    const saw = sawLine(watched.get(e.address), seen.all().get(e.address));
+    const saw = sawLine(watched.get(e.address), seen.all().get(e.address), Date.now(), billsBy.get(e.address));
     if (saw) console.log(`    ${saw}`);
   }
 }
@@ -647,7 +649,8 @@ async function main() {
     // What this computer's router saw of each node, from the records it keeps in its home: no request is made for it.
     const watched = loadWatched(home('router', 'watched.json'));
     const seen = new Stats(home('router', 'observed.json'));
-    const saw = (address: string) => sawText(watched.get(address), seen.all().get(address));
+    const billsBy = new Map(bills(readTrips(home('router', 'trips.jsonl')), 86_400_000).map((x) => [x.provider, x]));
+    const saw = (address: string) => sawText(watched.get(address), seen.all().get(address), Date.now(), billsBy.get(address));
     if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })) }, null, 2));
     return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows, saw));
   }

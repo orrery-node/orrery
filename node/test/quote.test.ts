@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { quote, renderQuote } from '../src/quote.ts';
+import { sawText } from '../src/router/watched.ts';
 
 const entry = (name: string, address: string, price: { input: number; output: number; cachedInput?: number }, model = 'm') =>
   ({ address, manifest: { name, models: [{ id: model, price }] }, tee: null }) as never;
@@ -31,5 +32,14 @@ describe('orrery quote', () => {
     assert.equal(lines[at + 1], '  Dear  up in 80 of 82 checks this router made over 3 days; first token in about 960 ms lately');
     assert.ok(lines[at + 2].startsWith('cheapest: Cheap'), 'the record sits between the table and the last line, and a node with no record has no line');
     assert.ok(!renderQuote('m', 2000, 500, 0.8, rows).includes('what your router saw'), 'nothing to say without a record');
+  });
+
+  it('the record says whether the node’s bills stayed within the prices it listed', () => {
+    const w = { checks: 4, up: 4, since: 0 };
+    const said = (sawText as unknown as (w: unknown, o: unknown, now: number, b?: unknown) => string)(w, null, 3_600_000, { checked: 41, over: 0 });
+    assert.equal(said, 'up in 4 of 4 checks this router made over 1 h; every bill was within its listed prices (41 answers in the last 24 h)');
+    const over = (sawText as unknown as (w: unknown, o: unknown, now: number, b?: unknown) => string)(w, null, 3_600_000, { checked: 10, over: 2 });
+    assert.ok(over.endsWith('billed above its listed prices in 2 of 10 answers in the last 24 h; this router paid no more than those prices'), over);
+    assert.equal((sawText as unknown as (w: unknown, o: unknown, now: number, b?: unknown) => string)(w, null, 3_600_000, { checked: 0, over: 0 }), 'up in 4 of 4 checks this router made over 1 h');
   });
 });

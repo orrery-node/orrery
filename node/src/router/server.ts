@@ -290,7 +290,8 @@ export class Router {
         if (!model || !Number.isFinite(inTokens) || !Number.isFinite(outTokens)) return send(res, 400, { error: { message: 'quote needs a model and token counts', type: 'invalid_request_error' } });
         const rows = quote(this.o.registry.usable(), model, inTokens, outTokens, cachedShare);
         // Beside each price, what this router itself saw of the node that lists it.
-        const saw = (address: string) => sawText(this.o.registry.watched(address), this.stats.all().get(address));
+        const billsBy = new Map(this.billsNow().map((x) => [x.provider, x]));
+        const saw = (address: string) => sawText(this.o.registry.watched(address), this.stats.all().get(address), Date.now(), billsBy.get(address));
         return send(res, 200, {
           model, inTokens, outTokens, cachedShare,
           rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })),

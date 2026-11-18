@@ -67,12 +67,13 @@ export function answeredText(o: { ok: number; fail: number; broke?: number } | W
 
 /** One line for `orrery providers` under a node: what this router saw of it, from the records it keeps in its home
  * (health checks and requests from watched.json, first-token speed from observed.json). Empty for a node it never saw. */
-export function sawText(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now()): string {
-  return [watchedText(w, now), answeredText(w, now), o && o.ttftMs !== null ? `first token in about ${Math.round(o.ttftMs).toLocaleString('en-US')} ms lately` : ''].filter((p) => p.length > 0).join('; ');
+/** `b`: the node's bills against the prices it listed, from this router's log of answers over the last 24 h. */
+export function sawText(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now(), b?: { checked: number; over: number } | null): string {
+  return [watchedText(w, now), answeredText(w, now), o && o.ttftMs !== null ? `first token in about ${Math.round(o.ttftMs).toLocaleString('en-US')} ms lately` : '', b && b.checked > 0 ? billsText(b) : ''].filter((p) => p.length > 0).join('; ');
 }
 
-export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now()): string {
-  const saw = sawText(w, o, now);
+export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now(), b?: { checked: number; over: number } | null): string {
+  const saw = sawText(w, o, now, b);
   return saw ? `what your router saw: ${saw}` : '';
 }
 
