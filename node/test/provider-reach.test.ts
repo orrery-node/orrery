@@ -42,4 +42,15 @@ describe('whether anything outside is reaching the node', () => {
     assert.equal(r.note(2_000), false);
     assert.equal(r.note(3_000), false);
   });
+
+  it('says it in a sentence for the console, from the same numbers', () => {
+    const say = (reach as unknown as { reachSentence?: (r: unknown, now: number) => string }).reachSentence;
+    assert.equal(typeof say, 'function', 'reach.ts writes the sentence');
+    const now = 10_000_000;
+    assert.equal(say!({ lastHour: 118, lastAt: now - 12_000, upMs: 7_200_000 }, now), 'Checked from outside this computer 118 times in the last hour, the last 12 s ago: routers can reach this node.');
+    assert.equal(say!({ lastHour: 1, lastAt: now - 180_000, upMs: 7_200_000 }, now), 'Checked from outside this computer 1 time in the last hour, the last 3 min ago: routers can reach this node.');
+    assert.equal(say!({ lastHour: 0, lastAt: null, upMs: 45_000 }, now), 'Not checked from outside this computer yet, 45 s since this node started.');
+    assert.equal(say!({ lastHour: 0, lastAt: null, upMs: 720_000 }, now), 'Not checked from outside this computer in the last hour. A router that knows this node asks every 30 s, so either none is running or the public address does not reach it: orrery provider check says which.');
+    assert.equal(say!(undefined, now), '');
+  });
 });

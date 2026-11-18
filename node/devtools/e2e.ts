@@ -668,6 +668,11 @@ await rawRead(ibPort, '/health', { host: 'gpu.example.org' });
 const reachOutside = await reachNow();
 const reachSaid = (await cliOut(['status'])).split('\n').find((l) => /^\s+checked from outside\s/.test(l)) ?? '';
 check('orrery provider status says how often something outside this computer checked the node, and its own checks do not count', !!reachBefore && reachOwn?.lastHour === reachBefore.lastHour && reachOutside?.lastHour === reachBefore.lastHour + 2 && /checked from outside\s+\d+ times? in the last hour, the last \d+ s ago$/.test(reachSaid), reachSaid.trim().replace(/\s{2,}/g, ' ') || `no such line (${JSON.stringify(reachOutside ?? null)})`);
+// The node's own console says it too, from the same numbers, in the page the operator keeps open.
+const reachPage = await (await fetch(`http://127.0.0.1:${ibPort}/?key=${ibKey}`)).text();
+const reachMod = (await import('../src/provider/reach.ts')) as unknown as { reachSentence?: (r: unknown, now: number) => string };
+const reachSentenceSaid = reachMod.reachSentence?.(reachOutside, Date.now()) ?? '';
+check('the node’s console says whether anything outside this computer is reaching the node', reachPage.includes('id="reach"') && reachPage.includes('const reachSentence=') && /^Checked from outside this computer \d+ times? in the last hour, the last \d+ s ago: routers can reach this node\.$/.test(reachSentenceSaid), reachSentenceSaid || 'no sentence');
 // Listed but not restarted: a node still serving a price list the chain has moved on from. Routers refuse it, and
 // provider.json agrees with the chain, so only what the running node serves can show it.
 let staleOwnCheck = '';

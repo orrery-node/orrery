@@ -56,3 +56,12 @@ export function reachLine(r: ReachNow, config: string, now = Date.now()): string
   if (r.upMs < 120_000) return `${label}not yet, ${ago(r.upMs)} since this node started`;
   return `${label}not in the last hour. A router that knows this node asks every 30 s, so either none is running or the public address does not reach it: orrery provider check --config ${config}`;
 }
+
+/** The console's sentence, from the same numbers as reachLine. Its source goes into the page, so it uses nothing from
+ * outside itself and names no local function. Empty when the node did not say. */
+export function reachSentence(r: ReachNow | null | undefined, now: number): string {
+  if (!r) return '';
+  if (r.lastAt !== null) return 'Checked from outside this computer ' + r.lastHour + (r.lastHour === 1 ? ' time' : ' times') + ' in the last hour, the last ' + (now - r.lastAt < 60000 ? Math.max(0, Math.round((now - r.lastAt) / 1000)) + ' s' : Math.round((now - r.lastAt) / 60000) + ' min') + ' ago: routers can reach this node.';
+  if (r.upMs < 120000) return 'Not checked from outside this computer yet, ' + (r.upMs < 60000 ? Math.round(r.upMs / 1000) + ' s' : Math.round(r.upMs / 60000) + ' min') + ' since this node started.';
+  return 'Not checked from outside this computer in the last hour. A router that knows this node asks every 30 s, so either none is running or the public address does not reach it: orrery provider check says which.';
+}

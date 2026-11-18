@@ -46,6 +46,13 @@ describe('the local console pages', () => {
     assert.match(String(runInNewContext(`(${src})(p)`, { p })), /\$0\.120000.*last 24 h/, 'the inlined payout rows run on their own');
   });
 
+  it('the node’s console says whether anything outside is reaching the node, and the inlined sentence runs on its own', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="reach"') && html.includes('const reachSentence=') && html.includes('reachSentence(s.reach,'), 'the line and its code');
+    const src = html.slice(html.indexOf('const reachSentence=') + 'const reachSentence='.length, html.indexOf(';\nconst payoutRows='));
+    assert.equal(String(runInNewContext(`(${src})(r, 1000)`, { r: { lastHour: 2, lastAt: 0, upMs: 5000 } })), 'Checked from outside this computer 2 times in the last hour, the last 1 s ago: routers can reach this node.');
+  });
+
   it('the node’s console lists its payouts to the wallet, with the code that writes them', () => {
     const html = providerConsolePage();
     assert.ok(html.includes('id="payouts"'), 'a table for the payouts');
