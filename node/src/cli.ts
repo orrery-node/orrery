@@ -30,7 +30,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
-import { checkPayouts, paidOutLine, payoutCheckLines, payoutLines, readPayouts } from './provider/payouts.ts';
+import { checkPayouts, nextPayoutSentence, paidOutLine, payoutCheckLines, payoutLines, readPayouts } from './provider/payouts.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -332,9 +332,23 @@ async function provider(sub: string) {
         // The log above stands on its own; the chain line is added when the listing can be read.
       }
     };
+    // When the rest reaches the wallet: asked of the node running on this computer, with the key in its folder.
+    const nextOut = async () => {
+      const key = (() => {
+        try {
+          return readFileSync(`${expand(cfg.dataDir ?? home('provider'))}/console.key`, 'utf8').trim();
+        } catch {
+          return '';
+        }
+      })();
+      const own = /^[0-9a-f]{32}$/.test(key) ? await readOwnStatus(cfg.listen, key).catch(() => null) : null;
+      const said = nextPayoutSentence(own?.nextPayout);
+      if (said) console.log(`next payout: ${said.charAt(0).toLowerCase()}${said.slice(1)}`);
+    };
     if (!total.answers) {
       console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
-      return landed();
+      await landed();
+      return nextOut();
     }
     console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
     // What reached the wallet in the same window, from the payouts this node keeps beside its log.
@@ -342,6 +356,7 @@ async function provider(sub: string) {
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
     if (paidOut) console.log(paidOut);
     await landed();
+    await nextOut();
     // How routers paid: inside the seal, or with the channel named in headers this node's host can read.
     const paid = paidInside(readTrips(log), windowMs(since));
     console.log(`paid inside the seal: ${paid.inside} of ${paid.answers} answer${paid.answers === 1 ? '' : 's'}${paid.inside < paid.answers ? '; the rest named their channel in headers your host can read (routers before 0.1.16)' : ''}`);

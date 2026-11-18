@@ -857,6 +857,10 @@ for (let i = 0; i < nodes.length; i++) {
     const earnOut = await cliOut(['earnings', '--since', '24h']);
     const earnPaid = earnOut.split('\n').find((l) => l.startsWith('paid out: ')) ?? '';
     check('orrery provider earnings says what reached the wallet in the same window, from the payouts the node keeps', earnPaid.startsWith(`paid out: $${usd(keptUnits)} to your wallet in ${kept.length} payout${kept.length === 1 ? '' : 's'} in the last 24h, the last `) && earnPaid.includes(`(tx ${kept[kept.length - 1]?.tx.slice(0, 12)}…)`), earnPaid || 'no such line');
+    // And when the rest goes out, asked of the running node: what its console says under the payouts.
+    const earnNext = earnOut.split('\n').find((l) => l.startsWith('next payout: ')) ?? '';
+    const nodeNext = ((await import('../src/provider/payouts.ts')) as unknown as { nextPayoutSentence?: (x: unknown) => string }).nextPayoutSentence?.((n.status() as { nextPayout?: unknown }).nextPayout) ?? '';
+    check('orrery provider earnings says when the rest goes out, as the running node counts it', !!nodeNext && earnNext.toLowerCase() === `next payout: ${nodeNext}`.toLowerCase(), earnNext || 'no such line');
     // And `provider payouts` looks each kept payout up on chain: what the transaction put in the wallet's USDC account
     // is what the node wrote down, for every one it shows.
     const payOut = await cliOut(['payouts', '--last', '50']);
