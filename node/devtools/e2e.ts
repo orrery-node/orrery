@@ -3,6 +3,7 @@
 // mid-run, on-chain redemption, a provider releasing its channel, and a final check that every unit of USDC is where
 // it should be.
 //   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/orrery.so: anchor build --arch v2)
+import { readPayouts } from '../src/provider/payouts.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -756,6 +757,14 @@ for (let i = 0; i < nodes.length; i++) {
   const acct = decodeProvider((await conn.getAccountInfo(n.pda))!.data);
   const spent = ch?.cumulative ?? 0n;
   check(`${providerSpecs[i].name} redeemed exactly what the router signed`, got === spent && acct.settled === got, `$${usd(got)} over ${acct.redeems} redeem(s)`);
+  // What the node kept of its own payouts adds up to what the chain says it was paid, channel redeem for channel
+  // redeem, and its status carries the last one: provider status prints it from there.
+  const kept = readPayouts(join(WORK, 'providers', providerSpecs[i].name.split(' ')[0].toLowerCase(), 'payouts.jsonl'));
+  const keptUnits = kept.reduce((a, p) => a + BigInt(p.units), 0n);
+  const keptChannels = kept.reduce((a, p) => a + p.channels, 0);
+  const lastKept = (n.status() as { payouts?: { last: { tx: string } } | null }).payouts?.last.tx;
+  if (acct.settled > 0n) check(`${providerSpecs[i].name} keeps each payout it sent: they add up to what the chain says it redeemed, and its status names the last`, keptUnits === acct.settled && BigInt(keptChannels) === acct.redeems && lastKept === kept[kept.length - 1]?.tx,
+    `${kept.length} payout(s) kept, $${usd(keptUnits)} over ${keptChannels} channel redeem(s); chain $${usd(acct.settled)} over ${acct.redeems}`);
 }
 
 const iron = nodes[1];

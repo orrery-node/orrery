@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · `orrery provider status` says when money last landed in your wallet and what the last day came to: "last payout  $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…" and "paid out, last 24 h  $0.120000 in 3 payouts". The node keeps each payout it sends (when, how much, from how many channels, the transaction) in `payouts.jsonl` in its folder, so the lines survive a restart, and `/orrery/status` carries them as `payouts`. Before the first payout it says "none yet".
+
 ## 0.1.21 · 2026-11-18 01:12 UTC
 
 **Your node lists the context its model server really serves, your router sends a long prompt only to a node that can take it and remembers every node across restarts, and a request no node answered is shown wherever you look as paid nothing.**

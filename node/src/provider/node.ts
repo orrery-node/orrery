@@ -21,6 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
+import { appendPayout, payoutSummary, readPayouts } from './payouts.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
@@ -329,6 +330,8 @@ export class ProviderNode {
       channels, recent: this.served.slice().reverse().map((r) => ({ ...r, cost: usd(r.cost) })),
       // What the model server turned away in the last day, by kind: kept in refused.jsonl, so a restart keeps it.
       refused: refusedCounts(readRefused(`${this.dir}/refused.jsonl`), 86_400_000),
+      // The last payout to the wallet and the last day's, from payouts.jsonl: null until the first one.
+      payouts: payoutSummary(readPayouts(`${this.dir}/payouts.jsonl`)),
     };
   }
 
@@ -701,6 +704,7 @@ export class ProviderNode {
   private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
     try {
       const sig = await sendFresh(this.conn, () => new Transaction().add(...ixs(batch)), [this.node]);
+      let units = 0n, paidFrom = 0;
       for (const [k, e] of batch) {
         const before = e.redeemed;
         const paid = e.best!.cumulative < e.channel.deposit ? e.best!.cumulative : e.channel.deposit;
@@ -708,8 +712,14 @@ export class ProviderNode {
         e.redeemed = e.channel.redeemed > paid ? e.channel.redeemed : paid;
         const amount = e.redeemed - before;
         done.push({ channel: k, amount, tx: sig });
+        if (amount > 0n) {
+          units += amount;
+          paidFrom++;
+        }
         this.log(`redeemed $${usd(amount)} from channel ${k.slice(0, 6)}  tx ${sig.slice(0, 12)}…`);
       }
+      // Kept beside the ledger, so `provider status` can say when money last landed and what the day came to.
+      if (units > 0n) appendPayout(`${this.dir}/payouts.jsonl`, { at: Date.now(), units: units.toString(), channels: paidFrom, tx: sig });
       this.save();
       return true;
     } catch (err) {
