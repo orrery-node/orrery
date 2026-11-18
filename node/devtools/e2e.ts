@@ -767,6 +767,14 @@ for (let i = 0; i < nodes.length; i++) {
     `${kept.length} payout(s) kept, $${usd(keptUnits)} over ${keptChannels} channel redeem(s); chain $${usd(acct.settled)} over ${acct.redeems}`);
 }
 
+// The node's console lists those payouts with their transactions, and the last day's total under them.
+const payMod = (await import('../src/provider/payouts.ts')) as unknown as { payoutRows?: (p: unknown) => string };
+const ibPage = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}`)).text();
+const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).payouts ?? null) ?? '';
+const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
+check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
+  ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+
 const iron = nodes[1];
 const ironCh = channels.get(iron.pda.toBase58())!;
 const before = await balance(user.publicKey);

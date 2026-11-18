@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { fontFaces } from '../devtools/fonts.ts';
 import * as routerConsole from '../src/router/console.ts';
@@ -35,6 +36,20 @@ describe('the local console pages', () => {
   it('would notice a font link coming back', () => {
     assert.deepEqual(outside('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X">'), ['fonts.googleapis.com']);
     assert.deepEqual(outside('<script src="//cdn.example.com/a.js"></script>'), ['cdn.example.com']);
+  });
+
+  it('carry no build helper in the code they inline, so it runs in a browser as it does here', () => {
+    for (const [name, html] of Object.entries(pages)) assert.ok(!/__name\(|__defProp|__export\(/.test(html), `${name} console inlines a helper the browser does not have`);
+    const html = providerConsolePage();
+    const src = html.slice(html.indexOf('const payoutRows=') + 'const payoutRows='.length, html.indexOf(';\nconst esc='));
+    const p = { day: { units: '120000', count: 1 }, recent: [{ at: 0, units: '120000', channels: 1, tx: '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2' }] };
+    assert.match(String(runInNewContext(`(${src})(p)`, { p })), /\$0\.120000.*last 24 h/, 'the inlined payout rows run on their own');
+  });
+
+  it('the node’s console lists its payouts to the wallet, with the code that writes them', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="payouts"'), 'a table for the payouts');
+    assert.ok(html.includes('const payoutRows=') && html.includes('payoutRows(s.payouts)'), 'the rows from /orrery/status');
   });
 
   it('shows the router’s own record of each node, not only what it counted since it started', () => {

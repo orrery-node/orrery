@@ -368,7 +368,7 @@ async function provider(sub: string) {
       `  redeemed on chain     $${s.redeemed}`,
       `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
       // When money last landed in the wallet, and what the last day came to: kept by the node, so a restart keeps it.
-      ...(s.payouts === undefined ? [] : payoutLines(s.payouts)),
+      ...(s.payouts === undefined ? [] : payoutLines(s.payouts, Date.now(), !s.payouts && (await node.paidOutBefore()))),
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,
       // What the model server turned away, from the node's own record of it: the log says each one as it happens.
