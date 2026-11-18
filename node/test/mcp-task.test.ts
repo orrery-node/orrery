@@ -237,4 +237,48 @@ describe('orrery mcp and task budgets', () => {
     assert.equal(calls, 1);
     assert.equal(quick.result.isError, true);
   });
+
+  it('embed works under a task as ask does: its budget, a cost cap, one node, and what the task has left', async () => {
+    const sent: Record<string, string>[] = [];
+    const fetchFn = async (url: string, init?: unknown) => {
+      if (url.endsWith('/orrery/status')) return reply({ providers: [{ address: 'SeedAddress111', name: 'Orrery Seed' }] });
+      sent.push((init as { headers: Record<string, string> }).headers);
+      return reply({ data: [{ embedding: [0.1, 0.2] }], usage: { prompt_tokens: 3 } }, 200, { 'x-orrery-cost': '0.000001', 'x-orrery-task-spent': '0.000001', 'x-orrery-task-left': '0.049999', 'x-orrery-provider': 'SeedAddress111', 'x-orrery-provider-name': 'Orrery%20Seed' });
+    };
+    const out = await call('embed', { model: 'e', input: 'hi', task: 'index', task_budget: 0.05, max_cost: 0.001, node: 'orrery seed' }, fetchFn as never);
+    assert.equal(sent[0]['x-orrery-task'], 'index');
+    assert.equal(sent[0]['x-orrery-task-budget'], '0.05');
+    assert.equal(sent[0]['x-orrery-max-cost'], '0.001');
+    assert.equal(sent[0]['x-orrery-provider'], 'SeedAddress111');
+    assert.ok(out.result.content[0].text.endsWith('\n\n— 1 vector of 2 dimensions, 3 input tokens, paid $0.000001, answered by Orrery Seed (SeedAd…)\n— task index: $0.000001 spent, $0.049999 left'), out.result.content[0].text);
+  });
+
+  it('embed says what the task has left when the router refuses it, and names the nodes it knows when asked for another', async () => {
+    const over = async () => reply({ error: { code: 'task_budget', message: 'task index has spent its budget' } }, 402, { 'x-orrery-task-spent': '0.050000', 'x-orrery-task-left': '0.000000' });
+    const refused = await call('embed', { model: 'e', input: 'hi', task: 'index' }, over as never);
+    assert.equal(refused.result.isError, true);
+    assert.equal(refused.result.content[0].text, 'the router could not answer: task index has spent its budget\n— task index: $0.050000 spent, $0.000000 left');
+    const listed = async () => reply({ providers: [{ address: 'SeedAddress111', name: 'Orrery Seed' }] });
+    const unknown = await call('embed', { model: 'e', input: 'hi', node: 'nobody' }, listed as never);
+    assert.equal(unknown.result.isError, true);
+    assert.equal(unknown.result.content[0].text, 'no node named nobody is listed. The router knows: Orrery Seed');
+  });
+
+  it('embed asks once more when no node answered within its patience, unless the agent asked not to wait', async () => {
+    let calls = 0;
+    const away = async () => { calls++; return calls === 1 ? reply({ error: { code: 'all_failed', message: 'all providers failed' } }, 502) : reply({ data: [{ embedding: [0.1] }], usage: { prompt_tokens: 1 } }, 200, { 'x-orrery-cost': '0.000001' }); };
+    const out = await call('embed', { model: 'e', input: 'hi' }, away as never);
+    assert.equal(calls, 2);
+    assert.equal(out.result.isError, undefined);
+    calls = 0;
+    const quick = await call('embed', { model: 'e', input: 'hi', patience: 0 }, away as never);
+    assert.equal(calls, 1);
+    assert.equal(quick.result.isError, true);
+  });
+
+  it('embed tells an agent which of these it can pass', async () => {
+    const listed = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'http://r', (async () => reply({})) as never, '0')) as { result: { tools: { name: string; inputSchema: { properties: Record<string, unknown> } }[] } };
+    const embed = listed.result.tools.find((t) => t.name === 'embed')!;
+    for (const k of ['max_price', 'max_cost', 'task', 'task_budget', 'node', 'patience']) assert.ok(k in embed.inputSchema.properties, k);
+  });
 });

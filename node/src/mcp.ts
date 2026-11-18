@@ -38,6 +38,11 @@ const TOOLS = [
         model: { type: 'string', description: 'a network embedding model id, e.g. bge-m3' },
         input: { description: 'a string or an array of strings', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
         max_price: { type: 'string', description: 'optional price ceiling in dollars per million input tokens, written input/output, e.g. 0.05/0' },
+        max_cost: { type: 'number', description: 'optional budget in dollars for this one call, e.g. 0.001; only providers whose worst case fits are used' },
+        task: { type: 'string', description: 'optional name for the job this call belongs to; ask and embed calls with the same task draw from one budget' },
+        task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call; when it is spent the router refuses further calls under the task' },
+        node: { type: 'string', description: 'optional: use this node only, by the name status lists (e.g. Orrery Seed) or by its address' },
+        patience: { type: 'number', description: 'optional: seconds to wait for a node that is away, restarting say, before giving up, 0 to 30; 30 when not given, 0 to fail at once' },
       },
       required: ['model', 'input'],
     },
@@ -96,31 +101,12 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     if (name === 'ask') {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
-      const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-patience': patienceOf(a.patience), ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}), ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}), ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}) };
-      // Staying with one node: an address goes as is; a name is looked up in the router's own list of nodes.
-      if (typeof a.node === 'string' && a.node.trim()) {
-        const wanted = a.node.trim();
-        if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wanted)) headers['x-orrery-provider'] = wanted;
-        else {
-          const st = (await (await fetchFn(`${router}/orrery/status`)).json()) as { providers?: { address: string; name?: string | null }[] };
-          const listed = st.providers ?? [];
-          const hit = listed.find((p) => (p.name ?? '').toLowerCase() === wanted.toLowerCase());
-          if (!hit) return text(`no node named ${wanted} is listed. The router knows: ${listed.map((p) => p.name ?? p.address).join(', ') || 'no nodes yet'}`, true);
-          headers['x-orrery-provider'] = hit.address;
-        }
-      }
+      const headers = callHeaders(a);
+      const noSuchNode = await pinNode(a, headers, router, fetchFn);
+      if (noSuchNode) return text(noSuchNode, true);
       const send = () => fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
-      let r = await send();
-      let j = (await r.json()) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { code?: string; message?: string } };
-      // No node answered within the wait: a restart can outlast it (the seed's takes about 40 s), so ask once more,
-      // unless the agent asked not to wait at all.
-      if (r.status === 502 && j.error?.code === 'all_failed' && headers['x-orrery-patience'] !== '0') {
-        r = await send();
-        j = (await r.json()) as typeof j;
-      }
-      // Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal.
-      const spent = r.headers.get('x-orrery-task-spent'), left = r.headers.get('x-orrery-task-left');
-      const task = typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';
+      const { r, j } = await sendPatiently<{ choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { code?: string; message?: string } }>(send, headers);
+      const task = taskLine(a, r);
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const answer = j.choices?.[0]?.message?.content ?? '';
       // The model ran out of room. A reasoning model thinks first and that counts against the cap, so the whole cap can
@@ -128,9 +114,6 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const cap = Number(a.max_tokens ?? 1024), ranOut = j.choices?.[0]?.finish_reason === 'length';
       const shown = answer.trim() ? answer : ranOut ? `(no answer: the model used all ${cap} output tokens before it wrote one. A reasoning model thinks first and that counts. Ask again with a larger max_tokens.)` : '(the model returned an empty answer)';
       const cutOff = answer.trim() && ranOut ? `\n— stopped at max_tokens ${cap}, so the answer is cut off: ask with a larger max_tokens for all of it` : '';
-      const who = r.headers.get('x-orrery-provider');
-      const rawName = r.headers.get('x-orrery-provider-name');
-      const name = rawName ? (() => { try { return decodeURIComponent(rawName); } catch { return rawName; } })() : null;
       const cost = r.headers.get('x-orrery-cost');
       // What the node asked against what the prices it listed on chain come to: the router paid no more than those.
       const billed = r.headers.get('x-orrery-billed'), listed = r.headers.get('x-orrery-listed');
@@ -147,16 +130,18 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const payment = r.headers.get('x-orrery-payment') === 'inside' ? 'payment inside the seal' : 'payment in headers its host can read';
       const traveled = r.headers.get('x-orrery-sealed') === '1' ? `sealed to a verified enclave (${r.headers.get('x-orrery-enclave') ?? 'enclave'}), ${payment}`
         : r.headers.get('x-orrery-wire') === '1' ? `sealed to the node’s own key, ${payment}` : 'as plain JSON inside TLS, which the node’s host can read';
-      return text(`${shown}\n\n— answered by ${name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider'}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${checked}${skipped}${cutOff}\n— traveled ${traveled}${task}`);
+      return text(`${shown}\n\n— answered by ${answeredBy(r)}${started} via route ${r.headers.get('x-orrery-route') ?? 'auto'}, paid $${cost ?? '?'} for this answer${checked}${skipped}${cutOff}\n— traveled ${traveled}${task}`);
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
-      const headers: Record<string, string> = { 'content-type': 'application/json', 'x-orrery-patience': patienceOf(a.patience), ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}) };
-      const r = await fetchFn(`${router}/v1/embeddings`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, input: a.input }) });
-      const j = (await r.json()) as { data?: { embedding: number[] }[]; usage?: { prompt_tokens?: number }; error?: { message?: string } };
-      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}`, true);
+      const headers = callHeaders(a);
+      const noSuchNode = await pinNode(a, headers, router, fetchFn);
+      if (noSuchNode) return text(noSuchNode, true);
+      const { r, j } = await sendPatiently<{ data?: { embedding: number[] }[]; usage?: { prompt_tokens?: number }; error?: { code?: string; message?: string } }>(() => fetchFn(`${router}/v1/embeddings`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, input: a.input }) }), headers);
+      const task = taskLine(a, r);
+      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const vectors = (j.data ?? []).map((d) => d.embedding);
-      return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}`);
+      return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`);
     }
     if (name === 'quote') {
       if (typeof a.model !== 'string') return text('quote needs a model', true);
@@ -210,6 +195,63 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       return text(`no Orrery router is answering at ${router}. Start one with: npx -y orrery-node router --wallet <your keypair.json> (it pays providers from that wallet's USDC). If one runs elsewhere, start orrery mcp with --router <its address>.`, true);
     return text(`the router at ${router} answered with something unexpected: ${(e as Error).message}`, true);
   }
+}
+
+/** What ask and embed send alike: how long to wait for a node that is away, the task the call belongs to and its
+ * budget, and the caps on what it may cost. */
+function callHeaders(a: Json): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    'x-orrery-patience': patienceOf(a.patience),
+    ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}),
+    ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}),
+    ...(typeof a.max_price === 'string' && a.max_price ? { 'x-orrery-max-price': a.max_price } : {}),
+    ...(typeof a.max_cost === 'number' && a.max_cost > 0 ? { 'x-orrery-max-cost': String(a.max_cost) } : {}),
+  };
+}
+
+/** Staying with one node: an address goes as is; a name is looked up in the router's own list of nodes. Returns what
+ * to tell the agent when no node has that name. */
+async function pinNode(a: Json, headers: Record<string, string>, router: string, fetchFn: Fetch): Promise<string | null> {
+  if (typeof a.node !== 'string' || !a.node.trim()) return null;
+  const wanted = a.node.trim();
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wanted)) {
+    headers['x-orrery-provider'] = wanted;
+    return null;
+  }
+  const st = (await (await fetchFn(`${router}/orrery/status`)).json()) as { providers?: { address: string; name?: string | null }[] };
+  const listed = st.providers ?? [];
+  const hit = listed.find((p) => (p.name ?? '').toLowerCase() === wanted.toLowerCase());
+  if (!hit) return `no node named ${wanted} is listed. The router knows: ${listed.map((p) => p.name ?? p.address).join(', ') || 'no nodes yet'}`;
+  headers['x-orrery-provider'] = hit.address;
+  return null;
+}
+
+/** Sends a call. When no node answered within the wait it is sent once more, since a restart can outlast one wait (the
+ * seed's takes about 40 s), unless the agent asked not to wait at all. */
+async function sendPatiently<T extends { error?: { code?: string } }>(send: () => ReturnType<Fetch>, headers: Record<string, string>) {
+  let r = await send();
+  let j = (await r.json()) as T;
+  if (r.status === 502 && j.error?.code === 'all_failed' && headers['x-orrery-patience'] !== '0') {
+    r = await send();
+    j = (await r.json()) as T;
+  }
+  return { r, j };
+}
+
+type Answered = Awaited<ReturnType<Fetch>>;
+
+/** Under a task, what it has spent and has left, from the router's own headers: after an answer and after a refusal. */
+function taskLine(a: Json, r: Answered): string {
+  const spent = r.headers.get('x-orrery-task-spent'), left = r.headers.get('x-orrery-task-left');
+  return typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';
+}
+
+/** The node that answered, by its name when it has one, from the router's own headers. */
+function answeredBy(r: Answered): string {
+  const who = r.headers.get('x-orrery-provider'), raw = r.headers.get('x-orrery-provider-name');
+  const name = raw ? (() => { try { return decodeURIComponent(raw); } catch { return raw; } })() : null;
+  return name && who ? `${name} (${who.slice(0, 6)}…)` : who ? `${who.slice(0, 6)}…` : 'a provider';
 }
 
 /** The x-orrery-patience an agent's call carries: its own 0 to 30 seconds, or 30. An agent would rather wait half a

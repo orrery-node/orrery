@@ -267,6 +267,16 @@ mcpSend({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'ask', ar
 for (let i = 0; i < 50 && !(mcpOut[6] && mcpOut[7] && mcpOut[8] && mcpOut[9]); i++) await sleep(200);
 mcpSend({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'status', arguments: {} } });
 for (let i = 0; i < 50 && !mcpOut[10]; i++) await sleep(200);
+// Embeddings under a task and from one node, named: the same as an ask, through the real router and the real server.
+for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+mcpSend({ jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'embed', arguments: { model: 'bge-m3', input: 'hello', task: 'rehearsal-embed', task_budget: 0.001, node: 'Ironbridge Compute' } } });
+for (let i = 0; i < 50 && !mcpOut[11]; i++) await sleep(200);
+mcpSend({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'status', arguments: {} } });
+for (let i = 0; i < 50 && !mcpOut[12]; i++) await sleep(200);
+const mcpEmbedTask = mcpOut[11]?.result?.content?.[0]?.text ?? '';
+const mcpEmbedTrailer = mcpEmbedTask.slice(mcpEmbedTask.lastIndexOf('\n\n') + 2);
+check('an agent embeds under a task and from one node through orrery mcp, and is told which node answered and what the task has left', /^— 1 vector of 8 dimensions, \d+ input tokens, paid \$0\.0000\d\d, answered by Ironbridge Compute \([^)]+\)\n— task rehearsal-embed: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpEmbedTrailer) && /rehearsal-embed: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpOut[12]?.result?.content?.[0]?.text ?? ''),
+  mcpEmbedTrailer.replace(/\([^)]+\)/, '(…)').replace(/\n/g, ' ').slice(0, 170) || 'no answer');
 const mcpTask = mcpOut[9]?.result?.content?.[0]?.text ?? '';
 // That ask was capped at 16 tokens and the model server cut its reply there: the agent is told, not left guessing.
 check('an agent is told through orrery mcp when an answer was cut off at its max_tokens', /\n— stopped at max_tokens 16, so the answer is cut off: ask with a larger max_tokens for all of it/.test(mcpTask), (mcpTask.split('\n').find((l) => /max_tokens/.test(l)) ?? 'the tool says nothing about it').slice(0, 120));
@@ -566,7 +576,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 43 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 44 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
