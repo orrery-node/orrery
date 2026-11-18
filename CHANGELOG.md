@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.21 · 2026-11-18 01:12 UTC
+
+**Your node lists the context its model server really serves, your router sends a long prompt only to a node that can take it and remembers every node across restarts, and a request no node answered is shown wherever you look as paid nothing.**
 
 - **Router** · The `ask` and `embed` tools of `orrery mcp` wait up to 30 seconds for a node that is away, restarting say, before giving up, and `ask` asks once more when no node answered within that, since a restart can outlast one wait (the seed’s takes about 40 s), so an agent gets its answer instead of an error to retry. An agent that would rather fail at once passes `patience: 0`.
 - **Router** · `orrery doctor` says what your router keeps on this computer, counted from its own files: "~/.orrery/router: 258 answers, 0 unanswered requests, a record of 1 node, 1 channel · models, token counts, prices and timings, never a prompt or an answer".
@@ -19,6 +21,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · `orrery channels` says how much of each deposit is unspent, which is what closing the channel gives back, and adds it up on a last line: "Unspent: $1.999864 across 1 channel." For a channel your router has no record of, it says "up to", since the node may hold vouchers it has not redeemed yet.
 - **Router** · A prompt clearly longer than the context a node lists goes to a node of the same model that lists enough, instead of to a node whose model server would refuse it, so the node passed over is not counted against in your router’s record. The prompt is measured from its text alone at five characters a token, a floor rather than an estimate, and when no node lists enough the request goes out as before.
 - **Node** · `orrery provider init` lists the context your model server says it serves each model with (vLLM and SGLang report `max_model_len`), keeping a quarter of it, up to 4,096 tokens, for the answer. Before, every model was listed at 32,768 tokens, so a server started with `--max-model-len 8192` failed every longer request routers sent it, and those failures counted against the node. `orrery provider check` says when provider.json lists more context than the server serves.
+
+`npx -y orrery-node@0.1.21`
 
 ## 0.1.20 · 2026-11-17 01:36 UTC
 

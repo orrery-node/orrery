@@ -633,6 +633,9 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] A node does not redeem dust: with no `redeem.minUnits` set, a channel is redeemed once five cents are waiting on it (0.1.15)
 - [x] A new node's first payout goes out at its next round, minutes after its first answer; later payouts wait for `redeem.minUnits` (0.1.20)
 - [x] Every answer carries what the node billed and what its listed prices come to; `orrery mcp` tells the agent and the router console flags any difference (0.1.20)
+- [x] A node lists the context its model server serves, and a router sends a long prompt only to a node that lists enough; longer than every node lists gets `context_length_exceeded` (0.1.21)
+- [x] A router keeps its own record of each node across restarts, and `orrery providers` shows it beside what the chain says (0.1.21)
+- [x] A request no node answered is kept and shown as paid nothing in `orrery spend`, `orrery doctor`, the router console and the MCP `status` tool (0.1.21)
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
 
