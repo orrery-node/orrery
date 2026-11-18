@@ -30,7 +30,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
-import { payoutLines } from './provider/payouts.ts';
+import { paidOutLine, payoutLines, readPayouts } from './provider/payouts.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -334,7 +334,10 @@ async function provider(sub: string) {
       return landed();
     }
     console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
+    // What reached the wallet in the same window, from the payouts this node keeps beside its log.
+    const paidOut = paidOutLine(readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(since), since);
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    if (paidOut) console.log(paidOut);
     await landed();
     // How routers paid: inside the seal, or with the channel named in headers this node's host can read.
     const paid = paidInside(readTrips(log), windowMs(since));

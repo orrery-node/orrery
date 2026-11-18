@@ -66,4 +66,19 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(dayLine!({ answers: 1, usd: '0.000029' }), '  last 24 h             1 answer, $0.000029 billed');
     assert.equal(dayLine!({ answers: 0, usd: '0.000000' }), '  last 24 h             no answers');
   });
+
+  it('says what reached the wallet in the window earnings looks at, the last one, and nothing when nothing is kept', () => {
+    const paidOutLine = (payouts as unknown as { paidOutLine?: (list: unknown[], sinceMs: number, since: string, now: number) => string | null }).paidOutLine;
+    assert.equal(typeof paidOutLine, 'function', 'payouts.ts writes the line');
+    const now = Date.parse('2026-11-18T14:17:11Z');
+    const list = [
+      { at: now - 2 * 86_400_000, units: '900000', channels: 1, tx: 'OLDOLDOLDOLDOLDOLDOLDOLDOLDOLDOLD' },
+      { at: now - 3_600_000, units: '69877', channels: 2, tx: '3xR4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' },
+      { at: now - 720_000, units: '50123', channels: 1, tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' },
+    ];
+    assert.equal(paidOutLine!(list, 86_400_000, '24h', now), 'paid out: $0.120000 to your wallet in 2 payouts in the last 24h, the last 12 min ago (tx 5Gh4kQp9xTn2…)');
+    assert.equal(paidOutLine!(list, 7 * 86_400_000, '7d', now), 'paid out: $1.020000 to your wallet in 3 payouts in the last 7d, the last 12 min ago (tx 5Gh4kQp9xTn2…)');
+    assert.equal(paidOutLine!(list.slice(0, 1), 3_600_000, '1h', now), 'paid out: none in the last 1h; the last was 2026-11-16 14:17 UTC');
+    assert.equal(paidOutLine!([], 86_400_000, '24h', now), null);
+  });
 });

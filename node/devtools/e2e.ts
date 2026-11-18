@@ -836,6 +836,12 @@ for (let i = 0; i < nodes.length; i++) {
   const keptUnits = kept.reduce((a, p) => a + BigInt(p.units), 0n);
   const keptChannels = kept.reduce((a, p) => a + p.channels, 0);
   const lastKept = (n.status() as { payouts?: { last: { tx: string } } | null }).payouts?.last.tx;
+  // And `provider earnings` says the same under what the window billed, for the node the command line can read.
+  if (i === 1) {
+    const earnOut = await cliOut(['earnings', '--since', '24h']);
+    const earnPaid = earnOut.split('\n').find((l) => l.startsWith('paid out: ')) ?? '';
+    check('orrery provider earnings says what reached the wallet in the same window, from the payouts the node keeps', earnPaid.startsWith(`paid out: $${usd(keptUnits)} to your wallet in ${kept.length} payout${kept.length === 1 ? '' : 's'} in the last 24h, the last `) && earnPaid.includes(`(tx ${kept[kept.length - 1]?.tx.slice(0, 12)}…)`), earnPaid || 'no such line');
+  }
   if (acct.settled > 0n) check(`${providerSpecs[i].name} keeps each payout it sent: they add up to what the chain says it redeemed, and its status names the last`, keptUnits === acct.settled && BigInt(keptChannels) === acct.redeems && lastKept === kept[kept.length - 1]?.tx,
     `${kept.length} payout(s) kept, $${usd(keptUnits)} over ${keptChannels} channel redeem(s); chain $${usd(acct.settled)} over ${acct.redeems}`);
 }

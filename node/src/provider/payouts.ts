@@ -67,3 +67,18 @@ export function payoutRows(p: { day: { units: string; count: number }; recent: {
   return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '">' + r.tx.slice(0, 12) + '…</td></tr>').join('')
     + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=2>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>';
 }
+
+/** What reached the wallet in the window `provider earnings` looks at:
+ *   paid out: $0.120000 to your wallet in 2 payouts in the last 24h, the last 12 min ago (tx 5Gh4kQp9xTn2…)
+ * or that none did and when the last one was; null when the node has kept no payout yet. */
+export function paidOutLine(list: Payout[], sinceMs: number, since: string, now = Date.now()): string | null {
+  if (!list.length) return null;
+  const inside = list.filter((p) => now - p.at <= sinceMs).sort((a, b) => a.at - b.at);
+  const last = list.reduce((a, b) => (b.at >= a.at ? b : a));
+  if (!inside.length) return `paid out: none in the last ${since}; the last was ${new Date(last.at).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  const units = inside.reduce((n, p) => n + BigInt(p.units), 0n);
+  const newest = inside[inside.length - 1];
+  const ms = Math.max(0, now - newest.at);
+  const ago = ms < 60_000 ? `${Math.round(ms / 1000)} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 172_800_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`;
+  return `paid out: $${usd(units)} to your wallet in ${inside.length} payout${inside.length === 1 ? '' : 's'} in the last ${since}, the last ${ago} ago (tx ${newest.tx.slice(0, 12)}…)`;
+}
