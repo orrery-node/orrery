@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as payouts from '../src/provider/payouts.ts';
+import * as own from '../src/provider/console.ts';
 import { appendPayout, payoutLines, payoutSummary, readPayouts } from '../src/provider/payouts.ts';
 
 describe('what a node has paid out to its wallet', () => {
@@ -56,5 +57,13 @@ describe('what a node has paid out to its wallet', () => {
     appendPayout(path, { at: 1, units: '1', channels: 1, tx: '<img src=x onerror=alert(1)>' });
     appendPayout(path, { at: 2, units: '2', channels: 1, tx: '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2abcdefXYZ' });
     assert.deepEqual(readPayouts(path).map((x) => x.at), [2]);
+  });
+
+  it('says what the last 24 hours billed, from the node’s own log, which a restart does not reset', () => {
+    const dayLine = (own as unknown as { dayLine?: (t: unknown) => string }).dayLine;
+    assert.equal(typeof dayLine, 'function', 'console.ts writes the line');
+    assert.equal(dayLine!({ answers: 1312, usd: '0.038912' }), '  last 24 h             1,312 answers, $0.038912 billed');
+    assert.equal(dayLine!({ answers: 1, usd: '0.000029' }), '  last 24 h             1 answer, $0.000029 billed');
+    assert.equal(dayLine!({ answers: 0, usd: '0.000000' }), '  last 24 h             no answers');
   });
 });

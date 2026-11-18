@@ -56,6 +56,19 @@ export async function readOwnStatus(port: number, key: string): Promise<OwnStatu
   return r?.ok ? ((await r.json()) as OwnStatus) : null;
 }
 
+/** The node's own count of the last 24 hours, from /orrery/earnings (its log of answers), with the key; null when no
+ * node answers. A restart does not reset it, as it does `answers since start`. */
+export async function readOwnDay(port: number, key: string): Promise<{ answers: number; usd: string } | null> {
+  const r = await fetch(`http://127.0.0.1:${port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': key } }).catch(() => null);
+  const j = r?.ok ? ((await r.json().catch(() => null)) as { total?: { answers?: number; usd?: string } } | null) : null;
+  return typeof j?.total?.answers === 'number' && typeof j.total.usd === 'string' ? { answers: j.total.answers, usd: j.total.usd } : null;
+}
+
+/** "  last 24 h             1,312 answers, $0.038912 billed", or "no answers". */
+export function dayLine(t: { answers: number; usd: string }): string {
+  return `  last 24 h             ${t.answers ? `${t.answers.toLocaleString('en-US')} answer${t.answers === 1 ? '' : 's'}, $${t.usd} billed` : 'no answers'}`;
+}
+
 /** The page that asks for the key: a local visit to the console without it. Says where the address is, not the key. */
 export function consoleKeyPage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}

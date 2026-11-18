@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider status` says what the last 24 hours billed, from the node’s own log of answers: "last 24 h  1,312 answers, $0.038912 billed". The count since start goes back to 0 when the node restarts; this one does not. `--json` carries it as `day`.
 - **Node** · Your node’s console lists its payouts to your wallet: the latest 12, each with its time (UTC), what it paid out, how many channels it paid from and its transaction, and the last 24 hours under them. A node that was paid out on chain before it began keeping its payouts says so in `orrery provider status` ("none recorded here yet; this listing was paid out on chain before") instead of "none yet".
 - **Node** · `orrery provider status` says when money last landed in your wallet and what the last day came to: "last payout  $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…" and "paid out, last 24 h  $0.120000 in 3 payouts". The node keeps each payout it sends (when, how much, from how many channels, the transaction) in `payouts.jsonl` in its folder, so the lines survive a restart, and `/orrery/status` carries them as `payouts`. Before the first payout it says "none yet".
 
