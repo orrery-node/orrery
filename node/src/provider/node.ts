@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { appendPayout, arrivalNote, checkPayouts, payoutCheckLines, payoutSummary, readPayouts, withChecked, type Landed, type Payout } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readPayouts, withChecked, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -340,6 +340,11 @@ export class ProviderNode {
       payouts: withChecked(payoutSummary(readPayouts(`${this.dir}/payouts.jsonl`)), this.payoutsOnChain),
       // How often something outside this computer checked this node in the last hour.
       reach: this.reach.read(),
+      // What the next payout round sends and what keeps waiting under redeem.minUnits.
+      nextPayout: nextPayout([...this.ledger.values()].map((e) => {
+        const paid = e.best ? (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) : 0n;
+        return { pending: paid > e.redeemed ? paid - e.redeemed : 0n, closing: e.channel.closingAt !== 0n };
+      }), BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS), this.cfg.redeem?.everySecs ?? 60, this.paidOutChecked && !this.paidOut),
     };
   }
 
@@ -823,6 +828,8 @@ export class ProviderNode {
       const warning = folderWarning(this.dir, this.status().waiting);
       if (warning) this.log(warning);
       void this.feeHeadsUp();
+      // Whether the next payout is this node's first: the status and console say when money goes out from the start.
+      void this.paidOutBefore();
       const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
       this.timer = setInterval(() => void this.redeemRound().then(() => this.burnDue()).catch(() => undefined), every);
       // Three minutes in, an operator watching this log learns whether anything outside has found the node yet.
@@ -835,11 +842,13 @@ export class ProviderNode {
 
   /** Whether this node's listing has been paid out on chain at least once. Read until it has, then remembered. */
   private paidOut = false;
+  private paidOutChecked = false;
   async paidOutBefore(): Promise<boolean> {
     if (this.paidOut) return true;
     const info = await this.conn.getAccountInfo(this.pda).catch(() => null);
     // Not listed, or not read: keep the usual floor rather than spend a fee on a guess.
     if (!info) return true;
+    this.paidOutChecked = true;
     this.paidOut = decodeProvider(info.data).redeems > 0n;
     return this.paidOut;
   }

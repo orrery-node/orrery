@@ -171,4 +171,32 @@ describe('what a node has paid out to its wallet', () => {
     assert.deepEqual(withChecked!(s, new Map([['A', { state: 'landed', units: 4n }], ['Z', { state: 'landed', units: 1n }]]))?.checked, { A: { state: 'landed', units: '4' } });
     assert.equal(withChecked!(null, new Map()), null);
   });
+
+  it('judges each channel on its own for the next payout: over the floor, closing, or a first payout goes; the rest waits', () => {
+    const nextPayout = (payouts as unknown as { nextPayout?: (c: { pending: bigint; closing: boolean }[], floor: bigint, every: number, first: boolean) => Record<string, unknown> }).nextPayout;
+    assert.equal(typeof nextPayout, 'function', 'payouts.ts counts it');
+    const two = [{ pending: 30_000n, closing: false }, { pending: 30_000n, closing: false }];
+    assert.deepEqual(nextPayout!(two, 50_000n, 60, false), { due: '0', dueChannels: 0, below: '60000', belowChannels: 2, floor: '50000', everySecs: 60, first: false });
+    assert.deepEqual(nextPayout!([...two, { pending: 4_000n, closing: true }, { pending: 61_000n, closing: false }, { pending: 0n, closing: true }], 50_000n, 60, false), { due: '65000', dueChannels: 2, below: '60000', belowChannels: 2, floor: '50000', everySecs: 60, first: false });
+    assert.deepEqual(nextPayout!(two, 50_000n, 60, true), { due: '60000', dueChannels: 2, below: '0', belowChannels: 0, floor: '50000', everySecs: 60, first: true });
+  });
+
+  it('says when money next goes to the wallet, in the console and in provider status', () => {
+    const sentence = (payouts as unknown as { nextPayoutSentence?: (n: unknown) => string }).nextPayoutSentence;
+    const hint = (own as unknown as { nextPayoutHint?: (n: unknown, cfg: string) => string }).nextPayoutHint;
+    assert.equal(typeof sentence, 'function', 'payouts.ts writes the sentence');
+    assert.equal(typeof hint, 'function', 'console.ts writes the hint');
+    const n = (due: string, dc: number, below: string, bc: number, first = false) => ({ due, dueChannels: dc, below, belowChannels: bc, floor: '50000', everySecs: 60, first });
+    assert.equal(sentence!(n('0', 0, '4211', 1)), '$0.004211 is waiting in 1 channel. It pays out once it reaches $0.050000 or its router closes it; this node checks every 1 min.');
+    assert.equal(sentence!(n('61000', 1, '0', 0)), '$0.061000 is due and goes out in the next round, within 1 min.');
+    assert.equal(sentence!(n('21', 1, '0', 0, true)), '$0.000021 goes out in the next round, within 1 min, as this node’s first payout.');
+    assert.equal(sentence!(n('61000', 1, '60000', 2)), '$0.061000 is due and goes out in the next round, within 1 min. $0.060000 more waiting in 2 channels. Each pays out once it reaches $0.050000 or its router closes it; this node checks every 1 min.');
+    assert.equal(sentence!(n('0', 0, '0', 0)), 'Nothing is waiting to be paid out.');
+    assert.equal(sentence!(undefined), '');
+    assert.equal(hint!(n('0', 0, '60000', 2), 'provider.json'), '  (each channel pays out by itself at $0.05; orrery provider redeem --config provider.json does it now)');
+    assert.equal(hint!(n('0', 0, '4211', 1), 'provider.json'), '  (pays out by itself at $0.05; orrery provider redeem --config provider.json does it now)');
+    assert.equal(hint!(n('61000', 1, '60000', 2), 'provider.json'), '  ($0.061000 at the next round, every 1 min; $0.060000 waits for $0.05 a channel)');
+    assert.equal(hint!({ ...n('21', 1, '0', 0, true), everySecs: 300 }, 'provider.json'), '  (your first payout: pays out at the next round, every 5 min)');
+    assert.equal(hint!(n('0', 0, '0', 0), 'provider.json'), '');
+  });
 });

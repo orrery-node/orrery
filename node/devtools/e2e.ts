@@ -624,6 +624,13 @@ check('orrery provider compose writes the file for the package it was given, and
 const waitingLine = statusOut.split('\n').find((l) => /^\s+waiting to redeem\s/.test(l)) ?? '';
 check('orrery provider status says when what is waiting gets paid out', Number(ibStatusNow.waiting) > 0 && /pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
 check('orrery provider status tells a node never paid out on chain that its first payout goes out at the next round', /\(your first payout: pays out at the next round, every 60 min\)$/.test(waitingLine), waitingLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
+// The running node counts the next payout channel by channel, as its payout round does, and its console says it in a
+// sentence under the payouts: everything waiting here is due, since this node has not been paid out yet.
+const ibNext = (ibStatusNow as unknown as { nextPayout?: { due: string; below: string; first: boolean; everySecs: number } }).nextPayout;
+const ibNextSaid = ((await import('../src/provider/payouts.ts')) as unknown as { nextPayoutSentence?: (n: unknown) => string }).nextPayoutSentence?.(ibNext) ?? '';
+const ibConsole = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}`)).text();
+check('the node counts its next payout channel by channel and its console says when the money goes out', !!ibNext && ibNext.first && ibNext.below === '0' && usd(BigInt(ibNext.due)) === ibStatusNow.waiting
+  && ibNextSaid === `$${ibStatusNow.waiting} goes out in the next round, within 60 min, as this node’s first payout.` && ibConsole.includes('id="next"') && ibConsole.includes('nextPayoutSentence(s.nextPayout)'), ibNextSaid || 'no next payout in the status');
 // The fee money too, before it is a problem: SOL on the node key and about how many payouts it pays for; and the same
 // as JSON for a monitor.
 const statusJson = await cliOut(['status', '--json']);

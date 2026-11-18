@@ -29,7 +29,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
-import { consoleLine, dayLine, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
+import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { checkPayouts, paidOutLine, payoutCheckLines, payoutLines, readPayouts } from './provider/payouts.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
@@ -393,7 +393,7 @@ async function provider(sub: string) {
       ...(day ? [dayLine(day)] : []),
       `  signed to you         $${s.signed}`,
       `  redeemed on chain     $${s.redeemed}`,
-      `  waiting to redeem     $${s.waiting}${payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
+      `  waiting to redeem     $${s.waiting}${s.nextPayout ? nextPayoutHint(s.nextPayout, cfgPath) : payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
       // When money last landed in the wallet, and what the last day came to: kept by the node, so a restart keeps it.
       ...(s.payouts === undefined ? [] : payoutLines(s.payouts, Date.now(), !s.payouts && (await node.paidOutBefore()))),
       `  channels              ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,

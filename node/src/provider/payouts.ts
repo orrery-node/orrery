@@ -59,6 +59,41 @@ export function payoutLines(s: (PayoutSummary & { checked?: Record<string, { uni
   ];
 }
 
+export type NextPayout = { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean };
+
+/** What the next payout round will send and what keeps waiting, from each channel's amount not yet redeemed: a channel
+ * goes out once it reaches the floor (redeem.minUnits), when its router closes it, or at once for a node's first
+ * payout; the rest waits. */
+export function nextPayout(channels: { pending: bigint; closing: boolean }[], floor: bigint, everySecs: number, first: boolean): NextPayout {
+  let due = 0n, below = 0n, dueChannels = 0, belowChannels = 0;
+  for (const c of channels) {
+    if (c.pending <= 0n) continue;
+    if (c.pending >= floor || c.closing || first) {
+      due += c.pending;
+      dueChannels++;
+    } else {
+      below += c.pending;
+      belowChannels++;
+    }
+  }
+  return { due: due.toString(), dueChannels, below: below.toString(), belowChannels, floor: floor.toString(), everySecs, first };
+}
+
+/** When money next goes to the wallet, said plainly, for `provider status` and the console:
+ *   "$0.004211 is waiting in 1 channel. Each pays out once it reaches $0.050000 or its router closes it; this node
+ *    checks every 1 min."
+ * Its source goes into the console page, so it uses nothing from outside itself and names no local function. */
+export function nextPayoutSentence(n: { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean } | null | undefined): string {
+  if (!n) return '';
+  if (n.due === '0' && n.below === '0') return 'Nothing is waiting to be paid out.';
+  const every = n.everySecs < 60 ? n.everySecs + ' s' : Math.round(n.everySecs / 60) + ' min';
+  const soon = n.due === '0' ? '' : '$' + (Number(n.due) / 1e6).toFixed(6) + (n.first ? ' goes out in the next round, within ' + every + ', as this node’s first payout.' : ' is due and goes out in the next round, within ' + every + '.');
+  if (n.below === '0') return soon;
+  const rest = '$' + (Number(n.below) / 1e6).toFixed(6) + (soon ? ' more' : ' is') + ' waiting in ' + n.belowChannels + ' channel' + (n.belowChannels === 1 ? '' : 's') + '. '
+    + (n.belowChannels === 1 ? 'It pays' : 'Each pays') + ' out once it reaches $' + (Number(n.floor) / 1e6).toFixed(6) + ' or its router closes it; this node checks every ' + every + '.';
+  return soon ? soon + ' ' + rest : rest;
+}
+
 /** The console's payout rows: the latest payouts, newest first, each with its transaction (whole in the title), then
  * the last 24 hours. Its source goes into the page, so it uses nothing from outside itself and names no local function
  * (tsx would wrap one in a helper the browser does not have); what it prints is digits

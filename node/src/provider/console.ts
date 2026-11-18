@@ -1,6 +1,6 @@
 // The provider's own page at http://127.0.0.1:<port>/ — what this node served, what routers signed for it, what is
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
-import { payoutRows, type PayoutSummary } from './payouts.ts';
+import { nextPayoutSentence, payoutRows, type NextPayout, type PayoutSummary } from './payouts.ts';
 import { reachSentence, type ReachNow } from './reach.ts';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
@@ -48,7 +48,18 @@ export function payoutHint(waiting: string, minUnits: number, everySecs: number,
   return `  (pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow };
+/** The same hint from the running node's own count, which judges each channel on its own as the payout round does: two
+ * channels of $0.03 are not $0.06 due, and a channel its router is closing goes out whatever it holds. */
+export function nextPayoutHint(n: NextPayout, configPath: string): string {
+  if (n.due === '0' && n.below === '0') return '';
+  const every = n.everySecs < 60 ? `${n.everySecs} s` : `${Math.round(n.everySecs / 60)} min`;
+  const min = (Number(n.floor) / 1e6).toFixed(6).replace(/0+$/, '').replace(/\.$/, '').replace(/^(\d+\.\d)$/, '$10');
+  if (n.below === '0') return n.first ? `  (your first payout: pays out at the next round, every ${every})` : `  (pays out at the next round, every ${every})`;
+  if (n.due === '0') return `  (${n.belowChannels === 1 ? '' : 'each channel '}pays out by itself at $${min}; orrery provider redeem --config ${configPath} does it now)`;
+  return `  ($${(Number(n.due) / 1e6).toFixed(6)} at the next round, every ${every}; $${(Number(n.below) / 1e6).toFixed(6)} waits for $${min} a channel)`;
+}
+
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
@@ -82,7 +93,7 @@ export function providerConsolePage(): string {
 <div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p><p class="lede" id="reach" hidden></p></div>
 <div class="stats" id="sum"></div>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div></section>
-<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="checked" hidden></p></section>
+<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="next" hidden></p><p class="lede" id="checked" hidden></p></section>
 <section><h2>Last 24 hours, by model (billed)</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>billed</th></tr></thead><tbody id="earn"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>channel</th><th>deposit</th><th>signed to you</th><th>redeemed</th><th>waiting</th><th>unsigned answers</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
@@ -90,6 +101,7 @@ const K={headers:{'x-orrery-console-key':new URLSearchParams(location.search).ge
 const reachSentence=${reachSentence.toString()};
 const payoutRows=${payoutRows.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nextPayoutSentence=${nextPayoutSentence.toString()};
 const checked={};
 document.getElementById('check').onclick=async()=>{const b=document.getElementById('check'),l=document.getElementById('checked');b.disabled=true;b.textContent='Reading the chain…';
 try{const c=await (await fetch('/orrery/payouts/check',K)).json();for(const r of c.rows)if(r.state!=='unchecked')checked[r.tx]={state:r.state,units:r.units};l.textContent=c.line?c.line+' (checked '+new Date().toISOString().slice(11,19)+' UTC)':'';l.hidden=!c.line;tick();}
@@ -98,6 +110,7 @@ async function tick(){try{const s=await (await fetch('/orrery/status',K)).json()
 document.getElementById('sum').innerHTML='<div><b>'+s.answers+'</b><span class=cap>answers since start</span></div><div><b class=go>$'+esc(s.signed)+'</b><span class=cap>signed to you</span></div><div><b>$'+esc(s.redeemed)+'</b><span class=cap>redeemed on chain</span></div><div><b class=sig>$'+esc(s.waiting)+'</b><span class=cap>waiting to redeem</span></div>';
 document.getElementById('recent').innerHTML=s.recent.slice(0,12).map(r=>'<tr><td>'+new Date(r.at).toLocaleTimeString()+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.channel.slice(0,8))+'</td><td>'+r.inputTokens+'+'+r.outputTokens+'</td><td class=go>$'+esc(r.cost)+'</td><td>'+(r.sealed?'<span class=go>sealed</span> ':'')+(r.off?'<span class=go>holder −'+(r.off/100)+'%</span>':'')+'</td></tr>').join('')||'<tr class=empty><td colspan=6>No answers yet. Routers find you through your listing on chain.</td></tr>';
 if(s.payouts)s.payouts.checked=Object.assign({},s.payouts.checked,checked);document.getElementById('payouts').innerHTML=payoutRows(s.payouts);document.getElementById('check').hidden=!(s.payouts&&s.payouts.recent.length);
+const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;
 const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;
 try{const e=await (await fetch('/orrery/earnings?since=24h',K)).json();document.getElementById('earn').innerHTML=e.total.answers?[...e.rows,{...e.total,key:'total'}].map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served in the last 24 hours.</td></tr>';}catch(err){}
 document.getElementById('ch').innerHTML=s.channels.map(c=>'<tr><td>'+esc(c.channel.slice(0,8))+'</td><td>$'+esc(c.deposit)+'</td><td class=go>$'+esc(c.signed)+'</td><td>$'+esc(c.redeemed)+'</td><td class=sig>$'+esc(c.waiting)+'</td><td>'+c.unsigned+'</td></tr>').join('')||'<tr class=empty><td colspan=6>None yet. A router opens one with its first request.</td></tr>';
