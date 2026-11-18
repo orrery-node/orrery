@@ -79,8 +79,7 @@ export function consoleKeyPage(): string {
 export function providerConsolePage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}
 <main>
-<div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p></div>
-<p class="lede" id="reach" hidden></p>
+<div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p><p class="lede" id="reach" hidden></p></div>
 <div class="stats" id="sum"></div>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div></section>
 <section><h2>Payouts to your wallet, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th></tr></thead><tbody id="payouts"></tbody></table></div></section>
