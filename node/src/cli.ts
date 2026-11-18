@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { refusedText } from './provider/refusal.ts';
-import { loadWatched, sawLine } from './router/watched.ts';
+import { loadWatched, sawLine, sawText } from './router/watched.ts';
 import { rpcConnection } from './chain/connect.ts';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
@@ -639,8 +639,12 @@ async function main() {
     const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
     const rows = quote(registry.usable(), model, inTokens, outTokens, cachedShare);
-    if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached) })) }, null, 2));
-    return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows));
+    // What this computer's router saw of each node, from the records it keeps in its home: no request is made for it.
+    const watched = loadWatched(home('router', 'watched.json'));
+    const seen = new Stats(home('router', 'observed.json'));
+    const saw = (address: string) => sawText(watched.get(address), seen.all().get(address));
+    if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })) }, null, 2));
+    return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows, saw));
   }
   if (cmd === 'enclave') {
     // orrery enclave verify: every check a router runs before it seals a prompt, one line each, on your own machine.

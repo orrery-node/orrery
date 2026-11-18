@@ -20,4 +20,16 @@ describe('orrery quote', () => {
   it('says so when nobody lists the model', () => {
     assert.match(renderQuote('none', 1, 1, 0.8, []), /No provider on the network lists none/);
   });
+
+  it('says under the prices what this router saw of each node it has a record of, and of no other', () => {
+    const rows = quote([entry('Dear', 'a', { input: 200_000, output: 800_000 }), entry('Cheap', 'b', { input: 40_000, output: 140_000 })], 'm', 2000, 500, 0.8);
+    const saw = (address: string) => (address === 'a' ? 'up in 80 of 82 checks this router made over 3 days; first token in about 960 ms lately' : '');
+    const text = (renderQuote as unknown as (m: string, i: number, o: number, c: number, r: typeof rows, s: (a: string) => string) => string)('m', 2000, 500, 0.8, rows, saw);
+    const lines = text.split('\n');
+    const at = lines.indexOf('what your router saw of them:');
+    assert.ok(at > 0, text);
+    assert.equal(lines[at + 1], '  Dear  up in 80 of 82 checks this router made over 3 days; first token in about 960 ms lately');
+    assert.ok(lines[at + 2].startsWith('cheapest: Cheap'), 'the record sits between the table and the last line, and a node with no record has no line');
+    assert.ok(!renderQuote('m', 2000, 500, 0.8, rows).includes('what your router saw'), 'nothing to say without a record');
+  });
 });

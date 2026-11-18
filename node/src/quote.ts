@@ -25,7 +25,8 @@ export function quote(providers: ProviderEntry[], model: string, inTokens: numbe
   return rows.sort((a, b) => (a.full < b.full ? -1 : a.full > b.full ? 1 : a.name.localeCompare(b.name)));
 }
 
-export function renderQuote(model: string, inTokens: number, outTokens: number, cachedShare: number, rows: QuoteRow[]): string {
+/** `saw` gives what this router saw of a node, by its address: empty when it has no record of it. */
+export function renderQuote(model: string, inTokens: number, outTokens: number, cachedShare: number, rows: QuoteRow[], saw?: (address: string) => string): string {
   if (!rows.length) return `No provider on the network lists ${model}. orrery models shows what is listed.`;
   const n = (x: number) => x.toLocaleString('en-US');
   const pct = Math.round(cachedShare * 100);
@@ -35,6 +36,8 @@ export function renderQuote(model: string, inTokens: number, outTokens: number, 
     const per = `${perMillion(r.input)} / ${perMillion(r.output)}`;
     lines.push(`${(r.name + (r.enclave ? ' ·enclave' : '')).slice(0, 21).padEnd(22)}${per.padStart(22)}${`$${usd(r.full)}`.padStart(15)}${(r.cached === null ? '—' : `$${usd(r.cached)}`).padStart(15)}`);
   }
+  const seen = rows.flatMap((r) => { const said = saw?.(r.address) ?? ''; return said ? [`  ${r.name}  ${said}`] : []; });
+  if (seen.length) lines.push('what your router saw of them:', ...seen);
   const best = rows[0];
   const thousand = best.full * 1000n;
   lines.push(`cheapest: ${best.name}, $${usd(best.full)} a request, $${usd(thousand, 2)} for a thousand like it. Nothing was sent or paid.`);

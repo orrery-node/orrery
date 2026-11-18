@@ -23,7 +23,7 @@ import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
 import { appendTrip, bills, readTrips, skipped, speeds, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
-import { recordLines } from './watched.ts';
+import { recordLines, sawText } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
@@ -289,10 +289,12 @@ export class Router {
         const cachedShare = Math.max(0, Math.min(1, Number(url.searchParams.get('cached') ?? 0.8)));
         if (!model || !Number.isFinite(inTokens) || !Number.isFinite(outTokens)) return send(res, 400, { error: { message: 'quote needs a model and token counts', type: 'invalid_request_error' } });
         const rows = quote(this.o.registry.usable(), model, inTokens, outTokens, cachedShare);
+        // Beside each price, what this router itself saw of the node that lists it.
+        const saw = (address: string) => sawText(this.o.registry.watched(address), this.stats.all().get(address));
         return send(res, 200, {
           model, inTokens, outTokens, cachedShare,
-          rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached) })),
-          text: renderQuote(model, inTokens, outTokens, cachedShare, rows),
+          rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })),
+          text: renderQuote(model, inTokens, outTokens, cachedShare, rows, saw),
         });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {

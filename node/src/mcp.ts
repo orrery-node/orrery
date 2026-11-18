@@ -49,7 +49,7 @@ const TOOLS = [
   },
   {
     name: 'quote',
-    description: 'What one request would cost at every provider that lists a model, from the prices pinned on Solana, cheapest first, with the cached-input rate where one is listed. Nothing is sent or paid. Use it to pick a model or check a job fits a budget before asking.',
+    description: 'What one request would cost at every provider that lists a model, from the prices pinned on Solana, cheapest first, with the cached-input rate where one is listed, and what this router itself saw of each node: how often it was up, what it answered and how fast it started. Nothing is sent or paid. Use it to pick a model or a node, or check a job fits a budget before asking.',
     inputSchema: {
       type: 'object',
       properties: {

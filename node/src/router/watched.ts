@@ -67,9 +67,13 @@ export function answeredText(o: { ok: number; fail: number; broke?: number } | W
 
 /** One line for `orrery providers` under a node: what this router saw of it, from the records it keeps in its home
  * (health checks and requests from watched.json, first-token speed from observed.json). Empty for a node it never saw. */
+export function sawText(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now()): string {
+  return [watchedText(w, now), answeredText(w, now), o && o.ttftMs !== null ? `first token in about ${Math.round(o.ttftMs).toLocaleString('en-US')} ms lately` : ''].filter((p) => p.length > 0).join('; ');
+}
+
 export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & { ttftMs: number | null }) | null | undefined, now = Date.now()): string {
-  const parts = [watchedText(w, now), answeredText(w, now), o && o.ttftMs !== null ? `first token in about ${Math.round(o.ttftMs).toLocaleString('en-US')} ms lately` : ''].filter((p) => p.length > 0);
-  return parts.length ? `what your router saw: ${parts.join('; ')}` : '';
+  const saw = sawText(w, o, now);
+  return saw ? `what your router saw: ${saw}` : '';
 }
 
 /** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when

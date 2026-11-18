@@ -756,6 +756,12 @@ const provOut = await new Promise<string>((done) => { let out = ''; const pc = s
 const provLines = provOut.split('\n');
 const ironAt = provLines.findIndex((l) => l.includes('Ironbridge Compute'));
 const ironSaw = ironAt >= 0 ? provLines[ironAt + 1] ?? '' : '';
+// The same record beside the price: from the running router, as an agent's quote tool reads it, and from the command
+// line, read from the records the router keeps in its home.
+const quoteSaid = (await (await fetch(`${ROUTER}/orrery/quote?model=llama-3.3-70b`)).json()) as { text?: string; rows?: { name: string; saw?: string | null }[] };
+const quoteCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'quote', 'llama-3.3-70b', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const quoteLine = (t: string) => t.split('\n').find((l) => l.startsWith('  Ironbridge Compute  ')) ?? '';
+check('a quote says beside each price what this router saw of that node, from the running router and from the command line', /what your router saw of them:\n/.test(quoteSaid.text ?? '') && /^ {2}Ironbridge Compute {2}up in \d+ of \d+ checks this router made over /.test(quoteLine(quoteSaid.text ?? '')) && /up in \d+ of \d+ checks/.test(quoteSaid.rows?.find((r) => r.name === 'Ironbridge Compute')?.saw ?? '') && /^ {2}Ironbridge Compute {2}up in \d+ of \d+ checks/.test(quoteLine(quoteCli)), quoteLine(quoteSaid.text ?? '').trim().slice(0, 160) || 'no record under the prices');
 check('orrery providers shows under each node what your own router saw of it, from the records it keeps', /^ {4}what your router saw: up in \d+ of \d+ checks this router made over .+; answered (\d+ of \d+|all \d+) requests this router sent it over .+; first token in about \d+ ms lately$/.test(ironSaw) && provLines.filter((l) => l.startsWith('    what your router saw:')).length >= 3,
   ironSaw.trim().slice(0, 170) || 'no line under Ironbridge');
 if (process.env.E2E_HOLD) {
