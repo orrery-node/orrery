@@ -57,7 +57,7 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(typeof rows, 'function', 'payouts.ts renders the console rows');
     const tx = '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2abcdefXYZ';
     const p = { last: { at: Date.parse('2026-11-18T14:05:11Z'), units: '50123', channels: 2, tx }, day: { units: '120000', count: 3 }, recent: [{ at: Date.parse('2026-11-18T14:05:11Z'), units: '50123', channels: 2, tx }] };
-    assert.equal(rows!(p), `<tr><td>2026-11-18 14:05:11 UTC</td><td class=go>$0.050123</td><td>2</td><td title="${tx}">5GhKq2abcdef…</td><td></td></tr><tr><td>last 24 h</td><td class=go>$0.120000</td><td colspan=3>3 payouts</td></tr>`);
+    assert.equal(rows!(p), `<tr><td>2026-11-18 14:05:11 UTC</td><td class=go>$0.050123</td><td>2</td><td title="${tx}"><button class=tx type=button data-tx="${tx}" aria-label="Copy the whole transaction">5GhKq2abcdef…</button></td><td></td></tr><tr><td>last 24 h</td><td class=go>$0.120000</td><td colspan=3>3 payouts</td></tr>`);
     assert.equal(rows!(null), '<tr class=empty><td colspan=5>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>');
   });
 
@@ -230,5 +230,13 @@ describe('what a node has paid out to its wallet', () => {
     const walletLine = (payouts as unknown as { walletLine?: (h: unknown) => string }).walletLine;
     assert.equal(typeof walletLine, 'function', 'payouts.ts writes the line');
     assert.equal(walletLine!({ at: 5, units: '1412500', tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' }), '  in your wallet        $1.412500 after the last payout, per the chain (tx 5Gh4kQp9xTn2…)');
+  });
+
+  it('makes each payout’s transaction a button that copies the whole signature, and links nowhere', () => {
+    const rows = (payouts as unknown as { payoutRows: (p: unknown) => string }).payoutRows;
+    const tx = '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2';
+    const html = rows({ day: { units: '50123', count: 1 }, recent: [{ at: 0, units: '50123', channels: 1, tx }] });
+    assert.ok(html.includes(`<td title="${tx}"><button class=tx type=button data-tx="${tx}" aria-label="Copy the whole transaction">5GhKq2abcdef…</button></td>`));
+    assert.ok(!/<a\b|https?:/.test(html), 'no link and no address of another computer');
   });
 });

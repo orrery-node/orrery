@@ -126,10 +126,12 @@ export function nextPayoutSentence(n: { due: string; dueChannels: number; below:
  * the last 24 hours. Its source goes into the page, so it uses nothing from outside itself and names no local function
  * (tsx would wrap one in a helper the browser does not have); what it prints is digits
  * and base58, which readPayouts checks. `checked`, which the page fills from /orrery/payouts/check, says beside each
- * payout what the chain says reached the wallet; only its state is compared and only numbers from it are printed. */
+ * payout what the chain says reached the wallet; only its state is compared and only numbers from it are printed.
+ * The transaction is a button that copies the whole signature, to look it up on any Solana explorer: the page itself
+ * names no other computer, and a link would hand the explorer this page's address, key and all. */
 export function payoutRows(p: { day: { units: string; count: number }; recent: { at: number; units: string; channels: number; tx: string }[]; checked?: Record<string, { state: string; units: string | null }> } | null): string {
   if (!p || !p.recent.length) return '<tr class=empty><td colspan=5>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>';
-  return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '">' + r.tx.slice(0, 12) + '…</td><td>'
+  return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '"><button class=tx type=button data-tx="' + r.tx + '" aria-label="Copy the whole transaction">' + r.tx.slice(0, 12) + '…</button></td><td>'
     + (!p.checked || !p.checked[r.tx] ? '' : p.checked[r.tx].state === 'missing' ? '<span class=stop>no record on chain</span>' : p.checked[r.tx].state === 'failed' ? '<span class=stop>failed on chain</span>'
       : p.checked[r.tx].state !== 'landed' ? '' : (p.checked[r.tx].units === r.units ? '<span class=go>arrived $' : '<span class=stop>arrived $') + (Number(p.checked[r.tx].units) / 1e6).toFixed(6) + '</span>') + '</td></tr>').join('')
     + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=3>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>';

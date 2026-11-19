@@ -885,6 +885,9 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// Each transaction there is a button that copies the whole signature, to look up on any explorer; the page links nowhere.
+check('the node’s console copies each payout’s whole transaction for any explorer, and links to no other computer', ibRows.includes(`<button class=tx type=button data-tx="${ibLastTx}"`) && ibPage.includes('navigator.clipboard.writeText(tx)') && ibPage.includes('id="copied"') && !/<a\b/.test(ibPage + ibRows),
+  ibRows.match(/<button class=tx[^>]*>[^<]*<\/button>/)?.[0].replace(/data-tx="[^"]+"/, 'data-tx="…"') ?? 'no button');
 // Each node read every payout it sent back from the chain on its own, said in its log that it arrived, and its status
 // marks it for the console's "on chain" column, before anyone pressed the button below.
 const arrivals = async () => providerSpecs.map((s, i) => {
