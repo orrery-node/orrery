@@ -404,7 +404,7 @@ export default function Docs() {
               <tr><td><code>models[].maxOutput</code>, <code>context</code></td><td>caps per request; the router reserves at most <code>maxOutput</code> tokens of payment</td></tr>
               <tr><td><code>redeem.everySecs</code>, <code>minUnits</code></td><td>how often to cash vouchers, and the smallest amount worth a transaction</td></tr>
               <tr><td><code>holder.tiers</code></td><td>optional holder prices: <code>share</code> of the network token&apos;s supply and <code>off</code> the list price, both in basis points</td></tr>
-              <tr><td><code>notify.url</code> / <code>urlEnv</code></td><td>optional webhook (Slack, Discord or your own) that gets one line each time a payout reaches your wallet, read back from the chain; <code>orrery provider check</code> sends a test notice</td></tr>
+              <tr><td><code>notify.url</code> / <code>urlEnv</code></td><td>optional webhook (Slack, Discord or your own) that gets one line each time a payout reaches your wallet, read back from the chain, and the day&apos;s books just after midnight UTC; <code>orrery provider check</code> sends a test notice</td></tr>
             </tbody>
           </table>
 

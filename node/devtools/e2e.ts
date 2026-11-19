@@ -995,6 +995,20 @@ check('orrery provider status says what the wallet held after the last payout, p
     && !!oldRow && oldRow.answers === 41 && oldRow.billed === '0.123456' && oldRow.paid === '0.120000',
     `${keptToday ? `kept ${keptToday.day}: ${keptToday.answers} answers, ${keptToday.payouts} payouts` : 'nothing kept'} · ${oldRow ? `${oldRow.day} from days.jsonl: ${oldRow.answers} answers` : 'no old day shown'}`);
 }
+// Kestrel has a notify webhook: past midnight UTC the same line goes there too, with the day's totals beside it.
+{
+  const today = new Date().toISOString().slice(0, 10), dayStart = Date.parse(`${today}T00:00:00Z`);
+  const servedToday = readTrips(join(WORK, 'providers', 'kestrel', 'served.jsonl')).filter((t) => t.at >= dayStart);
+  const before = nodeSaid[0].length;
+  (nodes[0] as unknown as { booksTick?: (now: number) => void }).booksTick?.(dayStart + 86_400_000 + 1_000);
+  const said = nodeSaid[0].slice(before).find((l) => l.startsWith('books for ')) ?? '';
+  const booksNotices = () => hooked.filter((h) => h.path === '/hooks/kestrel' && (h.body as { books?: unknown }).books);
+  for (let t = 0; t < 20 && !booksNotices().length; t++) await new Promise((r) => setTimeout(r, 250));
+  const got = booksNotices()[0]?.body as { text?: string; content?: string; books?: { day: string; answers: number } } | undefined;
+  check('just after midnight UTC, a node with a notify webhook posts the day’s books there, the line its log says',
+    !!said && booksNotices().length === 1 && got?.text === `${providerSpecs[0].name}: ${said}` && got?.content === got?.text && got?.books?.day === today && got?.books?.answers === servedToday.length,
+    got?.text?.slice(0, 120) ?? (said ? 'said in the log, nothing posted' : 'no books line'));
+}
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.
 const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);

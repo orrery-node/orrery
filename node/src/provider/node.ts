@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, booksByDayCsv, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -765,14 +765,17 @@ export class ProviderNode {
       if (r?.chain && r.chain.state !== 'missing') {
         if (r.chain.state === 'landed' && r.after !== null) writeHeld(`${this.dir}/held.json`, { at: Date.now(), units: r.after.toString(), tx: p.tx });
         this.log(arrivalNote(p, r.chain, r.after));
-        if (this.notifyTo) {
-          const status = await postNotice(this.notifyTo, payoutNotice(this.cfg.name, p, r.chain, r.after));
-          if (status === null || status < 200 || status > 299) this.log(`the notify webhook ${status === null ? 'could not be reached' : `answered ${status}`}; the payout is in this log and the console all the same`);
-        }
-        return;
+        return this.notice(payoutNotice(this.cfg.name, p, r.chain, r.after), 'the payout');
       }
       await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
     }
+  }
+
+  /** Posts a notice to the `notify` webhook, when there is one; a webhook that fails is said in the log, nothing more. */
+  private async notice(body: unknown, what: string): Promise<void> {
+    if (!this.notifyTo) return;
+    const status = await postNotice(this.notifyTo, body);
+    if (status === null || status < 200 || status > 299) this.log(`the notify webhook ${status === null ? 'could not be reached' : `answered ${status}`}; ${what} is in this log and the console all the same`);
   }
 
   private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
@@ -924,10 +927,13 @@ export class ProviderNode {
     const day = utcDay(now);
     if (day === this.booksDay) return;
     const line = this.booksLine(this.booksDay);
-    if (line) this.log(line);
     // The closed day's totals go into days.jsonl, which does not roll over: the books by day keep it after the logs do not.
     const kept = dayToKeep(this.booksDay, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`));
     if (kept) keepDay(`${this.dir}/days.jsonl`, kept);
+    if (line) {
+      this.log(line);
+      void this.notice(booksNotice(this.cfg.name, line, kept), 'the day’s books');
+    }
     this.booksDay = day;
   }
 

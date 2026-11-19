@@ -112,6 +112,13 @@ export function dayToKeep(day: string, served: { at: number; cost: string }[], p
   return { day, answers: a.length, billed: a.reduce((n, t) => n + toUnits(t.cost), 0n).toString(), payouts: p.length, paid: p.reduce((n, x) => n + BigInt(x.units), 0n).toString() };
 }
 
+/** What the node posts to its `notify` webhook just after midnight UTC: the day's line from its log, under `text` and
+ * `content` as a payout's notice has it, and the day's totals under `books` in USDC. */
+export function booksNotice(node: string, line: string, d: DayKept | null): { text: string; content: string; books: { day: string; answers: number; billed: string; payouts: number; paidOut: string } | null } {
+  const text = `${node}: ${line}`;
+  return { text, content: text, books: d ? { day: d.day, answers: d.answers, billed: usd(BigInt(d.billed)), payouts: d.payouts, paidOut: usd(BigInt(d.paid)) } : null };
+}
+
 /** `provider earnings --by day`:
  *   day (UTC)       answers       billed   payouts     paid out
  *   2026-11-19           27    $0.000423         1    $0.000423 */

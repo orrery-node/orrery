@@ -98,4 +98,15 @@ describe('a node’s books for one UTC day', () => {
     const full = k.booksByDay([{ at: at('2026-11-16T23:00:00Z'), cost: '0.000001' }, ...served], payouts, 7 * 86_400_000, now, [{ day: '2026-11-17', answers: 99, billed: '0', payouts: 0, paid: '0' }]);
     assert.equal(full.rows.find((r) => r.day === '2026-11-17')?.answers, 2);
   });
+
+  it('posts the day’s line to the notify webhook as the log says it, with the day’s totals in USDC', () => {
+    const notice = (books as unknown as { booksNotice?: (node: string, line: string, d: unknown) => { text: string; content: string; books: Record<string, unknown> | null } }).booksNotice;
+    assert.equal(typeof notice, 'function', 'books.ts writes the notice');
+    const line = 'books for 2026-11-18 (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 to your wallet';
+    const n = notice!('Kestrel GPU Co-op', line, { day: '2026-11-18', answers: 1312, billed: '38912', payouts: 3, paid: '120000' });
+    assert.equal(n.text, `Kestrel GPU Co-op: ${line}`);
+    assert.equal(n.content, n.text);
+    assert.deepEqual(n.books, { day: '2026-11-18', answers: 1312, billed: '0.038912', payouts: 3, paidOut: '0.120000' });
+    assert.equal(notice!('Kestrel GPU Co-op', line, null).books, null);
+  });
 });
