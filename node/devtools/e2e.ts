@@ -524,6 +524,17 @@ const spendOut = await new Promise<string>((done) => { let out = ''; const pc = 
 const spendSkipLine = spendOut.split('\n').find((l) => /did not answer/.test(l)) ?? '';
 check('orrery spend says how many answers came from the next node after another did not answer, and that such a node is signed nothing', skippedLogged.length > 0 && spendSkipLine.startsWith(`${skippedLogged.length} of these answers came from the next node after another did not answer`) && /signed nothing\.$/.test(spendSkipLine), spendSkipLine || `${skippedLogged.length} such answers in the log, and spend says nothing about them`);
 check('the router’s log keeps which answers another node finished after the first stopped mid-answer, and orrery spend says so apart from nodes that did not answer', resumedLogged.length >= 2 && spendSkipLine.includes(`; ${resumedLogged.length} were finished by another node after the first stopped mid-answer. A node that does not answer or does not finish is signed nothing.`), `${resumedLogged.length} in the log · ${spendSkipLine.split('; ')[1] ?? 'spend says nothing about them'}`);
+// orrery spend --by day: the router's books, a UTC day a row; today's row is what its log of answers says it paid today.
+{
+  const spendCli = (args: string[]) => new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const dayCsv = (await spendCli(['--by', 'day', '--csv'])).split('\n'), dayText = await spendCli(['--by', 'day']);
+  const todayUtc = new Date().toISOString().slice(0, 10), todayStart = Date.parse(`${todayUtc}T00:00:00Z`);
+  const paidToday = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => t.at >= todayStart);
+  const want = `${todayUtc},${paidToday.length},${paidToday.reduce((a, t) => a + t.inputTokens, 0)},${paidToday.reduce((a, t) => a + t.outputTokens, 0)},${usd(paidToday.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n))}`;
+  check('orrery spend --by day gives your books of what the router paid, a UTC day a row, and --csv the rows for an expense report',
+    paidToday.length > 0 && dayCsv[0] === 'day_utc,answers,input_tokens,output_tokens,paid_usdc' && dayCsv[1] === want && dayText.startsWith('last 7d, by day') && dayText.split('\n').some((l) => l.startsWith(todayUtc)),
+    dayCsv[1] ?? 'no row');
+}
 // The console page the router serves: the browser that opens it is sent nowhere else, not even for a font.
 const consoleHtml = await (await fetch(`${ROUTER}/`)).text();
 const consoleOutside = [...consoleHtml.matchAll(/(?:https?:)?\/\/([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g)].map((m) => m[1]).filter((h) => h !== '127.0.0.1');

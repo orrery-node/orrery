@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -95,7 +95,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} run claude [--budget <usd>] [--task <name>] [--model <id>] [-- <its own arguments>]   start Claude Code on your router as one job, and print the job's bill when it exits
   ${CLI} run [--budget <usd>] [--task <name>] -- <any command>   the same for any tool that reads OPENAI_BASE_URL or ANTHROPIC_BASE_URL: the job and its budget ride in the API key (orrery/<task>/<budget>)
   ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
-  ${CLI} spend [--since 24h|7d] [--by model|provider|task] [--json]   what your router paid, from its own log of answers
+  ${CLI} spend [--since 24h|7d] [--by model|provider|task|day] [--csv|--json]   what your router paid, from its own log of answers; by day, your books
   ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
@@ -642,10 +642,13 @@ async function main() {
   }
   if (cmd === 'spend') {
     const byFlag = flag('by', 'model');
-    const by = byFlag === 'provider' || byFlag === 'task' ? byFlag : 'model';
-    const since = flag('since', '24h')!;
+    const by = byFlag === 'provider' || byFlag === 'task' || byFlag === 'day' ? byFlag : 'model';
+    // By day it is your books of what the router paid, a week unless --since says otherwise.
+    const since = flag('since', by === 'day' ? '7d' : '24h')!;
     const spendTrips = readTrips(home('router', 'trips.jsonl'));
     const { rows, total } = summarize(spendTrips, by, windowMs(since));
+    // The rows alone, for a spreadsheet or an expense report: nothing else is printed, so it can go straight to a file.
+    if (has('csv')) return console.log(spendCsv(rows, by));
     // Answers that came from the next node after another did not answer: that node was signed nothing.
     const skips = skipped(spendTrips, windowMs(since));
     // Requests no node answered: nothing was signed for them, and the router keeps them apart from the answers.

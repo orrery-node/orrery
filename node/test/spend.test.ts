@@ -150,3 +150,18 @@ it('a node’s log keeps which answers were paid inside the seal, and counts the
   appendTrip(path, { ...base, at: now - 48 * 3600_000, inside: true });
   assert.deepEqual(paidInside(readTrips(path), 24 * 3600_000, now), { answers: 3, inside: 2 });
 });
+
+it('orrery spend --by day keeps your books of what the router paid, a UTC day a row, newest first, and --csv gives the rows', () => {
+  const s = spend as unknown as { summarize: (t: unknown[], by: string, since: number, now: number) => { rows: { key: string; answers: number; units: bigint }[]; total: { answers: number; units: bigint } }; spendCsv?: (rows: unknown[], by: string) => string };
+  assert.equal(typeof s.spendCsv, 'function', 'spend.ts writes the CSV');
+  const now = Date.parse('2026-11-19T20:40:00Z');
+  const trip = (iso: string, cost: string, task?: string) => ({ at: Date.parse(iso), model: 'llama-3.3-70b', provider: 'p', providerName: 'Orrery Seed', inputTokens: 200, outputTokens: 100, cost, ...(task ? { task } : {}) });
+  const trips = [trip('2026-11-18T23:59:59Z', '0.000020'), trip('2026-11-19T00:00:01Z', '0.000030'), trip('2026-11-19T20:00:00Z', '0.000025', 'fix, the "build"'), trip('2026-11-10T12:00:00Z', '0.5')];
+  const d = s.summarize(trips, 'day', 7 * 86_400_000, now);
+  assert.deepEqual(d.rows.map((r) => [r.key, r.answers, r.units]), [['2026-11-19', 2, 55n], ['2026-11-18', 1, 20n]]);
+  assert.equal(d.total.units, 75n);
+  assert.equal(s.spendCsv!(d.rows, 'day'), 'day_utc,answers,input_tokens,output_tokens,paid_usdc\n2026-11-19,2,400,200,0.000055\n2026-11-18,1,200,100,0.000020');
+  const t = s.summarize(trips, 'task', 7 * 86_400_000, now);
+  assert.equal(s.spendCsv!(t.rows, 'task').split('\n')[0], 'task,answers,input_tokens,output_tokens,paid_usdc');
+  assert.ok(s.spendCsv!(t.rows, 'task').includes('"fix, the ""build""",1,200,100,0.000025'));
+});

@@ -2,6 +2,7 @@
 // `orrery spend` sums it by model or by provider for any window, so an agent's bill comes from your own disk.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { usd } from './pricing.ts';
 
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
@@ -88,13 +89,14 @@ const units = (usd: string) => {
 
 export type SpendRow = { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number };
 
-/** Totals by model, provider or task, most expensive first, plus the grand total. Answers outside any task are grouped as "(no task)". */
-export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task', sinceMs: number, now = Date.now()) {
+/** Totals by model, provider or task, most expensive first, plus the grand total. Answers outside any task are grouped
+ * as "(no task)". By day, one row a UTC day, newest first: the router's own books of what it paid. */
+export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task' | 'day', sinceMs: number, now = Date.now()) {
   const rows = new Map<string, SpendRow>();
   const total: SpendRow = { key: 'total', answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
   for (const t of trips) {
     if (now - t.at > sinceMs) continue;
-    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : t.providerName;
+    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : by === 'day' ? new Date(t.at).toISOString().slice(0, 10) : t.providerName;
     const r = rows.get(key) ?? { key, answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
     for (const x of [r, total]) {
       x.answers += 1;
@@ -105,7 +107,15 @@ export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task'
     }
     rows.set(key, r);
   }
-  return { rows: [...rows.values()].sort((a, b) => (b.units > a.units ? 1 : b.units < a.units ? -1 : b.answers - a.answers)), total };
+  const order = by === 'day' ? (a: SpendRow, b: SpendRow) => (a.key < b.key ? 1 : -1) : (a: SpendRow, b: SpendRow) => (b.units > a.units ? 1 : b.units < a.units ? -1 : b.answers - a.answers);
+  return { rows: [...rows.values()].sort(order), total };
+}
+
+/** `orrery spend --csv`: the same rows for a spreadsheet or an expense report, amounts in USDC, no total row. A name
+ * with a comma or a quote in it (a task's, say) is quoted the CSV way. */
+export function spendCsv(rows: SpendRow[], by: 'model' | 'provider' | 'task' | 'day'): string {
+  const cell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  return [`${by === 'day' ? 'day_utc' : by},answers,input_tokens,output_tokens,paid_usdc`, ...rows.map((r) => `${cell(r.key)},${r.answers},${r.inputTokens},${r.outputTokens},${usd(r.units)}`)].join('\n');
 }
 
 /** Of the answers in the window: how many came from the next node after another did not answer, how many nodes were
