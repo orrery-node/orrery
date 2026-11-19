@@ -132,6 +132,21 @@ export function booksByDayCsv(b: { rows: DayBooks[] }, unit: 'day' | 'month' = '
   return [`${unit}_utc,answers,billed_usdc,payouts,paid_out_usdc`, ...b.rows.map((r) => `${r.day},${r.answers},${usd(r.billed)},${r.payouts},${usd(r.paid)}`)].join('\n');
 }
 
+/** This UTC month so far, from the same files as the books by day (the days kept in days.jsonl included): the line the
+ * console shows under its books. A month with nothing yet comes back with zeros. */
+export function monthSoFar(served: { at: number; cost: string }[], payouts: Payout[], now = Date.now(), kept: DayKept[] = []): DayBooks {
+  const month = utcDay(now).slice(0, 7);
+  const start = Date.parse(`${month}-01T00:00:00Z`);
+  const row = booksByMonth(booksByDay(served, payouts, now - start, now, kept)).rows.find((r) => r.day === month);
+  return row ?? { day: month, answers: 0, billed: 0n, payouts: 0, paid: 0n };
+}
+
+/** "November so far (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 paid out to your wallet" */
+export function monthSentence(m: DayBooks): string {
+  const name = new Date(`${m.day}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+  return `${name} so far (UTC): ${m.answers.toLocaleString('en-US')} answer${m.answers === 1 ? '' : 's'}, $${usd(m.billed)} billed; ${m.payouts} payout${m.payouts === 1 ? '' : 's'}, $${usd(m.paid)} paid out to your wallet`;
+}
+
 /** The books by day folded into UTC calendar months, for the accounts: `provider earnings --by month`. Newest first;
  * each row is its days added up, so a month the logs no longer reach still counts the days kept in days.jsonl. */
 export function booksByMonth(b: { rows: DayBooks[]; total: DayBooks }): { rows: DayBooks[]; total: DayBooks } {

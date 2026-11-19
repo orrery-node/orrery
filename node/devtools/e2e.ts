@@ -1010,6 +1010,16 @@ check('orrery provider status says what the wallet held after the last payout, p
     !!keptToday && keptToday.answers === servedToday.length && keptToday.billed === billedToday.toString() && keptToday.payouts === paidToday.length && keptToday.paid === paidUnits.toString()
     && !!oldRow && oldRow.answers === 41 && oldRow.billed === '0.123456' && oldRow.paid === '0.120000',
     `${keptToday ? `kept ${keptToday.day}: ${keptToday.answers} answers, ${keptToday.payouts} payouts` : 'nothing kept'} · ${oldRow ? `${oldRow.day} from days.jsonl: ${oldRow.answers} answers` : 'no old day shown'}`);
+  // Under the books the console says this UTC month so far: every day of the month the node has, kept days included.
+  const yearBooks = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=400d`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null) as { rows?: { day: string; answers: number; billed: string; payouts: number; paid: string }[] } | null;
+  const monthKey = today.slice(0, 7), monthDays = (yearBooks?.rows ?? []).filter((r) => r.day.startsWith(monthKey));
+  const mo = (weekBooks as { month?: { day: string; answers: number; billed: string; payouts: number; paid: string; line: string } } | null)?.month;
+  const sumUnits = (k: 'billed' | 'paid') => monthDays.reduce((a, r) => a + BigInt(Math.round(Number(r[k]) * 1e6)), 0n);
+  check('the node’s console says this UTC month so far under its books: every day of the month it has, kept days included',
+    !!mo && mo.day === monthKey && monthDays.length > 0 && mo.answers === monthDays.reduce((a, r) => a + r.answers, 0) && mo.billed === usd(sumUnits('billed')) && mo.payouts === monthDays.reduce((a, r) => a + r.payouts, 0) && mo.paid === usd(sumUnits('paid'))
+    && mo.line.endsWith(`so far (UTC): ${mo.answers.toLocaleString('en-US')} answer${mo.answers === 1 ? '' : 's'}, $${mo.billed} billed; ${mo.payouts} payout${mo.payouts === 1 ? '' : 's'}, $${mo.paid} paid out to your wallet`)
+    && ibPage.includes('id="month"'),
+    mo?.line ?? 'no month in /orrery/books');
 }
 // Kestrel has a notify webhook: past midnight UTC the same line goes there too, with the day's totals beside it.
 {

@@ -121,4 +121,17 @@ describe('a node’s books for one UTC day', () => {
     assert.equal(k.booksByDayCsv(m, 'month'), 'month_utc,answers,billed_usdc,payouts,paid_out_usdc\n2026-11,30,0.000500,1,0.000423\n2026-10,41,0.123456,2,0.120000');
     assert.ok(k.booksByDayLines(m, 'month')[0].startsWith('month (UTC)'));
   });
+
+  it('says this UTC month so far: the logs from the 1st, the days kept before them, nothing from last month', () => {
+    const k = books as unknown as { monthSoFar?: (served: unknown[], payouts: unknown[], now: number, kept: unknown[]) => { day: string; answers: number; billed: bigint; payouts: number; paid: bigint }; monthSentence?: (m: unknown) => string };
+    assert.equal(typeof k.monthSoFar, 'function', 'books.ts says the month so far');
+    const at = (iso: string) => Date.parse(iso), now = at('2026-11-19T19:40:00Z');
+    const served = [{ at: at('2026-10-31T23:59:00Z'), cost: '0.009999' }, { at: at('2026-11-18T10:00:00Z'), cost: '0.000100' }, { at: at('2026-11-19T09:00:00Z'), cost: '0.000023' }];
+    const payouts = [{ at: at('2026-10-31T23:00:00Z'), units: '999999', channels: 1, tx: 'a'.repeat(44) }, { at: at('2026-11-19T09:05:00Z'), units: '123', channels: 1, tx: 'b'.repeat(44) }];
+    const kept = [{ day: '2026-11-03', answers: 41, billed: '120000', payouts: 2, paid: '120000' }, { day: '2026-10-30', answers: 7, billed: '5', payouts: 1, paid: '5' }];
+    const m = k.monthSoFar!(served, payouts, now, kept);
+    assert.deepEqual(m, { day: '2026-11', answers: 43, billed: 120123n, payouts: 3, paid: 120123n });
+    assert.equal(k.monthSentence!(m), 'November so far (UTC): 43 answers, $0.120123 billed; 3 payouts, $0.120123 paid out to your wallet');
+    assert.deepEqual(k.monthSoFar!([], [], at('2026-12-01T00:00:05Z'), []), { day: '2026-12', answers: 0, billed: 0n, payouts: 0, paid: 0n });
+  });
 });

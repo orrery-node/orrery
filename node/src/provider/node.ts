@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, monthSentence, monthSoFar, readDays, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -423,7 +423,9 @@ export class ProviderNode {
           return void res.end(`${booksByDayCsv(b)}\n`);
         }
         const out = (r: DayBooks) => ({ day: r.day, answers: r.answers, billed: usd(r.billed), payouts: r.payouts, paid: usd(r.paid) });
-        return json(res, 200, { since, rows: b.rows.map(out), total: out(b.total) });
+        // This UTC month so far, whatever the window: the line under the console's books.
+        const month = monthSoFar(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), Date.now(), readDays(`${this.dir}/days.jsonl`));
+        return json(res, 200, { since, rows: b.rows.map(out), total: out(b.total), month: { ...out(month), line: monthSentence(month) } });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         // Something outside this computer asked: the operator's own provider check says it is theirs.
