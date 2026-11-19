@@ -970,11 +970,21 @@ check('the node’s console checks each payout against the chain: every one arri
     row ? `${row.day}: ${row.answers} answers, $${row.billed} billed, ${row.payouts} payouts, $${row.paid} paid out` : `no row (without the key: ${booksNoKey})`);
   const conn = nodes[1].conn as unknown as { getAccountInfo: (...a: unknown[]) => Promise<unknown> };
   const real = conn.getAccountInfo.bind(conn);
-  let reads = 0;
+  const balanceConn = nodes[1].conn as unknown as { getBalance: (...a: unknown[]) => Promise<unknown> };
+  const realBalance = balanceConn.getBalance.bind(balanceConn);
+  let reads = 0, refreshes = 0;
   conn.getAccountInfo = (...a: unknown[]) => { reads++; return real(...a); };
-  for (let k = 0; k < 5; k++) await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null);
+  balanceConn.getBalance = (...a: unknown[]) => { refreshes++; return realBalance(...a); };
+  let lastEarn: { fees?: { line: string; low: boolean } | null } | null = null;
+  for (let k = 0; k < 5; k++) lastEarn = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null);
   conn.getAccountInfo = real;
-  check('the console polling the node’s earnings reads the listing from the chain at most once a minute', reads <= 1, `${reads} chain read${reads === 1 ? '' : 's'} for 5 polls`);
+  balanceConn.getBalance = realBalance;
+  check('the console polling the node’s earnings reads the chain at most once a minute', refreshes <= 1 && reads <= 2 * refreshes, `${refreshes} refresh${refreshes === 1 ? '' : 'es'}, ${reads} account read${reads === 1 ? '' : 's'} for 5 polls`);
+  // The fee money the node key has for payouts, as the console shows it: the key's balance on chain now.
+  const { feesLine } = (await import('../src/provider/node.ts')) as unknown as { feesLine: (o: { lamports: number; openingRent: number | null; nodeKey: string }) => string };
+  const keyLamports = (await realBalance(nodes[1].node.publicKey)) as number;
+  const expectedFees = feesLine({ lamports: keyLamports, openingRent: null, nodeKey: nodes[1].node.publicKey.toBase58() });
+  check('the node’s console says how much fee money its key has for payouts, from the chain', lastEarn?.fees?.line === expectedFees && lastEarn.fees.low === false, lastEarn?.fees?.line ?? 'no fee line');
 }
 
 const iron = nodes[1];

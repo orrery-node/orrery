@@ -78,6 +78,11 @@ describe('the local console pages', () => {
     assert.ok(html.includes('Your books by day (UTC), last 7 days') && html.includes('id="days"') && html.includes("fetch('/orrery/books?since=7d',K)"), 'the table and its call');
   });
 
+  it('the node’s console says how much fee money the node key has left for payouts, and warns when it runs low', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="fees"') && html.includes("'Fee money for payouts: '+e.fees.line") && html.includes("e.fees.low?'lede stop':'lede'"), 'the line, its text and its warning');
+  });
+
   it('shows the router’s own record of each node, not only what it counted since it started', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');

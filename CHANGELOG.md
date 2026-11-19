@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · Your node’s console says how much fee money the node key has left for payouts, under the totals: "Fee money for payouts: 0.0123 SOL on the node key, about 2,460 payouts". Every payout is a transaction the node key pays for, so the line turns to a warning, with the address to send SOL to, before payouts would stop. It is read with the rest of the console’s chain reads, at most once a minute.
+
 ## 0.1.22 · 2026-11-19 05:56 UTC
 
 **Your node’s books, checked against the chain: every payout read back and shown arriving in your wallet, what the wallet held after it, when the next payout goes out, and the day’s books in one line.**

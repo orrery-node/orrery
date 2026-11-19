@@ -189,7 +189,7 @@ export class ProviderNode {
   private readonly payoutsOnChain = new Map<string, Landed>();
   private quietTimer: NodeJS.Timeout | null = null;
   private booksTimer: NodeJS.Timeout | null = null;
-  private listingRead: { at: number; onChain: { payouts: number; settled: string } | null } | null = null;
+  private listingRead: { at: number; onChain: { payouts: number; settled: string } | null; fees: { line: string; low: boolean } | null } | null = null;
   private booksDay = utcDay(Date.now());
   private warnedNoCacheReport = false;
   private server: Server | null = null;
@@ -396,9 +396,13 @@ export class ProviderNode {
         // The console asks every two seconds; the chain is read at most once a minute.
         if (!this.listingRead || Date.now() - this.listingRead.at > 60_000) {
           const listing = await this.conn.getAccountInfo(this.pda).catch(() => undefined);
-          if (listing !== undefined) this.listingRead = { at: Date.now(), onChain: listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null };
+          // The fee money with it: every payout is a transaction the node key pays for, so payouts stop when it runs out.
+          const lamports = await this.conn.getBalance(this.node.publicKey).catch(() => null);
+          const openingRent = lamports === null ? null : await this.payoutAccountRent();
+          const fees = lamports === null ? null : { line: feesLine({ lamports, openingRent, nodeKey: this.node.publicKey.toBase58() }), low: lamports < FEE_FLOOR_LAMPORTS + (openingRent ?? 0) };
+          if (listing !== undefined) this.listingRead = { at: Date.now(), onChain: listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null, fees };
         }
-        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain: this.listingRead?.onChain ?? null });
+        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain: this.listingRead?.onChain ?? null, fees: this.listingRead?.fees ?? null });
       }
       // The books day by day (UTC), from the node's own files: what each day billed and paid out. No chain call.
       if (req.method === 'GET' && url.pathname === '/orrery/books') {
