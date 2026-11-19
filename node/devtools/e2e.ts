@@ -952,6 +952,12 @@ const loggedFor = (p: { tx: string }) => nodeSaid[0].find((l) => l.includes(`tx 
 check('a node with a notify webhook posts each payout’s arrival there, the line its log says, with the amount the chain shows', kestrelKept.length > 0
   && kestrelKept.every((p) => noticeFor(p).length === 1 && noticeFor(p)[0].body.payout!.arrived === usd(BigInt(p.units)) && noticeFor(p)[0].body.text === `${providerSpecs[0].name}: ${loggedFor(p)}` && noticeFor(p)[0].body.content === noticeFor(p)[0].body.text),
   `${notices().length} notices for ${kestrelKept.length} payouts${notices()[0] ? `: ${notices()[0].body.text!.slice(0, 96)}…` : ''}`);
+// Its status, which the console and provider status read, says where notices go and that the last got through, and
+// gives the webhook's host only: the rest of the address is as good as a password to post in that channel.
+const kNotify = (nodes[0].status() as { notify?: { host: string; last: { what: string; status: number | null } | null } | null }).notify;
+check('a node’s status says where payout notices go and that the last one got through, without the webhook’s secret path',
+  kNotify?.host === new URL(HOOK).host && kNotify?.last?.what === 'payout' && kNotify?.last?.status === 200 && !JSON.stringify(nodes[0].status()).includes('/hooks/kestrel'),
+  kNotify ? `${kNotify.host} · last ${kNotify.last ? `${kNotify.last.what} HTTP ${kNotify.last.status}` : 'none'}` : 'no notify in status');
 // The line for each node's latest payout says what its wallet then held, from the same record: what the wallet holds now.
 const heldNow = await Promise.all(providerSpecs.map((_, i) => balance(wallets[i].publicKey)));
 check('each node says what its wallet held after its latest payout, and the chain agrees', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || a.held === usd(heldNow[i])),

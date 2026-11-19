@@ -30,6 +30,45 @@ export function readHeld(path: string): Held | null {
   }
 }
 
+/** The last notice the node posted to its `notify` webhook and what the webhook answered (null: not reached), kept in
+ * notice.json beside the logs so `provider status` and the console can say whether notices are getting through. */
+export type NoticeSent = { at: number; what: 'payout' | 'books'; status: number | null };
+
+export function writeNotice(path: string, n: NoticeSent): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ at: n.at, what: n.what, status: n.status })}\n`);
+  } catch {
+    // the log says a notice that failed
+  }
+}
+
+export function readNotice(path: string): NoticeSent | null {
+  try {
+    const n = JSON.parse(readFileSync(path, 'utf8')) as NoticeSent;
+    return typeof n.at === 'number' && (n.what === 'payout' || n.what === 'books') && (n.status === null || Number.isInteger(n.status)) ? { at: n.at, what: n.what, status: n.status } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where the node's notices go and whether the last one got through, in words:
+ *   to hooks.slack.com; the last, a payout 5 min ago, got through (HTTP 200) */
+export function noticeSentence(host: string, last: NoticeSent | null, now = Date.now()): string {
+  if (!last) return `to ${host}; none sent yet (the first goes with the next payout)`;
+  const ms = Math.max(0, now - last.at);
+  const ago = ms < 60_000 ? `${Math.round(ms / 1000)} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 172_800_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} days`;
+  const what = last.what === 'payout' ? 'a payout' : 'the day’s books';
+  const result = last.status === null ? 'could not reach it' : last.status >= 200 && last.status <= 299 ? `got through (HTTP ${last.status})` : `was refused (HTTP ${last.status}); check the webhook address`;
+  return `to ${host}; the last, ${what} ${ago} ago, ${result}`;
+}
+
+/** `provider status`, under the wallet:
+ *   payout notices        to hooks.slack.com; the last, a payout 5 min ago, got through (HTTP 200) */
+export function noticeLine(host: string, last: NoticeSent | null, now = Date.now()): string {
+  return `  payout notices        ${noticeSentence(host, last, now)}`;
+}
+
 /** `provider status`, under the payouts: what the console shows beside its totals.
  *   in your wallet        $1.412500 after the last payout, per the chain (tx 5GhKq2abcdef…) */
 export function walletLine(h: Held): string {

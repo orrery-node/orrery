@@ -276,4 +276,20 @@ describe('what a node has paid out to its wallet', () => {
     const down = (async () => { throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch;
     assert.equal(await post!('https://hooks.example.com/x', {}, down), null);
   });
+
+  it('says where payout notices go and whether the last one got through, kept across a restart', () => {
+    const f = payouts as unknown as { noticeLine?: (host: string, last: unknown, now?: number) => string; writeNotice?: (path: string, n: unknown) => void; readNotice?: (path: string) => unknown };
+    assert.equal(typeof f.noticeLine, 'function', 'payouts.ts writes the line');
+    const now = Date.parse('2026-11-19T16:00:00Z');
+    assert.equal(f.noticeLine!('hooks.slack.com', null, now), '  payout notices        to hooks.slack.com; none sent yet (the first goes with the next payout)');
+    assert.equal(f.noticeLine!('hooks.slack.com', { at: now - 300_000, what: 'payout', status: 200 }, now), '  payout notices        to hooks.slack.com; the last, a payout 5 min ago, got through (HTTP 200)');
+    assert.equal(f.noticeLine!('discord.com', { at: now - 7_200_000, what: 'books', status: 404 }, now), '  payout notices        to discord.com; the last, the day’s books 2 h ago, was refused (HTTP 404); check the webhook address');
+    assert.equal(f.noticeLine!('hooks.slack.com', { at: now - 30_000, what: 'payout', status: null }, now), '  payout notices        to hooks.slack.com; the last, a payout 30 s ago, could not reach it');
+    const path = join(mkdtempSync(join(tmpdir(), 'orrery-notice-')), 'notice.json');
+    assert.equal(f.readNotice!(path), null);
+    f.writeNotice!(path, { at: 7, what: 'books', status: null });
+    assert.deepEqual(f.readNotice!(path), { at: 7, what: 'books', status: null });
+    f.writeNotice!(path, { at: 8, what: '<b>', status: 200 });
+    assert.equal(f.readNotice!(path), null);
+  });
 });

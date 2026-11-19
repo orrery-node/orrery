@@ -1,6 +1,6 @@
 // The provider's own page at http://127.0.0.1:<port>/ — what this node served, what routers signed for it, what is
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
-import { nextPayoutSentence, payoutRows, type Held, type NextPayout, type PayoutSummary } from './payouts.ts';
+import { nextPayoutSentence, noticeSentence, payoutRows, type Held, type NextPayout, type NoticeSent, type PayoutSummary } from './payouts.ts';
 import { reachSentence, type ReachNow } from './reach.ts';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
@@ -59,7 +59,7 @@ export function nextPayoutHint(n: NextPayout, configPath: string): string {
   return `  ($${(Number(n.due) / 1e6).toFixed(6)} at the next round, every ${every}; $${(Number(n.below) / 1e6).toFixed(6)} waits for $${min} a channel)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null };
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
@@ -94,7 +94,7 @@ export function providerConsolePage(): string {
 <div class="stats" id="sum"></div>
 <p class="lede" id="fees" hidden></p>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div></section>
-<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="next" hidden></p><p class="lede" id="checked" hidden></p><p class="lede" id="copied" hidden></p></section>
+<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="next" hidden></p><p class="lede" id="notice" hidden></p><p class="lede" id="checked" hidden></p><p class="lede" id="copied" hidden></p></section>
 <section><h2>Last 24 hours, by model (billed)</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>billed</th></tr></thead><tbody id="earn"></tbody></table></div></section>
 <section><div class="pay"><h2>Your books by day (UTC), last 7 days</h2><a class="check" id="csv" href="#" download="orrery-books.csv">Download 90 days as CSV</a></div><div class="wrap"><table><thead><tr><th>day</th><th>answers</th><th>billed</th><th>payouts</th><th>paid out</th></tr></thead><tbody id="days"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>channel</th><th>deposit</th><th>signed to you</th><th>redeemed</th><th>waiting</th><th>unsigned answers</th></tr></thead><tbody id="ch"></tbody></table></div></section>
@@ -105,6 +105,7 @@ const reachSentence=${reachSentence.toString()};
 const payoutRows=${payoutRows.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nextPayoutSentence=${nextPayoutSentence.toString()};
+const noticeSentence=${noticeSentence.toString()};
 const checked={};
 document.getElementById('check').onclick=async()=>{const b=document.getElementById('check'),l=document.getElementById('checked');b.disabled=true;b.textContent='Reading the chain…';
 try{const c=await (await fetch('/orrery/payouts/check',K)).json();for(const r of c.rows)if(r.state!=='unchecked')checked[r.tx]={state:r.state,units:r.units};l.textContent=c.line?c.line+' (checked '+new Date().toISOString().slice(11,19)+' UTC)':'';l.hidden=!c.line;tick();}
@@ -118,7 +119,7 @@ document.getElementById('sum').innerHTML='<div><b>'+s.answers+'</b><span class=c
 document.getElementById('sum').className=s.wallet?'stats five':'stats';
 document.getElementById('recent').innerHTML=s.recent.slice(0,12).map(r=>'<tr><td>'+new Date(r.at).toLocaleTimeString()+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.channel.slice(0,8))+'</td><td>'+r.inputTokens+'+'+r.outputTokens+'</td><td class=go>$'+esc(r.cost)+'</td><td>'+(r.sealed?'<span class=go>sealed</span> ':'')+(r.off?'<span class=go>holder −'+(r.off/100)+'%</span>':'')+'</td></tr>').join('')||'<tr class=empty><td colspan=6>No answers yet. Routers find you through your listing on chain.</td></tr>';
 if(s.payouts)s.payouts.checked=Object.assign({},s.payouts.checked,checked);document.getElementById('payouts').innerHTML=payoutRows(s.payouts);document.getElementById('check').hidden=!(s.payouts&&s.payouts.recent.length);
-const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;
+const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;const no=document.getElementById('notice');no.textContent=s.notify?'Payout notices go '+noticeSentence(s.notify.host,s.notify.last,Date.now())+'.':'';no.hidden=!s.notify;
 const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;
 try{const e=await (await fetch('/orrery/earnings?since=24h',K)).json();const fe=document.getElementById('fees');fe.textContent=e.fees?'Fee money for payouts: '+e.fees.line+'.':'';fe.className=e.fees&&e.fees.low?'lede stop':'lede';fe.hidden=!e.fees;document.getElementById('earn').innerHTML=e.total.answers?[...e.rows,{...e.total,key:'total'}].map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served in the last 24 hours.</td></tr>';}catch(err){}
 try{const b=await (await fetch('/orrery/books?since=7d',K)).json();document.getElementById('days').innerHTML=b.rows.length?[...b.rows,b.total].map(r=>'<tr><td>'+esc(r.day)+'</td><td>'+Number(r.answers).toLocaleString('en-US')+'</td><td>$'+esc(r.billed)+'</td><td>'+Number(r.payouts)+'</td><td class=go>$'+esc(r.paid)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served or paid out in the last 7 days.</td></tr>';}catch(err){}

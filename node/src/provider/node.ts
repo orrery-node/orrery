@@ -22,7 +22,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
-import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -357,6 +357,8 @@ export class ProviderNode {
       }), BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS), this.cfg.redeem?.everySecs ?? 60, this.paidOutChecked && !this.paidOut),
       // What the wallet held right after the last payout the node read back from the chain; null until one.
       wallet: readHeld(`${this.dir}/held.json`),
+      // Where payout notices go (the webhook's host only: its path is a secret) and what the last one got back.
+      notify: this.notifyTo ? { host: new URL(this.notifyTo).host, last: readNotice(`${this.dir}/notice.json`) } : null,
     };
   }
 
@@ -765,17 +767,19 @@ export class ProviderNode {
       if (r?.chain && r.chain.state !== 'missing') {
         if (r.chain.state === 'landed' && r.after !== null) writeHeld(`${this.dir}/held.json`, { at: Date.now(), units: r.after.toString(), tx: p.tx });
         this.log(arrivalNote(p, r.chain, r.after));
-        return this.notice(payoutNotice(this.cfg.name, p, r.chain, r.after), 'the payout');
+        return this.notice(payoutNotice(this.cfg.name, p, r.chain, r.after), 'payout');
       }
       await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
     }
   }
 
-  /** Posts a notice to the `notify` webhook, when there is one; a webhook that fails is said in the log, nothing more. */
-  private async notice(body: unknown, what: string): Promise<void> {
+  /** Posts a notice to the `notify` webhook, when there is one; a webhook that fails is said in the log, nothing more.
+   * What it answered is kept in notice.json for `provider status` and the console. */
+  private async notice(body: unknown, kind: 'payout' | 'books'): Promise<void> {
     if (!this.notifyTo) return;
     const status = await postNotice(this.notifyTo, body);
-    if (status === null || status < 200 || status > 299) this.log(`the notify webhook ${status === null ? 'could not be reached' : `answered ${status}`}; ${what} is in this log and the console all the same`);
+    writeNotice(`${this.dir}/notice.json`, { at: Date.now(), what: kind, status });
+    if (status === null || status < 200 || status > 299) this.log(`the notify webhook ${status === null ? 'could not be reached' : `answered ${status}`}; ${kind === 'payout' ? 'the payout' : 'the day’s books'} is in this log and the console all the same`);
   }
 
   private async redeemBatch(batch: [string, Entry][], ixs: (b: [string, Entry][]) => TransactionInstruction[], done: { channel: string; amount: bigint; tx: string }[]): Promise<boolean> {
@@ -932,7 +936,7 @@ export class ProviderNode {
     if (kept) keepDay(`${this.dir}/days.jsonl`, kept);
     if (line) {
       this.log(line);
-      void this.notice(booksNotice(this.cfg.name, line, kept), 'the day’s books');
+      void this.notice(booksNotice(this.cfg.name, line, kept), 'books');
     }
     this.booksDay = day;
   }
