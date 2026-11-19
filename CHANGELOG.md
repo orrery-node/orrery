@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.22 · 2026-11-19 05:56 UTC
+
+**Your node’s books, checked against the chain: every payout read back and shown arriving in your wallet, what the wallet held after it, when the next payout goes out, and the day’s books in one line.**
 
 - **Node** · Just after midnight UTC, your node says the day that ended in one line of its log: "books for 2026-11-18 (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain". It reads the files the node already keeps, so it asks the chain for nothing; a day with nothing served or paid out says nothing. `orrery provider earnings --by day` lays the same books out day by day (a week unless `--since` says otherwise): answers, billed, payouts and paid out for each UTC day, newest first, with the total under them. Your node’s console shows the last seven days the same way ("Your books by day (UTC)"), from `/orrery/books`.
 - **Node** · An open console no longer makes your node read its listing from the chain every two seconds: what has landed on chain is read at most once a minute, and again right after the node sends a payout.
@@ -20,6 +22,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · `orrery provider status` says what the last 24 hours billed, from the node’s own log of answers: "last 24 h  1,312 answers, $0.038912 billed". The count since start goes back to 0 when the node restarts; this one does not. `--json` carries it as `day`.
 - **Node** · Your node’s console lists its payouts to your wallet: the latest 12, each with its time (UTC), what it paid out, how many channels it paid from and its transaction, and the last 24 hours under them. Its "Check against the chain" button reads each one’s transaction back from the chain and says beside it what reached your wallet ("arrived $0.050123"; a payout the chain has no record of, or one that put in a different amount, is marked), with a line under the table: "3 of 3 arrived in your wallet as kept here, $0.161250 in all". A payout found as kept is not looked up again while the node runs. Click a transaction to copy the whole signature and look it up on any Solana explorer; the console still names no other computer, so its address and key never leave this one. Beside the totals, the console shows what your wallet held right after the last payout, read from the chain’s record of that payout ("$1.412500 in your wallet, per the chain"); the node keeps it in `held.json` in its folder, `/orrery/status` carries it as `wallet`, and `orrery provider status` says it under the payouts ("in your wallet  $1.412500 after the last payout, per the chain (tx 5GhKq2abcdef…)"). A node that was paid out on chain before it began keeping its payouts says so in `orrery provider status` ("none recorded here yet; this listing was paid out on chain before") instead of "none yet".
 - **Node** · `orrery provider status` says when money last landed in your wallet and what the last day came to: "last payout  $0.050123 to your wallet 12 min ago (14:05:11 UTC)  tx 5GhKq2abcdef…" and "paid out, last 24 h  $0.120000 in 3 payouts". The node keeps each payout it sends (when, how much, from how many channels, the transaction) in `payouts.jsonl` in its folder, so the lines survive a restart, and `/orrery/status` carries them as `payouts`. Before the first payout it says "none yet". Once the node has read the last payout back from the chain as it wrote it, the line ends "arrived, per the chain".
+
+`npx -y orrery-node@0.1.22`
 
 ## 0.1.21 · 2026-11-18 01:12 UTC
 
