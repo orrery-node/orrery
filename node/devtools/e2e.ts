@@ -88,6 +88,24 @@ for (const [port, delay, label] of upstreams) {
 }
 await sleep(1_500);
 
+// A chat webhook for one node's payout notices: Kestrel posts each payout's arrival here, as an operator's Slack would get it.
+const hooked: { path: string; body: { text?: string; content?: string; payout?: Record<string, string | null> | null } }[] = [];
+const hookServer = createHttpServer((req, res) => {
+  let b = '';
+  req.on('data', (c) => (b += c));
+  req.on('end', () => {
+    try {
+      hooked.push({ path: req.url ?? '', body: JSON.parse(b) });
+    } catch {
+      hooked.push({ path: req.url ?? '', body: {} });
+    }
+    res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
+  });
+});
+await new Promise<void>((r) => hookServer.listen(0, '127.0.0.1', () => r()));
+hookServer.unref();
+const HOOK = `http://127.0.0.1:${(hookServer.address() as { port: number }).port}/hooks/kestrel`;
+
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
   { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
@@ -112,6 +130,7 @@ for (const s of providerSpecs) {
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
     paymentInside: 'inside' in s ? (s.inside as boolean) : undefined,
+    notify: s.name.startsWith('Kestrel') ? { url: HOOK } : undefined,
   });
   const said: string[] = [];
   nodeSaid.push(said);
@@ -924,6 +943,15 @@ for (let t = 0; t < 20 && arrived.some((a) => a.told < a.kept); t++) {
 }
 check('each node reads every payout it sent back from the chain on its own and says it arrived in the wallet', arrived.some((a) => a.kept > 0) && arrived.every((a) => a.told === a.kept),
   arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} ${a.told}/${a.kept}`).join(', '));
+// Kestrel's payouts also went to its notify webhook, each as the line its log said, with the amount the chain shows.
+const kestrelKept = readPayouts(join(WORK, 'providers', 'kestrel', 'payouts.jsonl'));
+const notices = () => hooked.filter((h) => h.path === '/hooks/kestrel' && h.body.payout);
+for (let t = 0; t < 20 && notices().length < kestrelKept.length; t++) await new Promise((r) => setTimeout(r, 250));
+const noticeFor = (p: { tx: string; units: string }) => notices().filter((h) => h.body.payout!.tx === p.tx);
+const loggedFor = (p: { tx: string }) => nodeSaid[0].find((l) => l.includes(`tx ${p.tx.slice(0, 12)}…`) && l.includes('arrived in your wallet'));
+check('a node with a notify webhook posts each payout’s arrival there, the line its log says, with the amount the chain shows', kestrelKept.length > 0
+  && kestrelKept.every((p) => noticeFor(p).length === 1 && noticeFor(p)[0].body.payout!.arrived === usd(BigInt(p.units)) && noticeFor(p)[0].body.text === `${providerSpecs[0].name}: ${loggedFor(p)}` && noticeFor(p)[0].body.content === noticeFor(p)[0].body.text),
+  `${notices().length} notices for ${kestrelKept.length} payouts${notices()[0] ? `: ${notices()[0].body.text!.slice(0, 96)}…` : ''}`);
 // The line for each node's latest payout says what its wallet then held, from the same record: what the wallet holds now.
 const heldNow = await Promise.all(providerSpecs.map((_, i) => balance(wallets[i].publicKey)));
 check('each node says what its wallet held after its latest payout, and the chain agrees', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || a.held === usd(heldNow[i])),
@@ -1068,6 +1096,11 @@ check('a provider with many channels redeems them in transactions that fit, skip
 const { providerCheck, renderCheck } = await import('../src/provider/check.ts');
 const ironCheck = await providerCheck(iron);
 const haloCheck = await providerCheck(nodes[3]);
+const hellosBefore = hooked.filter((h) => h.body.payout === null).length;
+const kestrelNotify = (await providerCheck(nodes[0])).find((l) => l.what === 'payout notices');
+const hello = hooked.filter((h) => h.body.payout === null).slice(hellosBefore);
+check('provider check sends the notify webhook one test notice and says it got through', kestrelNotify?.ok === true && hello.length === 1 && hello[0].path === '/hooks/kestrel' && !!hello[0].body.text?.startsWith(`${providerSpecs[0].name}: orrery provider check says hello`),
+  kestrelNotify ? `${kestrelNotify.ok ? '✓' : '✗'} ${kestrelNotify.detail}` : 'no payout notices line');
 console.log(renderCheck('Ironbridge Compute', ironCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 console.log(renderCheck('Halo Compute', haloCheck).split('\n').map((l) => `    ${l}`).join('\n'));
 const lineOf = (ls: { what: string; ok: boolean | null; detail: string }[], w: string) => ls.find((l) => l.what === w);

@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'Your node can tell you when money lands. Set `"notify": { "url": "https://hooks.slack.com/…" }` in provider.json (or `"urlEnv"` to read the address from an environment variable) and each payout, once the node has read it back from the chain, is posted there as the same line its log says: "Kestrel GPU Co-op: $0.050123 arrived in your wallet: the chain’s record of tx 5GhKq2abcdef… shows it in your USDC account, which then held $1.412500". The JSON has it under `text` (what Slack’s incoming webhooks read) and `content` (what Discord’s read), with the figures under `payout` for a script. `orrery provider check` sends one test notice and says whether it got through.' },
 ];
 
 export const RELEASES: Release[] = [

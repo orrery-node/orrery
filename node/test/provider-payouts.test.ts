@@ -239,4 +239,41 @@ describe('what a node has paid out to its wallet', () => {
     assert.ok(html.includes(`<td title="${tx}"><button class=tx type=button data-tx="${tx}" aria-label="Copy the whole transaction">5GhKq2abcdef…</button></td>`));
     assert.ok(!/<a\b|https?:/.test(html), 'no link and no address of another computer');
   });
+
+  it('posts each payout’s arrival to the notify webhook as the log’s own line, under text and content, with the figures', () => {
+    const notice = (payouts as unknown as { payoutNotice?: (node: string, p: unknown, c: unknown, after?: bigint | null) => { text: string; content: string; payout: Record<string, string | null> } }).payoutNotice;
+    assert.equal(typeof notice, 'function', 'payouts.ts writes the notice');
+    const p = { at: Date.parse('2026-11-19T14:05:00Z'), units: '50123', channels: 2, tx: '5GhKq2abcdefXYZ5GhKq2abcdefXYZ5GhKq2' };
+    const landed = notice!('Kestrel', p, { state: 'landed', units: 50123n }, 1412500n);
+    assert.equal(landed.text, "Kestrel: $0.050123 arrived in your wallet: the chain's record of tx 5GhKq2abcdef… shows it in your USDC account, which then held $1.412500");
+    assert.equal(landed.content, landed.text);
+    assert.deepEqual(landed.payout, { node: 'Kestrel', at: '2026-11-19T14:05:00.000Z', tx: p.tx, state: 'landed', redeemed: '0.050123', arrived: '0.050123', walletAfter: '1.412500' });
+    const failed = notice!('Kestrel', p, { state: 'failed' });
+    assert.ok(failed.text.startsWith('Kestrel: tx 5GhKq2abcdef… failed on chain'));
+    assert.equal(failed.payout.arrived, null);
+  });
+
+  it('takes the webhook from notify.url or the variable notify.urlEnv names, and refuses an address that is not http(s)', () => {
+    const url = (payouts as unknown as { notifyUrl?: (n: unknown, env?: Record<string, string>) => string | null }).notifyUrl;
+    assert.equal(typeof url, 'function', 'payouts.ts reads notify');
+    assert.equal(url!(undefined), null);
+    assert.equal(url!({ url: 'https://hooks.example.com/T1/B2/c3' }), 'https://hooks.example.com/T1/B2/c3');
+    assert.equal(url!({ urlEnv: 'HOOK' }, { HOOK: 'http://127.0.0.1:9/x' }), 'http://127.0.0.1:9/x');
+    assert.throws(() => url!({ urlEnv: 'HOOK' }, {}), /HOOK is not set/);
+    assert.throws(() => url!({ url: 'file:///etc/passwd' }), /https:\/\/ or http:\/\//);
+    assert.throws(() => url!({ url: 'not a url' }), /not a URL/);
+  });
+
+  it('says what the webhook answered, and null when it cannot be reached', async () => {
+    const post = (payouts as unknown as { postNotice?: (url: string, body: unknown, f: typeof fetch) => Promise<number | null> }).postNotice;
+    assert.equal(typeof post, 'function', 'payouts.ts posts the notice');
+    const sent: { url: string; init: RequestInit }[] = [];
+    const ok = (async (u: string, init: RequestInit) => { sent.push({ url: u, init }); return new Response('ok', { status: 200 }); }) as unknown as typeof fetch;
+    assert.equal(await post!('https://hooks.example.com/x', { text: 'hi' }, ok), 200);
+    assert.equal(sent[0].init.method, 'POST');
+    assert.equal(JSON.parse(String(sent[0].init.body)).text, 'hi');
+    assert.equal((sent[0].init.headers as Record<string, string>)['content-type'], 'application/json');
+    const down = (async () => { throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch;
+    assert.equal(await post!('https://hooks.example.com/x', {}, down), null);
+  });
 });

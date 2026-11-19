@@ -22,7 +22,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { booksByDay, booksByDayCsv, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
-import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -64,6 +64,9 @@ export type ProviderConfig = {
   /** Burn on every answer: spend `share` basis points of every USDC this node redeems on buying the network token and
    * burning it. `minUnits` is the smallest buy worth its fee, in USDC base units (default 10,000 = one cent). */
   burn?: { share: number; minUnits?: number };
+  /** A webhook to tell when money reaches the wallet: each payout's arrival, as read back from the chain, is posted
+   * there as one line (Slack and Discord show it as a message). `urlEnv` names an environment variable holding it. */
+  notify?: { url?: string; urlEnv?: string };
 };
 
 type Entry = {
@@ -196,6 +199,8 @@ export class ProviderNode {
   private timer: NodeJS.Timeout | null = null;
   private warnedLowFees = false;
   private consoleKeyValue: string | null = null;
+  /** Where each payout's arrival is posted, from `notify`; checked when the node is made, so a bad address stops it at start. */
+  readonly notifyTo: string | null;
   /** Where this node keeps its keys and its ledger of what routers signed to it. */
   readonly dir: string;
   log: (line: string) => void = (l) => console.log(l);
@@ -212,6 +217,7 @@ export class ProviderNode {
     this.authority = given ? new PublicKey(given) : walletAddress(expand(cfg.wallet ?? `${this.dir}/wallet.json`));
     this.pda = pda.provider(this.authority);
     this.mint = new PublicKey(cfg.settleMint);
+    this.notifyTo = notifyUrl(cfg.notify);
     const wirePath = `${this.dir}/wire.key`;
     this.wire = existsSync(wirePath) ? enclaveKeyFromSecret(Buffer.from(readFileSync(wirePath, 'utf8').trim(), 'hex')) : newEnclaveKey();
     if (!existsSync(wirePath)) writePrivate(wirePath, this.wire.secret.toString('hex'));
@@ -758,7 +764,12 @@ export class ProviderNode {
       const [r] = await checkPayouts(this.conn, [p], this.authority.toBase58(), this.mint.toBase58(), this.payoutsOnChain);
       if (r?.chain && r.chain.state !== 'missing') {
         if (r.chain.state === 'landed' && r.after !== null) writeHeld(`${this.dir}/held.json`, { at: Date.now(), units: r.after.toString(), tx: p.tx });
-        return this.log(arrivalNote(p, r.chain, r.after));
+        this.log(arrivalNote(p, r.chain, r.after));
+        if (this.notifyTo) {
+          const status = await postNotice(this.notifyTo, payoutNotice(this.cfg.name, p, r.chain, r.after));
+          if (status === null || status < 200 || status > 299) this.log(`the notify webhook ${status === null ? 'could not be reached' : `answered ${status}`}; the payout is in this log and the console all the same`);
+        }
+        return;
       }
       await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
     }

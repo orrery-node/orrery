@@ -13,6 +13,7 @@ import { verifyTdx } from '../tee/tdx.ts';
 import { privateAddress } from '../address.ts';
 import { servedContext } from './init.ts';
 import { folderRisk, folderWarning } from './folder.ts';
+import { postNotice } from './payouts.ts';
 import { FEE_FLOOR_LAMPORTS, TOKEN_ACCOUNT_BYTES, type ProviderNode } from './node.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
@@ -216,7 +217,18 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   } else if (cfg.tee?.mode === 'dev') out.push({ ok: null, what: 'enclave', detail: 'a software stand-in for local testing; routers do not treat it as hardware' });
 
   if (cfg.burn) out.push({ ok: null, what: 'burn pledge', detail: `${cfg.burn.share / 100}% of what you redeem; orrery provider burn --config … shows what is due` });
+  if (node.notifyTo) out.push(await notifyLine(node.notifyTo, cfg.name));
   return out;
+}
+
+/** The notify webhook, tried with one test notice in the shape a payout's will have, so the operator sees it arrive. */
+export async function notifyLine(url: string, name: string, f: typeof fetch = fetch): Promise<CheckLine> {
+  const line = `${name}: orrery provider check says hello. Each payout's arrival in your wallet, read back from the chain, will be posted here.`;
+  const status = await postNotice(url, { text: line, content: line, payout: null }, f);
+  const host = new URL(url).host;
+  if (status === null) return { ok: false, what: 'payout notices', detail: `${host} could not be reached; payouts are still in the log and the console` };
+  if (status < 200 || status > 299) return { ok: false, what: 'payout notices', detail: `${host} answered ${status} to a test notice; check the webhook address` };
+  return { ok: true, what: 'payout notices', detail: `a test notice reached ${host} (HTTP ${status}); each payout's arrival will be posted there` };
 }
 
 type TestFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;

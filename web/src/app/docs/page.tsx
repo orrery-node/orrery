@@ -377,7 +377,7 @@ export default function Docs() {
           <Code lang="upstreams">{UPSTREAMS}</Code>
           <p>Keep it running with any process manager. A systemd unit:</p>
           <Code lang="/etc/systemd/system/orrery-provider.service" copy>{SYSTEMD}</Code>
-          <p>Watching your money needs no other tool. Each payout goes straight from a router&apos;s channel to your wallet&apos;s USDC account, and a few seconds later the node reads that transaction back from the chain and says in its log what arrived and what the wallet then held. Small amounts wait until a channel holds five cents, or until its router closes it, so fees never eat a payout; your first payout goes out at once. Just after midnight UTC the log closes the day with one line of books. The console at <code>http://127.0.0.1:&lt;port&gt;/</code> shows the same, and the terminal has it too:</p>
+          <p>Watching your money needs no other tool. Each payout goes straight from a router&apos;s channel to your wallet&apos;s USDC account, and a few seconds later the node reads that transaction back from the chain and says in its log what arrived and what the wallet then held; give it a webhook in <code>notify</code> and that line is posted there too, under the fields Slack and Discord webhooks read. Small amounts wait until a channel holds five cents, or until its router closes it, so fees never eat a payout; your first payout goes out at once. Just after midnight UTC the log closes the day with one line of books. The console at <code>http://127.0.0.1:&lt;port&gt;/</code> shows the same, and the terminal has it too:</p>
           <Code lang="bash" copy>{BOOKS}</Code>
           <p className="d-note">Only standard chat fields (messages, sampling settings, tools, response format) reach your upstream. Fields that would let a caller spend your key on something your price list does not cover, such as fallback model lists, plugins or provider routing, are dropped, and so is <code>n</code>.</p>
 
@@ -404,6 +404,7 @@ export default function Docs() {
               <tr><td><code>models[].maxOutput</code>, <code>context</code></td><td>caps per request; the router reserves at most <code>maxOutput</code> tokens of payment</td></tr>
               <tr><td><code>redeem.everySecs</code>, <code>minUnits</code></td><td>how often to cash vouchers, and the smallest amount worth a transaction</td></tr>
               <tr><td><code>holder.tiers</code></td><td>optional holder prices: <code>share</code> of the network token&apos;s supply and <code>off</code> the list price, both in basis points</td></tr>
+              <tr><td><code>notify.url</code> / <code>urlEnv</code></td><td>optional webhook (Slack, Discord or your own) that gets one line each time a payout reaches your wallet, read back from the chain; <code>orrery provider check</code> sends a test notice</td></tr>
             </tbody>
           </table>
 

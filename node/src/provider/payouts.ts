@@ -183,6 +183,49 @@ export function arrivalNote(p: Payout, c: Landed, after: bigint | null = null): 
   return `${tx} put $${usd(c.units)} in your wallet, not the $${usd(BigInt(p.units))} this node redeemed. See orrery provider payouts`;
 }
 
+/** What the node posts to its `notify` webhook once a payout's transaction is read back from the chain: the log's own
+ * line, under `text` (the field Slack's incoming webhooks read) and `content` (the field Discord's read), and the
+ * figures for a script. The webhook gets nothing a payout's transaction does not already show on chain. */
+export function payoutNotice(node: string, p: Payout, c: Landed, after: bigint | null = null): { text: string; content: string; payout: Record<string, string | null> } {
+  const line = `${node}: ${arrivalNote(p, c, after)}`;
+  return {
+    text: line,
+    content: line,
+    payout: { node, at: new Date(p.at).toISOString(), tx: p.tx, state: c.state, redeemed: usd(BigInt(p.units)), arrived: c.state === 'landed' ? usd(c.units) : null, walletAfter: after === null ? null : usd(after) },
+  };
+}
+
+/** The webhook a payout notice goes to: `notify.url`, or the environment variable `notify.urlEnv` names (a webhook
+ * address is a secret, as good as a password to post in that channel). Null when there is none. */
+export function notifyUrl(n: { url?: string; urlEnv?: string } | undefined, env: Record<string, string | undefined> = process.env): string | null {
+  if (!n) return null;
+  const raw = n.url ?? (n.urlEnv ? env[n.urlEnv] : undefined);
+  if (!raw) throw new Error(n.urlEnv ? `notify: environment variable ${n.urlEnv} is not set` : 'notify: give "url" or "urlEnv"');
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error('notify: the webhook address is not a URL');
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('notify: the webhook address must start with https:// or http://');
+  return u.toString();
+}
+
+/** Posts a notice to the webhook; the HTTP status it answered, or null when it could not be reached in ten seconds. */
+export async function postNotice(url: string, body: unknown, f: typeof fetch = fetch): Promise<number | null> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 10_000);
+  try {
+    const r = await f(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+    await r.text().catch(() => '');
+    return r.status;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** The status's payouts, with each listed one the node has seen arrive as kept marked for the console's "on chain"
  * column. */
 export function withChecked(s: PayoutSummary | null, known: Map<string, Landed>): (PayoutSummary & { checked: Record<string, { state: 'landed'; units: string }> }) | null {
