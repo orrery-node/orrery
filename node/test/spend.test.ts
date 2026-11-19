@@ -165,3 +165,14 @@ it('orrery spend --by day keeps your books of what the router paid, a UTC day a 
   assert.equal(s.spendCsv!(t.rows, 'task').split('\n')[0], 'task,answers,input_tokens,output_tokens,paid_usdc');
   assert.ok(s.spendCsv!(t.rows, 'task').includes('"fix, the ""build""",1,200,100,0.000025'));
 });
+
+it('says what the router paid this UTC month so far, nothing from last month', () => {
+  const s = spend as unknown as { spentThisMonth?: (t: unknown[], now: number) => { month: string; answers: number; units: bigint }; spentMonthLine?: (m: unknown) => string };
+  assert.equal(typeof s.spentThisMonth, 'function', 'spend.ts says the month so far');
+  const now = Date.parse('2026-11-19T22:40:00Z');
+  const trip = (iso: string, cost: string) => ({ at: Date.parse(iso), model: 'm', provider: 'p', providerName: 'P', inputTokens: 1, outputTokens: 1, cost });
+  const m = s.spentThisMonth!([trip('2026-10-31T23:59:59Z', '0.5'), trip('2026-11-01T00:00:00Z', '0.000020'), trip('2026-11-19T22:00:00Z', '0.000003')], now);
+  assert.deepEqual(m, { month: '2026-11', answers: 2, units: 23n });
+  assert.equal(s.spentMonthLine!(m), 'November so far (UTC): 2 answers, $0.000023 paid');
+  assert.equal(s.spentMonthLine!(s.spentThisMonth!([], Date.parse('2026-12-01T00:00:01Z'))), 'December so far (UTC): 0 answers, $0.000000 paid');
+});

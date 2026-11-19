@@ -118,6 +118,24 @@ export function spendCsv(rows: SpendRow[], by: 'model' | 'provider' | 'task' | '
   return [`${by === 'day' ? 'day_utc' : by},answers,input_tokens,output_tokens,paid_usdc`, ...rows.map((r) => `${cell(r.key)},${r.answers},${r.inputTokens},${r.outputTokens},${usd(r.units)}`)].join('\n');
 }
 
+/** What the router paid this UTC month so far, from its log of answers: the line under its books by day. */
+export function spentThisMonth(trips: LoggedTrip[], now = Date.now()): { month: string; answers: number; units: bigint } {
+  const month = new Date(now).toISOString().slice(0, 7);
+  let answers = 0, paid = 0n;
+  for (const t of trips) {
+    if (t.at > now || new Date(t.at).toISOString().slice(0, 7) !== month) continue;
+    answers += 1;
+    paid += units(t.cost);
+  }
+  return { month, answers, units: paid };
+}
+
+/** "November so far (UTC): 857 answers, $0.439719 paid" */
+export function spentMonthLine(m: { month: string; answers: number; units: bigint }): string {
+  const name = new Date(`${m.month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+  return `${name} so far (UTC): ${m.answers.toLocaleString('en-US')} answer${m.answers === 1 ? '' : 's'}, $${usd(m.units)} paid`;
+}
+
 /** Of the answers in the window: how many came from the next node after another did not answer, how many nodes were
  * passed over in all, and how many were finished by another node after the first stopped mid-answer (counted apart:
  * that first node did start). The router logs both on each answer (`fellThrough`, `resumed`). */

@@ -543,6 +543,14 @@ check('the router’s log keeps which answers another node finished after the fi
     !!sdToday && `${todayUtc},${sdToday.answers},${want.split(',').slice(2, 4).join(',')},${sdToday.usd}` === want && sdCsv.type.startsWith('text/csv') && sdCsv.body.split('\n')[1] === want
     && rPage.includes('id="spendday"') && rPage.includes('href="/orrery/spend?by=day&amp;since=90d&amp;format=csv"'),
     sdToday ? `${sdToday.key}: ${sdToday.answers} answers, $${sdToday.usd} · csv ${sdCsv.type.split(';')[0] || 'none'}` : 'no row for today');
+  // And under them, this UTC month so far: every answer in the router's log since the 1st, in the console and the CLI.
+  const monthKey = todayUtc.slice(0, 7), inMonth = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => new Date(t.at).toISOString().startsWith(monthKey));
+  const monthPaid = usd(inMonth.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n));
+  const sdMonth = (sd as { month?: { month: string; answers: number; usd: string; line: string } } | null)?.month;
+  check('the router says what you paid this UTC month so far, under the books by day, in the console and in orrery spend --by day',
+    !!sdMonth && sdMonth.month === monthKey && sdMonth.answers === inMonth.length && sdMonth.usd === monthPaid && sdMonth.line.endsWith(`so far (UTC): ${inMonth.length.toLocaleString('en-US')} answers, $${monthPaid} paid`)
+    && dayText.split('\n').includes(sdMonth.line) && rPage.includes('id="spendmonth"'),
+    sdMonth?.line ?? 'no month in /orrery/spend');
 }
 // The console page the router serves: the browser that opens it is sent nowhere else, not even for a font.
 const consoleHtml = await (await fetch(`${ROUTER}/`)).text();

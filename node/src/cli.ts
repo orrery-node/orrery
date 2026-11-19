@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -659,6 +659,8 @@ async function main() {
     console.log(`last ${since}, by ${by}`);
     for (const r of rows) console.log(line(r));
     console.log(line(total));
+    // Your books by day end with the month so far, whatever the window.
+    if (by === 'day') console.log(spentMonthLine(spentThisMonth(spendTrips)));
     if (skips.answers || skips.resumed) console.log(skipNote(skips));
     if (unanswered.requests) console.log(unansweredNote(unanswered));
     return;
