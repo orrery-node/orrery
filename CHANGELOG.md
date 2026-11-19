@@ -4,11 +4,15 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.23 · 2026-11-19 12:37 UTC
+
+**Your node’s books go straight into a spreadsheet and outlast its logs, and the console says how much fee money is left for payouts.**
 
 - **Node** · Your node’s books by day reach back past its rolled-over logs. When a UTC day closes, the node keeps that day’s totals (answers, billed, payouts, paid out) as one line in `days.jsonl`, which never rolls over, and `provider earnings --by day`, its CSV and the console’s books use it for any day the logs no longer reach. `payouts.jsonl` now rolls over at 10 MB instead of 1 MB, like the log of answers.
 - **Node** · `orrery provider earnings --by day --csv` and `orrery provider payouts --csv` print your books as CSV for a spreadsheet or an accountant: one row a UTC day (answers, billed, payouts, paid out, in USDC), and one row a payout with its whole transaction, what the chain said reached your wallet and what the wallet then held. Nothing but the header and the rows, so it goes straight to a file. Your node’s console has the same as a download: "Download 90 days as CSV" beside its books by day, served by the node on this computer.
 - **Node** · Your node’s console says how much fee money the node key has left for payouts, under the totals: "Fee money for payouts: 0.0123 SOL on the node key, about 2,460 payouts". Every payout is a transaction the node key pays for, so the line turns to a warning, with the address to send SOL to, before payouts would stop. It is read with the rest of the console’s chain reads, at most once a minute.
+
+`npx -y orrery-node@0.1.23`
 
 ## 0.1.22 · 2026-11-19 05:56 UTC
 

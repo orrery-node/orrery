@@ -638,6 +638,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] A request no node answered is kept and shown as paid nothing in `orrery spend`, `orrery doctor`, the router console and the MCP `status` tool (0.1.21)
 - [x] A node reads every payout it sends back from the chain and says it arrived, with what the wallet then held; `orrery provider payouts` and the console's "Check against the chain" check the books against the chain (0.1.22)
 - [x] A node says when its next payout goes out, channel by channel, and writes the day's books in one line of its log just after midnight UTC; `orrery provider earnings --by day` and the console show the week (0.1.22)
+- [x] The books go straight into a spreadsheet (`provider earnings --by day --csv`, `provider payouts --csv`, the console's "Download 90 days as CSV"), each closed day is kept so the books outlast the rolled-over logs, and the console says how much fee money the node key has left for payouts (0.1.23)
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
 
