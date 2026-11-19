@@ -534,6 +534,15 @@ check('the router’s log keeps which answers another node finished after the fi
   check('orrery spend --by day gives your books of what the router paid, a UTC day a row, and --csv the rows for an expense report',
     paidToday.length > 0 && dayCsv[0] === 'day_utc,answers,input_tokens,output_tokens,paid_usdc' && dayCsv[1] === want && dayText.startsWith('last 7d, by day') && dayText.split('\n').some((l) => l.startsWith(todayUtc)),
     dayCsv[1] ?? 'no row');
+  // The router's console shows the same books, from /orrery/spend?by=day, and downloads them as CSV from the router itself.
+  const sd = await fetch(`${ROUTER}/orrery/spend?since=7d&by=day`).then((r) => r.json()).catch(() => null) as { rows?: { key: string; answers: number; usd: string }[] } | null;
+  const sdCsv = await fetch(`${ROUTER}/orrery/spend?by=day&since=90d&format=csv`).then(async (r) => ({ type: r.headers.get('content-type') ?? '', body: await r.text() })).catch(() => ({ type: '', body: '' }));
+  const rPage = await (await fetch(`${ROUTER}/`)).text();
+  const sdToday = sd?.rows?.find((r) => r.key === todayUtc);
+  check('the router’s console shows what you paid by day and downloads it as CSV from the router itself',
+    !!sdToday && `${todayUtc},${sdToday.answers},${want.split(',').slice(2, 4).join(',')},${sdToday.usd}` === want && sdCsv.type.startsWith('text/csv') && sdCsv.body.split('\n')[1] === want
+    && rPage.includes('id="spendday"') && rPage.includes('href="/orrery/spend?by=day&amp;since=90d&amp;format=csv"'),
+    sdToday ? `${sdToday.key}: ${sdToday.answers} answers, $${sdToday.usd} · csv ${sdCsv.type.split(';')[0] || 'none'}` : 'no row for today');
 }
 // The console page the router serves: the browser that opens it is sent nowhere else, not even for a font.
 const consoleHtml = await (await fetch(`${ROUTER}/`)).text();

@@ -22,7 +22,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, bills, readTrips, skipped, speeds, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
+import { appendTrip, bills, readTrips, skipped, speeds, spendCsv, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines, sawText } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
@@ -301,9 +301,14 @@ export class Router {
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {
         const since = url.searchParams.get('since') ?? '24h';
         const byParam = url.searchParams.get('by');
-        const by = byParam === 'provider' || byParam === 'task' ? byParam : 'model';
+        const by = byParam === 'provider' || byParam === 'task' || byParam === 'day' ? byParam : 'model';
         const spendTrips = readTrips(home('router', 'trips.jsonl'));
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
+        // The console's "Download CSV": the same rows as orrery spend --csv, saved as a file.
+        if (url.searchParams.get('format') === 'csv') {
+          res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="orrery-spend-by-${by}.csv"`, 'cache-control': 'no-store' });
+          return void res.end(`${spendCsv(rows, by)}\n`);
+        }
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => ({ ...r, units: undefined, usd: usd(r.units) });
         const skips = skipped(spendTrips, windowMs(since));
         return send(res, 200, { since, by, rows: rows.map(out), total: out(total), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
