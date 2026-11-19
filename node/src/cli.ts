@@ -31,7 +31,7 @@ import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { checkPayouts, nextPayoutSentence, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
-import { booksByDay, booksByDayCsv, booksByDayLines } from './provider/books.ts';
+import { booksByDay, booksByDayCsv, booksByDayLines, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -349,7 +349,7 @@ async function provider(sub: string) {
     // The books day by day: what each UTC day billed and what it paid out to the wallet, a week unless --since says.
     if (flag('by') === 'day') {
       const window = has('since') ? since : '7d';
-      const days = booksByDay(readTrips(log), readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(window));
+      const days = booksByDay(readTrips(log), readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(window), Date.now(), readDays(`${expand(cfg.dataDir ?? home('provider'))}/days.jsonl`));
       // The rows alone, for a spreadsheet: nothing else is printed, so it can go straight to a file.
       if (has('csv')) return console.log(booksByDayCsv(days));
       if (!days.rows.length) console.log(`Nothing served or paid out in the last ${window}. The node logs each answer to ${log}.`);

@@ -36,7 +36,7 @@ export function walletLine(h: Held): string {
   return `  in your wallet        $${usd(BigInt(h.units))} after the last payout, per the chain (tx ${h.tx.slice(0, 12)}…)`;
 }
 
-export function appendPayout(path: string, p: Payout, rollBytes = 1_000_000): void {
+export function appendPayout(path: string, p: Payout, rollBytes = 10 * 1024 * 1024): void {
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);

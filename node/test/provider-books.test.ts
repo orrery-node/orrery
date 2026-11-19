@@ -71,4 +71,31 @@ describe('a node’s books for one UTC day', () => {
       + '2026-11-18 13:05:11,0.069877,1,BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB,missing,,\n'
       + '2026-11-18 12:05:11,0.001000,1,CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC,unchecked,,');
   });
+
+  it('keeps each closed day once, and its kept totals stand in where the rolled-over logs no longer reach', async () => {
+    const k = books as unknown as { dayToKeep?: (d: string, s: unknown[], p: unknown[]) => unknown; keepDay?: (path: string, d: unknown) => boolean; readDays?: (path: string) => unknown[]; booksByDay: (s: unknown[], p: unknown[], ms: number, now: number, kept?: unknown[]) => { rows: { day: string; answers: number }[]; total: { answers: number; paid: bigint } } };
+    assert.equal(typeof k.keepDay, 'function', 'books.ts keeps closed days');
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const path = join(mkdtempSync(join(tmpdir(), 'orrery-days-')), 'days.jsonl');
+    const served = [{ at: at('2026-11-17T10:00:00Z'), cost: '0.000010' }, { at: at('2026-11-17T11:00:00Z'), cost: '0.000020' }, { at: at('2026-11-19T01:00:00Z'), cost: '0.000005' }];
+    const payouts = [{ at: at('2026-11-17T12:00:00Z'), units: '30', channels: 1, tx: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }];
+    const d17 = k.dayToKeep!('2026-11-17', served, payouts);
+    assert.deepEqual(d17, { day: '2026-11-17', answers: 2, billed: '30', payouts: 1, paid: '30' });
+    assert.equal(k.dayToKeep!('2026-11-16', served, payouts), null);
+    assert.equal(k.keepDay!(path, d17), true);
+    assert.equal(k.keepDay!(path, { ...(d17 as object), answers: 99 }), false, 'a kept day is kept once');
+    assert.deepEqual(k.readDays!(path), [d17]);
+    const now = at('2026-11-19T04:00:00Z');
+    // The logs rolled over and now start on the 19th: the 17th comes from what was kept.
+    const rolled = served.slice(2);
+    const b = k.booksByDay(rolled, [], 7 * 86_400_000, now, k.readDays!(path));
+    assert.deepEqual(b.rows.map((r) => [r.day, r.answers]), [['2026-11-19', 1], ['2026-11-17', 2]]);
+    assert.equal(b.total.answers, 3);
+    assert.equal(b.total.paid, 30n);
+    // While the logs still reach back past the day's start, they speak for it.
+    const full = k.booksByDay([{ at: at('2026-11-16T23:00:00Z'), cost: '0.000001' }, ...served], payouts, 7 * 86_400_000, now, [{ day: '2026-11-17', answers: 99, billed: '0', payouts: 0, paid: '0' }]);
+    assert.equal(full.rows.find((r) => r.day === '2026-11-17')?.answers, 2);
+  });
 });

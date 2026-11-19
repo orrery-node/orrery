@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, booksByDayCsv, dayBooksLine, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, dayBooksLine, dayToKeep, keepDay, readDays, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -408,7 +408,7 @@ export class ProviderNode {
       if (req.method === 'GET' && url.pathname === '/orrery/books') {
         if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');
         const since = url.searchParams.get('since') ?? '7d';
-        const b = booksByDay(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), windowMs(since));
+        const b = booksByDay(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), windowMs(since), Date.now(), readDays(`${this.dir}/days.jsonl`));
         // The console's "Download CSV": the same rows as provider earnings --by day --csv, saved as a file.
         if (url.searchParams.get('format') === 'csv') {
           res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="orrery-books.csv"', 'cache-control': 'no-store' });
@@ -914,6 +914,9 @@ export class ProviderNode {
     if (day === this.booksDay) return;
     const line = this.booksLine(this.booksDay);
     if (line) this.log(line);
+    // The closed day's totals go into days.jsonl, which does not roll over: the books by day keep it after the logs do not.
+    const kept = dayToKeep(this.booksDay, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`));
+    if (kept) keepDay(`${this.dir}/days.jsonl`, kept);
     this.booksDay = day;
   }
 

@@ -5,7 +5,7 @@
 //   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/orrery.so: anchor build --arch v2)
 import { readPayouts } from '../src/provider/payouts.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer as createHttpServer, request as httpRequest } from 'node:http';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
@@ -954,6 +954,18 @@ check('orrery provider status says what the wallet held after the last payout, p
   check('just after midnight UTC, the node says the day’s books in one line: billed, paid out, and what the wallet then held per the chain',
     booksSaid === `books for ${today} (UTC): ${servedToday.length.toLocaleString('en-US')} answer${servedToday.length === 1 ? '' : 's'}, $${usd(billedToday)} billed; ${paidToday.length} payout${paidToday.length === 1 ? '' : 's'}, $${usd(paidUnits)} to your wallet; it held $${usd(heldNow[1])} after the last, per the chain`,
     booksSaid || 'no such line');
+  // And it keeps the closed day's totals in days.jsonl, which does not roll over with the logs: a day the logs no longer
+  // reach (here one kept three days back, before this rehearsal's logs begin) still shows in the books by day.
+  const daysPath = join(WORK, 'providers', 'ironbridge', 'days.jsonl');
+  const keptToday = existsSync(daysPath) ? readFileSync(daysPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { day: string; answers: number; billed: string; payouts: number; paid: string }).find((d) => d.day === today) : undefined;
+  const oldDay = new Date(dayStart - 3 * 86_400_000).toISOString().slice(0, 10);
+  appendFileSync(daysPath, `${JSON.stringify({ day: oldDay, answers: 41, billed: '123456', payouts: 2, paid: '120000' })}\n`);
+  const weekBooks = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=7d`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null) as { rows?: { day: string; answers: number; billed: string; paid: string }[] } | null;
+  const oldRow = weekBooks?.rows?.find((r) => r.day === oldDay);
+  check('the node keeps each closed day’s totals, and the books by day show a day its rolled-over logs no longer hold',
+    !!keptToday && keptToday.answers === servedToday.length && keptToday.billed === billedToday.toString() && keptToday.payouts === paidToday.length && keptToday.paid === paidUnits.toString()
+    && !!oldRow && oldRow.answers === 41 && oldRow.billed === '0.123456' && oldRow.paid === '0.120000',
+    `${keptToday ? `kept ${keptToday.day}: ${keptToday.answers} answers, ${keptToday.payouts} payouts` : 'nothing kept'} · ${oldRow ? `${oldRow.day} from days.jsonl: ${oldRow.answers} answers` : 'no old day shown'}`);
 }
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.

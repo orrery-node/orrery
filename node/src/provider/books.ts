@@ -1,10 +1,40 @@
 // A node's books for one UTC day, said once in its log just after midnight UTC: what it billed, what it paid out to
 // the wallet, and what the wallet held after the last payout, per the chain. Read from the files the node keeps
 // (served.jsonl, payouts.jsonl, held.json), so it costs no RPC call and an operator who only reads the log sees the day.
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { usd } from '../pricing.ts';
 import type { Held, Payout } from './payouts.ts';
 
 const DAY = 86_400_000;
+
+/** A closed UTC day's totals, kept one line a day in days.jsonl beside the logs. The answer and payout logs roll over
+ * on a busy node; this file does not, so the books by day reach back past what the logs still hold. */
+export type DayKept = { day: string; answers: number; billed: string; payouts: number; paid: string };
+
+export function readDays(path: string): DayKept[] {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').flatMap((line) => {
+    try {
+      const d = JSON.parse(line) as DayKept;
+      return /^\d{4}-\d{2}-\d{2}$/.test(d.day) && Number.isInteger(d.answers) && Number.isInteger(d.payouts) && /^\d+$/.test(d.billed) && /^\d+$/.test(d.paid) ? [d] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** Keeps a closed day once; a day already kept is left as it is. */
+export function keepDay(path: string, d: DayKept): boolean {
+  if (readDays(path).some((k) => k.day === d.day)) return false;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, `${JSON.stringify({ day: d.day, answers: d.answers, billed: d.billed, payouts: d.payouts, paid: d.paid })}\n`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** "2026-11-18" for a moment, in UTC. */
 export function utcDay(ms: number): string {
@@ -38,9 +68,8 @@ export type DayBooks = { day: string; answers: number; billed: bigint; payouts: 
 
 /** The books day by day (UTC) over a window: what each day billed, from the node's log of answers, and what it paid
  * out to the wallet, from its payouts. Newest day first; days with neither are left out. */
-export function booksByDay(served: { at: number; cost: string }[], payouts: Payout[], sinceMs: number, now = Date.now()): { rows: DayBooks[]; total: DayBooks } {
+export function booksByDay(served: { at: number; cost: string }[], payouts: Payout[], sinceMs: number, now = Date.now(), kept: DayKept[] = []): { rows: DayBooks[]; total: DayBooks } {
   const days = new Map<string, DayBooks>();
-  const total: DayBooks = { day: 'total', answers: 0, billed: 0n, payouts: 0, paid: 0n };
   const of = (at: number) => {
     const day = utcDay(at);
     const r = days.get(day) ?? { day, answers: 0, billed: 0n, payouts: 0, paid: 0n };
@@ -49,19 +78,38 @@ export function booksByDay(served: { at: number; cost: string }[], payouts: Payo
   };
   for (const t of served) {
     if (now - t.at > sinceMs) continue;
-    for (const r of [of(t.at), total]) {
-      r.answers += 1;
-      r.billed += toUnits(t.cost);
-    }
+    const r = of(t.at);
+    r.answers += 1;
+    r.billed += toUnits(t.cost);
   }
   for (const p of payouts) {
     if (now - p.at > sinceMs) continue;
-    for (const r of [of(p.at), total]) {
-      r.payouts += 1;
-      r.paid += BigInt(p.units);
-    }
+    const r = of(p.at);
+    r.payouts += 1;
+    r.paid += BigInt(p.units);
   }
-  return { rows: [...days.values()].sort((a, b) => (a.day < b.day ? 1 : -1)), total };
+  // A kept day stands in for the logs where they no longer reach back to its start, after a roll-over.
+  let logsFrom = Infinity;
+  for (const t of served) if (t.at < logsFrom) logsFrom = t.at;
+  for (const p of payouts) if (p.at < logsFrom) logsFrom = p.at;
+  for (const k of kept) {
+    const start = Date.parse(`${k.day}T00:00:00Z`);
+    if (start + DAY <= now - sinceMs || (days.has(k.day) && logsFrom <= start)) continue;
+    days.set(k.day, { day: k.day, answers: k.answers, billed: BigInt(k.billed), payouts: k.payouts, paid: BigInt(k.paid) });
+  }
+  const rows = [...days.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
+  const total = rows.reduce((t, r) => ({ day: 'total', answers: t.answers + r.answers, billed: t.billed + r.billed, payouts: t.payouts + r.payouts, paid: t.paid + r.paid }), { day: 'total', answers: 0, billed: 0n, payouts: 0, paid: 0n } as DayBooks);
+  return { rows, total };
+}
+
+/** The closed day's totals from the logs, to keep: null when the logs hold nothing for it. */
+export function dayToKeep(day: string, served: { at: number; cost: string }[], payouts: Payout[]): DayKept | null {
+  const start = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(start)) return null;
+  const inDay = (at: number) => at >= start && at < start + DAY;
+  const a = served.filter((t) => inDay(t.at)), p = payouts.filter((x) => inDay(x.at));
+  if (!a.length && !p.length) return null;
+  return { day, answers: a.length, billed: a.reduce((n, t) => n + toUnits(t.cost), 0n).toString(), payouts: p.length, paid: p.reduce((n, x) => n + BigInt(x.units), 0n).toString() };
 }
 
 /** `provider earnings --by day`:
