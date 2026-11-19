@@ -18,7 +18,7 @@ import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
-import { CACHE_REPORTING, draftConfig, draftWallet, SOLANA_WALLET, walletNote, findUpstream, isEmbeddingModel, nextSteps, OLLAMA_NOTE } from './provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALLET, walletNote, findUpstream, isEmbeddingModel, nextSteps, OLLAMA_NOTE } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
@@ -106,7 +106,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
   ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
-  ${CLI} provider init [--notify <webhook url>|--notify-env <VAR>]   find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json; a webhook gets each payout as it lands
+  ${CLI} provider init [--notify <webhook url>|--notify-env <VAR>] [--no-holder-prices]   find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json; a webhook gets each payout as it lands
       --upstream <url> --name <name> --public-url <url> --out <file> --force
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
@@ -549,7 +549,7 @@ async function main() {
     const found = await findUpstream(flag('upstream'));
     // The wallet the draft names is one the operator has, or the place `orrery wallet new` will put one.
     const homeWallet = home('wallet.json');
-    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), rpcUrl: flag('rpc', process.env.ORRERY_RPC_URL), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }), notify });
+    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), rpcUrl: flag('rpc', process.env.ORRERY_RPC_URL), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }), notify, holderPrices: !has('no-holder-prices') });
     writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
     const emb = found.models.filter(isEmbeddingModel);
@@ -562,6 +562,8 @@ async function main() {
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
+    // Holder prices are written in unless the operator left them out; say what they are and how to drop them.
+    if (cfg.holder) console.log(`${holderTiersNote(cfg.holder.tiers)} (the seed node's tiers; --no-holder-prices leaves them out, or edit "holder" in ${out})`);
     if (notify) console.log(`payout notices: each payout's arrival, and the day's books just after midnight UTC, go to ${notify.url ? new URL(notify.url).host : `the webhook in ${notify.urlEnv}`}; ${CLI} provider check sends a test one`);
     console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl, localCluster: privateAddress(cfg.rpcUrl) })}`);
     const walletFile = expand(cfg.wallet);

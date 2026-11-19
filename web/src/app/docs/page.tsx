@@ -432,6 +432,7 @@ export default function Docs() {
             <li>The provider reads the same two numbers for the wallet that opened the channel and charges the same. Both use one integer formula: <code>floor(price × (10000 − off) / 10000)</code>.</li>
             <li>The tiers sit inside the provider&apos;s price list, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, and your router counts the miss against its success rate.</li>
             <li>The settlement program does not change and still takes 0%. A holder price is a discount the provider gives.</li>
+            <li><code>orrery provider init</code> writes these same tiers into every new provider.json, so holder prices are on unless you take them out (<code>--no-holder-prices</code>, or edit <code>holder</code> before you register).</li>
           </ul>
           <Code lang="provider.json" copy>{`"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }`}</Code>
           <p><code>share</code> is basis points of supply (10 = 0.1%), <code>off</code> is basis points of the list price (2000 = 20%). Up to four tiers, each larger than the one before. <code>orrery providers</code> shows each provider&apos;s tiers, and the router prints your share of supply when it starts.</p>

@@ -22,6 +22,16 @@ describe('the context a model server says it serves', () => {
     assert.equal('notify' in draft(f), false);
   });
 
+  it('provider init gives every new node holder prices, the seed node’s tiers, unless told not to', async () => {
+    const f = await findUpstream('http://127.0.0.1:8000/v1', serves([{ id: 'm', max_model_len: 8192 }]));
+    const draft = draftConfig as unknown as (found: unknown, o?: Record<string, unknown>) => Record<string, unknown>;
+    assert.deepEqual(draft(f).holder, { tiers: [{ share: 10, off: 2000 }, { share: 100, off: 3500 }] });
+    assert.equal('holder' in draft(f, { holderPrices: false }), false);
+    const note = (await import('../src/provider/init.ts') as unknown as { holderTiersNote?: (t: unknown[]) => string }).holderTiersNote;
+    assert.equal(typeof note, 'function', 'init.ts says the holder prices');
+    assert.equal(note!([{ share: 10, off: 2000 }, { share: 100, off: 3500 }]), 'holder prices: $OREY holders pay 20% less with 0.1% of its supply, 35% less with 1%');
+  });
+
   it('keeps the starting numbers when the server does not say', async () => {
     const f = await findUpstream('http://127.0.0.1:1234/v1', serves([{ id: 'llama3.1:8b' }, { id: 'odd', max_model_len: 'lots' }, { id: 'zero', max_model_len: 0 }]));
     assert.deepEqual(f, { name: 'your server', baseUrl: 'http://127.0.0.1:1234/v1', models: ['llama3.1:8b', 'odd', 'zero'] });

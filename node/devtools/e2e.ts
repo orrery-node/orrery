@@ -1959,6 +1959,21 @@ check('orrery provider init takes a payout webhook with --notify and writes it i
   hookInit.code === 0 && hookCfg?.notify?.url === 'http://127.0.0.1:9/hooks/init' && hookInit.text.includes("payout notices: each payout's arrival") && hookInit.text.includes('go to 127.0.0.1:9;')
   && badHook.code !== 0 && badHook.text.includes('must start with https:// or http://') && !existsSync(badHookPath),
   `${hookCfg?.notify?.url ?? 'no notify written'} · bad address: exit ${badHook.code}, ${existsSync(badHookPath) ? 'file written' : 'nothing written'}`);
+// Every node provider init drafts carries holder prices, the seed node's tiers, and init says so; --no-holder-prices
+// leaves them out. The tiers pass the same check the node runs on its price list before it lists.
+{
+  const plainPath = join(walkHome, 'provider-noholder.json');
+  const plain = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', plainPath, '--no-holder-prices']);
+  const drafted = hookCfg as { holder?: { tiers: { share: number; off: number }[] } } | null;
+  const plainCfg = existsSync(plainPath) ? JSON.parse(readFileSync(plainPath, 'utf8')) as { holder?: unknown } : null;
+  const { checkTiers } = await import('../src/holder.ts') as { checkTiers: (t: unknown) => unknown };
+  const tiersOk = (() => { try { checkTiers(drafted?.holder?.tiers); return true; } catch { return false; } })();
+  const said = hookInit.text.split('\n').find((l) => l.startsWith('holder prices: ')) ?? '';
+  check('orrery provider init gives a new node holder prices, the seed node’s tiers, and --no-holder-prices leaves them out',
+    JSON.stringify(drafted?.holder?.tiers) === JSON.stringify(HOLDER_TIERS) && tiersOk && said.startsWith('holder prices: $OREY holders pay 20% less with 0.1% of its supply, 35% less with 1%')
+    && plain.code === 0 && !!plainCfg && !('holder' in plainCfg) && !plain.text.includes('holder prices: '),
+    said || 'no holder line');
+}
 const ctxCfgPath = join(walkHome, 'provider-context.json');
 const ctxInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', ctxCfgPath, '--force']);
 const ctxCfg = existsSync(ctxCfgPath) ? JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as { models: { id: string; context: number; maxOutput: number }[] } : null;

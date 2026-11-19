@@ -1,7 +1,19 @@
 // `orrery provider init`: finds an OpenAI-compatible model server on this machine, lists its models and writes a starting
 // provider.json, so selling inference starts from a file that already points at the right upstream.
 import { privateAddress } from '../address.ts';
-import { PROVIDER_PORT, USDC_MAINNET } from '../brand.ts';
+import { PROVIDER_PORT, TICKER, USDC_MAINNET } from '../brand.ts';
+import type { HolderTier } from '../holder.ts';
+
+/** The holder tiers a new node starts with: the seed node's own (0.1% of the network token's supply for 20% less, 1%
+ * for 35% less), so a holder's price means the same at every node that keeps them. */
+export const DEFAULT_HOLDER_TIERS: HolderTier[] = [{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
+
+/** What provider init says about the holder prices it wrote:
+ *   holder prices: $OREY holders pay 20% less with 0.1% of its supply, 35% less with 1% (the seed node's tiers) */
+export function holderTiersNote(tiers: HolderTier[]): string {
+  const pct = (bp: number) => `${bp / 100}%`;
+  return `holder prices: $${TICKER} holders pay ${tiers.map((t, i) => `${pct(t.off)} less with ${pct(t.share)}${i === 0 ? ' of its supply' : ''}`).join(', ')}`;
+}
 
 type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
 
@@ -113,7 +125,7 @@ export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowe
  * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports.
  * Embedding models are priced on input tokens only ($0.02 per million to start). A new node lists payment inside the
  * seal in its price list from its first registration, so routers keep to it from their first request (README). */
-export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string; rpcUrl?: string; notify?: { url: string } | { urlEnv: string } } = {}) {
+export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string; rpcUrl?: string; notify?: { url: string } | { urlEnv: string }; holderPrices?: boolean } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
     listen: PROVIDER_PORT,
@@ -133,6 +145,8 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     }),
     redeem: { everySecs: 300, minUnits: 50_000 },
     paymentInside: true,
+    // Holder prices are on unless the operator says otherwise (--no-holder-prices): the seed node's tiers.
+    ...(o.holderPrices === false ? {} : { holder: { tiers: DEFAULT_HOLDER_TIERS.map((t) => ({ ...t })) } }),
     // The webhook each payout's arrival (and the day's books) is posted to, when init was given one.
     ...(o.notify ? { notify: o.notify } : {}),
   };
