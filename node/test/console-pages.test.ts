@@ -73,6 +73,11 @@ describe('the local console pages', () => {
     assert.ok(html.includes('in your wallet, per the chain') && html.includes("className=s.wallet?'stats five':'stats'") && html.includes('.stats.five{grid-template-columns:repeat(5,'), 'the stat, its layout and its code');
   });
 
+  it('the node’s console lays out the last seven days of its books, from the node’s own files', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('Your books by day (UTC), last 7 days') && html.includes('id="days"') && html.includes("fetch('/orrery/books?since=7d',K)"), 'the table and its call');
+  });
+
   it('shows the router’s own record of each node, not only what it counted since it started', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');

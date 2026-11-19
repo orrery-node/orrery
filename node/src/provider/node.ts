@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { dayBooksLine, utcDay } from './books.ts';
+import { booksByDay, dayBooksLine, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -189,6 +189,7 @@ export class ProviderNode {
   private readonly payoutsOnChain = new Map<string, Landed>();
   private quietTimer: NodeJS.Timeout | null = null;
   private booksTimer: NodeJS.Timeout | null = null;
+  private listingRead: { at: number; onChain: { payouts: number; settled: string } | null } | null = null;
   private booksDay = utcDay(Date.now());
   private warnedNoCacheReport = false;
   private server: Server | null = null;
@@ -392,9 +393,20 @@ export class ProviderNode {
         const { rows, total } = summarize(served, 'model', windowMs(since));
         const out = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint }) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units) });
         // What has already landed: the listing's own count of payouts to this node's wallet and the total they settled.
-        const listing = await this.conn.getAccountInfo(this.pda).catch(() => null);
-        const onChain = listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null;
-        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain });
+        // The console asks every two seconds; the chain is read at most once a minute.
+        if (!this.listingRead || Date.now() - this.listingRead.at > 60_000) {
+          const listing = await this.conn.getAccountInfo(this.pda).catch(() => undefined);
+          if (listing !== undefined) this.listingRead = { at: Date.now(), onChain: listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null };
+        }
+        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain: this.listingRead?.onChain ?? null });
+      }
+      // The books day by day (UTC), from the node's own files: what each day billed and paid out. No chain call.
+      if (req.method === 'GET' && url.pathname === '/orrery/books') {
+        if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');
+        const since = url.searchParams.get('since') ?? '7d';
+        const b = booksByDay(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), windowMs(since));
+        const out = (r: DayBooks) => ({ day: r.day, answers: r.answers, billed: usd(r.billed), payouts: r.payouts, paid: usd(r.paid) });
+        return json(res, 200, { since, rows: b.rows.map(out), total: out(b.total) });
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         // Something outside this computer asked: the operator's own provider check says it is theirs.
@@ -766,6 +778,8 @@ export class ProviderNode {
         appendPayout(`${this.dir}/payouts.jsonl`, payout);
         void this.confirmArrival(payout);
       }
+      // The listing's count of payouts just changed; the console's next read of it goes to the chain.
+      this.listingRead = null;
       this.save();
       return true;
     } catch (err) {

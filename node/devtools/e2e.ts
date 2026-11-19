@@ -956,6 +956,26 @@ check('the node’s console checks each payout against the chain: every one arri
   && ibCheck?.rows?.length === ibKept.length && ibCheck.rows.every((r, j) => r.tx === ibKept[j].tx && r.state === 'landed' && r.units === ibKept[j].units)
   && ibCheck.line === `${ibKept.length} of ${ibKept.length} arrived in your wallet as kept here, $${usd(ibKeptUnits)} in all`,
   ibCheck?.line ?? `no answer (without the key: ${ibCheckNoKey})`);
+// The console's week of books comes from the node's files: today's row is what its log billed and its payouts sent
+// today, only with the key. And the console's two-second polling reads the listing from the chain at most once a minute.
+{
+  const day = new Date().toISOString().slice(0, 10), start = Date.parse(`${day}T00:00:00Z`);
+  const books = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=7d`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { rows?: { day: string; answers: number; billed: string; payouts: number; paid: string }[] } | null;
+  const booksNoKey = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books`).then((r) => r.status).catch(() => 0);
+  const servedToday = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => t.at >= start);
+  const paidToday = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).filter((p) => p.at >= start);
+  const row = books?.rows?.find((r) => r.day === day);
+  check('the node’s console shows its books by day, from its own files, and only with the key', booksNoKey === 404 && !!row && row.answers === servedToday.length
+    && row.billed === usd(servedToday.reduce((s, t) => s + BigInt(Math.round(Number(t.cost) * 1e6)), 0n)) && row.payouts === paidToday.length && row.paid === usd(paidToday.reduce((s, p) => s + BigInt(p.units), 0n)),
+    row ? `${row.day}: ${row.answers} answers, $${row.billed} billed, ${row.payouts} payouts, $${row.paid} paid out` : `no row (without the key: ${booksNoKey})`);
+  const conn = nodes[1].conn as unknown as { getAccountInfo: (...a: unknown[]) => Promise<unknown> };
+  const real = conn.getAccountInfo.bind(conn);
+  let reads = 0;
+  conn.getAccountInfo = (...a: unknown[]) => { reads++; return real(...a); };
+  for (let k = 0; k < 5; k++) await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null);
+  conn.getAccountInfo = real;
+  check('the console polling the node’s earnings reads the listing from the chain at most once a minute', reads <= 1, `${reads} chain read${reads === 1 ? '' : 's'} for 5 polls`);
+}
 
 const iron = nodes[1];
 const ironCh = channels.get(iron.pda.toBase58())!;
