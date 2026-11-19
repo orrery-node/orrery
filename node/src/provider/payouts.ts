@@ -30,6 +30,12 @@ export function readHeld(path: string): Held | null {
   }
 }
 
+/** `provider status`, under the payouts: what the console shows beside its totals.
+ *   in your wallet        $1.412500 after the last payout, per the chain (tx 5GhKq2abcdef…) */
+export function walletLine(h: Held): string {
+  return `  in your wallet        $${usd(BigInt(h.units))} after the last payout, per the chain (tx ${h.tx.slice(0, 12)}…)`;
+}
+
 export function appendPayout(path: string, p: Payout, rollBytes = 1_000_000): void {
   try {
     mkdirSync(dirname(path), { recursive: true });

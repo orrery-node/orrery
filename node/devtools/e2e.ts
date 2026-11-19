@@ -911,9 +911,13 @@ const statusWallet = providerSpecs.map((_, i) => (nodes[i].status() as { wallet?
 check('each node’s status carries what its wallet held after its latest payout, per the chain, for the console', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || statusWallet[i]?.units === heldNow[i].toString()),
   statusWallet.map((w, i) => `${providerSpecs[i].name.split(' ')[0]} $${w ? usd(BigInt(w.units)) : '—'}`).join(', '));
 // And `provider status`, for a node on a server with no browser, says the same of the last payout.
-const lastPaidLine = (await cliOut(['status'])).split('\n').find((l) => /^\s+last payout\s/.test(l)) ?? '';
+const ironStatusText = await cliOut(['status']);
+const lastPaidLine = ironStatusText.split('\n').find((l) => /^\s+last payout\s/.test(l)) ?? '';
 const ironLastKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at)[0];
 check('orrery provider status says the last payout arrived, once the node has read it back from the chain', !!ironLastKept && lastPaidLine.includes(`tx ${ironLastKept.tx.slice(0, 12)}…`) && lastPaidLine.endsWith('  arrived, per the chain'), lastPaidLine.trim() || 'no such line');
+// And what the wallet held right after it, as the console shows it: what the chain holds in that wallet now.
+const walletSaid = ironStatusText.split('\n').find((l) => /^\s+in your wallet\s/.test(l)) ?? '';
+check('orrery provider status says what the wallet held after the last payout, per the chain', !!ironLastKept && walletSaid === `  in your wallet        $${usd(heldNow[1])} after the last payout, per the chain (tx ${ironLastKept.tx.slice(0, 12)}…)`, walletSaid.trim() || 'no such line');
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.
 const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);

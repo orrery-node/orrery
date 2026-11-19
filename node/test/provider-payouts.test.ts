@@ -225,4 +225,10 @@ describe('what a node has paid out to its wallet', () => {
     io.writeHeld!(path, { at: 6, units: '1', tx: '<img src=x onerror=alert(1)>' });
     assert.equal(io.readHeld!(path), null);
   });
+
+  it('says in provider status what the wallet held after the last payout, per the chain, as the console does', () => {
+    const walletLine = (payouts as unknown as { walletLine?: (h: unknown) => string }).walletLine;
+    assert.equal(typeof walletLine, 'function', 'payouts.ts writes the line');
+    assert.equal(walletLine!({ at: 5, units: '1412500', tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' }), '  in your wallet        $1.412500 after the last payout, per the chain (tx 5Gh4kQp9xTn2…)');
+  });
 });
