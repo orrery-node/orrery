@@ -921,6 +921,21 @@ check('orrery provider status says the last payout arrived, once the node has re
 // And what the wallet held right after it, as the console shows it: what the chain holds in that wallet now.
 const walletSaid = ironStatusText.split('\n').find((l) => /^\s+in your wallet\s/.test(l)) ?? '';
 check('orrery provider status says what the wallet held after the last payout, per the chain', !!ironLastKept && walletSaid === `  in your wallet        $${usd(heldNow[1])} after the last payout, per the chain (tx ${ironLastKept.tx.slice(0, 12)}…)`, walletSaid.trim() || 'no such line');
+// When the UTC date moves on, the node says the day that ended in one line of its log: what it billed (its log of
+// answers), what it paid out (its payouts) and what the wallet then held (the chain, which agrees now).
+{
+  const today = new Date().toISOString().slice(0, 10), dayStart = Date.parse(`${today}T00:00:00Z`);
+  const servedToday = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => t.at >= dayStart);
+  const paidToday = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).filter((p) => p.at >= dayStart);
+  const billedToday = servedToday.reduce((n, t) => n + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
+  const paidUnits = paidToday.reduce((n, p) => n + BigInt(p.units), 0n);
+  const before = nodeSaid[1].length;
+  (nodes[1] as unknown as { booksTick?: (now: number) => void }).booksTick?.(dayStart + 86_400_000 + 1_000);
+  const booksSaid = nodeSaid[1].slice(before).find((l) => l.startsWith('books for ')) ?? '';
+  check('just after midnight UTC, the node says the day’s books in one line: billed, paid out, and what the wallet then held per the chain',
+    booksSaid === `books for ${today} (UTC): ${servedToday.length.toLocaleString('en-US')} answer${servedToday.length === 1 ? '' : 's'}, $${usd(billedToday)} billed; ${paidToday.length} payout${paidToday.length === 1 ? '' : 's'}, $${usd(paidUnits)} to your wallet; it held $${usd(heldNow[1])} after the last, per the chain`,
+    booksSaid || 'no such line');
+}
 // Its "check against the chain" reads each listed payout's transaction from the chain: what reached the wallet is what
 // the node kept, and the line under the table says so. Without the console key it is not there.
 const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at).slice(0, 12);

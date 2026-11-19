@@ -21,6 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
+import { dayBooksLine, utcDay } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -187,6 +188,8 @@ export class ProviderNode {
   private readonly reach = new Reach();
   private readonly payoutsOnChain = new Map<string, Landed>();
   private quietTimer: NodeJS.Timeout | null = null;
+  private booksTimer: NodeJS.Timeout | null = null;
+  private booksDay = utcDay(Date.now());
   private warnedNoCacheReport = false;
   private server: Server | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -842,6 +845,10 @@ export class ProviderNode {
         if (!this.reach.ever) this.log(quietNote(this.reach.read().upMs));
       }, 180_000);
       this.quietTimer.unref?.();
+      // Just after midnight UTC, the day that ended in one line: billed, paid out, what the wallet then held.
+      this.booksDay = utcDay(Date.now());
+      this.booksTimer = setInterval(() => this.booksTick(), 60_000);
+      this.booksTimer.unref?.();
     });
   }
 
@@ -873,9 +880,24 @@ export class ProviderNode {
     return done;
   }
 
+  /** The day's books in one line, from the files the node keeps; null when nothing was served or paid out that day. */
+  booksLine(day: string): string | null {
+    return dayBooksLine(day, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), readHeld(`${this.dir}/held.json`));
+  }
+
+  /** Once the UTC date has moved on, say the day that ended. */
+  private booksTick(now = Date.now()): void {
+    const day = utcDay(now);
+    if (day === this.booksDay) return;
+    const line = this.booksLine(this.booksDay);
+    if (line) this.log(line);
+    this.booksDay = day;
+  }
+
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     if (this.quietTimer) clearTimeout(this.quietTimer);
+    if (this.booksTimer) clearInterval(this.booksTimer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 }
