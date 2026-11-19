@@ -135,6 +135,10 @@ orrery provider register --config provider.json --fund-key   # list the node and
 orrery provider show     --config provider.json      # what the chain now says, including your node key
 orrery provider start    --config provider.json`;
 
+const BOOKS = `orrery provider status   --config provider.json           # next payout, last one, wallet
+orrery provider payouts  --config provider.json           # each payout, checked on chain
+orrery provider earnings --config provider.json --by day  # day by day; --csv for a sheet`;
+
 const SYSTEMD = `[Unit]
 Description=Orrery provider node
 After=network-online.target
@@ -373,6 +377,8 @@ export default function Docs() {
           <Code lang="upstreams">{UPSTREAMS}</Code>
           <p>Keep it running with any process manager. A systemd unit:</p>
           <Code lang="/etc/systemd/system/orrery-provider.service" copy>{SYSTEMD}</Code>
+          <p>Watching your money needs no other tool. Each payout goes straight from a router&apos;s channel to your wallet&apos;s USDC account, and a few seconds later the node reads that transaction back from the chain and says in its log what arrived and what the wallet then held. Small amounts wait until a channel holds five cents, or until its router closes it, so fees never eat a payout; your first payout goes out at once. Just after midnight UTC the log closes the day with one line of books. The console at <code>http://127.0.0.1:&lt;port&gt;/</code> shows the same, and the terminal has it too:</p>
+          <Code lang="bash" copy>{BOOKS}</Code>
           <p className="d-note">Only standard chat fields (messages, sampling settings, tools, response format) reach your upstream. Fields that would let a caller spend your key on something your price list does not cover, such as fallback model lists, plugins or provider routing, are dropped, and so is <code>n</code>.</p>
 
           <H2 id="provider-config" n={n('provider-config')}>provider.json</H2>
