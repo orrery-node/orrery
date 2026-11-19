@@ -219,6 +219,15 @@ export async function checkPayouts(conn: TxReader, list: Payout[], wallet: strin
   return rows;
 }
 
+/** `provider payouts --csv`: the same rows for a spreadsheet, with the whole transaction and what the chain said:
+ *   time_utc,paid_out_usdc,channels,tx,on_chain,arrived_usdc,wallet_after_usdc */
+export function payoutsCsv(rows: { p: Payout; chain: Landed | null; after?: bigint | null }[]): string {
+  return ['time_utc,paid_out_usdc,channels,tx,on_chain,arrived_usdc,wallet_after_usdc', ...rows.map(({ p, chain, after }) => [
+    new Date(p.at).toISOString().slice(0, 19).replace('T', ' '), usd(BigInt(p.units)), p.channels, p.tx,
+    chain ? chain.state : 'unchecked', chain?.state === 'landed' ? usd(chain.units) : '', chain?.state === 'landed' && after != null ? usd(after) : '',
+  ].join(','))].join('\n');
+}
+
 /** `provider payouts`: each payout this node kept, newest first, next to what the chain says reached the wallet,
  *   2026-11-18 14:05:11 UTC  $0.050123  2 channels  tx 5GhKq2abcdef…  arrived $0.050123, wallet then $1.250123
  * then a line that adds them up and says whether every one arrived as kept. */

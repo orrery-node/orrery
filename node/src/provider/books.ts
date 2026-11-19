@@ -71,3 +71,8 @@ export function booksByDayLines(b: { rows: DayBooks[]; total: DayBooks }): strin
   const row = (r: DayBooks) => `${r.day.padEnd(14)} ${r.answers.toLocaleString('en-US').padStart(8)}  ${`$${usd(r.billed)}`.padStart(11)}  ${String(r.payouts).padStart(8)}  ${`$${usd(r.paid)}`.padStart(11)}`;
   return [`${'day (UTC)'.padEnd(14)} ${'answers'.padStart(8)}  ${'billed'.padStart(11)}  ${'payouts'.padStart(8)}  ${'paid out'.padStart(11)}`, ...b.rows.map(row), row(b.total)];
 }
+
+/** The same books as CSV, for a spreadsheet or an accountant: one row a UTC day, amounts in USDC, no total row. */
+export function booksByDayCsv(b: { rows: DayBooks[] }): string {
+  return ['day_utc,answers,billed_usdc,payouts,paid_out_usdc', ...b.rows.map((r) => `${r.day},${r.answers},${usd(r.billed)},${r.payouts},${usd(r.paid)}`)].join('\n');
+}

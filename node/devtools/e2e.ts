@@ -871,6 +871,15 @@ for (let i = 0; i < nodes.length; i++) {
     check('orrery provider earnings --by day says what each UTC day billed and paid out, from the node’s own files',
       todayRow.split(/\s+/).join(' ') === `${todayUtc} ${servedToday.length.toLocaleString('en-US')} $${usd(billedToday)} ${paidToday.length} $${usd(paidToday.reduce((s, p) => s + BigInt(p.units), 0n))}` && byDay.includes('by day (UTC)'),
       todayRow.trim().replace(/\s+/g, ' ') || 'no row for today');
+    // The same books and the checked payouts as CSV, for a spreadsheet: nothing but the header and the rows.
+    const daysCsv = (await cliOut(['earnings', '--by', 'day', '--csv'])).split('\n');
+    const paysCsv = (await cliOut(['payouts', '--last', '50', '--csv'])).split('\n');
+    const keptNewest = kept.slice().sort((a, b) => b.at - a.at).slice(0, 50);
+    check('orrery provider earnings --by day --csv and provider payouts --csv give the books and the checked payouts as rows for a spreadsheet',
+      daysCsv[0] === 'day_utc,answers,billed_usdc,payouts,paid_out_usdc' && daysCsv[1] === `${todayUtc},${servedToday.length},${usd(billedToday)},${paidToday.length},${usd(paidToday.reduce((s, p) => s + BigInt(p.units), 0n))}`
+      && paysCsv[0] === 'time_utc,paid_out_usdc,channels,tx,on_chain,arrived_usdc,wallet_after_usdc' && paysCsv.length === keptNewest.length + 1
+      && keptNewest.every((p, j) => paysCsv[j + 1].split(',')[3] === p.tx && paysCsv[j + 1].split(',')[4] === 'landed' && paysCsv[j + 1].split(',')[5] === usd(BigInt(p.units))),
+      `${daysCsv[1] ?? 'no day row'} · ${paysCsv.length - 1} payout row(s), the first ${paysCsv[1]?.split(',').slice(4).join(',') ?? '—'}`);
     // And `provider payouts` looks each kept payout up on chain: what the transaction put in the wallet's USDC account
     // is what the node wrote down, for every one it shows.
     const payOut = await cliOut(['payouts', '--last', '50']);

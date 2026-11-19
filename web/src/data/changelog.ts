@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider earnings --by day --csv` and `orrery provider payouts --csv` print your books as CSV for a spreadsheet or an accountant: one row a UTC day (answers, billed, payouts, paid out, in USDC), and one row a payout with its whole transaction, what the chain said reached your wallet and what the wallet then held. Nothing but the header and the rows, so it goes straight to a file.' },
   { who: 'provider', text: 'Your node’s console says how much fee money the node key has left for payouts, under the totals: "Fee money for payouts: 0.0123 SOL on the node key, about 2,460 payouts". Every payout is a transaction the node key pays for, so the line turns to a warning, with the address to send SOL to, before payouts would stop. It is read with the rest of the console’s chain reads, at most once a minute.' },
 ];
 
