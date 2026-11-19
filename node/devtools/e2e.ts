@@ -899,6 +899,16 @@ for (let i = 0; i < nodes.length; i++) {
       && paysCsv[0] === 'time_utc,paid_out_usdc,channels,tx,on_chain,arrived_usdc,wallet_after_usdc' && paysCsv.length === keptNewest.length + 1
       && keptNewest.every((p, j) => paysCsv[j + 1].split(',')[3] === p.tx && paysCsv[j + 1].split(',')[4] === 'landed' && paysCsv[j + 1].split(',')[5] === usd(BigInt(p.units))),
       `${daysCsv[1] ?? 'no day row'} · ${paysCsv.length - 1} payout row(s), the first ${paysCsv[1]?.split(',').slice(4).join(',') ?? '—'}`);
+    // By month: the same books added up by UTC calendar month, for the accounts. This month's row is its days summed.
+    const monthCsv = (await cliOut(['earnings', '--by', 'month', '--since', '400d', '--csv'])).split('\n');
+    const dayRows = (await cliOut(['earnings', '--by', 'day', '--since', '400d', '--csv'])).split('\n').slice(1).filter(Boolean).map((l) => l.split(','));
+    const thisMonth = todayUtc.slice(0, 7), inMonth = dayRows.filter((r) => r[0].startsWith(thisMonth));
+    const toUnits = (x: string) => BigInt(Math.round(Number(x) * 1e6));
+    const wantMonth = `${thisMonth},${inMonth.reduce((a, r) => a + Number(r[1]), 0)},${usd(inMonth.reduce((a, r) => a + toUnits(r[2]), 0n))},${inMonth.reduce((a, r) => a + Number(r[3]), 0)},${usd(inMonth.reduce((a, r) => a + toUnits(r[4]), 0n))}`;
+    const monthText = await cliOut(['earnings', '--by', 'month']);
+    check('orrery provider earnings --by month adds the books up by UTC month for the accounts, as lines and as CSV',
+      inMonth.length > 0 && monthCsv[0] === 'month_utc,answers,billed_usdc,payouts,paid_out_usdc' && monthCsv[1] === wantMonth && monthText.includes('by month (UTC)') && monthText.split('\n').some((l) => l.startsWith(`${thisMonth} `)),
+      `${monthCsv[1] ?? 'no month row'} from ${inMonth.length} day(s)`);
     // And `provider payouts` looks each kept payout up on chain: what the transaction put in the wallet's USDC account
     // is what the node wrote down, for every one it shows.
     const payOut = await cliOut(['payouts', '--last', '50']);

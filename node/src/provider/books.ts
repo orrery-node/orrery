@@ -122,12 +122,28 @@ export function booksNotice(node: string, line: string, d: DayKept | null): { te
 /** `provider earnings --by day`:
  *   day (UTC)       answers       billed   payouts     paid out
  *   2026-11-19           27    $0.000423         1    $0.000423 */
-export function booksByDayLines(b: { rows: DayBooks[]; total: DayBooks }): string[] {
+export function booksByDayLines(b: { rows: DayBooks[]; total: DayBooks }, unit: 'day' | 'month' = 'day'): string[] {
   const row = (r: DayBooks) => `${r.day.padEnd(14)} ${r.answers.toLocaleString('en-US').padStart(8)}  ${`$${usd(r.billed)}`.padStart(11)}  ${String(r.payouts).padStart(8)}  ${`$${usd(r.paid)}`.padStart(11)}`;
-  return [`${'day (UTC)'.padEnd(14)} ${'answers'.padStart(8)}  ${'billed'.padStart(11)}  ${'payouts'.padStart(8)}  ${'paid out'.padStart(11)}`, ...b.rows.map(row), row(b.total)];
+  return [`${`${unit} (UTC)`.padEnd(14)} ${'answers'.padStart(8)}  ${'billed'.padStart(11)}  ${'payouts'.padStart(8)}  ${'paid out'.padStart(11)}`, ...b.rows.map(row), row(b.total)];
 }
 
-/** The same books as CSV, for a spreadsheet or an accountant: one row a UTC day, amounts in USDC, no total row. */
-export function booksByDayCsv(b: { rows: DayBooks[] }): string {
-  return ['day_utc,answers,billed_usdc,payouts,paid_out_usdc', ...b.rows.map((r) => `${r.day},${r.answers},${usd(r.billed)},${r.payouts},${usd(r.paid)}`)].join('\n');
+/** The same books as CSV, for a spreadsheet or an accountant: one row a UTC day (or month), amounts in USDC, no total row. */
+export function booksByDayCsv(b: { rows: DayBooks[] }, unit: 'day' | 'month' = 'day'): string {
+  return [`${unit}_utc,answers,billed_usdc,payouts,paid_out_usdc`, ...b.rows.map((r) => `${r.day},${r.answers},${usd(r.billed)},${r.payouts},${usd(r.paid)}`)].join('\n');
+}
+
+/** The books by day folded into UTC calendar months, for the accounts: `provider earnings --by month`. Newest first;
+ * each row is its days added up, so a month the logs no longer reach still counts the days kept in days.jsonl. */
+export function booksByMonth(b: { rows: DayBooks[]; total: DayBooks }): { rows: DayBooks[]; total: DayBooks } {
+  const months = new Map<string, DayBooks>();
+  for (const r of b.rows) {
+    const key = r.day.slice(0, 7);
+    const m = months.get(key) ?? { day: key, answers: 0, billed: 0n, payouts: 0, paid: 0n };
+    m.answers += r.answers;
+    m.billed += r.billed;
+    m.payouts += r.payouts;
+    m.paid += r.paid;
+    months.set(key, m);
+  }
+  return { rows: [...months.values()].sort((x, y) => (x.day < y.day ? 1 : -1)), total: b.total };
 }

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider earnings --by month` adds your books up by UTC calendar month (a year unless `--since` says otherwise): answers, billed, payouts and paid out for each month, newest first. With `--csv` it is one row a month, for an accountant. Months the logs no longer reach still count the days the node kept in `days.jsonl`.
 - **Node** · Your node can tell you when money lands. Set `"notify": { "url": "https://hooks.slack.com/…" }` in provider.json (or `"urlEnv"` to read the address from an environment variable) and each payout, once the node has read it back from the chain, is posted there as the same line its log says: "Kestrel GPU Co-op: $0.050123 arrived in your wallet: the chain’s record of tx 5GhKq2abcdef… shows it in your USDC account, which then held $1.412500". The JSON has it under `text` (what Slack’s incoming webhooks read) and `content` (what Discord’s read), with the figures under `payout` for a script. Just after midnight UTC the day’s books go there too, the line the log closes the day with, with the day’s totals under `books`. `orrery provider check` sends one test notice and says whether it got through, and `orrery provider status` and the console say where notices go and whether the last one did ("Payout notices go to hooks.slack.com; the last, a payout 4 min ago, got through (HTTP 200)"), naming the webhook’s host only.
 
 ## 0.1.23 · 2026-11-19 12:37 UTC

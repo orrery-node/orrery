@@ -109,4 +109,16 @@ describe('a node’s books for one UTC day', () => {
     assert.deepEqual(n.books, { day: '2026-11-18', answers: 1312, billed: '0.038912', payouts: 3, paidOut: '0.120000' });
     assert.equal(notice!('Kestrel GPU Co-op', line, null).books, null);
   });
+
+  it('folds the books by day into UTC months for the accounts, newest first, as lines and as CSV', () => {
+    const k = books as unknown as { booksByMonth?: (b: unknown) => { rows: { day: string; answers: number; billed: bigint; payouts: number; paid: bigint }[]; total: unknown }; booksByDayLines: (b: unknown, unit?: string) => string[]; booksByDayCsv: (b: unknown, unit?: string) => string };
+    assert.equal(typeof k.booksByMonth, 'function', 'books.ts folds months');
+    const row = (day: string, answers: number, billed: bigint, payouts: number, paid: bigint) => ({ day, answers, billed, payouts, paid });
+    const byDay = { rows: [row('2026-11-19', 27, 423n, 1, 423n), row('2026-11-02', 3, 77n, 0, 0n), row('2026-10-31', 41, 123456n, 2, 120000n)], total: row('total', 71, 123956n, 3, 120423n) };
+    const m = k.booksByMonth!(byDay);
+    assert.deepEqual(m.rows, [row('2026-11', 30, 500n, 1, 423n), row('2026-10', 41, 123456n, 2, 120000n)]);
+    assert.deepEqual(m.total, byDay.total);
+    assert.equal(k.booksByDayCsv(m, 'month'), 'month_utc,answers,billed_usdc,payouts,paid_out_usdc\n2026-11,30,0.000500,1,0.000423\n2026-10,41,0.123456,2,0.120000');
+    assert.ok(k.booksByDayLines(m, 'month')[0].startsWith('month (UTC)'));
+  });
 });
