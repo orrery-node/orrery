@@ -1911,6 +1911,16 @@ const awayNext = awayCheck.split('\n').find((l) => l.startsWith('next:')) ?? '';
 const ctxMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19109', '5', 'served-context'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'Qwen/Qwen3-32B', MOCK_MAX_MODEL_LEN: '8192' } });
 procs.push(ctxMock);
 await sleep(1_200);
+// provider init takes the payout webhook at the start: it writes notify into provider.json and says where notices go;
+// an address that is not http(s) stops it before anything is written.
+const hookCfgPath = join(walkHome, 'provider-notify.json'), badHookPath = join(walkHome, 'provider-badhook.json');
+const hookInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', hookCfgPath, '--notify', 'http://127.0.0.1:9/hooks/init']);
+const badHook = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', badHookPath, '--notify', 'ftp://hooks.example.com/x']);
+const hookCfg = existsSync(hookCfgPath) ? JSON.parse(readFileSync(hookCfgPath, 'utf8')) as { notify?: { url?: string } } : null;
+check('orrery provider init takes a payout webhook with --notify and writes it into provider.json, and refuses one that is not http(s)',
+  hookInit.code === 0 && hookCfg?.notify?.url === 'http://127.0.0.1:9/hooks/init' && hookInit.text.includes("payout notices: each payout's arrival") && hookInit.text.includes('go to 127.0.0.1:9;')
+  && badHook.code !== 0 && badHook.text.includes('must start with https:// or http://') && !existsSync(badHookPath),
+  `${hookCfg?.notify?.url ?? 'no notify written'} · bad address: exit ${badHook.code}, ${existsSync(badHookPath) ? 'file written' : 'nothing written'}`);
 const ctxCfgPath = join(walkHome, 'provider-context.json');
 const ctxInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', ctxCfgPath, '--force']);
 const ctxCfg = existsSync(ctxCfgPath) ? JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as { models: { id: string; context: number; maxOutput: number }[] } : null;

@@ -30,7 +30,7 @@ import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
-import { checkPayouts, nextPayoutSentence, noticeLine, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
+import { checkPayouts, nextPayoutSentence, noticeLine, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
 import { booksByDay, booksByDayCsv, booksByDayLines, booksByMonth, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
@@ -106,7 +106,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
   ${CLI} close <channel> --wallet <keypair.json>            start closing (the provider keeps a grace period)
   ${CLI} close <channel> --wallet <keypair.json> --finish   after the grace period: the rest comes back to you
-  ${CLI} provider init    find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json
+  ${CLI} provider init [--notify <webhook url>|--notify-env <VAR>]   find a local model server (Ollama, vLLM, llama.cpp, LM Studio, SGLang) and write provider.json; a webhook gets each payout as it lands
       --upstream <url> --name <name> --public-url <url> --out <file> --force
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
@@ -544,10 +544,12 @@ async function main() {
   if (cmd === 'provider' && sub === 'init') {
     const out = flag('out', 'provider.json')!;
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);
+    // A webhook for payout notices, checked before anything is written: an address, or the variable that holds one.
+    const notify = flag('notify') ? { url: notifyUrl({ url: flag('notify') })! } : flag('notify-env') ? { urlEnv: flag('notify-env')! } : undefined;
     const found = await findUpstream(flag('upstream'));
     // The wallet the draft names is one the operator has, or the place `orrery wallet new` will put one.
     const homeWallet = home('wallet.json');
-    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), rpcUrl: flag('rpc', process.env.ORRERY_RPC_URL), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }) });
+    const cfg = draftConfig(found, { name: flag('name'), publicUrl: flag('public-url'), rpcUrl: flag('rpc', process.env.ORRERY_RPC_URL), wallet: draftWallet({ asked: flag('wallet'), home: homeWallet, homeExists: existsSync(homeWallet), solanaExists: existsSync(expand(SOLANA_WALLET)) }), notify });
     writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
     console.log(`found ${found.name} at ${found.baseUrl} with ${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 6).join(', ')}${found.models.length > 6 ? ', …' : ''}`);
     const emb = found.models.filter(isEmbeddingModel);
@@ -560,6 +562,7 @@ async function main() {
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
     }
+    if (notify) console.log(`payout notices: each payout's arrival, and the day's books just after midnight UTC, go to ${notify.url ? new URL(notify.url).host : `the webhook in ${notify.urlEnv}`}; ${CLI} provider check sends a test one`);
     console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl, localCluster: privateAddress(cfg.rpcUrl) })}`);
     const walletFile = expand(cfg.wallet);
     const listedUnder = existsSync(walletFile) ? (() => { try { return loadKeypair(walletFile).publicKey.toBase58(); } catch { return undefined; } })() : undefined;

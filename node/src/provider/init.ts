@@ -113,7 +113,7 @@ export const networkId = (upstream: string) => upstream.split('/').pop()!.toLowe
  * cache hits also gets a cached-input price, a quarter of the input price, which applies only to the hits it reports.
  * Embedding models are priced on input tokens only ($0.02 per million to start). A new node lists payment inside the
  * seal in its price list from its first registration, so routers keep to it from their first request (README). */
-export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string; rpcUrl?: string } = {}) {
+export function draftConfig(found: Found, o: { name?: string; publicUrl?: string; wallet?: string; rpcUrl?: string; notify?: { url: string } | { urlEnv: string } } = {}) {
   return {
     name: o.name ?? 'My Orrery node',
     listen: PROVIDER_PORT,
@@ -133,5 +133,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     }),
     redeem: { everySecs: 300, minUnits: 50_000 },
     paymentInside: true,
+    // The webhook each payout's arrival (and the day's books) is posted to, when init was given one.
+    ...(o.notify ? { notify: o.notify } : {}),
   };
 }

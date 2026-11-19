@@ -14,6 +14,14 @@ describe('the context a model server says it serves', () => {
     assert.deepEqual(draftConfig(big).models.map((m) => [m.context, m.maxOutput]), [[131072, 4096]]);
   });
 
+  it('provider init writes the payout webhook it was given, and none when it was given none', async () => {
+    const f = await findUpstream('http://127.0.0.1:8000/v1', serves([{ id: 'm', max_model_len: 8192 }]));
+    const draft = draftConfig as unknown as (found: unknown, o?: Record<string, unknown>) => Record<string, unknown>;
+    assert.deepEqual(draft(f, { notify: { url: 'https://hooks.example.com/T1/B2/c3' } }).notify, { url: 'https://hooks.example.com/T1/B2/c3' });
+    assert.deepEqual(draft(f, { notify: { urlEnv: 'ORRERY_NOTIFY_URL' } }).notify, { urlEnv: 'ORRERY_NOTIFY_URL' });
+    assert.equal('notify' in draft(f), false);
+  });
+
   it('keeps the starting numbers when the server does not say', async () => {
     const f = await findUpstream('http://127.0.0.1:1234/v1', serves([{ id: 'llama3.1:8b' }, { id: 'odd', max_model_len: 'lots' }, { id: 'zero', max_model_len: 0 }]));
     assert.deepEqual(f, { name: 'your server', baseUrl: 'http://127.0.0.1:1234/v1', models: ['llama3.1:8b', 'odd', 'zero'] });
