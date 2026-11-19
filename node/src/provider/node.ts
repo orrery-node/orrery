@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, dayBooksLine, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, dayBooksLine, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -409,6 +409,11 @@ export class ProviderNode {
         if (!isLocal(req) || !hasConsoleKey(req, url, this.consoleKey())) return fail(res, 404, 'not_found', 'no such route');
         const since = url.searchParams.get('since') ?? '7d';
         const b = booksByDay(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), windowMs(since));
+        // The console's "Download CSV": the same rows as provider earnings --by day --csv, saved as a file.
+        if (url.searchParams.get('format') === 'csv') {
+          res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="orrery-books.csv"', 'cache-control': 'no-store' });
+          return void res.end(`${booksByDayCsv(b)}\n`);
+        }
         const out = (r: DayBooks) => ({ day: r.day, answers: r.answers, billed: usd(r.billed), payouts: r.payouts, paid: usd(r.paid) });
         return json(res, 200, { since, rows: b.rows.map(out), total: out(b.total) });
       }

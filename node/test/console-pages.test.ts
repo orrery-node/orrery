@@ -83,6 +83,11 @@ describe('the local console pages', () => {
     assert.ok(html.includes('id="fees"') && html.includes("'Fee money for payouts: '+e.fees.line") && html.includes("e.fees.low?'lede stop':'lede'"), 'the line, its text and its warning');
   });
 
+  it('the node’s console downloads its books as CSV from the node itself, a link to this computer only', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="csv"') && html.includes('download="orrery-books.csv"') && html.includes("'/orrery/books?since=90d&format=csv&key='"), 'the link and where it points');
+  });
+
   it('shows the router’s own record of each node, not only what it counted since it started', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');

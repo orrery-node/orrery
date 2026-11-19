@@ -905,7 +905,7 @@ const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.json
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
 // Each transaction there is a button that copies the whole signature, to look up on any explorer; the page links nowhere.
-check('the node’s console copies each payout’s whole transaction for any explorer, and links to no other computer', ibRows.includes(`<button class=tx type=button data-tx="${ibLastTx}"`) && ibPage.includes('navigator.clipboard.writeText(tx)') && ibPage.includes('id="copied"') && !/<a\b/.test(ibPage + ibRows),
+check('the node’s console copies each payout’s whole transaction for any explorer, and links to no other computer', ibRows.includes(`<button class=tx type=button data-tx="${ibLastTx}"`) && ibPage.includes('navigator.clipboard.writeText(tx)') && ibPage.includes('id="copied"') && !/<a\b[^>]*href="(?:https?:)?\/\//i.test(ibPage + ibRows),
   ibRows.match(/<button class=tx[^>]*>[^<]*<\/button>/)?.[0].replace(/data-tx="[^"]+"/, 'data-tx="…"') ?? 'no button');
 // Each node read every payout it sent back from the chain on its own, said in its log that it arrived, and its status
 // marks it for the console's "on chain" column, before anyone pressed the button below.
@@ -977,6 +977,13 @@ check('the node’s console checks each payout against the chain: every one arri
   check('the node’s console shows its books by day, from its own files, and only with the key', booksNoKey === 404 && !!row && row.answers === servedToday.length
     && row.billed === usd(servedToday.reduce((s, t) => s + BigInt(Math.round(Number(t.cost) * 1e6)), 0n)) && row.payouts === paidToday.length && row.paid === usd(paidToday.reduce((s, p) => s + BigInt(p.units), 0n)),
     row ? `${row.day}: ${row.answers} answers, $${row.billed} billed, ${row.payouts} payouts, $${row.paid} paid out` : `no row (without the key: ${booksNoKey})`);
+  // The console's "Download CSV" link: the same rows as a file, from the node, only with the key.
+  const csvRes = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=90d&format=csv&key=${ibKey}`).catch(() => null);
+  const csvText = csvRes?.ok ? await csvRes.text() : '';
+  const csvNoKey = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?format=csv`).then((r) => r.status).catch(() => 0);
+  check('the node’s console downloads its books as a CSV file, only with the key', csvNoKey === 404 && csvRes?.headers.get('content-type')?.startsWith('text/csv') === true && csvRes.headers.get('content-disposition') === 'attachment; filename="orrery-books.csv"'
+    && csvText.split('\n')[0] === 'day_utc,answers,billed_usdc,payouts,paid_out_usdc' && !!row && csvText.split('\n')[1] === `${row.day},${row.answers},${row.billed},${row.payouts},${row.paid}`,
+    csvText.split('\n')[1] ?? `no file (without the key: ${csvNoKey})`);
   const conn = nodes[1].conn as unknown as { getAccountInfo: (...a: unknown[]) => Promise<unknown> };
   const real = conn.getAccountInfo.bind(conn);
   const balanceConn = nodes[1].conn as unknown as { getBalance: (...a: unknown[]) => Promise<unknown> };

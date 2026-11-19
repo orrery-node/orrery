@@ -96,10 +96,11 @@ export function providerConsolePage(): string {
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div></section>
 <section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="next" hidden></p><p class="lede" id="checked" hidden></p><p class="lede" id="copied" hidden></p></section>
 <section><h2>Last 24 hours, by model (billed)</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>billed</th></tr></thead><tbody id="earn"></tbody></table></div></section>
-<section><h2>Your books by day (UTC), last 7 days</h2><div class="wrap"><table><thead><tr><th>day</th><th>answers</th><th>billed</th><th>payouts</th><th>paid out</th></tr></thead><tbody id="days"></tbody></table></div></section>
+<section><div class="pay"><h2>Your books by day (UTC), last 7 days</h2><a class="check" id="csv" href="#" download="orrery-books.csv">Download 90 days as CSV</a></div><div class="wrap"><table><thead><tr><th>day</th><th>answers</th><th>billed</th><th>payouts</th><th>paid out</th></tr></thead><tbody id="days"></tbody></table></div></section>
 <section><h2>Channels</h2><div class="wrap"><table><thead><tr><th>channel</th><th>deposit</th><th>signed to you</th><th>redeemed</th><th>waiting</th><th>unsigned answers</th></tr></thead><tbody id="ch"></tbody></table></div></section>
 </main><script>
 const K={headers:{'x-orrery-console-key':new URLSearchParams(location.search).get('key')||''}};
+document.getElementById('csv').href='/orrery/books?since=90d&format=csv&key='+encodeURIComponent(K.headers['x-orrery-console-key']);
 const reachSentence=${reachSentence.toString()};
 const payoutRows=${payoutRows.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
