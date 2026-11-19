@@ -861,6 +861,16 @@ for (let i = 0; i < nodes.length; i++) {
     const earnNext = earnOut.split('\n').find((l) => l.startsWith('next payout: ')) ?? '';
     const nodeNext = ((await import('../src/provider/payouts.ts')) as unknown as { nextPayoutSentence?: (x: unknown) => string }).nextPayoutSentence?.((n.status() as { nextPayout?: unknown }).nextPayout) ?? '';
     check('orrery provider earnings says when the rest goes out, as the running node counts it', !!nodeNext && earnNext.toLowerCase() === `next payout: ${nodeNext}`.toLowerCase(), earnNext || 'no such line');
+    // By day: today's row is what the node's log of answers billed today and what its payouts sent today.
+    const byDay = await cliOut(['earnings', '--by', 'day']);
+    const todayUtc = new Date().toISOString().slice(0, 10), todayStart = Date.parse(`${todayUtc}T00:00:00Z`);
+    const servedToday = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => t.at >= todayStart);
+    const billedToday = servedToday.reduce((s, t) => s + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
+    const paidToday = kept.filter((p) => p.at >= todayStart);
+    const todayRow = byDay.split('\n').find((l) => l.startsWith(todayUtc)) ?? '';
+    check('orrery provider earnings --by day says what each UTC day billed and paid out, from the node’s own files',
+      todayRow.split(/\s+/).join(' ') === `${todayUtc} ${servedToday.length.toLocaleString('en-US')} $${usd(billedToday)} ${paidToday.length} $${usd(paidToday.reduce((s, p) => s + BigInt(p.units), 0n))}` && byDay.includes('by day (UTC)'),
+      todayRow.trim().replace(/\s+/g, ' ') || 'no row for today');
     // And `provider payouts` looks each kept payout up on chain: what the transaction put in the wallet's USDC account
     // is what the node wrote down, for every one it shows.
     const payOut = await cliOut(['payouts', '--last', '50']);

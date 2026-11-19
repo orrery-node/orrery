@@ -34,4 +34,24 @@ describe('a node’s books for one UTC day', () => {
     assert.equal(fns.dayBooksLine!('2026-11-16', served, payouts, held), null);
     assert.equal(fns.dayBooksLine!('not a day', served, payouts, held), null);
   });
+
+  it('lays out the books day by day over a window, newest first, with the total under them', () => {
+    const b = books as unknown as { booksByDay?: (s: unknown[], p: unknown[], ms: number, now: number) => unknown; booksByDayLines?: (x: unknown) => string[] };
+    assert.equal(typeof b.booksByDay, 'function', 'books.ts lays them out');
+    const now = at('2026-11-19T04:00:00Z');
+    const served = [
+      { at: at('2026-11-10T12:00:00Z'), cost: '9.000000' },
+      { at: at('2026-11-18T01:00:00Z'), cost: '0.000031' },
+      { at: at('2026-11-18T13:00:00Z'), cost: '0.038881' },
+      { at: at('2026-11-19T03:00:00Z'), cost: '0.000423' },
+    ];
+    const payouts = [{ at: at('2026-11-18T21:00:00Z'), units: '120000', channels: 2, tx: 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' }, { at: at('2026-11-17T09:00:00Z'), units: '50000', channels: 1, tx: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }];
+    assert.deepEqual(b.booksByDayLines!(b.booksByDay!(served, payouts, 7 * 86_400_000, now)), [
+      'day (UTC)       answers       billed   payouts     paid out',
+      '2026-11-19            1    $0.000423         0    $0.000000',
+      '2026-11-18            2    $0.038912         1    $0.120000',
+      '2026-11-17            0    $0.000000         1    $0.050000',
+      'total                 3    $0.039335         2    $0.170000',
+    ]);
+  });
 });

@@ -31,6 +31,7 @@ import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { checkPayouts, nextPayoutSentence, paidOutLine, payoutCheckLines, payoutLines, readPayouts, walletLine } from './provider/payouts.ts';
+import { booksByDay, booksByDayLines } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
 import { reprice, renderReprice } from './provider/reprice.ts';
@@ -116,7 +117,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider register --config provider.json [--wallet <keypair.json>] [--fund-key [sol]] [--private-address]   list or update on chain; --fund-key also sends the node’s key fee money
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
-  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel]   what this node billed, from its own log
+  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|day]   what this node billed, from its own log; by day, what each day billed and paid out
   ${CLI} provider payouts --config provider.json [--last 5] [--json]   each payout this node kept, checked against what the chain says reached your wallet
   ${CLI} provider price  --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
@@ -345,6 +346,15 @@ async function provider(sub: string) {
       const said = nextPayoutSentence(own?.nextPayout);
       if (said) console.log(`next payout: ${said.charAt(0).toLowerCase()}${said.slice(1)}`);
     };
+    // The books day by day: what each UTC day billed and what it paid out to the wallet, a week unless --since says.
+    if (flag('by') === 'day') {
+      const window = has('since') ? since : '7d';
+      const days = booksByDay(readTrips(log), readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(window));
+      if (!days.rows.length) console.log(`Nothing served or paid out in the last ${window}. The node logs each answer to ${log}.`);
+      else console.log([`"${cfg.name}", last ${window}, by day (UTC): billed from its log of answers, paid out from the payouts it keeps`, ...booksByDayLines(days)].join('\n'));
+      await landed();
+      return nextOut();
+    }
     if (!total.answers) {
       console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);
       await landed();
