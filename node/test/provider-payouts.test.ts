@@ -214,4 +214,15 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(hint!({ ...n('21', 1, '0', 0, true), everySecs: 300 }, 'provider.json'), '  (your first payout: pays out at the next round, every 5 min)');
     assert.equal(hint!(n('0', 0, '0', 0), 'provider.json'), '');
   });
+
+  it('keeps what the wallet held after the last payout read back from the chain, across a restart, and refuses markup', () => {
+    const io = payouts as unknown as { writeHeld?: (path: string, h: unknown) => void; readHeld?: (path: string) => unknown };
+    assert.equal(typeof io.writeHeld, 'function', 'payouts.ts keeps it');
+    const path = join(mkdtempSync(join(tmpdir(), 'orrery-held-')), 'held.json');
+    assert.equal(io.readHeld!(path), null);
+    io.writeHeld!(path, { at: 5, units: '1250123', tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' });
+    assert.deepEqual(io.readHeld!(path), { at: 5, units: '1250123', tx: '5Gh4kQp9xTn2W7vLbYc8RfZaHs3mJe6G' });
+    io.writeHeld!(path, { at: 6, units: '1', tx: '<img src=x onerror=alert(1)>' });
+    assert.equal(io.readHeld!(path), null);
+  });
 });

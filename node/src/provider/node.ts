@@ -21,7 +21,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readPayouts, withChecked, type Landed, type Payout } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, payoutCheckLines, payoutSummary, readHeld, readPayouts, withChecked, writeHeld, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -345,6 +345,8 @@ export class ProviderNode {
         const paid = e.best ? (e.best.cumulative < e.channel.deposit ? e.best.cumulative : e.channel.deposit) : 0n;
         return { pending: paid > e.redeemed ? paid - e.redeemed : 0n, closing: e.channel.closingAt !== 0n };
       }), BigInt(this.cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS), this.cfg.redeem?.everySecs ?? 60, this.paidOutChecked && !this.paidOut),
+      // What the wallet held right after the last payout the node read back from the chain; null until one.
+      wallet: readHeld(`${this.dir}/held.json`),
     };
   }
 
@@ -730,7 +732,10 @@ export class ProviderNode {
   private async confirmArrival(p: Payout): Promise<void> {
     for (let i = 0; i < 3; i++) {
       const [r] = await checkPayouts(this.conn, [p], this.authority.toBase58(), this.mint.toBase58(), this.payoutsOnChain);
-      if (r?.chain && r.chain.state !== 'missing') return this.log(arrivalNote(p, r.chain, r.after));
+      if (r?.chain && r.chain.state !== 'missing') {
+        if (r.chain.state === 'landed' && r.after !== null) writeHeld(`${this.dir}/held.json`, { at: Date.now(), units: r.after.toString(), tx: p.tx });
+        return this.log(arrivalNote(p, r.chain, r.after));
+      }
       await new Promise((done) => setTimeout(done, 2000 * (i + 1)).unref());
     }
   }

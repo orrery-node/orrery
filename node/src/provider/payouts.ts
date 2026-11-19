@@ -2,11 +2,33 @@
 // channels, and the transaction. The node's log says each payout as it goes; this is what lets `provider status` say
 // when the last one landed and what the last day came to, across restarts, without reading the log or the chain.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { usd } from '../pricing.ts';
 
 export type Payout = { at: number; units: string; channels: number; tx: string };
+
+/** What the wallet's USDC account held right after the last payout the node read back from the chain, with that
+ * payout's transaction: kept in held.json beside the payouts so the console shows it across restarts. */
+export type Held = { at: number; units: string; tx: string };
+
+export function writeHeld(path: string, h: Held): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify({ at: h.at, units: h.units, tx: h.tx })}\n`);
+  } catch {
+    // the log line already said it
+  }
+}
+
+export function readHeld(path: string): Held | null {
+  try {
+    const h = JSON.parse(readFileSync(path, 'utf8')) as Held;
+    return typeof h.at === 'number' && typeof h.units === 'string' && /^\d+$/.test(h.units) && typeof h.tx === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,90}$/.test(h.tx) ? { at: h.at, units: h.units, tx: h.tx } : null;
+  } catch {
+    return null;
+  }
+}
 
 export function appendPayout(path: string, p: Payout, rollBytes = 1_000_000): void {
   try {

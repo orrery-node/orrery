@@ -906,6 +906,10 @@ check('each node reads every payout it sent back from the chain on its own and s
 const heldNow = await Promise.all(providerSpecs.map((_, i) => balance(wallets[i].publicKey)));
 check('each node says what its wallet held after its latest payout, and the chain agrees', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || a.held === usd(heldNow[i])),
   arrived.map((a, i) => `${providerSpecs[i].name.split(' ')[0]} said $${a.held ?? '—'}, chain $${usd(heldNow[i])}`).join(', '));
+// The status the console reads carries the same figure, kept in the node's folder so a restart does not lose it.
+const statusWallet = providerSpecs.map((_, i) => (nodes[i].status() as { wallet?: { units: string } | null }).wallet ?? null);
+check('each node’s status carries what its wallet held after its latest payout, per the chain, for the console', arrived.some((a) => a.kept > 0) && arrived.every((a, i) => a.kept === 0 || statusWallet[i]?.units === heldNow[i].toString()),
+  statusWallet.map((w, i) => `${providerSpecs[i].name.split(' ')[0]} $${w ? usd(BigInt(w.units)) : '—'}`).join(', '));
 // And `provider status`, for a node on a server with no browser, says the same of the last payout.
 const lastPaidLine = (await cliOut(['status'])).split('\n').find((l) => /^\s+last payout\s/.test(l)) ?? '';
 const ironLastKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).sort((a, b) => b.at - a.at)[0];

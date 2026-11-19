@@ -68,6 +68,11 @@ describe('the local console pages', () => {
     assert.match(String(runInNewContext(`(${src})(p)`, { p })), /<span class=go>arrived \$0\.120000<\/span>/, 'the inlined rows run on their own');
   });
 
+  it('the node’s console shows what the wallet held after the last payout, per the chain, once the node has read it back', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('in your wallet, per the chain') && html.includes("className=s.wallet?'stats five':'stats'") && html.includes('.stats.five{grid-template-columns:repeat(5,'), 'the stat, its layout and its code');
+  });
+
   it('shows the router’s own record of each node, not only what it counted since it started', () => {
     const html = consolePage();
     assert.ok(html.includes('<th>this router’s record</th>'), 'a column for the record');
