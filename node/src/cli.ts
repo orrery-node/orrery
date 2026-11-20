@@ -118,7 +118,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider register --config provider.json [--wallet <keypair.json>] [--fund-key [sol]] [--private-address]   list or update on chain; --fund-key also sends the node’s key fee money
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
-  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|day|month] [--csv]   what this node billed, from its own log; by day or month, what each billed and paid out
+  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|day|month] [--csv|--json]   what this node billed, from its own log; by day or month, what each billed and paid out
   ${CLI} provider payouts --config provider.json [--last 5] [--json|--csv]   each payout this node kept, checked against what the chain says reached your wallet
   ${CLI} provider price  --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
@@ -323,17 +323,23 @@ async function provider(sub: string) {
     const log = `${expand(cfg.dataDir ?? home('provider'))}/served.jsonl`;
     const { rows, total } = summarize(readTrips(log), by, windowMs(since));
     // What has already landed in the wallet: the listing on chain counts every payout and what they settled.
-    const landed = async () => {
+    const onChain = async (): Promise<{ payouts: number; settled: string } | null> => {
       try {
         const authority = cfg.authority ? new PublicKey(cfg.authority) : loadKeypair(expand(cfg.wallet ?? `${expand(cfg.dataDir ?? home('provider'))}/wallet.json`)).publicKey;
         const listing = await rpcConnection(cfg.rpcUrl ?? rpc()).getAccountInfo(pda.provider(authority));
-        if (!listing) return;
+        if (!listing) return null;
         const p = decodeProvider(listing.data);
-        console.log(`on chain: ${Number(p.redeems)} payout${Number(p.redeems) === 1 ? '' : 's'} to your wallet so far, $${usd(p.settled)} settled`);
+        return { payouts: Number(p.redeems), settled: usd(p.settled) };
       } catch {
-        // The log above stands on its own; the chain line is added when the listing can be read.
+        // The log stands on its own; the chain is added when the listing can be read.
+        return null;
       }
     };
+    const landed = async () => {
+      const c = await onChain();
+      if (c) console.log(`on chain: ${c.payouts} payout${c.payouts === 1 ? '' : 's'} to your wallet so far, $${c.settled} settled`);
+    };
+    const payoutsPath = `${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`;
     // When the rest reaches the wallet: asked of the node running on this computer, with the key in its folder.
     const nextOut = async () => {
       const key = (() => {
@@ -356,10 +362,31 @@ async function provider(sub: string) {
       const days = unit === 'day' ? byDay : booksByMonth(byDay);
       // The rows alone, for a spreadsheet: nothing else is printed, so it can go straight to a file.
       if (has('csv')) return console.log(booksByDayCsv(days, unit));
+      // The same books for a script, with what the chain says has landed.
+      if (has('json')) {
+        const row = (r: { day: string; answers: number; billed: bigint; payouts: number; paid: bigint }) => ({ [unit]: r.day, answers: r.answers, billed: usd(r.billed), payouts: r.payouts, paidOut: usd(r.paid) });
+        return console.log(JSON.stringify({ since: window, by: unit, rows: days.rows.map(row), total: { answers: days.total.answers, billed: usd(days.total.billed), payouts: days.total.payouts, paidOut: usd(days.total.paid) }, onChain: await onChain() }, null, 2));
+      }
       if (!days.rows.length) console.log(`Nothing served or paid out in the last ${window}. The node logs each answer to ${log}.`);
       else console.log([`"${cfg.name}", last ${window}, by ${unit} (UTC): billed from its log of answers, paid out from the payouts it keeps`, ...booksByDayLines(days, unit)].join('\n'));
       await landed();
       return nextOut();
+    }
+    // Everything this command says, for a script: the rows, the answers at the holder price, what reached the wallet in
+    // the window, how routers paid, and what the chain says has landed.
+    if (has('json')) {
+      const served = readTrips(log);
+      const out = readPayouts(payoutsPath).filter((p) => Date.now() - p.at <= windowMs(since)).sort((a, b) => b.at - a.at);
+      const held = heldSaved(served, windowMs(since));
+      return console.log(JSON.stringify({
+        since, by: by === 'provider' ? 'channel' : 'model',
+        rows: rows.map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, billed: usd(r.units) })),
+        total: { answers: total.answers, inputTokens: total.inputTokens, outputTokens: total.outputTokens, billed: usd(total.units) },
+        holders: { answers: held.answers, underList: usd(held.units), off: held.offs },
+        paidOut: { payouts: out.length, usd: usd(out.reduce((a, p) => a + BigInt(p.units), 0n)), lastTx: out[0]?.tx ?? null },
+        paidInside: paidInside(served, windowMs(since)),
+        onChain: await onChain(),
+      }, null, 2));
     }
     if (!total.answers) {
       console.log(`No answers served in the last ${since}. The node logs each answer to ${log}.`);

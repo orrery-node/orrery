@@ -2097,6 +2097,19 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   check('a node’s books say how many answers went at its holder price and what that came to below its list prices, in its log, provider earnings and its console',
     givenOk && slotServed.length === 4 && slotEarn.split('\n').includes(wantGiven) && slotEarnApi.holders?.answers === 1 && slotEarnApi.holders.line === wantGiven && slotPage.includes('id="holders"'),
     slotEarn.split('\n').find((l) => l.startsWith('holder prices:')) ?? `${atHolder.length} answers at the holder price in the log, no line in provider earnings`);
+  // The same books for a script: provider earnings --json, by model and by day, against the node's own log.
+  const slotCli = (args: string[]) => new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'earnings', '--config', slotCfgPath, ...args], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const parse = (s: string) => { try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; } };
+  const earnJson = parse(await slotCli(['--since', '24h', '--json'])) as { total?: { answers: number; billed: string }; holders?: { answers: number; underList: string; off: number[] }; paidOut?: { payouts: number }; paidInside?: { answers: number }; onChain?: { payouts: number; settled: string } | null } | null;
+  const dayJson = parse(await slotCli(['--by', 'day', '--json'])) as { by?: string; rows?: { day: string; answers: number; billed: string }[] } | null;
+  const billedAll = usd(slotServed.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n));
+  const keptPayouts = readPayouts(join(slotDir, 'payouts.jsonl')).length;
+  const todayRow = dayJson?.rows?.find((r) => r.day === new Date().toISOString().slice(0, 10));
+  check('orrery provider earnings --json gives a script the same books: rows, holder answers, payouts, how routers paid and what the chain has, by model and by day',
+    !!earnJson && earnJson.total?.answers === slotServed.length && earnJson.total.billed === billedAll && earnJson.holders?.answers === 1 && earnJson.holders.underList === atHolder[0]?.saved && JSON.stringify(earnJson.holders.off) === '[3500]'
+    && earnJson.paidOut?.payouts === keptPayouts && earnJson.paidInside?.answers === slotServed.length && !!earnJson.onChain && typeof earnJson.onChain.payouts === 'number'
+    && dayJson?.by === 'day' && todayRow?.answers === slotServed.length && todayRow.billed === billedAll,
+    earnJson ? `${earnJson.total?.answers} answers, $${earnJson.total?.billed} billed, ${earnJson.holders?.answers} at the holder price, ${earnJson.paidOut?.payouts} payouts, on chain ${earnJson.onChain ? `${earnJson.onChain.payouts} payouts` : 'unread'} · by day: ${todayRow ? `${todayRow.answers} today` : 'no row'}` : 'not JSON');
   // The line the node closes the UTC day with, in its log and to its notify webhook, says the same.
   const slotDayLine = slotNode.booksLine(new Date().toISOString().slice(0, 10)) ?? '';
   check('the node’s close-of-day line, for its log and its webhook, says how many answers went at its holder price and how far under list',
