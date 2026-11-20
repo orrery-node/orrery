@@ -15,6 +15,7 @@ import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeV
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
+import { checkSlots, Slots } from './slots.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
@@ -67,6 +68,11 @@ export type ProviderConfig = {
   /** A webhook to tell when money reaches the wallet: each payout's arrival, as read back from the chain, is posted
    * there as one line (Slack and Discord show it as a message). `urlEnv` names an environment variable holding it. */
   notify?: { url?: string; urlEnv?: string };
+  /** How many answers the node streams from its model server at once. When all are taken, a request waits for the next
+   * free one, and a wallet that gets the holder price goes ahead of those that do not (the larger discount first). One
+   * that waits 30 seconds is turned away as busy before anything is owed, and its router asks the next node. Unset: no
+   * limit, every request goes straight to the model server. */
+  slots?: number;
 };
 
 type Entry = {
@@ -185,6 +191,8 @@ export class ProviderNode {
   readonly attestation: { kind: number; measurement: Buffer; report: Buffer; reportHash: Buffer } | null;
   private readonly apiKey: string | undefined;
   private readonly holders: HolderBook | null;
+  /** How many answers stream from the model server at once, from `slots`; null when provider.json sets no limit. */
+  private readonly slots: Slots | null;
   private ledger = new Map<string, Entry>();
   private served: { at: number; model: string; channel: string; inputTokens: number; outputTokens: number; cost: bigint; off: number; sealed: boolean }[] = [];
   private answers = 0;
@@ -260,6 +268,8 @@ export class ProviderNode {
       inside: cfg.paymentInside ? true : undefined,
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
+    const slots = checkSlots(cfg.slots);
+    this.slots = slots ? new Slots(slots) : null;
     this.manifestBytes = canonical(this.manifest);
     this.load();
   }
@@ -359,6 +369,8 @@ export class ProviderNode {
       wallet: readHeld(`${this.dir}/held.json`),
       // Where payout notices go (the webhook's host only: its path is a secret) and what the last one got back.
       notify: this.notifyTo ? { host: new URL(this.notifyTo).host, last: readNotice(`${this.dir}/notice.json`) } : null,
+      // How many answers stream at once and who is waiting; holders go first when every slot is taken. Null: no limit.
+      slots: this.slots ? this.slots.state : null,
     };
   }
 
@@ -575,6 +587,16 @@ export class ProviderNode {
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
       if (e.owed + maxCost > e.channel.deposit) return payFail(402, 'channel_exhausted', 'not enough deposit left for this request', { owed: e.owed.toString(), deposit: e.channel.deposit.toString(), need: maxCost.toString() });
+    }
+    // Every slot answering: wait for the next free one, a holder ahead of those without a holder price. Nothing is
+    // owed yet, so a request turned away here costs its router nothing and it asks the next node.
+    if (this.slots) {
+      const slot = await this.slots.take(off);
+      if (!slot) return fail(res, 503, 'busy', `every one of this node's ${this.slots.size} slots was answering for ${this.slots.waitMs / 1000} s; ask another node`);
+      if (res.destroyed || res.writableEnded) return slot.give();
+      res.once('close', slot.give);
+      res.once('finish', slot.give);
+      if (slot.passed) this.log(`holder request (−${off / 100}%) took the next free slot ahead of ${slot.passed} waiting without a holder price, after ${(slot.waitedMs / 1000).toFixed(1)} s`);
     }
 
     const settle = (send: (data: string, event?: string) => void, inputTokens: number, outputTokens: number, cachedTokens: number) => {

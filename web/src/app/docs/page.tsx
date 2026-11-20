@@ -405,6 +405,7 @@ export default function Docs() {
               <tr><td><code>redeem.everySecs</code>, <code>minUnits</code></td><td>how often to cash vouchers, and the smallest amount worth a transaction</td></tr>
               <tr><td><code>holder.tiers</code></td><td>optional holder prices: <code>share</code> of the network token&apos;s supply and <code>off</code> the list price, both in basis points</td></tr>
               <tr><td><code>notify.url</code> / <code>urlEnv</code></td><td>optional webhook (Slack, Discord or your own) that gets one line each time a payout reaches your wallet, read back from the chain, and the day&apos;s books just after midnight UTC; <code>orrery provider check</code> sends a test notice</td></tr>
+              <tr><td><code>slots</code></td><td>optional: how many answers the node streams from your model server at once. When all are answering, the next request waits for a free one, a ${TICKER} holder&apos;s ahead of those without a holder price; one that waits 30 s is turned away as busy before anything is owed, and its router asks the next node. Unset: no limit</td></tr>
             </tbody>
           </table>
 
@@ -433,6 +434,7 @@ export default function Docs() {
             <li>The tiers sit inside the provider&apos;s price list, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, and your router counts the miss against its success rate.</li>
             <li>The settlement program does not change and still takes 0%. A holder price is a discount the provider gives.</li>
             <li><code>orrery provider init</code> writes these same tiers into every new provider.json, so holder prices are on unless you take them out (<code>--no-holder-prices</code>, or edit <code>holder</code> before you register).</li>
+            <li>A node that sets <code>slots</code> (how many answers it streams at once) puts holders first when every slot is answering: the next free slot goes to the waiting request with the largest holder discount, then to the rest in the order they came.</li>
             <li>Your router keeps what holding took off each answer, the provider&apos;s list prices for the same tokens less its holder prices for them, in its log on your disk. <code>orrery spend</code> and the router&apos;s console say the total under what you paid: &ldquo;Holding ${TICKER} took $0.000412 off 12 of these answers: the nodes that served them charge holders 35% less.&rdquo;</li>
           </ul>
           <Code lang="provider.json" copy>{`"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }`}</Code>

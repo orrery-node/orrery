@@ -2025,6 +2025,61 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   && /^ready to earn/.test(walkSaid) && walkAsk.status === 200 && walkAsk.headers.get('x-orrery-provider') === walkListing && Number(walkCost) > 0,
   `wallet new ${walk1.code} · init ${walk2.code} · register ${walk3.code}, key ${walkKeyLamports < 0 ? 'unfunded' : `${(walkKeyLamports / 1e9).toFixed(4)} SOL`} · start: ${walkSaid.slice(0, 60)} · a router that had never seen it: ${walkAsk.status}${walkAsk.status === 200 ? ` from ${walkAsk.headers.get('x-orrery-provider-name')}, paid $${walkCost}` : ` ${walkAnswer.slice(0, 120)}`} · ${((walk1.ms + walk2.ms + walk3.ms + walkStartMs + walkAskMs) / 1000).toFixed(1)} s of machine time`);
 
+// Holder roadmap 3: a node with one slot ("slots": 1) behind a model server that takes 1.5 s to start answering. While
+// one answer streams, two requests without a holder price queue up, then one from a wallet holding 2% of the network
+// token: when the slot frees, the holder's request goes next, and the two that came first follow in order.
+{
+  const slotUp = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19112', '1500', 'one-slot'], { stdio: 'ignore' });
+  procs.push(slotUp);
+  const slotWallet = Keypair.generate();
+  const slotDir = join(WORK, 'providers', 'lantern');
+  mkdirSync(slotDir, { recursive: true });
+  writeFileSync(join(slotDir, 'wallet.json'), JSON.stringify(Array.from(slotWallet.secretKey)));
+  const slotNode = new ProviderNode({
+    name: 'Lantern One-Slot', region: 'eu-central', listen: 17293, host: '127.0.0.1', publicUrl: 'http://127.0.0.1:17293', rpcUrl: RPC, settleMint: usdc.toBase58(),
+    wallet: join(slotDir, 'wallet.json'), dataDir: slotDir, upstream: { baseUrl: 'http://127.0.0.1:19112/v1' },
+    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 200_000, output: 800_000 } }],
+    redeem: { everySecs: 3_600, minUnits: 1 }, holder: { tiers: HOLDER_TIERS }, slots: 1,
+  } as ConstructorParameters<typeof ProviderNode>[0]);
+  const slotSaid: string[] = [];
+  slotNode.log = (l) => { slotSaid.push(l); console.log(`    [Lantern] ${l}`); };
+  await fund(slotWallet.publicKey);
+  await fund(slotNode.node.publicKey);
+  await sendAndConfirmTransaction(conn, new Transaction().add(slotNode.registerInstruction(slotWallet.publicKey)), [slotWallet]);
+  await slotNode.listen();
+  const plainWallet = Keypair.generate();
+  await fund(plainWallet.publicKey, 2);
+  const plainAta = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, plainWallet.publicKey);
+  await mintTo(conn, admin, usdc, plainAta.address, admin, USD);
+  const holderCh = await new Channels(conn, user, Keypair.generate(), usdc, join(WORK, 'home/slots-holder.json'), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD }).ensure(slotNode.pda.toBase58(), 1n);
+  const plainCh = await new Channels(conn, plainWallet, Keypair.generate(), usdc, join(WORK, 'home/slots-plain.json'), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD }).ensure(slotNode.pda.toBase58(), 1n);
+  for (let i = 0; i < 20 && !(await fetch('http://127.0.0.1:19112/v1/models').then((r) => r.ok, () => false)); i++) await sleep(250);
+  const slotKey = (slotNode as unknown as { consoleKey: () => string }).consoleKey();
+  const slotState = async () => ((await (await fetch('http://127.0.0.1:17293/orrery/status', { headers: { 'x-orrery-console-key': slotKey } })).json()) as { slots?: { size: number; busy: number; waiting: number; holdersWaiting: number; holdersAhead: number } }).slots;
+  const done: string[] = [];
+  const slotAsk = (name: string, channel: string) => fetch('http://127.0.0.1:17293/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-channel': channel }, body: JSON.stringify({ model: 'gemma-3-27b', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => { const text = await r.text(); done.push(name); return { status: r.status, paidRecord: text.includes('event: orrery') }; });
+  const asked = [slotAsk('first, without a holder price', plainCh.channel)];
+  await sleep(300);
+  const busyNow = await slotState();
+  asked.push(slotAsk('second, without', plainCh.channel));
+  await sleep(300);
+  asked.push(slotAsk('third, without', plainCh.channel));
+  await sleep(300);
+  asked.push(slotAsk('holder', holderCh.channel));
+  await sleep(300);
+  const queued = await slotState();
+  const answered = await Promise.all(asked);
+  const after = await slotState();
+  const aheadLine = slotSaid.find((l) => l.startsWith('holder request (−35%) took the next free slot ahead of 2 waiting without a holder price')) ?? '';
+  check('a node with every slot answering lets a $OREY holder’s request go next, ahead of requests without a holder price that came first, and says so',
+    answered.every((a) => a.status === 200 && a.paidRecord) && JSON.stringify(done) === JSON.stringify(['first, without a holder price', 'holder', 'second, without', 'third, without'])
+    && busyNow?.size === 1 && busyNow.busy === 1 && queued?.waiting === 3 && queued.holdersWaiting === 1 && after?.busy === 0 && after.waiting === 0 && after.holdersAhead === 1 && !!aheadLine,
+    `finished: ${done.join(' → ')} · queued ${queued?.waiting ?? '?'} (${queued?.holdersWaiting ?? '?'} holder) · ${aheadLine || 'no holder line in the node’s log'}`);
+  await slotNode.close();
+  slotUp.kill('SIGTERM');
+}
+
 // One address to fund: the listing wallet sends the node's key its fee money in the register transaction.
 await fund(brokeWallet.publicKey, 1);
 const fundedOut = await new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'register', '--config', join(brokeDir, 'provider.json'), '--rpc', RPC, '--fund-key', '0.02'], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });

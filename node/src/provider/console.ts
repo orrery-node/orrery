@@ -2,6 +2,7 @@
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
 import { nextPayoutSentence, noticeSentence, payoutRows, type Held, type NextPayout, type NoticeSent, type PayoutSummary } from './payouts.ts';
 import { reachSentence, type ReachNow } from './reach.ts';
+import type { SlotState } from './slots.ts';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { NAME } from '../brand.ts';
@@ -59,7 +60,7 @@ export function nextPayoutHint(n: NextPayout, configPath: string): string {
   return `  ($${(Number(n.due) / 1e6).toFixed(6)} at the next round, every ${every}; $${(Number(n.below) / 1e6).toFixed(6)} waits for $${min} a channel)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null };
+export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null; slots?: SlotState | null };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
