@@ -2085,6 +2085,18 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   check('orrery provider status and the node’s console say how many slots are answering and how often holders went ahead',
     slotStatusLine === 'slots 0 of 1 answering, none waiting; holders went ahead once since start' && slotPage.includes('id="slots"') && slotPage.includes('slotsSentence(s.slots)'),
     `${slotStatusLine || 'no slots line in provider status'} · console ${slotPage.includes('id="slots"') ? 'shows it' : 'does not show it'}`);
+  // The node's own books say what its holder price gave: the holder's answer in its log of answers, with the list
+  // prices for the same tokens less the holder price, and the line provider earnings and the console print from it.
+  const slotServed = readTrips(join(slotDir, 'served.jsonl')) as (ReturnType<typeof readTrips>[number] & { off?: number; saved?: string })[];
+  const atHolder = slotServed.filter((t) => t.off);
+  const lanternPrice = { input: 200_000, output: 800_000 };
+  const givenOk = atHolder.length === 1 && atHolder[0].off === 3_500 && atHolder[0].saved === usd(costOf(lanternPrice, atHolder[0].inputTokens, atHolder[0].outputTokens) - costOf(discounted(lanternPrice, 3_500), atHolder[0].inputTokens, atHolder[0].outputTokens));
+  const slotEarn = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'earnings', '--config', slotCfgPath, '--since', '24h'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const wantGiven = `holder prices: 1 of ${slotServed.length} answers went to $OREY holders at 35% off, $${atHolder[0]?.saved} under your list prices`;
+  const slotEarnApi = (await (await fetch('http://127.0.0.1:17293/orrery/earnings?since=24h', { headers: { 'x-orrery-console-key': slotKey } })).json()) as { holders?: { answers: number; usd: string; line: string } };
+  check('a node’s books say how many answers went at its holder price and what that came to below its list prices, in its log, provider earnings and its console',
+    givenOk && slotServed.length === 4 && slotEarn.split('\n').includes(wantGiven) && slotEarnApi.holders?.answers === 1 && slotEarnApi.holders.line === wantGiven && slotPage.includes('id="holders"'),
+    slotEarn.split('\n').find((l) => l.startsWith('holder prices:')) ?? `${atHolder.length} answers at the holder price in the log, no line in provider earnings`);
   await slotNode.close();
   slotUp.kill('SIGTERM');
 }

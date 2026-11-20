@@ -162,6 +162,16 @@ export function heldSavedLine(h: { answers: number; units: bigint; offs: number[
   return `Holding $${TICKER} took $${usd(h.units)} off ${which}${less ? `: ${who} holders ${less} less` : ''}.`;
 }
 
+/** The same from the node's side, under its earnings: of `answers` served in the window, how many went at its holder
+ * price and what that came to below its list prices. Nothing when none did.
+ *   holder prices: 12 of 59 answers went to $OREY holders at 35% off, $0.000412 under your list prices */
+export function heldGivenLine(h: { answers: number; units: bigint; offs: number[] }, answers: number): string {
+  if (!h.answers) return '';
+  const pct = (bp: number) => `${bp / 100}%`;
+  const at = h.offs.length > 1 ? ` at ${pct(h.offs[0])} to ${pct(h.offs[h.offs.length - 1])} off` : h.offs.length ? ` at ${pct(h.offs[0])} off` : '';
+  return `holder prices: ${h.answers.toLocaleString('en-US')} of ${answers.toLocaleString('en-US')} answer${answers === 1 ? '' : 's'} went to $${TICKER} holders${at}, $${usd(h.units)} under your list prices`;
+}
+
 /** Of the answers in the window: how many came from the next node after another did not answer, how many nodes were
  * passed over in all, and how many were finished by another node after the first stopped mid-answer (counted apart:
  * that first node did start). The router logs both on each answer (`fellThrough`, `resumed`). */

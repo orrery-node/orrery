@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'Your books say what your holder prices gave. On each answer the node serves at its holder price, its log of answers now keeps the discount and what it came to: your list prices for the same tokens, less the holder price. `orrery provider earnings` says it under the totals ("holder prices: 12 of 59 answers went to $OREY holders at 35% off, $0.000412 under your list prices"), and so does the console under the last 24 hours; `/orrery/earnings` carries it as `holders`. It is the other side of the line your router keeps of what holding saved.' },
+];
 
 export const RELEASES: Release[] = [
   {

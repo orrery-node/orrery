@@ -195,3 +195,13 @@ it('keeps what holding the network token took off each answer, and says it under
   assert.equal(s.heldSavedLine!(s.heldSaved!(logged.slice(0, 1), 7 * 86_400_000, now)), 'Holding $OREY took $0.000021 off one of these answers: the node that served it charges holders 35% less.');
   assert.equal(s.heldSavedLine!(s.heldSaved!(logged.slice(2, 3), 7 * 86_400_000, now)), '');
 });
+
+it('says under a node’s earnings how many answers went at its holder price and what that came to below its list prices', () => {
+  const s = spend as unknown as { heldSaved: (t: unknown[], since: number, now: number) => { answers: number; units: bigint; offs: number[] }; heldGivenLine?: (h: unknown, answers: number) => string };
+  assert.equal(typeof s.heldGivenLine, 'function', 'spend.ts says it for a node');
+  const now = Date.parse('2026-11-20T05:50:00Z');
+  const served = [t(now - 1_000, 'gemma-3-27b', 'ch1', '0.000010', { off: 3_500, saved: '0.000005' }), t(now - 2_000, 'gemma-3-27b', 'ch2', '0.000015'), t(now - 3_000, 'gemma-3-27b', 'ch2', '0.000015'), t(now - 4_000, 'gemma-3-27b', 'ch3', '0.000012', { off: 2_000, saved: '0.000003' })];
+  assert.equal(s.heldGivenLine!(s.heldSaved(served, 86_400_000, now), served.length), 'holder prices: 2 of 4 answers went to $OREY holders at 20% to 35% off, $0.000008 under your list prices');
+  assert.equal(s.heldGivenLine!(s.heldSaved(served.slice(0, 1), 86_400_000, now), 1), 'holder prices: 1 of 1 answer went to $OREY holders at 35% off, $0.000005 under your list prices');
+  assert.equal(s.heldGivenLine!(s.heldSaved(served.slice(1, 3), 86_400_000, now), 2), '');
+});

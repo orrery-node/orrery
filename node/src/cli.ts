@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, heldSaved, heldSavedLine, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -370,6 +370,9 @@ async function provider(sub: string) {
     // What reached the wallet in the same window, from the payouts this node keeps beside its log.
     const paidOut = paidOutLine(readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(since), since);
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    // How many of these answers went at the holder price, and what that came to below the list prices.
+    const given = heldGivenLine(heldSaved(readTrips(log), windowMs(since)), total.answers);
+    if (given) console.log(given);
     if (paidOut) console.log(paidOut);
     await landed();
     await nextOut();

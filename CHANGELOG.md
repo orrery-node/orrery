@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · Your books say what your holder prices gave. On each answer the node serves at its holder price, its log of answers now keeps the discount and what it came to: your list prices for the same tokens, less the holder price. `orrery provider earnings` says it under the totals ("holder prices: 12 of 59 answers went to $OREY holders at 35% off, $0.000412 under your list prices"), and so does the console under the last 24 hours; `/orrery/earnings` carries it as `holders`. It is the other side of the line your router keeps of what holding saved.
+
 ## 0.1.24 · 2026-11-20 05:21 UTC
 
 **$OREY holders go first on a busy node and see what holding saved them, every new node starts with holder prices, and payouts ping your webhook as they land.**

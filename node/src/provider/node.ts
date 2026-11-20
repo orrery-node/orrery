@@ -28,7 +28,7 @@ import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
-import { appendTrip, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
+import { appendTrip, heldGivenLine, heldSaved, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
 
@@ -422,7 +422,9 @@ export class ProviderNode {
           const fees = lamports === null ? null : { line: feesLine({ lamports, openingRent, nodeKey: this.node.publicKey.toBase58() }), low: lamports < FEE_FLOOR_LAMPORTS + (openingRent ?? 0) };
           if (listing !== undefined) this.listingRead = { at: Date.now(), onChain: listing ? ((p) => ({ payouts: Number(p.redeems), settled: usd(p.settled) }))(decodeProvider(listing.data)) : null, fees };
         }
-        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), onChain: this.listingRead?.onChain ?? null, fees: this.listingRead?.fees ?? null });
+        // The answers at the holder price, and what they came to below the list prices.
+        const held = heldSaved(served, windowMs(since));
+        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), holders: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldGivenLine(held, total.answers) }, onChain: this.listingRead?.onChain ?? null, fees: this.listingRead?.fees ?? null });
       }
       // The books day by day (UTC), from the node's own files: what each day billed and paid out. No chain call.
       if (req.method === 'GET' && url.pathname === '/orrery/books') {
@@ -611,7 +613,11 @@ export class ProviderNode {
       res.end();
       this.answers += 1;
       this.served.push({ at: Date.now(), model: offer.id, channel: address, inputTokens, outputTokens, cost: record.cost, off, sealed: !!sealKey && !wired });
-      appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost), ...(inside ? { inside: true } : {}) });
+      // At a holder price the log keeps the discount and what it came to: the list prices for the same tokens, less
+      // the holder price, so the operator's books say what holder pricing gave away.
+      const listed = off ? costOf(offer.price, inputTokens, outputTokens, cachedTokens) : 0n;
+      const given = listed > cost ? listed - cost : 0n;
+      appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost), ...(inside ? { inside: true } : {}), ...(off ? { off, saved: usd(given) } : {}) });
       if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
       // The log goes to whoever hosts the node. Paid inside the seal, the channel and its running total were kept from
       // that party on the wire, so they stay off this line too; the console (behind its key) still shows them.
