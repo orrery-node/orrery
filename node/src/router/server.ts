@@ -17,7 +17,7 @@ import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels, PayerProblem } from './channels.ts';
 import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
-import { ROUTES, applyAlias, burning, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
+import { ROUTES, applyAlias, burning, openTo, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
@@ -492,6 +492,10 @@ export class Router {
       throw new Unserved((e as Error).message, 400, 'bad_request');
     }
     const offOf = await this.offOf();
+    // Holder-first listings are asked only when this wallet gets that node's holder price: anyone else would be refused.
+    const forUs = openTo(offers, offOf);
+    if (!forUs.open.length) throw new Unserved(`${model} is open to $${TICKER} holders only at ${forUs.closed === 1 ? 'the node that serves it' : `all ${forUs.closed} nodes that serve it`}, and this router's wallet does not get a holder price there yet`, 403, 'holders_only');
+    offers = forUs.open;
     if (ceiling) {
       const within = offers.filter((o) => underCeiling(discounted(o.offer.price, offOf(o.entry)), ceiling));
       if (!within.length) {

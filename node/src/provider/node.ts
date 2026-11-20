@@ -16,6 +16,7 @@ import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
+import { TICKER } from '../brand.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
@@ -271,6 +272,11 @@ export class ProviderNode {
       inside: cfg.paymentInside ? true : undefined,
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
+    // A holder-first model with no holder tiers would be open to nobody: refused at start, with what to set.
+    for (const m of cfg.models) {
+      if (m.holdersOnly !== undefined && m.holdersOnly !== true) throw new Error(`"holdersOnly" for ${m.id} is true or left out`);
+      if (m.holdersOnly && !cfg.holder) throw new Error(`${m.id} is set "holdersOnly", which opens it to wallets that get your holder price: set "holder" tiers too`);
+    }
     const slots = checkSlots(cfg.slots);
     this.slots = slots ? new Slots(slots, 30_000, checkHolderSlots(cfg.holderSlots, slots, !!cfg.holder)) : null;
     if (!slots) checkHolderSlots(cfg.holderSlots, slots, !!cfg.holder);
@@ -577,6 +583,11 @@ export class ProviderNode {
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
     const e = await this.entry(address);
     const off = this.holders ? await this.holders.off(this.cfg.holder!.tiers, e.channel.payer) : 0;
+    // A holder-first model answers only wallets that get the holder price; anyone else is told so before anything is owed.
+    if (offer.holdersOnly && !off) {
+      const first = Math.min(...this.cfg.holder!.tiers.map((t) => t.share));
+      return fail(res, 403, 'holders_only', `${offer.id} on this node is open to $${TICKER} holders only, from ${first / 100}% of the supply`);
+    }
     const price = discounted(offer.price, off);
     const now = BigInt(Math.floor(Date.now() / 1000));
     if (e.channel.closingAt !== 0n && now > e.channel.closingAt - 120n) return fail(res, 409, 'channel_closing', 'channel is closing; open a new one');

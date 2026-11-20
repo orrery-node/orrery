@@ -150,6 +150,13 @@ export const burning = (e: ProviderEntry) => !!e.manifest?.burn && !!e.burn && e
 
 export type Candidate = { entry: ProviderEntry; offer: ModelOffer; expected: bigint; ttftMs: number | null; reputation: number; sealed: boolean; off: number; cached: number };
 
+/** The listings this router's wallet may use: a holder-first listing (holdersOnly) only where the wallet gets that
+ * node's holder price. `closed` counts the ones left out, so a refusal can say why. */
+export function openTo<T extends { entry: ProviderEntry; offer: ModelOffer }>(offers: T[], offOf: (e: ProviderEntry) => number): { open: T[]; closed: number } {
+  const open = offers.filter((o) => !o.offer.holdersOnly || offOf(o.entry) > 0);
+  return { open, closed: offers.length - open.length };
+}
+
 /** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. `cachedOf` is
  * how much of this prompt a provider likely still has in its prompt cache (see affinity.ts), priced at its cached rate. */
 export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0, cachedOf: (e: ProviderEntry) => number = () => 0): Candidate[] {

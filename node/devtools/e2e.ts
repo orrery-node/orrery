@@ -2193,7 +2193,7 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   const laneNode = new ProviderNode({
     name: 'Beacon Lanes', region: 'eu-central', listen: 17295, host: '127.0.0.1', publicUrl: 'http://127.0.0.1:17295', rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(laneDir, 'wallet.json'), dataDir: laneDir, upstream: { baseUrl: 'http://127.0.0.1:19113/v1' },
-    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 150_000, output: 600_000 } }],
+    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 150_000, output: 600_000 } }, { id: 'gemma-3-27b-early', context: 131_072, maxOutput: 4_096, price: { input: 150_000, output: 600_000 }, holdersOnly: true }],
     redeem: { everySecs: 3_600, minUnits: 1 }, holder: { tiers: HOLDER_TIERS }, slots: 2, holderSlots: 1,
   } as ConstructorParameters<typeof ProviderNode>[0]);
   const laneSaid: string[] = [];
@@ -2230,7 +2230,19 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
     statuses.every((s) => s === 200) && JSON.stringify(finished) === JSON.stringify(['first, without a holder price', 'holder', 'second, without'])
     && during?.size === 2 && during.busy === 2 && during.waiting === 1 && during.holderSlots === 1 && !!laneLine,
     `finished: ${finished.join(' → ')} · while full: ${during ? `${during.busy} of ${during.size} answering, ${during.waiting} waiting, ${during.holderSlots} kept for holders` : 'no status'} · ${laneLine || 'no lane line in the node’s log'}`);
+  // A holder-first model on the same node: a wallet without the holder price asking the node is refused before anything
+  // is owed; the rehearsal's router, whose wallet holds 2%, is answered.
+  const refused = await fetch('http://127.0.0.1:17295/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-channel': plainA.channel }, body: JSON.stringify({ model: 'gemma-3-27b-early', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => ({ status: r.status, j: (await r.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null }));
+  await registry.refresh();
+  const viaRouter = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma-3-27b-early', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => ({ status: r.status, name: r.headers.get('x-orrery-provider-name'), text: (await r.text()).slice(0, 160) }));
+  check('a holder-first model answers only wallets that get the holder price: anyone else is refused before anything is owed, a holder’s router is answered',
+    refused.status === 403 && refused.j?.error?.code === 'holders_only' && refused.j.error.message === 'gemma-3-27b-early on this node is open to $OREY holders only, from 0.1% of the supply'
+    && viaRouter.status === 200 && viaRouter.name === 'Beacon Lanes',
+    `without a holder price: ${refused.status} ${refused.j?.error?.code ?? ''} ${refused.j?.error?.message ?? ''} · the router (2%): ${viaRouter.status} ${viaRouter.name ?? viaRouter.text}`);
   await laneNode.close();
+  registry.entries.delete(laneAddr);
   laneUp.kill('SIGTERM');
 }
 
