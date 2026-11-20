@@ -114,4 +114,24 @@ describe('the local console pages', () => {
     const html = consolePage();
     assert.ok(html.includes('paidCell(t)') && html.includes('failedNote(t.fellThrough)'), 'the page uses both');
   });
+
+  it('the node’s month card writes its books, cuts a long node name short of the month, and says billed before any payout', () => {
+    const page = providerConsolePage();
+    const src = page.slice(page.indexOf('function drawCard(m,node)'), page.indexOf("\ndocument.getElementById('cardsave')"));
+    const draw = (m: Record<string, unknown>, node: string) => {
+      const out: { t: string; at: number; align: string }[] = [];
+      const ctx: Record<string, unknown> = { textAlign: 'left', fillText(t: string, at: number) { out.push({ t, at, align: String(ctx.textAlign) }); }, measureText: (t: string) => ({ width: t.length * 15.6 }), setTransform() {}, fillRect() {} };
+      runInNewContext(`let cardMonth='';${src};drawCard(M,N)`, { M: m, N: node, document: { documentElement: {}, getElementById: () => ({ width: 2400, height: 1260, getContext: () => ctx }) }, getComputedStyle: () => ({ getPropertyValue: () => '' }), Number, Date });
+      return out;
+    };
+    const month = { day: '2026-11', answers: 312, billed: '0.912500', payouts: 14, paid: '0.887250' };
+    const texts = draw(month, 'Ironbridge Compute').map((o) => o.t);
+    assert.deepEqual(texts.slice(0, 5), ['orrery node · Ironbridge Compute', 'November 2026 so far (UTC)', '$0.887250', 'paid out to my wallet in 14 payouts, for 312 answers', 'each answer paid on its own, $0.912500 billed']);
+    const long = draw(month, 'A Very Long Node Name That Goes On And On Compute');
+    const head = long[0].t, monthLabel = long[1].t;
+    assert.ok(head.endsWith('…') && head.startsWith('orrery node · A Very'), head);
+    assert.ok(64 + head.length * 15.6 <= 1200 - 64 - monthLabel.length * 15.6 - 40 + 15.6, `${head} runs into ${monthLabel}`);
+    const unpaid = draw({ ...month, payouts: 0, paid: '0.000000' }, 'Ironbridge Compute').map((o) => o.t);
+    assert.ok(unpaid.includes('$0.912500') && unpaid.includes('billed for 312 answers; the first payout goes out once it adds up') && !unpaid.some((t) => t.startsWith('each answer')), unpaid.join(' | '));
+  });
 });

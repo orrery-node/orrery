@@ -1084,6 +1084,19 @@ check('orrery provider status says what the wallet held after the last payout, p
     && mo.line.endsWith(`so far (UTC): ${mo.answers.toLocaleString('en-US')} answer${mo.answers === 1 ? '' : 's'}, $${mo.billed} billed; ${mo.payouts} payout${mo.payouts === 1 ? '' : 's'}, $${mo.paid} paid out to your wallet`)
     && ibPage.includes('id="month"'),
     mo?.line ?? 'no month in /orrery/books');
+  // And the month as a card the operator can save and post: the console's own drawing code, run on a canvas that
+  // records what it writes, with this node's books and name, must write what the books say.
+  const { runInNewContext } = await import('node:vm');
+  const cardSrc = ibPage.includes('function drawCard(m,node)') ? ibPage.slice(ibPage.indexOf('function drawCard(m,node)'), ibPage.indexOf("\ndocument.getElementById('cardsave')")) : '';
+  const written: string[] = [];
+  const ctx = new Proxy({ fillText: (t: string) => { written.push(t); }, measureText: (t: string) => ({ width: t.length * 15.6 }) } as Record<string, unknown>, { get: (o, k) => (k in o ? o[k as string] : () => {}), set: (o, k, v) => { o[k as string] = v; return true; } });
+  const ibName = ((await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { name?: string }).name ?? '';
+  if (cardSrc && mo) runInNewContext(`let cardMonth='';${cardSrc};drawCard(M,N)`, { M: mo, N: ibName, document: { documentElement: {}, getElementById: () => ({ width: 2400, height: 1260, getContext: () => ctx }) }, getComputedStyle: () => ({ getPropertyValue: () => '' }), Number, Date });
+  const plural = (n: number, w: string) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
+  check('the node’s console draws this month as a card to save and post: what landed in the wallet, from how many payouts and answers, from its own books',
+    !!mo && mo.payouts > 0 && ibPage.includes('id="cardsave"') && written.includes(`orrery node · ${ibName}`) && written.includes(`$${mo.paid}`)
+    && written.includes(`paid out to my wallet in ${plural(mo.payouts, 'payout')}, for ${plural(mo.answers, 'answer')}`) && written.includes(`each answer paid on its own, $${mo.billed} billed`) && written.includes('0% taken in between'),
+    written.length ? written.slice(0, 4).join(' | ') : 'no card drawn');
 }
 // Kestrel has a notify webhook: past midnight UTC the same line goes there too, with the day's totals beside it.
 {
