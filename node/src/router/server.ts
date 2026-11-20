@@ -17,6 +17,7 @@ import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
 import type { UsageRecord } from '../usage.ts';
 import { Channels, PayerProblem } from './channels.ts';
 import { apiKeyOf, TaskBook, taskFromKey } from './tasks.ts';
+import { AgentBook, agentFromKey } from './agents.ts';
 import { ROUTES, applyAlias, burning, openTo, parseCeiling, parseModel, rank, Stats, underCeiling, type Alias, type Candidate, type Ceiling, type Route } from './policy.ts';
 import { Registry, type ProviderEntry } from './registry.ts';
 import { consolePage } from './console.ts';
@@ -50,6 +51,9 @@ export type RouterOptions = {
   maxPrice?: Ceiling;
   /** A dollar budget for every request that does not send its own x-orrery-max-cost. */
   maxCost?: string;
+  /** Agent wallets: a spending limit per UTC day for each named agent (x-orrery-agent or the key agent/<name>), in
+   * USDC base units. */
+  agentCaps?: Map<string, bigint>;
   /** How often to ask each node whether its model server answers (default 30 seconds). */
   healthSecs?: number;
   /** Private only: every request is sealed to an enclave this router verified, or refused. No route suffix or header
@@ -80,6 +84,8 @@ export type Trip = {
   enclave?: { kind: string; image: string; verdict: string };
   /** The job an agent named for this request with x-orrery-task. */
   task?: string;
+  /** The agent named for this request (x-orrery-agent or the key agent/<name>). */
+  agent?: string;
   /** The request and answer were encrypted to the node's own key, so nothing between the two machines could read them. */
   wire?: boolean;
   /** Identifying fields the client attached and the router did not send on (names only, never the values). */
@@ -112,6 +118,10 @@ export const FULL_MS = 30_000;
 /** What a job has spent and has left, as the headers every answer and every budget refusal under it carries. */
 const taskHeaders = (t: { budget: bigint; spent: bigint }): Record<string, string> => ({
   'x-orrery-task-spent': usd(t.spent), 'x-orrery-task-left': usd(t.budget > t.spent ? t.budget - t.spent : 0n),
+});
+/** What an agent has spent today (UTC) and has left of its limit, on every answer and refusal under it. */
+const agentHeaders = (a: { cap: bigint; spent: bigint }): Record<string, string> => ({
+  'x-orrery-agent-spent': usd(a.spent), 'x-orrery-agent-left': usd(a.cap > a.spent ? a.cap - a.spent : 0n),
 });
 
 /** A node's name from its price list, as a header can carry it: printable ASCII as is (up to 80 characters), anything
@@ -155,6 +165,8 @@ export class Router {
   private healthTimer: NodeJS.Timeout | null = null;
   private tasks = new TaskBook(1_000, home('router', 'tasks.json'));
   private taskOf = new WeakMap<ServerResponse, string>();
+  private agents: AgentBook | null = null;
+  private agentOf = new WeakMap<ServerResponse, string>();
   /** What a node last said it sees of this router, asked through the proxy. Null with no proxy, or before asking. */
   private farSide: { node: string; address: string; also: string[]; givenAway: string | null; line: string; checkedAt: number } | null = null;
   private burnTimer: NodeJS.Timeout | null = null;
@@ -189,6 +201,7 @@ export class Router {
 
   constructor(private o: RouterOptions) {
     this.stats = new Stats(o.observedPath);
+    this.agents = new AgentBook(o.agentCaps ?? new Map(), home('router', 'trips.jsonl'));
     this.log = o.log ?? ((l) => console.log(l));
     // Channels asks a node about a channel it lost track of sealed when the node reads payment inside the seal.
     o.channels.wireOf ??= (p) => {
@@ -396,7 +409,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER) } : null;
-    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse() });
+    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
@@ -529,20 +542,35 @@ export class Router {
       if (taskLeft <= 0n) throw new Unserved(`task ${taskName} has spent its budget; nothing more is sent or paid under it`, 402, 'task_budget_spent', taskHeaders(taskNow!));
       this.taskOf.set(res, taskName);
     }
+    // An agent wallet: the agent named by header (or by the key agent/<name>) may have a limit for today (UTC). What is
+    // left of it bounds this request as well, so the day's limit can never be passed either.
+    const agentName = req.headers['x-orrery-agent'] ? String(req.headers['x-orrery-agent']) : agentFromKey(apiKeyOf(req.headers));
+    let agentLeft: bigint | null = null;
+    if (agentName) {
+      if (!AgentBook.valid(agentName)) throw new Unserved('x-orrery-agent is a name of letters, digits and ._:- up to 64 characters', 400, 'bad_request');
+      const a = this.agents!.left(agentName);
+      if (a) {
+        agentLeft = a.left;
+        if (a.left <= 0n) throw new Unserved(`agent ${agentName} has spent its $${usd(a.cap)} for today (UTC); it can spend again from 00:00 UTC`, 402, 'agent_cap', agentHeaders(a));
+      }
+      this.agentOf.set(res, agentName);
+    }
+    const limitLeft = taskLeft === null ? agentLeft : agentLeft === null ? taskLeft : taskLeft < agentLeft ? taskLeft : agentLeft;
     const budgetHeader = req.headers['x-orrery-max-cost'] ?? this.o.maxCost;
-    if (budgetHeader !== undefined || taskLeft !== null) {
+    if (budgetHeader !== undefined || limitLeft !== null) {
       const dollars = budgetHeader === undefined ? Infinity : Number(String(budgetHeader).replace(/^\$/, ''));
       if (budgetHeader !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
       const own = budgetHeader === undefined ? null : BigInt(Math.floor(dollars * 1e6));
-      const budget = own === null ? taskLeft! : taskLeft !== null && taskLeft < own ? taskLeft : own;
+      const budget = own === null ? limitLeft! : limitLeft !== null && limitLeft < own ? limitLeft : own;
       const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
       const fits = offers.filter((o) => worst(o) <= budget);
       if (!fits.length) {
         const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
-        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : ''}`,
-          // A budget the caller set for this one request that nothing fits is a search with no result (404). A job whose
-          // remaining budget cannot cover one more request is out of money (402), which no client mistakes for a missing model.
-          taskLeft !== null && taskLeft === budget ? 402 : 404, 'over_budget', taskNow ? taskHeaders(taskNow) : {});
+        throw new Unserved(`no provider can answer ${model} within $${usd(budget)} for this request; the cheapest could cost up to $${usd(low)} (lower max_tokens or raise the budget)${taskLeft !== null && taskLeft === budget ? `; task ${taskName} has $${usd(taskLeft)} left` : agentLeft !== null && agentLeft === budget ? `; agent ${agentName} has $${usd(agentLeft)} left today (UTC)` : ''}`,
+          // A budget the caller set for this one request that nothing fits is a search with no result (404). A job or an
+          // agent whose remaining money cannot cover one more request is out of money (402), which no client mistakes for
+          // a missing model.
+          limitLeft !== null && limitLeft === budget ? 402 : 404, 'over_budget', taskNow ? taskHeaders(taskNow) : {});
       }
       offers = fits;
     }
@@ -799,7 +827,7 @@ export class Router {
     this.o.registry.noteRequest(address, true);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(saved ? { saved: usd(saved) } : {}), ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), ...(this.agentOf.get(res) ? { agent: this.agentOf.get(res) } : {}), fellThrough, off: claimedOff, ...(saved ? { saved: usd(saved) } : {}), ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);
@@ -811,7 +839,10 @@ export class Router {
     const burnShare = burning(cand.entry) ? cand.entry.burn!.share : 0;
     const taskName = this.taskOf.get(res);
     const task = taskName ? this.tasks.spend(taskName, fair) : null;
-    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-billed': usd(record.cost), 'x-orrery-listed': usd(ours), 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
+    const agentName = this.agentOf.get(res);
+    if (agentName) this.agents!.spend(agentName, fair);
+    const agentNow = agentName ? this.agents!.left(agentName) : null;
+    const orreryHeaders = { 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'x-orrery-cost': trip.cost, 'x-orrery-billed': usd(record.cost), 'x-orrery-listed': usd(ours), 'x-orrery-ttft-ms': String(ttft), 'server-timing': serverTiming(timing), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader, ...(task ? taskHeaders(task) : {}), ...(agentNow ? agentHeaders(agentNow) : {}), ...(burnShare ? { 'x-orrery-burn': usd((fair * BigInt(burnShare)) / 10_000n), 'x-orrery-burn-share': String(burnShare) } : {}) };
     if (wantsStream) {
       if (state.stream) state.stream.finish(record.inputTokens, record.outputTokens);
       else {

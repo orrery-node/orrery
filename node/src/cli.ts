@@ -31,6 +31,7 @@ import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
+import { parseAgentCaps } from './router/agents.ts';
 import { checkPayouts, nextPayoutSentence, noticeLine, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
 import { booksByDay, booksByDayCsv, booksByDayLines, booksByMonth, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
@@ -79,6 +80,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --daily-cap <usd>         stop spending after this much per day (default 5)
       --max-price <in/out>      never route above this price, dollars per million tokens, e.g. 0.50/1.50 (per request: x-orrery-max-price)
       --max-cost <usd>          a dollar budget for each request, e.g. 0.002 (per request: x-orrery-max-cost)
+      --agent-cap <name=usd,…>  a spending limit per UTC day for each named agent, e.g. researcher=0.50,coder=2 (an agent names itself with x-orrery-agent or the key agent/<name>)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
       --patience <seconds>      how long a request waits and asks again when no node can be reached (default 8, 0 fails at once)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
@@ -142,7 +144,7 @@ async function router() {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });
   const port = Number(flag('port', String(ROUTER_PORT)));
-  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), patienceMs: Math.max(0, Number(flag('patience', '8'))) * 1000, holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1', observedPath: home('router', 'observed.json') });
+  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), patienceMs: Math.max(0, Number(flag('patience', '8'))) * 1000, holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, agentCaps: parseAgentCaps(flag('agent-cap', process.env.ORRERY_AGENT_CAPS)), privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1', observedPath: home('router', 'observed.json') });
   await r.start();
   // The proxy is checked from the far side before anything is paid for: a node says what address it saw.
   const far = await r.checkProxy();

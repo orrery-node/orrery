@@ -158,7 +158,7 @@ const WATCHED = join(WORK, 'home/router/watched.json');
 const registry = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(conn, { allowDev: true, measurements: [] }, undefined, WATCHED);
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
 const OBSERVED = join(WORK, 'home/router/observed.json');
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, observedPath: OBSERVED, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b') });
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, observedPath: OBSERVED, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b'), agentCaps: new Map([['researcher', 20n]]) });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
@@ -1358,7 +1358,30 @@ for (let i = 0; i < 6; i++) {
 }
 const taskList = (await (await fetch(`${ROUTER}/orrery/tasks`)).json()) as { tasks: { name: string; budget: string; spent: string; left: string; answers: number }[] };
 const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
-const spendByTask = (await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
+// Agent wallets: this router gives the agent "researcher" $0.000020 a UTC day. Requests under that name are answered
+// until what is left cannot cover one more; the day's total never passes the limit, each answer in the log names the
+// agent, and a request that names no agent is not held to it.
+{
+  const asAgent = (h: Record<string, string>) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...h }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => ({ status: r.status, left: r.headers.get('x-orrery-agent-left'), j: r.ok ? null : ((await r.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null), ok: r.ok ? (await r.text(), true) : false }));
+  const answered: string[] = [];
+  let refusal: { status: number; code?: string; message?: string } | null = null;
+  for (let i = 0; i < 12 && !refusal; i++) {
+    const r = await asAgent(i % 2 ? { authorization: 'Bearer agent/researcher' } : { 'x-orrery-agent': 'researcher' });
+    if (r.ok) answered.push(r.left ?? '?');
+    else refusal = { status: r.status, code: r.j?.error?.code, message: r.j?.error?.message };
+  }
+  const agentLogged = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t as { agent?: string }).agent === 'researcher');
+  const agentUnits = agentLogged.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
+  const agentStatus = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { agents?: { name: string; cap: string | null; spent: string; left: string | null }[] };
+  const shown = agentStatus.agents?.find((a) => a.name === 'researcher');
+  const free = await asAgent({});
+  const refusedRight = !!refusal && refusal.status === 402 && (refusal.code === 'agent_cap' || (refusal.code === 'over_budget' && /agent researcher has \$0\.\d{6} left today \(UTC\)/.test(refusal.message ?? '')));
+  check('an agent wallet: an agent is answered until its day’s limit cannot cover one more request, then refused (402); it never passes the limit, and others are not held to it',
+    answered.length >= 1 && refusedRight && agentLogged.length === answered.length && agentUnits <= 20n && shown?.cap === '0.000020' && shown.spent === usd(agentUnits) && free.ok,
+    `${answered.length} answered (left after each: ${answered.join(', ')}), then ${refusal ? `${refusal.status} ${refusal.code}: ${(refusal.message ?? '').slice(0, 90)}` : 'never refused'} · logged $${usd(agentUnits)} of $0.000020 · status ${shown ? `${shown.spent} spent` : 'no agent'} · no agent: ${free.ok ? 'answered' : free.status}`);
+}
+const spendByTask =(await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
 const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');
 const lastRun = taskRuns[taskRuns.length - 1];
 check('a task budget covers every request under one name and stops the job before it is passed', taskRuns[0].status === 200 && lastRun.status === 402 && ['over_budget', 'task_budget_spent'].includes(lastRun.code ?? '') && !!job && Number(job.spent) <= 0.00003 && job.answers === taskRuns.length - 1 && jobSpend?.answers === job.answers && jobSpend.usd === job.spent && existsSync(join(process.env.ORRERY_HOME!, 'router', 'tasks.json')), job ? `budget $${job.budget} · ${job.answers} answers paid, $${job.spent} spent · request ${taskRuns.length} refused (${lastRun.code}) · left after each: ${taskRuns.filter((t) => t.left).map((t) => t.left).join(', ')}` : 'no task');
