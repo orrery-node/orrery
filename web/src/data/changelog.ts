@@ -6,7 +6,14 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
+export const UNRELEASED: Change[] = [];
+
+export const RELEASES: Release[] = [
+  {
+    version: '0.1.24',
+    at: '2026-11-20T05:21:34Z',
+    headline: '$OREY holders go first on a busy node and see what holding saved them, every new node starts with holder prices, and payouts ping your webhook as they land.',
+    changes: [
   { who: 'provider', text: 'Every new node starts with holder prices: `orrery provider init` writes the seed node’s tiers into provider.json, so a wallet holding 0.1% of the network token’s supply pays 20% less and one holding 1% pays 35% less, and says so when it writes the file. `--no-holder-prices` leaves them out; the tiers are yours to edit before you register.' },
   { who: 'router', text: '`orrery spend --by day` keeps your books of what your router paid: one row a UTC day (answers, tokens in and out, paid), newest first, a week unless `--since` says otherwise. `--csv` prints the rows alone for a spreadsheet or an expense report, by day, model, provider or task. It all comes from the router’s own log of answers on your disk. The router’s console shows the same books ("Paid by day (UTC), last 7 days") with a "Download 90 days as CSV" served by the router on your computer, and under them the month so far: "November so far (UTC): 2,104 answers, $1.082215 paid" (also the last line of `orrery spend --by day`).' },
   { who: 'provider', text: 'Your node’s console says the month so far under its books by day: "November so far (UTC): 312 answers, $0.912500 billed; 14 payouts, $0.887250 paid out to your wallet", from the 1st of the UTC month, days kept in `days.jsonl` included. `/orrery/books` carries it as `month`.' },
@@ -14,9 +21,8 @@ export const UNRELEASED: Change[] = [
   { who: 'provider', text: 'Your node can tell you when money lands. Set `"notify": { "url": "https://hooks.slack.com/…" }` in provider.json (or `"urlEnv"` to read the address from an environment variable), or give it at the start with `orrery provider init --notify <url>` (`--notify-env <VAR>`), and each payout, once the node has read it back from the chain, is posted there as the same line its log says: "Kestrel GPU Co-op: $0.050123 arrived in your wallet: the chain’s record of tx 5GhKq2abcdef… shows it in your USDC account, which then held $1.412500". The JSON has it under `text` (what Slack’s incoming webhooks read) and `content` (what Discord’s read), with the figures under `payout` for a script. Just after midnight UTC the day’s books go there too, the line the log closes the day with, with the day’s totals under `books`. `orrery provider check` sends one test notice and says whether it got through, and `orrery provider status` and the console say where notices go and whether the last one did ("Payout notices go to hooks.slack.com; the last, a payout 4 min ago, got through (HTTP 200)"), naming the webhook’s host only.' },
   { who: 'router', text: 'Your router keeps what holding $OREY saved you. On each answer from a node that charged you its holder price, the router’s log of answers now records the discount and what it took off: the node’s list prices for the same tokens, less its holder prices for them. `orrery spend` (any `--by`) and the router’s console, under "Paid by day", say the total for the window: "Holding $OREY took $0.000412 off 12 of these answers: the nodes that served them charge holders 35% less." `/orrery/spend` and `orrery spend --json` carry it as `held`.' },
   { who: 'provider', text: 'Holders go first when your node is busy. Set `"slots": 4` in provider.json and the node streams at most four answers from your model server at once. When all four are answering, the next request waits for a free slot, and a wallet that gets your holder price goes ahead of those that do not, the larger discount first, everyone else in the order they came. A request that waits 30 seconds is turned away as busy before anything is owed, so its router asks the next node. The log says when a holder went ahead ("holder request (−35%) took the next free slot ahead of 2 waiting without a holder price, after 0.6 s"), and `orrery provider status` says it under the other lines ("slots  4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start"; `slots` in `--json`), and so does the node’s console, under its recent answers. Without `slots` nothing changes: every request goes straight to the model server.' },
-];
-
-export const RELEASES: Release[] = [
+    ],
+  },
   {
     version: '0.1.23',
     at: '2026-11-19T12:37:19Z',
