@@ -40,6 +40,20 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ object: 'list', model: body.model, data: inputs.map((t, index) => ({ object: 'embedding', index, embedding: vec(t) })), usage: { prompt_tokens: tokens, total_tokens: tokens } }));
     return;
   }
+  if (req.method === 'POST' && req.url?.endsWith('/rerank')) {
+    // A reranker in the query-and-documents shape: each document scored by the words it shares with the query.
+    const parts: Buffer[] = [];
+    for await (const c of req) parts.push(c as Buffer);
+    const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+    noteIdentity(body);
+    const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+    const q = words(String(body.query ?? ''));
+    const docs: string[] = (Array.isArray(body.documents) ? body.documents : []).map((d: unknown) => (typeof d === 'string' ? d : String((d as { text?: string })?.text ?? '')));
+    const scored = docs.map((d, index) => ({ index, relevance_score: Number(([...words(d)].filter((w) => q.has(w)).length / Math.max(1, q.size)).toFixed(6)), ...(body.return_documents ? { document: { text: d } } : {}) })).sort((a, b) => b.relevance_score - a.relevance_score || a.index - b.index);
+    const tokens = [String(body.query ?? ''), ...docs].reduce((a, t) => a + Math.max(1, Math.ceil(t.length / 4)), 0);
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ id: `rerank-${Date.now()}`, model: body.model, results: typeof body.top_n === 'number' ? scored.slice(0, body.top_n) : scored, usage: { total_tokens: tokens } }));
+    return;
+  }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;

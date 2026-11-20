@@ -30,7 +30,7 @@ import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
-type Shape = { kind: 'anthropic' | 'responses' | 'embeddings'; id: string; withheld?: string[] };
+type Shape = { kind: 'anthropic' | 'responses' | 'embeddings' | 'rerank'; id: string; withheld?: string[] };
 
 export type RouterOptions = {
   port: number;
@@ -302,6 +302,7 @@ export class Router {
       if (req.method === 'POST' && url.pathname === '/v1/messages') return await this.messages(req, res);
       if (req.method === 'POST' && (url.pathname === '/v1/responses' || url.pathname === '/responses')) return await this.responses(req, res);
       if (req.method === 'POST' && (url.pathname === '/v1/embeddings' || url.pathname === '/embeddings')) return await this.embeddings(req, res);
+      if (req.method === 'POST' && (url.pathname === '/v1/rerank' || url.pathname === '/rerank')) return await this.rerank(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
@@ -433,6 +434,16 @@ export class Router {
     return this.serve({ ...a, stream: false }, req, res, { kind: 'embeddings', id: '', withheld: identityIn(a) });
   }
 
+  /** Reranking (a query and the documents to order by it, the shape vLLM and Infinity serve): routed and paid like any
+   * answer, priced on input tokens only, as embeddings are. */
+  private async rerank(req: IncomingMessage, res: ServerResponse) {
+    const a = await readJson(req);
+    if (typeof a.model !== 'string' && !Array.isArray(a.models)) throw new Unserved('model is required', 400, 'bad_request');
+    if (typeof a.query !== 'string' || !a.query) throw new Unserved('query is required', 400, 'bad_request');
+    if (!Array.isArray(a.documents) || !a.documents.length) throw new Unserved('documents is required: a list of the texts to rerank', 400, 'bad_request');
+    return this.serve({ ...a, stream: false }, req, res, { kind: 'rerank', id: '', withheld: identityIn(a) });
+  }
+
   private async responses(req: IncomingMessage, res: ServerResponse) {
     const a = await readJson(req);
     if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
@@ -484,7 +495,7 @@ export class Router {
     const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
     const estIn = estimateInputTokens(body);
-    const estOut = anth?.kind === 'embeddings' ? 0 : Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
+    const estOut = (anth?.kind === 'embeddings' || anth?.kind === 'rerank') ? 0 : Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
@@ -564,7 +575,7 @@ export class Router {
       if (budgetHeader !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
       const own = budgetHeader === undefined ? null : BigInt(Math.floor(dollars * 1e6));
       const budget = own === null ? limitLeft! : limitLeft !== null && limitLeft < own ? limitLeft : own;
-      const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
+      const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, (anth?.kind === 'embeddings' || anth?.kind === 'rerank') ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
       const fits = offers.filter((o) => worst(o) <= budget);
       if (!fits.length) {
         const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
@@ -661,7 +672,7 @@ export class Router {
 
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {
     const address = cand.entry.address;
-    const maxOut = anth?.kind === 'embeddings' ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
+    const maxOut = (anth?.kind === 'embeddings' || anth?.kind === 'rerank') ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
     const beforeChannel = performance.now();
     const ch = await this.o.channels.ensure(address, maxCost);
@@ -708,7 +719,7 @@ export class Router {
     const sent = performance.now();
     let nodeMs = 0;
     this.inflight.set(address, maxCost);
-    const r = await fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' ? 'embeddings' : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
+    const r = await fetchNode(`${cand.entry.account.endpoint.replace(/\/$/, '')}/v1/${anth?.kind === 'embeddings' || anth?.kind === 'rerank' ? anth.kind : 'chat/completions'}`, { method: 'POST', headers, body: wire, timeoutMs: 20_000 });
     if ((r.status === 404 || r.status === 409) && !retried) {
       const code = ((await r.json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code;
       // The node restarted with a new wire key: read it again (signature checked as before) and send once more.
@@ -858,6 +869,7 @@ export class Router {
     }
     if (anth?.kind === 'anthropic') return send(res, 200, toMessage(chunks, anth.id, cand.offer.id, record.inputTokens, record.outputTokens), orreryHeaders);
     if (anth?.kind === 'embeddings') return send(res, 200, { ...(chunks[0] ?? {}), model: cand.offer.id, usage: { prompt_tokens: record.inputTokens, total_tokens: record.inputTokens, cost: Number(trip.cost) } }, orreryHeaders);
+    if (anth?.kind === 'rerank') return send(res, 200, { ...(chunks[0] ?? {}), model: cand.offer.id, usage: { total_tokens: record.inputTokens, cost: Number(trip.cost) } }, orreryHeaders);
     if (anth?.kind === 'responses') {
       const r = new ResponsesStream(null, anth.id, cand.offer.id);
       for (const c of chunks) r.chunk(c as Chunk);

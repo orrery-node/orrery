@@ -108,7 +108,7 @@ const HOOK = `http://127.0.0.1:${(hookServer.address() as { port: number }).port
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, inside: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -179,7 +179,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 6 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 7 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 // Kestrel lists qwen3-32b at 8,192 tokens of context and Vault Nine at 131,072. Kestrel is the cheaper, so a short
 // prompt goes there; one clearly longer than 8,192 tokens goes to Vault Nine, and Kestrel is not counted against.
@@ -400,6 +400,22 @@ const embj = (await emb.json()) as { data?: { embedding: number[]; index: number
 const embCost = emb.headers.get('x-orrery-cost');
 const embExpected = costOf({ input: 20_000, output: 0 }, embj.usage?.prompt_tokens ?? 0, 0);
 check('embeddings are routed and paid like any answer, priced on input tokens', emb.status === 200 && embj.model === 'bge-m3' && embj.data?.length === 3 && embj.data.every((d) => d.embedding.length === 8) && embCost === usd(embExpected) && trips.at(-1)?.model === 'bge-m3', `${embj.data?.length} vectors · ${embj.usage?.prompt_tokens} input tokens · $${embCost} via ${nameOf(emb.headers.get('x-orrery-provider'))}`);
+// Beyond chat: reranking. A query and the documents to order by it go to a node that lists a reranker, are paid on
+// input tokens like embeddings, and come back ordered with a score each, the shape a RAG pipeline already reads.
+{
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const docs = ['Bananas are rich in potassium.', 'The router signs a running total for each answer.', 'Payment channels settle on Solana, one answer at a time.', 'Owls hunt at night.'];
+  const rr = await fetch(`${ROUTER}/v1/rerank`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'bge-reranker-v2-m3', query: 'how is each answer paid on solana', documents: docs, top_n: 2 }) });
+  const rrj = (await rr.json()) as { results?: { index: number; relevance_score: number }[]; usage?: { total_tokens: number }; model?: string };
+  const rrCost = rr.headers.get('x-orrery-cost');
+  const rrExpected = costOf({ input: 20_000, output: 0 }, rrj.usage?.total_tokens ?? 0, 0);
+  const rrTrip = trips.at(-1);
+  const noQuery = await fetch(`${ROUTER}/v1/rerank`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'bge-reranker-v2-m3', documents: docs }) }).then(async (r) => ({ status: r.status, code: ((await r.json()) as { error?: { code?: string } }).error?.code }));
+  check('reranking is routed and paid like any answer, on input tokens: the documents come back ordered by the query, with a score each',
+    rr.status === 200 && rrj.model === 'bge-reranker-v2-m3' && rrj.results?.length === 2 && rrj.results[0].index === 2 && rrj.results[1].index === 1 && rrj.results[0].relevance_score > rrj.results[1].relevance_score && (rrj.usage?.total_tokens ?? 0) > 0
+    && rrCost === usd(rrExpected) && rrTrip?.model === 'bge-reranker-v2-m3' && rrTrip.outputTokens === 0 && noQuery.status === 400,
+    `top ${rrj.results?.map((r) => `#${r.index} ${r.relevance_score}`).join(', ') ?? 'none'} · ${rrj.usage?.total_tokens} input tokens · $${rrCost} via ${nameOf(rr.headers.get('x-orrery-provider'))} · no query: ${noQuery.status}`);
+}
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
   r.on('error', () => done(0));
@@ -665,7 +681,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 44 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 45 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.

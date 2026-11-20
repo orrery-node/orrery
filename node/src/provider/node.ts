@@ -529,6 +529,7 @@ export class ProviderNode {
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') return await this.complete(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/embeddings') return await this.complete(req, res, 'embeddings');
+      if (req.method === 'POST' && url.pathname === '/v1/rerank') return await this.complete(req, res, 'rerank');
       return fail(res, 404, 'not_found', 'no such route');
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -537,7 +538,7 @@ export class ProviderNode {
     }
   }
 
-  private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | 'embeddings' = 'chat'): Promise<void> {
+  private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | 'embeddings' | 'rerank' = 'chat'): Promise<void> {
     // Which channel pays, and the voucher for what came before: as headers from an older router, or inside the sealed
     // body, where nothing in front of this process (a hosting platform's balancer) can read them.
     let address = String(req.headers['x-orrery-channel'] ?? '');
@@ -599,7 +600,7 @@ export class ProviderNode {
     const paid = e.best?.cumulative ?? 0n;
     if (paid < e.owed) return payFail(402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
-    const maxOut = kind === 'embeddings' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
+    const maxOut = kind !== 'chat' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
     const maxCost = costOf(price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
@@ -642,15 +643,20 @@ export class ProviderNode {
     };
     const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
 
-    if (kind === 'embeddings') {
-      // Embeddings ride the same envelope as a chat stream: one data event with the upstream's answer, then the usage
-      // record, so a router pays for them exactly like any other answer.
+    if (kind !== 'chat') {
+      // Embeddings and reranking ride the same envelope as a chat stream: one data event with the upstream's answer,
+      // then the usage record, so a router pays for them exactly like any other answer, on input tokens only. A rerank
+      // goes to the model server's /rerank, in the query-and-documents shape vLLM and Infinity serve.
       const afterChecks = performance.now();
-      const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/embeddings`, {
+      const upModel = offer.upstreamModel ?? offer.id;
+      const upBody = kind === 'rerank'
+        ? { model: upModel, query: body.query, documents: body.documents, ...(body.top_n !== undefined ? { top_n: body.top_n } : {}), ...(body.return_documents !== undefined ? { return_documents: body.return_documents } : {}) }
+        : { model: upModel, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) };
+      const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/${kind}`, {
         method: 'POST',
         timeoutMs: 30_000,
         headers: upHeaders,
-        body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), model: offer.upstreamModel ?? offer.id, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) }),
+        body: JSON.stringify({ ...(this.cfg.upstream.body ?? {}), ...upBody }),
       });
       if (!up.ok) {
         const why = refusal(up.status, (await up.text().catch(() => '')).slice(0, 4_000), offer);
@@ -658,11 +664,11 @@ export class ProviderNode {
         appendRefused(`${this.dir}/refused.jsonl`, { at: Date.now(), model: offer.id, kind: why.kind });
         return fail(res, why.status, why.code, why.message);
       }
-      const j = (await up.json()) as { usage?: { prompt_tokens?: number } } & Record<string, unknown>;
+      const j = (await up.json()) as { usage?: { prompt_tokens?: number; total_tokens?: number } } & Record<string, unknown>;
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
       const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
       sendE(JSON.stringify({ ...j, model: offer.id }));
-      settle(sendE, j.usage?.prompt_tokens ?? estimateInputTokens(body), 0, 0);
+      settle(sendE, j.usage?.prompt_tokens ?? j.usage?.total_tokens ?? estimateInputTokens(body), 0, 0);
       return;
     }
 
