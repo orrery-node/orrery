@@ -52,6 +52,37 @@ export function sharePct(s: Standing): string {
   return `${pct >= 1 ? pct.toFixed(2) : pct.toFixed(4)}%`;
 }
 
+/** Where a wallet stands at the nodes that list holder prices, in one line for the router's status and console: its
+ * share of the supply, the best holder price it gets and where, and how much more of the supply would get it the
+ * nearest bigger discount (the smallest step up at any node). Null when no node lists holder prices.
+ *   You hold 0.5000% of $OREY's supply: 20% off at Halo Compute. 0.5000% more gets you 35% off there.
+ *   You hold 0.0000% of $OREY's supply: no holder price yet. 0.1000% more gets you 20% off at Halo Compute and Lantern. */
+export function standingLine(s: Standing, nodes: { name: string; tiers?: HolderTier[] }[], ticker: string): string | null {
+  const priced = nodes.filter((n) => n.tiers?.length);
+  if (!priced.length || s.supply <= 0n) return null;
+  const pct = (bp: number) => `${bp / 100}%`;
+  const names = (list: string[]) => (list.length <= 2 ? list.join(' and ') : `${list.slice(0, 2).join(', ')} and ${list.length - 2} more`);
+  const now = priced.map((n) => ({ name: n.name, tiers: n.tiers!, off: tierOff(n.tiers, s.balance, s.supply) }));
+  const best = Math.max(...now.map((x) => x.off));
+  const at = now.filter((x) => best > 0 && x.off === best).map((x) => x.name);
+  const head = `You hold ${sharePct(s)} of $${ticker}'s supply: ${best ? `${pct(best)} off at ${names(at)}` : 'no holder price yet'}.`;
+  let next: { need: bigint; off: number; at: string[] } | null = null;
+  for (const x of now) {
+    for (const t of x.tiers) {
+      if (t.off <= x.off) continue;
+      const want = (s.supply * BigInt(t.share) + 9_999n) / 10_000n;
+      if (want <= s.balance) continue;
+      const need = want - s.balance;
+      if (!next || need < next.need || (need === next.need && t.off > next.off)) next = { need, off: t.off, at: [x.name] };
+      else if (need === next.need && t.off === next.off && !next.at.includes(x.name)) next.at.push(x.name);
+    }
+  }
+  if (!next) return `${head} That is the top holder price at every node that lists one.`;
+  const more = (next.need * 1_000_000n) / s.supply === 0n ? 'Under 0.0001%' : sharePct({ mint: s.mint, balance: next.need, supply: s.supply });
+  const where = next.at.length === 1 && at.length === 1 && next.at[0] === at[0] ? 'there' : `at ${names(next.at)}`;
+  return `${head} ${more} more gets you ${pct(next.off)} off ${where}.`;
+}
+
 /** Reads the bond mint from the program's Config, the mint's supply and wallets' balances, each cached briefly. A
  * wallet's balance is its associated token account for the mint (the account every wallet and DEX uses), read
  * directly so it works on any RPC, including public ones that refuse token-account scans by mint. */

@@ -430,7 +430,7 @@ export default function Docs() {
             </tbody>
           </table>
           <ul>
-            <li>Your router reads your wallet&apos;s ${TICKER} balance (its associated token account) and the token&apos;s supply from chain, ranks providers by the price you will actually pay, and signs at that price.</li>
+            <li>Your router reads your wallet&apos;s ${TICKER} balance (its associated token account) and the token&apos;s supply from chain, ranks providers by the price you will actually pay, and signs at that price. Its console and <code>/orrery/status</code> say where you stand: &ldquo;You hold 0.5000% of ${TICKER}&apos;s supply: 20% off at Halo Compute. 0.5000% more gets you 35% off there.&rdquo;</li>
             <li>The provider reads the same two numbers for the wallet that opened the channel and charges the same. Both use one integer formula: <code>floor(price × (10000 − off) / 10000)</code>.</li>
             <li>The tiers sit inside the provider&apos;s price list, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, and your router counts the miss against its success rate.</li>
             <li>The settlement program does not change and still takes 0%. A holder price is a discount the provider gives.</li>

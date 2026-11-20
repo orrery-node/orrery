@@ -241,6 +241,15 @@ const listCost = costOf(haloPrice, haloTrip.inputTokens, haloTrip.outputTokens);
 const holderCost = costOf(discounted(haloPrice, 3_500), haloTrip.inputTokens, haloTrip.outputTokens);
 check('a wallet holding 2% of the network token pays the 1% tier price', nameOf(r.provider) === 'Halo Compute' && haloTrip.off === 3_500 && r.cost === usd(holderCost) && holderCost < listCost,
   `$${r.cost} instead of $${usd(listCost)} · holds ${standing ? sharePct(standing) : '?'} of supply`);
+// Where that wallet stands, as the router says it in /orrery/status and its console: the share, the price and where,
+// and (holding past the top tier) that there is no step left.
+{
+  const said = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { holder?: { line?: string | null } | null }).holder?.line ?? null;
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  const want = standing ? `You hold ${sharePct(standing)} of $OREY's supply: 35% off at Halo Compute. That is the top holder price at every node that lists one.` : '';
+  check('the router says where its wallet stands on holder prices: its share, the price it gets and where, and the next step up',
+    !!standing && said === want && page.includes('id="standing"'), said ?? 'no standing line in /orrery/status');
+}
 
 const kestrelSignedBefore = channels.get(nodes[0].pda.toBase58())?.cumulative ?? 0n;
 await nodes[0].close();
