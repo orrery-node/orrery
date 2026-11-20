@@ -15,7 +15,7 @@ import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeV
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
 import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
-import { checkSlots, Slots } from './slots.ts';
+import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
@@ -73,6 +73,9 @@ export type ProviderConfig = {
    * that waits 30 seconds is turned away as busy before anything is owed, and its router asks the next node. Unset: no
    * limit, every request goes straight to the model server. */
   slots?: number;
+  /** Holder lanes: how many of the slots only answer wallets that get the holder price. Requests without one use the
+   * rest, so the node keeps room for holders when it is full for everyone else. Needs "slots" and "holder". */
+  holderSlots?: number;
 };
 
 type Entry = {
@@ -269,7 +272,8 @@ export class ProviderNode {
     };
     this.holders = cfg.holder ? new HolderBook(this.conn) : null;
     const slots = checkSlots(cfg.slots);
-    this.slots = slots ? new Slots(slots) : null;
+    this.slots = slots ? new Slots(slots, 30_000, checkHolderSlots(cfg.holderSlots, slots, !!cfg.holder)) : null;
+    if (!slots) checkHolderSlots(cfg.holderSlots, slots, !!cfg.holder);
     this.manifestBytes = canonical(this.manifest);
     this.load();
   }
@@ -598,7 +602,8 @@ export class ProviderNode {
       if (res.destroyed || res.writableEnded) return slot.give();
       res.once('close', slot.give);
       res.once('finish', slot.give);
-      if (slot.passed) this.log(`holder request (−${off / 100}%) took the next free slot ahead of ${slot.passed} waiting without a holder price, after ${(slot.waitedMs / 1000).toFixed(1)} s`);
+      if (slot.passed && slot.waitedMs === 0) this.log(`holder request (−${off / 100}%) went straight into a holder lane while ${slot.passed} waited without a holder price`);
+      else if (slot.passed) this.log(`holder request (−${off / 100}%) took the next free slot ahead of ${slot.passed} waiting without a holder price, after ${(slot.waitedMs / 1000).toFixed(1)} s`);
     }
 
     const settle = (send: (data: string, event?: string) => void, inputTokens: number, outputTokens: number, cachedTokens: number) => {

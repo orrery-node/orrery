@@ -2,8 +2,10 @@
 // free one. A request from a wallet that gets this node's holder price goes ahead of requests that do not, the larger
 // discount first; among equals it is first come, first served. A request that waits longer than `waitMs` is turned
 // away as busy before anything is signed or owed, so its router asks the next node.
+// Holder lanes ("holderSlots"): that many of the slots only ever answer holders. Requests without a holder price use
+// the rest, so a node that is full for everyone else still has room for a holder.
 
-export type SlotState = { size: number; busy: number; waiting: number; holdersWaiting: number; holdersAhead: number };
+export type SlotState = { size: number; busy: number; waiting: number; holdersWaiting: number; holdersAhead: number; holderSlots: number };
 
 /** A slot: `give` hands it back (calling it twice hands it back once). `passed` is how many requests without a holder
  * price that had arrived earlier this one went ahead of; `waitedMs` how long it waited. */
@@ -21,12 +23,24 @@ export function checkSlots(n: unknown): number | undefined {
   return n;
 }
 
-/** "4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start". `provider status` and the node's
- * console both say it; the console carries this function's own source, so it refers to nothing outside itself. */
+/** A node's "holderSlots" from provider.json: how many of its slots only answer holders. It needs "slots" to take them
+ * from, holder prices to know who a holder is, and at least one slot left for everyone else. */
+export function checkHolderSlots(n: unknown, slots: number | undefined, holderPrices: boolean): number {
+  if (n === undefined) return 0;
+  if (!slots) throw new Error('"holderSlots" keeps some of the node\'s slots for holders: set "slots" too');
+  if (!holderPrices) throw new Error('"holderSlots" keeps slots for wallets that get your holder price: set "holder" tiers too');
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n >= slots) throw new Error(`"holderSlots" must be a whole number from 1 to ${slots - 1} (one less than "slots", so everyone else keeps a slot), not ${JSON.stringify(n)}`);
+  return n;
+}
+
+/** "4 of 4 answering (1 kept for holders), 2 waiting (1 a holder); holders went ahead 3 times since start".
+ * `provider status` and the node's console both say it; the console carries this function's own source, so it refers
+ * to nothing outside itself. */
 export function slotsSentence(s: SlotState): string {
+  const lanes = s.holderSlots ? ` (${s.holderSlots} kept for holders)` : '';
   const waiting = s.waiting ? `, ${s.waiting} waiting${s.holdersWaiting ? ` (${s.holdersWaiting} ${s.holdersWaiting === 1 ? 'a holder' : 'holders'})` : ''}` : ', none waiting';
   const ahead = s.holdersAhead ? `; holders went ahead ${s.holdersAhead === 1 ? 'once' : `${s.holdersAhead} times`} since start` : '';
-  return `${s.busy} of ${s.size} answering${waiting}${ahead}`;
+  return `${s.busy} of ${s.size} answering${lanes}${waiting}${ahead}`;
 }
 
 /** `orrery provider status`: "  slots                 4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start". */
@@ -36,20 +50,30 @@ export function slotsLine(s: SlotState): string {
 
 export class Slots {
   private busy = 0;
+  /** Slots answering requests without a holder price: never more than size − holderSlots. */
+  private plain = 0;
   private seq = 0;
   private waiting: Waiter[] = [];
   /** Holder requests that took a slot ahead of a request without a holder price that had arrived before them. */
   private ahead = 0;
 
-  constructor(readonly size: number, readonly waitMs = 30_000) {}
+  constructor(readonly size: number, readonly waitMs = 30_000, readonly holderSlots = 0) {}
+
+  /** Whether a request at this discount could start now: a free slot, and for one without a holder price, a free slot
+   * outside the holder lanes. */
+  private fits(off: number) {
+    return this.busy < this.size && (off > 0 || this.plain < this.size - this.holderSlots);
+  }
 
   /** A slot for a request at this holder discount (basis points, 0 for none) once one is free; null when none came
    * free within `waitMs`. */
   take(off: number): Promise<Taken | null> {
     const t0 = Date.now();
-    if (this.busy < this.size && !this.waiting.length) {
-      this.busy += 1;
-      return Promise.resolve({ give: this.giveBack(), passed: 0, waitedMs: 0 });
+    // Straight in when it fits and nobody waiting would be let in before it.
+    if (this.fits(off) && !this.waiting.some((w) => w.off >= off && this.fits(w.off))) {
+      const passed = off > 0 ? this.waiting.filter((w) => w.off === 0).length : 0;
+      if (passed) this.ahead += 1;
+      return Promise.resolve({ give: this.start(off), passed, waitedMs: 0 });
     }
     return new Promise((resolve) => {
       const w: Waiter = {
@@ -59,8 +83,7 @@ export class Slots {
           clearTimeout(w.timer);
           const passed = off > 0 ? this.waiting.filter((x) => x.off === 0 && x.seq < w.seq).length : 0;
           if (passed) this.ahead += 1;
-          this.busy += 1;
-          resolve({ give: this.giveBack(), passed, waitedMs: Date.now() - t0 });
+          resolve({ give: this.start(off), passed, waitedMs: Date.now() - t0 });
         },
         timer: setTimeout(() => {
           this.waiting = this.waiting.filter((x) => x !== w);
@@ -74,16 +97,28 @@ export class Slots {
   }
 
   get state(): SlotState {
-    return { size: this.size, busy: this.busy, waiting: this.waiting.length, holdersWaiting: this.waiting.filter((w) => w.off > 0).length, holdersAhead: this.ahead };
+    return { size: this.size, busy: this.busy, waiting: this.waiting.length, holdersWaiting: this.waiting.filter((w) => w.off > 0).length, holdersAhead: this.ahead, holderSlots: this.holderSlots };
   }
 
-  private giveBack() {
+  private start(off: number) {
+    this.busy += 1;
+    if (off === 0) this.plain += 1;
     let given = false;
     return () => {
       if (given) return;
       given = true;
       this.busy -= 1;
-      while (this.busy < this.size && this.waiting.length) this.waiting.shift()!.go();
+      if (off === 0) this.plain -= 1;
+      this.admit();
     };
+  }
+
+  /** Lets in waiting requests, in their order, as long as each one fits. */
+  private admit() {
+    for (;;) {
+      const i = this.waiting.findIndex((w) => this.fits(w.off));
+      if (i === -1) return;
+      this.waiting.splice(i, 1)[0].go();
+    }
   }
 }

@@ -2171,6 +2171,60 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   slotUp.kill('SIGTERM');
 }
 
+// Holder lanes: a node with two slots, one of them kept for holders ("holderSlots": 1), behind a model server that
+// takes 1.5 s. One request without a holder price takes the open slot, a second has to wait (the other slot is the
+// holder lane), and a holder arriving after both goes straight in.
+{
+  const laneUp = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19113', '1500', 'lanes'], { stdio: 'ignore' });
+  procs.push(laneUp);
+  const laneWallet = Keypair.generate();
+  const laneDir = join(WORK, 'providers', 'beacon');
+  mkdirSync(laneDir, { recursive: true });
+  writeFileSync(join(laneDir, 'wallet.json'), JSON.stringify(Array.from(laneWallet.secretKey)));
+  const laneNode = new ProviderNode({
+    name: 'Beacon Lanes', region: 'eu-central', listen: 17295, host: '127.0.0.1', publicUrl: 'http://127.0.0.1:17295', rpcUrl: RPC, settleMint: usdc.toBase58(),
+    wallet: join(laneDir, 'wallet.json'), dataDir: laneDir, upstream: { baseUrl: 'http://127.0.0.1:19113/v1' },
+    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 150_000, output: 600_000 } }],
+    redeem: { everySecs: 3_600, minUnits: 1 }, holder: { tiers: HOLDER_TIERS }, slots: 2, holderSlots: 1,
+  } as ConstructorParameters<typeof ProviderNode>[0]);
+  const laneSaid: string[] = [];
+  laneNode.log = (l) => { laneSaid.push(l); console.log(`    [Beacon] ${l}`); };
+  await fund(laneWallet.publicKey);
+  await fund(laneNode.node.publicKey);
+  await sendAndConfirmTransaction(conn, new Transaction().add(laneNode.registerInstruction(laneWallet.publicKey)), [laneWallet]);
+  await laneNode.listen();
+  const laneAddr = laneNode.pda.toBase58();
+  const plainLaneWallet = Keypair.generate();
+  await fund(plainLaneWallet.publicKey, 2);
+  const plainLaneAta = await getOrCreateAssociatedTokenAccount(conn, admin, usdc, plainLaneWallet.publicKey);
+  await mintTo(conn, admin, usdc, plainLaneAta.address, admin, USD);
+  const open = (w: Keypair | null, file: string) => new Channels(conn, w ?? user, Keypair.generate(), usdc, join(WORK, `home/${file}.json`), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD }).ensure(laneAddr, 1n);
+  const plainA = await open(plainLaneWallet, 'lanes-plain-a');
+  const plainB = await open(plainLaneWallet, 'lanes-plain-b');
+  const holderLane = await open(null, 'lanes-holder');
+  for (let i = 0; i < 20 && !(await fetch('http://127.0.0.1:19113/v1/models').then((r) => r.ok, () => false)); i++) await sleep(250);
+  const laneKey = (laneNode as unknown as { consoleKey: () => string }).consoleKey();
+  const laneState = async () => ((await (await fetch('http://127.0.0.1:17295/orrery/status', { headers: { 'x-orrery-console-key': laneKey } })).json()) as { slots?: { size: number; busy: number; waiting: number; holderSlots: number } }).slots;
+  const finished: string[] = [];
+  const laneAsk = (name: string, channel: string) => fetch('http://127.0.0.1:17295/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-channel': channel }, body: JSON.stringify({ model: 'gemma-3-27b', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => { await r.text(); finished.push(name); return r.status; });
+  const asked = [laneAsk('first, without a holder price', plainA.channel)];
+  await sleep(300);
+  asked.push(laneAsk('second, without', plainB.channel));
+  await sleep(300);
+  asked.push(laneAsk('holder', holderLane.channel));
+  await sleep(300);
+  const during = await laneState();
+  const statuses = await Promise.all(asked);
+  const laneLine = laneSaid.find((l) => l.startsWith('holder request (−35%) went straight into a holder lane while 1 waited without a holder price')) ?? '';
+  check('a node with a holder lane keeps it for holders: the second request without a holder price waits, a holder arriving after it goes straight in',
+    statuses.every((s) => s === 200) && JSON.stringify(finished) === JSON.stringify(['first, without a holder price', 'holder', 'second, without'])
+    && during?.size === 2 && during.busy === 2 && during.waiting === 1 && during.holderSlots === 1 && !!laneLine,
+    `finished: ${finished.join(' → ')} · while full: ${during ? `${during.busy} of ${during.size} answering, ${during.waiting} waiting, ${during.holderSlots} kept for holders` : 'no status'} · ${laneLine || 'no lane line in the node’s log'}`);
+  await laneNode.close();
+  laneUp.kill('SIGTERM');
+}
+
 // One address to fund: the listing wallet sends the node's key its fee money in the register transaction.
 await fund(brokeWallet.publicKey, 1);
 const fundedOut = await new Promise<{ code: number | null; text: string }>((done) => { let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'register', '--config', join(brokeDir, 'provider.json'), '--rpc', RPC, '--fund-key', '0.02'], { stdio: ['ignore', 'pipe', 'pipe'] }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text })); });
