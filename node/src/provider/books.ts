@@ -47,8 +47,9 @@ const toUnits = (cost: string): bigint => {
 };
 
 /** One line for the day, or null when nothing was served or paid out in it:
- *   books for 2026-11-18 (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain */
-export function dayBooksLine(day: string, served: { at: number; cost: string }[], payouts: Payout[], held: Held | null): string | null {
+ *   books for 2026-11-18 (UTC): 1,312 answers, $0.038912 billed (40 at your holder price, $0.000412 under list); 3 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain
+ * The part in brackets is there when some answers went at the holder price (the log keeps `saved` on each). */
+export function dayBooksLine(day: string, served: { at: number; cost: string; saved?: string }[], payouts: Payout[], held: Held | null): string | null {
   const start = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(start)) return null;
   const inDay = (at: number) => at >= start && at < start + DAY;
@@ -59,7 +60,10 @@ export function dayBooksLine(day: string, served: { at: number; cost: string }[]
   const out = paid.reduce((n, p) => n + BigInt(p.units), 0n);
   const lastPaid = paid.reduce<Payout | null>((a, p) => (!a || p.at >= a.at ? p : a), null);
   const after = held && lastPaid && held.tx === lastPaid.tx ? `; it held $${usd(BigInt(held.units))} after the last, per the chain` : '';
-  const a = `${answers.length.toLocaleString('en-US')} answer${answers.length === 1 ? '' : 's'}, $${usd(billed)} billed`;
+  const atHolder = answers.filter((t) => typeof t.saved === 'string');
+  const under = atHolder.reduce((n, t) => n + toUnits(t.saved!), 0n);
+  const holder = atHolder.length ? ` (${atHolder.length.toLocaleString('en-US')} at your holder price, $${usd(under)} under list)` : '';
+  const a = `${answers.length.toLocaleString('en-US')} answer${answers.length === 1 ? '' : 's'}, $${usd(billed)} billed${holder}`;
   const p = paid.length ? `${paid.length} payout${paid.length === 1 ? '' : 's'}, $${usd(out)} to your wallet` : 'no payout';
   return `books for ${day} (UTC): ${a}; ${p}${after}`;
 }

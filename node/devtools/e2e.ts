@@ -2097,6 +2097,10 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   check('a node’s books say how many answers went at its holder price and what that came to below its list prices, in its log, provider earnings and its console',
     givenOk && slotServed.length === 4 && slotEarn.split('\n').includes(wantGiven) && slotEarnApi.holders?.answers === 1 && slotEarnApi.holders.line === wantGiven && slotPage.includes('id="holders"'),
     slotEarn.split('\n').find((l) => l.startsWith('holder prices:')) ?? `${atHolder.length} answers at the holder price in the log, no line in provider earnings`);
+  // The line the node closes the UTC day with, in its log and to its notify webhook, says the same.
+  const slotDayLine = slotNode.booksLine(new Date().toISOString().slice(0, 10)) ?? '';
+  check('the node’s close-of-day line, for its log and its webhook, says how many answers went at its holder price and how far under list',
+    slotDayLine.includes(` billed (1 at your holder price, $${atHolder[0]?.saved} under list); `), slotDayLine || 'no line for today');
   // A router meets the full node. The node turns a request away after 1 s in its queue here (30 s by default), the
   // router asks the next node, counts nothing against the full one, and asks it after the others for a while.
   const { Slots: SlotsQueue } = await import('../src/provider/slots.ts');

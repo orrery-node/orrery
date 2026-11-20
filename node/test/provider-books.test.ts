@@ -33,6 +33,9 @@ describe('a node’s books for one UTC day', () => {
     assert.equal(fns.dayBooksLine!('2026-11-17', served, payouts, held), 'books for 2026-11-17 (UTC): 1 answer, $0.900000 billed; no payout');
     assert.equal(fns.dayBooksLine!('2026-11-16', served, payouts, held), null);
     assert.equal(fns.dayBooksLine!('not a day', served, payouts, held), null);
+    // Answers at the holder price: the line says how many and how far under the list prices they went.
+    const withHolders = [...served, { at: at('2026-11-18T13:00:00Z'), cost: '0.000010', saved: '0.000005' }, { at: at('2026-11-18T14:00:00Z'), cost: '0.000013', saved: '0.000007' }];
+    assert.equal(fns.dayBooksLine!('2026-11-18', withHolders, payouts, held), 'books for 2026-11-18 (UTC): 4 answers, $0.038935 billed (2 at your holder price, $0.000012 under list); 2 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain');
   });
 
   it('lays out the books day by day over a window, newest first, with the total under them', () => {
