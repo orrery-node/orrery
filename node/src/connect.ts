@@ -9,7 +9,7 @@ export type Client = (typeof CLIENTS)[number];
 
 /** A Codex CLI profile file ($CODEX_HOME/orrery.config.toml, used with `codex --profile orrery`). It sits beside the
  * user's config.toml and leaves it untouched. */
-export function codexProfile(router: string, model: string, contextWindow?: number): string {
+export function codexProfile(router: string, model: string, contextWindow?: number, agent: string | null = null): string {
   return [
     `model = "${model}"`,
     'model_provider = "orrery"',
@@ -19,24 +19,30 @@ export function codexProfile(router: string, model: string, contextWindow?: numb
     'name = "Orrery"',
     `base_url = "${router.replace(/\/$/, '')}/v1"`,
     'wire_api = "responses"',
+    ...(agent ? [`http_headers = { "x-orrery-agent" = "${agent}" }`] : []),
     '',
   ].join('\n');
 }
 
-/** What to set for a client, as text to print. */
-export function instructions(client: Client, router: string, model: string, codexProfilePath: string): string {
+/** What to set for a client, as text to print. With an agent, every request the client sends is made as that agent,
+ * held to the limit the router gives it with --agent-cap: a header where the client can send one, else the key
+ * agent/<name>, which the router reads the same way. */
+export function instructions(client: Client, router: string, model: string, codexProfilePath: string, agent: string | null = null): string {
   const base = router.replace(/\/$/, '');
+  const key = agent ? `agent/${agent}` : 'orrery';
+  const keyNote = agent ? `# every request goes as agent ${agent}, held to the router's --agent-cap for it` : '# any value; the router has no key';
+  const mcpAgent = agent ? ` --agent ${agent}` : '';
   switch (client) {
     case 'codex':
-      return `Save as ${codexProfilePath} (or run ${CLI} connect codex --write):\n\n${codexProfile(base, model)}\nThen: codex --profile orrery`;
+      return `Save as ${codexProfilePath} (or run ${CLI} connect codex --write${mcpAgent}):\n\n${codexProfile(base, model, undefined, agent)}\nThen: codex --profile orrery`;
     case 'claude':
-      return `ANTHROPIC_BASE_URL=${base} ANTHROPIC_API_KEY=orrery claude\nRun the router with --alias 'claude-*=${model}' so Claude Code's model names are answered by ${model} on the network.\nOr let ${CLI} start it as one job with a budget and a bill at the end: ${CLI} run claude --budget 0.25`;
+      return `ANTHROPIC_BASE_URL=${base} ANTHROPIC_API_KEY=${key} claude\nRun the router with --alias 'claude-*=${model}' so Claude Code's model names are answered by ${model} on the network.${agent ? `\nEvery request goes as agent ${agent}, held to the router's --agent-cap for it.` : `\nOr let ${CLI} start it as one job with a budget and a bill at the end: ${CLI} run claude --budget 0.25`}`;
     case 'openai':
-      return `OPENAI_BASE_URL=${base}/v1\nOPENAI_API_KEY=orrery   # any value; the router has no key\nmodel: ${model}   (Chat Completions and Responses both work)`;
+      return `OPENAI_BASE_URL=${base}/v1\nOPENAI_API_KEY=${key}   ${keyNote}\nmodel: ${model}   (Chat Completions and Responses both work)`;
     case 'anthropic':
-      return `ANTHROPIC_BASE_URL=${base}\nANTHROPIC_API_KEY=orrery   # any value; the router has no key\nmodel: ${model}   (or run the router with --alias 'claude-*=${model}')`;
+      return `ANTHROPIC_BASE_URL=${base}\nANTHROPIC_API_KEY=${key}   ${keyNote}\nmodel: ${model}   (or run the router with --alias 'claude-*=${model}')`;
     case 'mcp':
-      return `Command for an MCP client: npx -y orrery-node mcp --router ${base}\nClaude Code: claude mcp add orrery -- npx -y orrery-node mcp --router ${base}`;
+      return `Command for an MCP client: npx -y orrery-node mcp --router ${base}${mcpAgent}\nClaude Code: claude mcp add orrery -- npx -y orrery-node mcp --router ${base}${mcpAgent}`;
   }
 }
 

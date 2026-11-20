@@ -95,6 +95,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --agent <name>            name every call with this agent, for the router's --agent-cap limits (env ORRERY_AGENT)
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
+      --agent <name>            settings that make every request as this agent, for the router's --agent-cap
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
   ${CLI} run claude [--budget <usd>] [--task <name>] [--model <id>] [-- <its own arguments>]   start Claude Code on your router as one job, and print the job's bill when it exits
   ${CLI} run [--budget <usd>] [--task <name>] -- <any command>   the same for any tool that reads OPENAI_BASE_URL or ANTHROPIC_BASE_URL: the job and its budget ride in the API key (orrery/<task>/<budget>)
@@ -610,7 +611,9 @@ async function main() {
     return;
   }
   if (cmd === 'connect') {
-    if (!sub || !(CLIENTS as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} connect <${CLIENTS.join('|')}> [--model <id>] [--write]`);
+    if (!sub || !(CLIENTS as readonly string[]).includes(sub)) throw new Error(`usage: ${CLI} connect <${CLIENTS.join('|')}> [--model <id>] [--agent <name>] [--write]`);
+    const agent = flag('agent') || null;
+    if (agent && !AgentBook.valid(agent)) throw new Error('--agent takes a name of letters, digits and ._:- up to 64 characters, e.g. --agent coder');
     const routerUrl = flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!;
     // The settings are only worth printing if the router they point at will serve them: is one answering, and does
     // it list the model? With no --model, a model it does list is named.
@@ -618,12 +621,12 @@ async function main() {
     const model = flag('model') ?? (listed ? pickModel(listed) : undefined) ?? USUAL_MODEL;
     const note = routerNote({ client: sub as Client, router: routerUrl, models: listed, model, asked: !!flag('model'), hasWallet: !!walletFlag() });
     const profilePath = `${expand(process.env.CODEX_HOME ?? '~/.codex')}/orrery.config.toml`;
-    if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath) + (note ? `\n${note}` : ''));
+    if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath, agent) + (note ? `\n${note}` : ''));
     if (sub !== 'codex') throw new Error('--write is for codex; the others take environment variables');
     if (existsSync(profilePath) && !has('force')) throw new Error(`${profilePath} exists; pass --force to replace it`);
     mkdirSync(dirname(profilePath), { recursive: true });
     const ctx = await contextFromRouter(routerUrl, model);
-    writeFileSync(profilePath, codexProfile(routerUrl, model, ctx));
+    writeFileSync(profilePath, codexProfile(routerUrl, model, ctx, agent));
     return console.log(`wrote ${profilePath}${ctx ? ` (context window ${ctx}, from your router)` : ''}\nrun: codex --profile orrery${note ? `\n${note}` : ''}`);
   }
   if (cmd === 'run') {

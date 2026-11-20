@@ -62,4 +62,16 @@ describe('orrery connect', () => {
     assert.match(routerNote({ client: 'openai', router: 'http://127.0.0.1:7171', models: [], model: 'gpt-oss-120b', asked: false, hasWallet: true }, 'orrery') ?? '', /^note: your router answers at http:\/\/127\.0\.0\.1:7171 but lists no model yet: it has found no node that answers\. orrery doctor shows what it sees\.$/);
     assert.equal(routerNote({ client: 'mcp', router: 'http://127.0.0.1:7171', models: [{ id: 'a' }], model: 'nope-1', asked: true, hasWallet: true }), null);
   });
+
+  it('with --agent, every client’s settings make its requests as that agent; without it, nothing changes', () => {
+    const r = 'http://127.0.0.1:7171', p = '/home/me/.codex/orrery.config.toml';
+    assert.match(instructions('openai', r, 'm', p, 'coder'), /^OPENAI_BASE_URL=http:\/\/127\.0\.0\.1:7171\/v1\nOPENAI_API_KEY=agent\/coder   # every request goes as agent coder, held to the router's --agent-cap for it\n/);
+    assert.match(instructions('anthropic', r, 'm', p, 'coder'), /\nANTHROPIC_API_KEY=agent\/coder   # every request goes as agent coder/);
+    assert.match(instructions('claude', r, 'm', p, 'coder'), /^ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:7171 ANTHROPIC_API_KEY=agent\/coder claude\n[\s\S]*\nEvery request goes as agent coder, held to the router's --agent-cap for it\.$/);
+    assert.equal(instructions('mcp', r, 'm', p, 'coder'), 'Command for an MCP client: npx -y orrery-node mcp --router http://127.0.0.1:7171 --agent coder\nClaude Code: claude mcp add orrery -- npx -y orrery-node mcp --router http://127.0.0.1:7171 --agent coder');
+    assert.match(codexProfile(r, 'm', 8192, 'coder'), /\nwire_api = "responses"\nhttp_headers = \{ "x-orrery-agent" = "coder" \}\n$/);
+    assert.match(instructions('codex', r, 'm', p, 'coder'), /orrery connect codex --write --agent coder\)/);
+    assert.doesNotMatch(codexProfile(r, 'm', 8192), /http_headers/);
+    assert.match(instructions('openai', r, 'm', p), /\nOPENAI_API_KEY=orrery   # any value; the router has no key\n/);
+  });
 });

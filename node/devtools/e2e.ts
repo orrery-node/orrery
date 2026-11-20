@@ -1446,6 +1446,22 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
   const leftUnits = 20n - agentUnits;
   const mcpAsk = outA[2]?.result?.content?.[0]?.text ?? '';
   const mcpAgents = (outA[3]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('researcher (this one)')) ?? '';
+  // orrery connect --agent: the settings it prints for a client make that client's every request as the agent. The
+  // OpenAI and Anthropic settings are used as printed, by the key they name, and the router logs the agent on each.
+  const conOpenai = await connectOut(['openai', '--agent', 'writer', '--model', 'llama-3.3-70b', '--router', ROUTER], join(WORK, 'home'));
+  const conAnth = await connectOut(['anthropic', '--agent', 'writer', '--model', 'llama-3.3-70b', '--router', ROUTER], join(WORK, 'home'));
+  const conMcp = await connectOut(['mcp', '--agent', 'writer', '--router', ROUTER], join(WORK, 'home'));
+  const keyOf = (out: string, name: string) => out.split('\n').find((l) => l.startsWith(`${name}=`))?.split('=')[1]?.split(/\s/)[0] ?? '';
+  const oaKey = keyOf(conOpenai, 'OPENAI_API_KEY'), anKey = keyOf(conAnth, 'ANTHROPIC_API_KEY');
+  const writerBefore = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t as { agent?: string }).agent === 'writer').length;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const viaOpenai = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${oaKey}` }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) }).then(async (r) => { await r.text(); return r.status; });
+  const viaAnth = await fetch(`${ROUTER}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': anKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) }).then(async (r) => { await r.text(); return r.status; });
+  const writerTrips = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t as { agent?: string }).agent === 'writer').length - writerBefore;
+  const badAgent = await connectOut(['openai', '--agent', 'two words', '--router', ROUTER], join(WORK, 'home'));
+  check('orrery connect --agent prints settings that make every request as that agent: the key for OpenAI and Anthropic clients, --agent for MCP',
+    oaKey === 'agent/writer' && anKey === 'agent/writer' && viaOpenai === 200 && viaAnth === 200 && writerTrips === 2 && conMcp.includes('npx -y orrery-node mcp --router') && conMcp.split('\n').every((l) => !l.includes('orrery-node mcp') || l.endsWith('--agent writer')) && !badAgent.includes('OPENAI_API_KEY'),
+    `OpenAI key ${oaKey || 'none'} → ${viaOpenai} · Anthropic key ${anKey || 'none'} → ${viaAnth} · logged as writer: ${writerTrips} · mcp ${conMcp.includes('--agent writer') ? 'with --agent writer' : 'no --agent'}`);
   check('orrery mcp --agent names every call with its agent, and the agent is told what it has spent today and has left, in a refusal too and in status',
     outA[2]?.result?.isError === true && mcpAsk.endsWith(`\n— agent researcher: $${usd(agentUnits)} spent today, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`)
     && mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`,
