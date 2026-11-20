@@ -326,7 +326,7 @@ export class Router {
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {
         const since = url.searchParams.get('since') ?? '24h';
         const byParam = url.searchParams.get('by');
-        const by = byParam === 'provider' || byParam === 'task' || byParam === 'day' ? byParam : 'model';
+        const by = byParam === 'provider' || byParam === 'task' || byParam === 'day' || byParam === 'agent' ? byParam : 'model';
         const spendTrips = readTrips(home('router', 'trips.jsonl'));
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         // The console's "Download CSV": the same rows as orrery spend --csv, saved as a file.

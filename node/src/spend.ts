@@ -90,14 +90,17 @@ const units = (usd: string) => {
 
 export type SpendRow = { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number };
 
-/** Totals by model, provider or task, most expensive first, plus the grand total. Answers outside any task are grouped
- * as "(no task)". By day, one row a UTC day, newest first: the router's own books of what it paid. */
-export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task' | 'day', sinceMs: number, now = Date.now()) {
+export type SpendBy = 'model' | 'provider' | 'task' | 'day' | 'agent';
+
+/** Totals by model, provider, task or agent, most expensive first, plus the grand total. Answers outside any task (or
+ * agent) are grouped as "(no task)" ("(no agent)"). By day, one row a UTC day, newest first: the router's own books of
+ * what it paid. */
+export function summarize(trips: LoggedTrip[], by: SpendBy, sinceMs: number, now = Date.now()) {
   const rows = new Map<string, SpendRow>();
   const total: SpendRow = { key: 'total', answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
   for (const t of trips) {
     if (now - t.at > sinceMs) continue;
-    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : by === 'day' ? new Date(t.at).toISOString().slice(0, 10) : t.providerName;
+    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : by === 'agent' ? (t.agent ?? '(no agent)') : by === 'day' ? new Date(t.at).toISOString().slice(0, 10) : t.providerName;
     const r = rows.get(key) ?? { key, answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
     for (const x of [r, total]) {
       x.answers += 1;
@@ -114,7 +117,7 @@ export function summarize(trips: LoggedTrip[], by: 'model' | 'provider' | 'task'
 
 /** `orrery spend --csv`: the same rows for a spreadsheet or an expense report, amounts in USDC, no total row. A name
  * with a comma or a quote in it (a task's, say) is quoted the CSV way. */
-export function spendCsv(rows: SpendRow[], by: 'model' | 'provider' | 'task' | 'day'): string {
+export function spendCsv(rows: SpendRow[], by: SpendBy): string {
   const cell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
   return [`${by === 'day' ? 'day_utc' : by},answers,input_tokens,output_tokens,paid_usdc`, ...rows.map((r) => `${cell(r.key)},${r.answers},${r.inputTokens},${r.outputTokens},${usd(r.units)}`)].join('\n');
 }

@@ -1380,6 +1380,17 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
   check('an agent wallet: an agent is answered until its day’s limit cannot cover one more request, then refused (402); it never passes the limit, and others are not held to it',
     answered.length >= 1 && refusedRight && agentLogged.length === answered.length && agentUnits <= 20n && shown?.cap === '0.000020' && shown.spent === usd(agentUnits) && free.ok,
     `${answered.length} answered (left after each: ${answered.join(', ')}), then ${refusal ? `${refusal.status} ${refusal.code}: ${(refusal.message ?? '').slice(0, 90)}` : 'never refused'} · logged $${usd(agentUnits)} of $0.000020 · status ${shown ? `${shown.spent} spent` : 'no agent'} · no agent: ${free.ok ? 'answered' : free.status}`);
+  // Each agent's bill: orrery spend --by agent, /orrery/spend?by=agent and the console's agents table.
+  const byAgentText = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', '--by', 'agent', '--since', '7d'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const byAgent = (await (await fetch(`${ROUTER}/orrery/spend?since=7d&by=agent`)).json()) as { by?: string; rows?: { key: string; answers: number; usd: string }[] };
+  const agentRow = byAgent.rows?.find((r) => r.key === 'researcher');
+  const researcherLine = byAgentText.split('\n').find((l) => l.startsWith('researcher ')) ?? '';
+  const consoleNow = await (await fetch(`${ROUTER}/`)).text();
+  check('orrery spend --by agent, /orrery/spend and the router’s console give each agent its bill, apart from answers that named no agent',
+    byAgent.by === 'agent' && agentRow?.answers === answered.length && agentRow.usd === usd(agentUnits) && byAgent.rows!.some((r) => r.key === '(no agent)')
+    && byAgentText.startsWith('last 7d, by agent') && researcherLine.replace(/\s+/g, ' ').includes(`${answered.length} answers`) && researcherLine.includes(`$${usd(agentUnits)}`)
+    && consoleNow.includes('id="agents"') && consoleNow.includes('Agents today (UTC)'),
+    `${researcherLine.replace(/\s+/g, ' ').trim() || 'no researcher line in orrery spend --by agent'} · endpoint ${agentRow ? `${agentRow.answers} answers $${agentRow.usd}` : 'no row'}`);
 }
 const spendByTask =(await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
 const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');

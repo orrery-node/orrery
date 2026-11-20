@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentBook, agentFromKey, parseAgentCaps } from '../src/router/agents.ts';
-import { appendTrip } from '../src/spend.ts';
+import { appendTrip, spendCsv, summarize } from '../src/spend.ts';
 
 describe('agent wallets', () => {
   it('reads limits as name=dollars and refuses anything else at start', () => {
@@ -40,5 +40,14 @@ describe('agent wallets', () => {
     const restarted = new AgentBook(parseAgentCaps('researcher=0.50'), log);
     assert.deepEqual(restarted.left('researcher', now), { cap: 500_000n, spent: 550_000n, left: 0n });
     assert.deepEqual(restarted.left('researcher', Date.parse('2026-11-21T00:00:01Z')), { cap: 500_000n, spent: 0n, left: 500_000n });
+  });
+
+  it('orrery spend --by agent gives each agent its bill, with the answers that named none apart', () => {
+    const now = Date.parse('2026-11-20T17:30:00Z');
+    const trip = (cost: string, agent?: string) => ({ at: now - 1_000, model: 'm', provider: 'p', providerName: 'P', inputTokens: 10, outputTokens: 5, cost, ...(agent ? { agent } : {}) });
+    const { rows, total } = summarize([trip('0.000006', 'researcher'), trip('0.000006', 'researcher'), trip('0.000020', 'coder'), trip('0.000001')], 'agent', 86_400_000, now);
+    assert.deepEqual(rows.map((r) => [r.key, r.answers, r.units]), [['coder', 1, 20n], ['researcher', 2, 12n], ['(no agent)', 1, 1n]]);
+    assert.equal(total.units, 33n);
+    assert.equal(spendCsv(rows, 'agent').split('\n')[0], 'agent,answers,input_tokens,output_tokens,paid_usdc');
   });
 });
