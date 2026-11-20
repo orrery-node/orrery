@@ -459,6 +459,13 @@ check('orrery provider init finds a model server and writes provider.json', init
 const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
+// orrery doctor says where the router's wallet stands on holder prices, the same line as its console.
+{
+  const holderDoc = doc.find((l) => l.what.trim() === 'holder price');
+  check('orrery doctor says where the router’s wallet stands on holder prices, as the router’s console does',
+    !!holderDoc && holderDoc.detail === `You hold ${standing ? sharePct(standing) : '?'} of $OREY's supply: 35% off at Halo Compute. That is the top holder price at every node that lists one.`,
+    holderDoc?.detail ?? 'no holder price line in orrery doctor');
+}
 const docPaid = doc.find((l) => l.what.trim() === 'paid')?.detail ?? '';
 check('orrery doctor says what the running router paid in the last 24 hours, and what it did not pay for', /^\$0\.\d{6} for \d+ answers in the last 24 h · \d+ of these answers came from the next node after another did not answer/.test(docPaid) && /signed nothing\.( · \d+ requests? got no answer from [^;]+; nothing was signed or paid for (it|them)\.)?$/.test(docPaid), docPaid.slice(0, 170) || 'doctor says nothing about it');
 check('orrery doctor reads the chain, every listing, the wallet and the router, and flags the provider that went dark', docBad.length === 1 && docBad[0] === nodes[0].pda.toBase58().slice(0, 8) && doc.some((l) => l.what === 'router' && l.ok) && doc.some((l) => l.what === 'wallet USDC' && l.ok), `${doc.filter((l) => l.ok).length} ok · flagged: ${docBad.join(', ') || 'none'} (Kestrel, dark: ${doc.find((l) => l.ok === false)?.detail ?? ''})`);
