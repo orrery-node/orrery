@@ -23,7 +23,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, monthSentence, monthSoFar, readDays, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, monthBooksLine, monthNotice, monthSentence, monthSoFar, readDays, utcDay, type DayBooks } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -983,6 +983,15 @@ export class ProviderNode {
     if (line) {
       this.log(line);
       void this.notice(booksNotice(this.cfg.name, line, kept), 'books');
+    }
+    // And when the day that ended was its month's last, the month that ended: its days added up, kept days included.
+    if (day.slice(0, 7) !== this.booksDay.slice(0, 7)) {
+      const month = monthSoFar(readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), Date.parse(`${this.booksDay}T23:59:59.999Z`), readDays(`${this.dir}/days.jsonl`));
+      const said = monthBooksLine(month);
+      if (said) {
+        this.log(said);
+        void this.notice(monthNotice(this.cfg.name, said, month), 'books');
+      }
     }
     this.booksDay = day;
   }

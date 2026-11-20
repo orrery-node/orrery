@@ -1097,6 +1097,22 @@ check('orrery provider status says what the wallet held after the last payout, p
     !!mo && mo.payouts > 0 && ibPage.includes('id="cardsave"') && written.includes(`orrery node · ${ibName}`) && written.includes(`$${mo.paid}`)
     && written.includes(`paid out to my wallet in ${plural(mo.payouts, 'payout')}, for ${plural(mo.answers, 'answer')}`) && written.includes(`each answer paid on its own, $${mo.billed} billed`) && written.includes('0% taken in between'),
     written.length ? written.slice(0, 4).join(' | ') : 'no card drawn');
+  // When a month ends the node also says the month in one line of its log (and to its notify webhook): its days added
+  // up, kept days included. The clock is moved to the month's last day and on past midnight, then put back.
+  const ib = nodes[1] as unknown as { booksTick?: (now: number) => void; booksDay?: string };
+  const [yy, mm] = today.split('-').map(Number), nextFirst = Date.UTC(yy, mm, 1), lastDay = new Date(nextFirst - 1).toISOString().slice(0, 10);
+  const monthRows = ((await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=400d`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null)) as { rows?: { day: string; answers: number; billed: string; payouts: number; paid: string }[] } | null)?.rows?.filter((r) => r.day.startsWith(monthKey)) ?? [];
+  const mAnswers = monthRows.reduce((a, r) => a + r.answers, 0), mPayouts = monthRows.reduce((a, r) => a + r.payouts, 0);
+  const mUnits = (k: 'billed' | 'paid') => usd(monthRows.reduce((a, r) => a + BigInt(Math.round(Number(r[k]) * 1e6)), 0n));
+  const monthName = new Date(`${monthKey}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const heldDay = ib.booksDay, saidBefore = nodeSaid[1].length;
+  ib.booksDay = lastDay;
+  ib.booksTick?.(nextFirst + 1_000);
+  ib.booksDay = heldDay;
+  const monthSaid = nodeSaid[1].slice(saidBefore).find((l) => l.startsWith(`books for ${monthName}`)) ?? '';
+  check('when a UTC month ends the node says the month in one line of its log: answers, billed, payouts and what was paid out to the wallet',
+    mAnswers > 0 && monthSaid === `books for ${monthName} (UTC): ${mAnswers.toLocaleString('en-US')} answer${mAnswers === 1 ? '' : 's'}, $${mUnits('billed')} billed; ${mPayouts} payout${mPayouts === 1 ? '' : 's'}, $${mUnits('paid')} paid out to your wallet`,
+    monthSaid || `no month line (books for the month: ${mAnswers} answers)`);
 }
 // Kestrel has a notify webhook: past midnight UTC the same line goes there too, with the day's totals beside it.
 {

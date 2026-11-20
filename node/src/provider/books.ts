@@ -145,6 +145,20 @@ export function monthSoFar(served: { at: number; cost: string }[], payouts: Payo
   return row ?? { day: month, answers: 0, billed: 0n, payouts: 0, paid: 0n };
 }
 
+/** The month that just ended, in one line of the node's log and to its notify webhook; null for a month with nothing:
+ * "books for November 2026 (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 paid out to your wallet" */
+export function monthBooksLine(m: DayBooks): string | null {
+  if (!m.answers && !m.payouts) return null;
+  const name = new Date(`${m.day}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return `books for ${name} (UTC): ${m.answers.toLocaleString('en-US')} answer${m.answers === 1 ? '' : 's'}, $${usd(m.billed)} billed; ${m.payouts} payout${m.payouts === 1 ? '' : 's'}, $${usd(m.paid)} paid out to your wallet`;
+}
+
+/** What the notify webhook gets when a month ends: the line, and the month's totals for a script. */
+export function monthNotice(node: string, line: string, m: DayBooks): { text: string; content: string; month: { month: string; answers: number; billed: string; payouts: number; paidOut: string } } {
+  const text = `${node}: ${line}`;
+  return { text, content: text, month: { month: m.day, answers: m.answers, billed: usd(m.billed), payouts: m.payouts, paidOut: usd(m.paid) } };
+}
+
 /** "November so far (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 paid out to your wallet" */
 export function monthSentence(m: DayBooks): string {
   const name = new Date(`${m.day}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });

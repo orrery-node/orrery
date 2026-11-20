@@ -137,4 +137,15 @@ describe('a node’s books for one UTC day', () => {
     assert.equal(k.monthSentence!(m), 'November so far (UTC): 43 answers, $0.120123 billed; 3 payouts, $0.120123 paid out to your wallet');
     assert.deepEqual(k.monthSoFar!([], [], at('2026-12-01T00:00:05Z'), []), { day: '2026-12', answers: 0, billed: 0n, payouts: 0, paid: 0n });
   });
+
+  it('says the month that ended in one line, and gives the notify webhook its totals; a month with nothing says nothing', () => {
+    const k = books as unknown as { monthBooksLine?: (m: unknown) => string | null; monthNotice?: (node: string, line: string, m: unknown) => unknown };
+    assert.equal(typeof k.monthBooksLine, 'function', 'books.ts says the month that ended');
+    const m = { day: '2026-11', answers: 1312, billed: 38_912n, payouts: 3, paid: 120_000n };
+    const line = k.monthBooksLine!(m)!;
+    assert.equal(line, 'books for November 2026 (UTC): 1,312 answers, $0.038912 billed; 3 payouts, $0.120000 paid out to your wallet');
+    assert.equal(k.monthBooksLine!({ day: '2026-12', answers: 1, billed: 7n, payouts: 0, paid: 0n }), 'books for December 2026 (UTC): 1 answer, $0.000007 billed; 0 payouts, $0.000000 paid out to your wallet');
+    assert.equal(k.monthBooksLine!({ day: '2026-12', answers: 0, billed: 0n, payouts: 0, paid: 0n }), null);
+    assert.deepEqual(k.monthNotice!('Lantern', line, m), { text: `Lantern: ${line}`, content: `Lantern: ${line}`, month: { month: '2026-11', answers: 1312, billed: '0.038912', payouts: 3, paidOut: '0.120000' } });
+  });
 });
