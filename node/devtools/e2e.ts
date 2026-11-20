@@ -1391,6 +1391,22 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
     && byAgentText.startsWith('last 7d, by agent') && researcherLine.replace(/\s+/g, ' ').includes(`${answered.length} answers`) && researcherLine.includes(`$${usd(agentUnits)}`)
     && consoleNow.includes('id="agents"') && consoleNow.includes('Agents today (UTC)'),
     `${researcherLine.replace(/\s+/g, ' ').trim() || 'no researcher line in orrery spend --by agent'} · endpoint ${agentRow ? `${agentRow.answers} answers $${agentRow.usd}` : 'no row'}`);
+  // An agent working through orrery mcp: the server is started with --agent researcher, so each call carries that name
+  // (the agent itself cannot pick another), and what the router says of the agent's day comes back in the tool's text.
+  const mcpA = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'mcp', '--router', ROUTER, '--agent', 'researcher'], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const outA: Record<number, { result?: { content?: { text?: string }[]; isError?: boolean } }> = {};
+  let bufA = '';
+  mcpA.stdout!.on('data', (c) => { bufA += c; let i; while ((i = bufA.indexOf('\n')) >= 0) { const line = bufA.slice(0, i); bufA = bufA.slice(i + 1); try { const m = JSON.parse(line) as { id?: number }; if (typeof m.id === 'number') outA[m.id] = m as never; } catch { /* not a message */ } } });
+  for (const m of [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'ask', arguments: { model: 'llama-3.3-70b', prompt: 'Say hi.', patience: 0 } } }, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'status', arguments: {} } }]) mcpA.stdin!.write(`${JSON.stringify(m)}\n`);
+  for (let i = 0; i < 75 && !(outA[2] && outA[3]); i++) await sleep(200);
+  mcpA.kill();
+  const leftUnits = 20n - agentUnits;
+  const mcpAsk = outA[2]?.result?.content?.[0]?.text ?? '';
+  const mcpAgents = (outA[3]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('researcher (this one)')) ?? '';
+  check('orrery mcp --agent names every call with its agent, and the agent is told what it has spent today and has left, in a refusal too and in status',
+    outA[2]?.result?.isError === true && mcpAsk.endsWith(`\n— agent researcher: $${usd(agentUnits)} spent today, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`)
+    && mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`,
+    `ask: ${mcpAsk.split('\n').at(-1) || 'no answer'} · status: ${mcpAgents || 'no researcher line'}`);
 }
 const spendByTask =(await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
 const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');

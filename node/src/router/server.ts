@@ -546,11 +546,13 @@ export class Router {
     // left of it bounds this request as well, so the day's limit can never be passed either.
     const agentName = req.headers['x-orrery-agent'] ? String(req.headers['x-orrery-agent']) : agentFromKey(apiKeyOf(req.headers));
     let agentLeft: bigint | null = null;
+    let agentDay: { cap: bigint; spent: bigint } | null = null;
     if (agentName) {
       if (!AgentBook.valid(agentName)) throw new Unserved('x-orrery-agent is a name of letters, digits and ._:- up to 64 characters', 400, 'bad_request');
       const a = this.agents!.left(agentName);
       if (a) {
         agentLeft = a.left;
+        agentDay = a;
         if (a.left <= 0n) throw new Unserved(`agent ${agentName} has spent its $${usd(a.cap)} for today (UTC); it can spend again from 00:00 UTC`, 402, 'agent_cap', agentHeaders(a));
       }
       this.agentOf.set(res, agentName);
@@ -570,7 +572,7 @@ export class Router {
           // A budget the caller set for this one request that nothing fits is a search with no result (404). A job or an
           // agent whose remaining money cannot cover one more request is out of money (402), which no client mistakes for
           // a missing model.
-          limitLeft !== null && limitLeft === budget ? 402 : 404, 'over_budget', taskNow ? taskHeaders(taskNow) : {});
+          limitLeft !== null && limitLeft === budget ? 402 : 404, 'over_budget', { ...(taskNow ? taskHeaders(taskNow) : {}), ...(agentDay ? agentHeaders(agentDay) : {}) });
       }
       offers = fits;
     }

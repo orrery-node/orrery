@@ -31,7 +31,7 @@ import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
 import { consoleLine, dayLine, nextPayoutHint, payoutHint, readOwnDay, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
-import { parseAgentCaps } from './router/agents.ts';
+import { AgentBook, parseAgentCaps } from './router/agents.ts';
 import { checkPayouts, nextPayoutSentence, noticeLine, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
 import { booksByDay, booksByDayCsv, booksByDayLines, booksByMonth, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
@@ -92,6 +92,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --allow-dev-enclaves      accept software attestation (local testing only)
   ${CLI} mcp                     an MCP server on stdio for agents, in front of your running router
       --router <url>            the router to use (default http://127.0.0.1:${ROUTER_PORT})
+      --agent <name>            name every call with this agent, for the router's --agent-cap limits (env ORRERY_AGENT)
   ${CLI} connect <${CLIENTS.join('|')}>   the settings a client needs to use your router
       --model <id>              network model to use (default gpt-oss-120b)   --router <url>
       --write                   codex only: write $CODEX_HOME/orrery.config.toml (your config.toml is left alone)
@@ -728,7 +729,11 @@ async function main() {
     throw new Error(`usage: ${CLI} wallet new [--out <file>]   or   ${CLI} wallet address [--wallet <file>]`);
   }
   if (cmd === 'router') return router();
-  if (cmd === 'mcp') return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+  if (cmd === 'mcp') {
+    const agent = flag('agent', process.env.ORRERY_AGENT) || null;
+    if (agent && !AgentBook.valid(agent)) throw new Error('--agent takes a name of letters, digits and ._:- up to 64 characters, e.g. --agent researcher');
+    return serveMcp(flag('router', process.env.ORRERY_ROUTER_URL ?? `http://127.0.0.1:${ROUTER_PORT}`)!, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version, undefined, agent);
+  }
   if (cmd === 'models') return listModels();
   if (cmd === 'quote') {
     const model = sub;

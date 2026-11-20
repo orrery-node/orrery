@@ -324,7 +324,7 @@ export default function Docs() {
           <Code lang="bash" copy>{CODEX}</Code>
           <p>Claude Code, the short way (0.1.12): with the router running, <code>orrery run claude --budget 0.25</code> starts it on the network as one job and prints the job&apos;s bill when you quit. By hand, on any version: Claude Code asks for Claude model names, so give the router an alias and point Claude Code at it. The router has no API key; any value works.</p>
           <Code lang="bash" copy>{CLAUDE}</Code>
-          <p>Any MCP client can hand work to the network through <code>orrery mcp</code>, which offers <code>ask</code>, <code>models</code> and <code>status</code> in front of your running router.</p>
+          <p>Any MCP client can hand work to the network through <code>orrery mcp</code>, which offers <code>ask</code>, <code>models</code> and <code>status</code> in front of your running router. Start it with <code>--agent &lt;name&gt;</code> and every call is made as that agent, held to the router&apos;s <code>--agent-cap</code> for it; each answer, and each refusal, says what the agent has spent today and has left.</p>
           <Code lang="bash" copy>{MCP}</Code>
           <p>Agents resend their context every turn. When a provider lists a cached-input price, those tokens bill at it, and the router keeps the next turns on the provider that holds the cache for five minutes. Parallel requests are fine: each provider gets one lane and a busy one hands the request to the next free provider.</p>
           <p>For an agent you leave running, set a price ceiling and a daily cap, and check the setup first. <code>orrery doctor</code> only reads.</p>

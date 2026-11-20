@@ -281,4 +281,33 @@ describe('orrery mcp and task budgets', () => {
     const embed = listed.result.tools.find((t) => t.name === 'embed')!;
     for (const k of ['max_price', 'max_cost', 'task', 'task_budget', 'node', 'patience']) assert.ok(k in embed.inputSchema.properties, k);
   });
+
+  it('orrery mcp --agent names every call with its agent and says what that agent has spent and has left today', async () => {
+    const sent: Record<string, string>[] = [];
+    const asAgent = async (name: string, args: Record<string, unknown>, answer: Reply, agent: string | null) =>
+      (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, 'http://r', (async (_u: string, init?: { headers?: Record<string, string> }) => { sent.push(init?.headers ?? {}); return answer; }) as never, '0', agent)) as { result: { content: { text: string }[]; isError?: boolean } };
+    const paid = reply({ choices: [{ message: { content: 'Hello.' } }] }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-cost': '0.000006', 'x-orrery-agent-spent': '0.000012', 'x-orrery-agent-left': '0.000008' });
+    const out = await asAgent('ask', { model: 'm', prompt: 'hi' }, paid, 'researcher');
+    assert.equal(sent.at(-1)!['x-orrery-agent'], 'researcher');
+    assert.match(out.result.content[0].text, /\n— agent researcher: \$0\.000012 spent today, \$0\.000008 left$/);
+    const vec = reply({ data: [{ embedding: [0.1] }], usage: { prompt_tokens: 2 } }, 200, { 'x-orrery-cost': '0.000001', 'x-orrery-agent-spent': '0.000013', 'x-orrery-agent-left': '0.000007' });
+    assert.match((await asAgent('embed', { model: 'e', input: 'hi' }, vec, 'researcher')).result.content[0].text, /— agent researcher: \$0\.000013 spent today, \$0\.000007 left$/);
+    assert.equal(sent.at(-1)!['x-orrery-agent'], 'researcher');
+    const spent = reply({ error: { code: 'agent_cap', message: 'agent researcher has spent its $0.000020 for today (UTC); it can spend again from 00:00 UTC' } }, 402, { 'x-orrery-agent-spent': '0.000020', 'x-orrery-agent-left': '0.000000' });
+    const refused = await asAgent('ask', { model: 'm', prompt: 'hi' }, spent, 'researcher');
+    assert.equal(refused.result.isError, true);
+    assert.match(refused.result.content[0].text, /— agent researcher: \$0\.000020 spent today, nothing left until 00:00 UTC$/);
+    const none = await asAgent('ask', { model: 'm', prompt: 'hi' }, paid, null);
+    assert.equal(sent.at(-1)!['x-orrery-agent'], undefined);
+    assert.doesNotMatch(none.result.content[0].text, /— agent/);
+  });
+
+  it('status lists every agent’s day, this server’s own agent first', async () => {
+    const st = { spentToday: '0.000040', channels: [], providers: [], agents: [{ name: 'coder', cap: '2.000000', spent: '0.000020', left: '1.999980' }, { name: 'researcher', cap: '0.000020', spent: '0.000020', left: '0.000000' }, { name: 'tagger', cap: null, spent: '0.000001', left: null }] };
+    const fetchFn = async (url: string) => (url.endsWith('/orrery/status') ? reply(st) : reply({}));
+    const text = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, 'http://r', fetchFn as never, '0', 'researcher') as { result: { content: { text: string }[] } }).result.content[0].text;
+    assert.match(text, /\nagents, today \(UTC\):\nresearcher \(this one\): \$0\.000020 spent today of \$0\.000020, nothing left until 00:00 UTC\ncoder: \$0\.000020 spent today of \$2\.000000, \$1\.999980 left\ntagger: \$0\.000001 spent today, no limit$/);
+    const fresh = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, 'http://r', (async (url: string) => (url.endsWith('/orrery/status') ? reply({ ...st, agents: [] }) : reply({}))) as never, '0', 'writer') as { result: { content: { text: string }[] } }).result.content[0].text;
+    assert.match(fresh, /\nthis agent: writer, nothing spent today$/);
+  });
 });

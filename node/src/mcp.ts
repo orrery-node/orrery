@@ -69,7 +69,7 @@ const TOOLS = [
   },
   {
     name: 'status',
-    description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), the last 24 hours of spend by model from its own log, and every task with what it has spent and has left.',
+    description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), the last 24 hours of spend by model from its own log, every task with what it has spent and has left, and every agent with its limit for today (UTC) and what it has spent.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];
@@ -77,7 +77,7 @@ const TOOLS = [
 const text = (t: string, isError = false) => ({ content: [{ type: 'text', text: t }], ...(isError ? { isError: true } : {}) });
 
 /** Answers one JSON-RPC message from an MCP client; null for notifications. */
-export async function handle(msg: Json, router: string, fetchFn: Fetch, version: string): Promise<Json | null> {
+export async function handle(msg: Json, router: string, fetchFn: Fetch, version: string, agent: string | null = null): Promise<Json | null> {
   const id = msg.id;
   if (id === undefined) return null;
   const ok = (result: unknown) => ({ jsonrpc: '2.0', id, result });
@@ -90,23 +90,23 @@ export async function handle(msg: Json, router: string, fetchFn: Fetch, version:
     case 'tools/list':
       return ok({ tools: TOOLS });
     case 'tools/call':
-      return ok(await call(String(params.name), (params.arguments ?? {}) as Json, router, fetchFn));
+      return ok(await call(String(params.name), (params.arguments ?? {}) as Json, router, fetchFn, agent));
     default:
       return { jsonrpc: '2.0', id, error: { code: -32601, message: `method not found: ${String(msg.method)}` } };
   }
 }
 
-async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
+async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent: string | null) {
   try {
     if (name === 'ask') {
       if (typeof a.model !== 'string' || typeof a.prompt !== 'string') return text('ask needs a model and a prompt', true);
       const messages = [...(typeof a.system === 'string' ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }];
-      const headers = callHeaders(a);
+      const headers = callHeaders(a, agent);
       const noSuchNode = await pinNode(a, headers, router, fetchFn);
       if (noSuchNode) return text(noSuchNode, true);
       const send = () => fetchFn(`${router}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, messages, max_tokens: Number(a.max_tokens ?? 1024) }) });
       const { r, j } = await sendPatiently<{ choices?: { message?: { content?: string }; finish_reason?: string }[]; error?: { code?: string; message?: string } }>(send, headers);
-      const task = taskLine(a, r);
+      const task = taskLine(a, r) + agentLine(agent, r);
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const answer = j.choices?.[0]?.message?.content ?? '';
       // The model ran out of room. A reasoning model thinks first and that counts against the cap, so the whole cap can
@@ -134,11 +134,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'embed') {
       if (typeof a.model !== 'string' || (typeof a.input !== 'string' && !Array.isArray(a.input))) return text('embed needs a model and an input', true);
-      const headers = callHeaders(a);
+      const headers = callHeaders(a, agent);
       const noSuchNode = await pinNode(a, headers, router, fetchFn);
       if (noSuchNode) return text(noSuchNode, true);
       const { r, j } = await sendPatiently<{ data?: { embedding: number[] }[]; usage?: { prompt_tokens?: number }; error?: { code?: string; message?: string } }>(() => fetchFn(`${router}/v1/embeddings`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, input: a.input }) }), headers);
-      const task = taskLine(a, r);
+      const task = taskLine(a, r) + agentLine(agent, r);
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const vectors = (j.data ?? []).map((d) => d.embedding);
       return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`);
@@ -163,7 +163,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
     }
     if (name === 'status') {
       const r = await fetchFn(`${router}/orrery/status`);
-      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[]; providers?: { address: string; name: string | null; modelServer?: string | null; healthMs?: number | null; sealing?: string; redeems?: number; watched?: { checks: number; up: number; since: number; sent?: number; answered?: number; askedSince?: number } | null; observed?: { ok: number; fail: number; broke?: number } | null; answering?: boolean | null; unansweredSince?: number | null }[]; proxy?: string | null; proxySeen?: { node: string | null; address: string | null; givenAway: string | null } | null; privateOnly?: boolean };
+      const j = (await r.json()) as { spentToday?: string; channels?: { provider: string; spent: string; left: string }[]; providers?: { address: string; name: string | null; modelServer?: string | null; healthMs?: number | null; sealing?: string; redeems?: number; watched?: { checks: number; up: number; since: number; sent?: number; answered?: number; askedSince?: number } | null; observed?: { ok: number; fail: number; broke?: number } | null; answering?: boolean | null; unansweredSince?: number | null }[]; proxy?: string | null; proxySeen?: { node: string | null; address: string | null; givenAway: string | null } | null; privateOnly?: boolean; agents?: { name: string; cap: string | null; spent: string; left: string | null }[] };
       // How requests leave this computer, as the router last checked it from the far side.
       const seen = j.proxySeen;
       const leaving = !j.proxy ? 'no proxy, so nodes see the address this computer’s requests leave from (orrery router --proxy hides it)'
@@ -185,7 +185,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
       const byModel = (sp?.rows ?? []).map((r) => `${r.key}: ${r.answers} answer${r.answers === 1 ? '' : 's'}, $${r.usd}`);
       const tk = (await fetchFn(`${router}/orrery/tasks`).then((x) => (x.ok ? x.json() : null)).catch(() => null)) as { tasks?: { name: string; budget: string; spent: string; left: string; answers: number }[] } | null;
       const tasks = (tk?.tasks ?? []).slice(0, 10).map((t) => `${t.name}: $${t.spent} of $${t.budget} spent, $${t.left} left, ${t.answers} answer${t.answers === 1 ? '' : 's'}`);
-      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}${skips ? `\n${skips}` : ''}${unanswered ? `\n${unanswered}` : ''}` : ''}${speed.length ? `\nspeed, by this router’s own clock:\n${speed.join('\n')}` : ''}${billed.length ? `\nbills, checked by this router against each node’s listed prices:\n${billed.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}`);
+      // Each agent's day, this server's own agent first. The limit is the router's, set where the router was started.
+      const ags = [...(j.agents ?? [])].sort((x, y) => Number(y.name === agent) - Number(x.name === agent));
+      const agents = ags.slice(0, 10).map((g) => `${g.name}${g.name === agent ? ' (this one)' : ''}: $${g.spent} spent today${g.cap === null ? ', no limit' : Number(g.left) > 0 ? ` of $${g.cap}, $${g.left} left` : ` of $${g.cap}, nothing left until 00:00 UTC`}`);
+      const own = agent && !ags.some((g) => g.name === agent) ? `\nthis agent: ${agent}, nothing spent today` : '';
+      return text(`spent today: $${j.spentToday ?? '0'}\nleaving this computer: ${leaving}${j.privateOnly ? '\nprivate only: every request goes sealed to an enclave this router verified, or not at all' : ''}\n${ch.length ? ch.join('\n') : 'no open channels'}${nodes.length ? `\nnodes:\n${nodes.join('\n')}` : ''}${byModel.length ? `\nlast 24h by model:\n${byModel.join('\n')}${skips ? `\n${skips}` : ''}${unanswered ? `\n${unanswered}` : ''}` : ''}${speed.length ? `\nspeed, by this router’s own clock:\n${speed.join('\n')}` : ''}${billed.length ? `\nbills, checked by this router against each node’s listed prices:\n${billed.join('\n')}` : ''}${tasks.length ? `\ntasks:\n${tasks.join('\n')}` : ''}${agents.length ? `\nagents, today (UTC):\n${agents.join('\n')}` : ''}${own}`);
     }
     return text(`unknown tool ${name}`, true);
   } catch (e) {
@@ -199,9 +203,10 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch) {
 
 /** What ask and embed send alike: how long to wait for a node that is away, the task the call belongs to and its
  * budget, and the caps on what it may cost. */
-function callHeaders(a: Json): Record<string, string> {
+function callHeaders(a: Json, agent: string | null): Record<string, string> {
   return {
     'content-type': 'application/json',
+    ...(agent ? { 'x-orrery-agent': agent } : {}),
     'x-orrery-patience': patienceOf(a.patience),
     ...(typeof a.task === 'string' && a.task ? { 'x-orrery-task': a.task } : {}),
     ...(typeof a.task_budget === 'number' && a.task_budget > 0 ? { 'x-orrery-task-budget': String(a.task_budget) } : {}),
@@ -247,6 +252,14 @@ function taskLine(a: Json, r: Answered): string {
   return typeof a.task === 'string' && a.task && spent !== null && left !== null ? `\n— task ${a.task}: $${spent} spent, $${left} left` : '';
 }
 
+/** For an agent with a limit, what it has spent today and has left, from the router's own headers: after an answer
+ * and after a refusal. */
+function agentLine(agent: string | null, r: Answered): string {
+  const spent = r.headers.get('x-orrery-agent-spent'), left = r.headers.get('x-orrery-agent-left');
+  if (!agent || spent === null || left === null) return '';
+  return `\n— agent ${agent}: $${spent} spent today, ${Number(left) > 0 ? `$${left} left` : 'nothing left until 00:00 UTC'}`;
+}
+
 /** The node that answered, by its name when it has one, from the router's own headers. */
 function answeredBy(r: Answered): string {
   const who = r.headers.get('x-orrery-provider'), raw = r.headers.get('x-orrery-provider-name');
@@ -261,7 +274,7 @@ export function patienceOf(p: unknown): string {
 }
 
 /** Runs the server on stdin/stdout: one JSON-RPC message per line, as the MCP stdio transport expects. */
-export function serveMcp(router: string, version: string, fetchFn: Fetch = fetch as unknown as Fetch) {
+export function serveMcp(router: string, version: string, fetchFn: Fetch = fetch as unknown as Fetch, agent: string | null = null) {
   const rl = createInterface({ input: process.stdin });
   rl.on('line', async (line) => {
     if (!line.trim()) return;
@@ -272,7 +285,7 @@ export function serveMcp(router: string, version: string, fetchFn: Fetch = fetch
       process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } })}\n`);
       return;
     }
-    const out = await handle(msg, router.replace(/\/$/, ''), fetchFn, version);
+    const out = await handle(msg, router.replace(/\/$/, ''), fetchFn, version, agent);
     if (out) process.stdout.write(`${JSON.stringify(out)}\n`);
   });
 }
