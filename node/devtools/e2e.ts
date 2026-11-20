@@ -2076,6 +2076,15 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
     answered.every((a) => a.status === 200 && a.paidRecord) && JSON.stringify(done) === JSON.stringify(['first, without a holder price', 'holder', 'second, without', 'third, without'])
     && busyNow?.size === 1 && busyNow.busy === 1 && queued?.waiting === 3 && queued.holdersWaiting === 1 && after?.busy === 0 && after.waiting === 0 && after.holdersAhead === 1 && !!aheadLine,
     `finished: ${done.join(' → ')} · queued ${queued?.waiting ?? '?'} (${queued?.holdersWaiting ?? '?'} holder) · ${aheadLine || 'no holder line in the node’s log'}`);
+  // The operator sees the same in the two places they look: orrery provider status and the node's console.
+  const slotCfgPath = join(slotDir, 'provider.json');
+  writeFileSync(slotCfgPath, JSON.stringify(slotNode.cfg));
+  const slotStatus = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'status', '--config', slotCfgPath], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const slotStatusLine = slotStatus.split('\n').find((l) => /^\s+slots\s/.test(l))?.trim().replace(/\s{2,}/g, ' ') ?? '';
+  const slotPage = await (await fetch('http://127.0.0.1:17293/', { headers: { 'x-orrery-console-key': slotKey } })).text();
+  check('orrery provider status and the node’s console say how many slots are answering and how often holders went ahead',
+    slotStatusLine === 'slots 0 of 1 answering, none waiting; holders went ahead once since start' && slotPage.includes('id="slots"') && slotPage.includes('slotsSentence(s.slots)'),
+    `${slotStatusLine || 'no slots line in provider status'} · console ${slotPage.includes('id="slots"') ? 'shows it' : 'does not show it'}`);
   await slotNode.close();
   slotUp.kill('SIGTERM');
 }

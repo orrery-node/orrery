@@ -21,11 +21,17 @@ export function checkSlots(n: unknown): number | undefined {
   return n;
 }
 
-/** `orrery provider status`: "  slots                 4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start". */
-export function slotsLine(s: SlotState): string {
+/** "4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start". `provider status` and the node's
+ * console both say it; the console carries this function's own source, so it refers to nothing outside itself. */
+export function slotsSentence(s: SlotState): string {
   const waiting = s.waiting ? `, ${s.waiting} waiting${s.holdersWaiting ? ` (${s.holdersWaiting} ${s.holdersWaiting === 1 ? 'a holder' : 'holders'})` : ''}` : ', none waiting';
   const ahead = s.holdersAhead ? `; holders went ahead ${s.holdersAhead === 1 ? 'once' : `${s.holdersAhead} times`} since start` : '';
-  return `  slots                 ${s.busy} of ${s.size} answering${waiting}${ahead}`;
+  return `${s.busy} of ${s.size} answering${waiting}${ahead}`;
+}
+
+/** `orrery provider status`: "  slots                 4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start". */
+export function slotsLine(s: SlotState): string {
+  return `  slots                 ${slotsSentence(s)}`;
 }
 
 export class Slots {

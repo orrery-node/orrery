@@ -73,6 +73,13 @@ describe('the local console pages', () => {
     assert.ok(html.includes('in your wallet, per the chain') && html.includes("className=s.wallet?'stats five':'stats'") && html.includes('.stats.five{grid-template-columns:repeat(5,'), 'the stat, its layout and its code');
   });
 
+  it('the node’s console says how many slots are answering and how often holders went ahead, and the inlined sentence runs on its own', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="slots"') && html.includes('const slotsSentence=') && html.includes('slotsSentence(s.slots)'), 'the line and its code');
+    const src = html.slice(html.indexOf('const slotsSentence=') + 'const slotsSentence='.length, html.indexOf(';\nconst checked='));
+    assert.equal(String(runInNewContext(`(${src})(s)`, { s: { size: 4, busy: 4, waiting: 2, holdersWaiting: 1, holdersAhead: 3 } })), '4 of 4 answering, 2 waiting (1 a holder); holders went ahead 3 times since start');
+  });
+
   it('the node’s console lays out the last seven days of its books, from the node’s own files', () => {
     const html = providerConsolePage();
     assert.ok(html.includes('Your books by day (UTC), last 7 days') && html.includes('id="days"') && html.includes("fetch('/orrery/books?since=7d',K)"), 'the table and its call');
