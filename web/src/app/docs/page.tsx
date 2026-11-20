@@ -433,6 +433,7 @@ export default function Docs() {
             <li>The tiers sit inside the provider&apos;s price list, whose sha-256 is on chain. A provider that lists holder prices and does not apply them still gets paid its own number, and your router counts the miss against its success rate.</li>
             <li>The settlement program does not change and still takes 0%. A holder price is a discount the provider gives.</li>
             <li><code>orrery provider init</code> writes these same tiers into every new provider.json, so holder prices are on unless you take them out (<code>--no-holder-prices</code>, or edit <code>holder</code> before you register).</li>
+            <li>Your router keeps what holding took off each answer, the provider&apos;s list prices for the same tokens less its holder prices for them, in its log on your disk. <code>orrery spend</code> and the router&apos;s console say the total under what you paid: &ldquo;Holding ${TICKER} took $0.000412 off 12 of these answers: the nodes that served them charge holders 35% less.&rdquo;</li>
           </ul>
           <Code lang="provider.json" copy>{`"holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }`}</Code>
           <p><code>share</code> is basis points of supply (10 = 0.1%), <code>off</code> is basis points of the list price (2000 = 20%). Up to four tiers, each larger than the one before. <code>orrery providers</code> shows each provider&apos;s tiers, and the router prints your share of supply when it starts.</p>

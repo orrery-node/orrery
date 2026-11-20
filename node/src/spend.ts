@@ -2,12 +2,13 @@
 // `orrery spend` sums it by model or by provider for any window, so an agent's bill comes from your own disk.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { TICKER } from './brand.ts';
 import { usd } from './pricing.ts';
 
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
 export type Enclave = { kind: string; image: string; verdict: string };
-export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number; billed?: string; listed?: string };
+export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number; billed?: string; listed?: string; off?: number; saved?: string };
 
 /** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
 export const ROLL_BYTES = 10 * 1024 * 1024;
@@ -16,7 +17,7 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
-    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}), ...(typeof t.billed === 'string' ? { billed: t.billed } : {}), ...(typeof t.listed === 'string' ? { listed: t.listed } : {}) })}\n`);
+    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}), ...(typeof t.billed === 'string' ? { billed: t.billed } : {}), ...(typeof t.listed === 'string' ? { listed: t.listed } : {}), ...(t.off ? { off: t.off } : {}), ...(typeof t.saved === 'string' ? { saved: t.saved } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
   }
@@ -134,6 +135,31 @@ export function spentThisMonth(trips: LoggedTrip[], now = Date.now()): { month: 
 export function spentMonthLine(m: { month: string; answers: number; units: bigint }): string {
   const name = new Date(`${m.month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
   return `${name} so far (UTC): ${m.answers.toLocaleString('en-US')} answer${m.answers === 1 ? '' : 's'}, $${usd(m.units)} paid`;
+}
+
+/** What holding the network token took off the answers in the window. On each answer a node priced at its holder price,
+ * the router logs the difference from that node's listed prices for the same tokens (`saved`) and the discount (`off`). */
+export function heldSaved(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; units: bigint; offs: number[] } {
+  let answers = 0, saved = 0n;
+  const offs = new Set<number>();
+  for (const t of trips) {
+    if (now - t.at > sinceMs || typeof t.saved !== 'string') continue;
+    answers += 1;
+    saved += units(t.saved);
+    if (t.off) offs.add(t.off);
+  }
+  return { answers, units: saved, offs: [...offs].sort((a, b) => a - b) };
+}
+
+/** The line under a spend total, or nothing when no answer in the window had a holder price:
+ *   Holding $OREY took $0.000412 off 12 of these answers: the nodes that served them charge holders 35% less. */
+export function heldSavedLine(h: { answers: number; units: bigint; offs: number[] }): string {
+  if (!h.answers) return '';
+  const pct = (bp: number) => `${bp / 100}%`;
+  const less = h.offs.length > 1 ? `${pct(h.offs[0])} to ${pct(h.offs[h.offs.length - 1])}` : h.offs.length ? pct(h.offs[0]) : '';
+  const which = h.answers === 1 ? 'one of these answers' : `${h.answers.toLocaleString('en-US')} of these answers`;
+  const who = h.answers === 1 ? 'the node that served it charges' : 'the nodes that served them charge';
+  return `Holding $${TICKER} took $${usd(h.units)} off ${which}${less ? `: ${who} holders ${less} less` : ''}.`;
 }
 
 /** Of the answers in the window: how many came from the next node after another did not answer, how many nodes were

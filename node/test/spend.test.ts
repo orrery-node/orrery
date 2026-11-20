@@ -176,3 +176,22 @@ it('says what the router paid this UTC month so far, nothing from last month', (
   assert.equal(s.spentMonthLine!(m), 'November so far (UTC): 2 answers, $0.000023 paid');
   assert.equal(s.spentMonthLine!(s.spentThisMonth!([], Date.parse('2026-12-01T00:00:01Z'))), 'December so far (UTC): 0 answers, $0.000000 paid');
 });
+
+it('keeps what holding the network token took off each answer, and says it under the spend total', () => {
+  const s = spend as unknown as { heldSaved?: (t: unknown[], since: number, now: number) => { answers: number; units: bigint; offs: number[] }; heldSavedLine?: (h: unknown) => string };
+  assert.equal(typeof s.heldSaved, 'function', 'spend.ts sums what holding saved');
+  const dir = mkdtempSync(join(tmpdir(), 'orrery-held-'));
+  const path = join(dir, 'trips.jsonl');
+  const now = Date.parse('2026-11-20T01:50:00Z');
+  appendTrip(path, t(now - 1_000, 'gemma-3-27b', 'Halo', '0.000039', { off: 3_500, saved: '0.000021', listed: '0.000039' }));
+  appendTrip(path, t(now - 2_000, 'llama-3.3-70b', 'Seed', '0.000040', { off: 2_000, saved: '0.000010' }));
+  appendTrip(path, t(now - 3_000, 'llama-3.3-70b', 'Seed', '0.000050'));
+  appendTrip(path, t(now - 9 * 86_400_000, 'gemma-3-27b', 'Halo', '0.000039', { off: 3_500, saved: '0.000021' }));
+  const logged = readTrips(path) as { off?: number; saved?: string }[];
+  assert.deepEqual(logged.map((x) => [x.off ?? 0, x.saved ?? null]), [[3_500, '0.000021'], [2_000, '0.000010'], [0, null], [3_500, '0.000021']]);
+  const week = s.heldSaved!(logged, 7 * 86_400_000, now);
+  assert.deepEqual(week, { answers: 2, units: 31n, offs: [2_000, 3_500] });
+  assert.equal(s.heldSavedLine!(week), 'Holding $OREY took $0.000031 off 2 of these answers: the nodes that served them charge holders 20% to 35% less.');
+  assert.equal(s.heldSavedLine!(s.heldSaved!(logged.slice(0, 1), 7 * 86_400_000, now)), 'Holding $OREY took $0.000021 off one of these answers: the node that served it charges holders 35% less.');
+  assert.equal(s.heldSavedLine!(s.heldSaved!(logged.slice(2, 3), 7 * 86_400_000, now)), '');
+});

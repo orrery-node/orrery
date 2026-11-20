@@ -22,7 +22,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, bills, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
+import { appendTrip, bills, heldSaved, heldSavedLine, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines, sawText } from './watched.ts';
 import { quote, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
@@ -90,6 +90,8 @@ export type Trip = {
   /** What the node billed for this answer, and what the prices it listed on chain come to for the same tokens. */
   billed?: string;
   listed?: string;
+  /** What the holder price took off this answer: the node's listed prices for the same tokens, less the holder price. */
+  saved?: string;
 };
 
 class Unserved extends Error {
@@ -313,7 +315,9 @@ export class Router {
         const skips = skipped(spendTrips, windowMs(since));
         // This UTC month so far, whatever the window: the line under the console's books by day.
         const m = spentThisMonth(spendTrips);
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), month: { month: m.month, answers: m.answers, usd: usd(m.units), line: spentMonthLine(m) }, afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
+        // What the holder price took off the answers in the window, from the router's own log.
+        const held = heldSaved(spendTrips, windowMs(since));
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), month: { month: m.month, answers: m.answers, usd: usd(m.units), line: spentMonthLine(m) }, held: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldSavedLine(held) },afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -748,6 +752,8 @@ export class Router {
       this.log(`provider ${address.slice(0, 6)} lists a ${cand.off / 100}% holder price but applied ${claimedOff / 100}%; paying its number, counting it against its success rate`);
     }
     const ours = costOf(discounted(cand.offer.price, claimedOff), record.inputTokens, record.outputTokens);
+    const full = costOf(cand.offer.price, record.inputTokens, record.outputTokens);
+    const saved = claimedOff && full > ours ? full - ours : 0n;
     const fair = record.cost <= ours && record.cost <= maxCost ? record.cost : ours < maxCost ? ours : maxCost;
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
     const beforeSign = performance.now();
@@ -763,7 +769,7 @@ export class Router {
     this.o.registry.noteRequest(address, true);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), fellThrough, off: claimedOff, ...(saved ? { saved: usd(saved) } : {}), ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);

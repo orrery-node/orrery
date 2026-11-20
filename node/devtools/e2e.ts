@@ -551,6 +551,20 @@ check('the router’s log keeps which answers another node finished after the fi
     !!sdMonth && sdMonth.month === monthKey && sdMonth.answers === inMonth.length && sdMonth.usd === monthPaid && sdMonth.line.endsWith(`so far (UTC): ${inMonth.length.toLocaleString('en-US')} answers, $${monthPaid} paid`)
     && dayText.split('\n').includes(sdMonth.line) && rPage.includes('id="spendmonth"'),
     sdMonth?.line ?? 'no month in /orrery/spend');
+  // Holder roadmap 4: on each answer a node priced for holders, the router keeps what the holder price took off (the
+  // node's listed prices for the same tokens, less its holder prices for them), and its books say the total.
+  const heldLogged = readTrips(join(WORK, 'home/router/trips.jsonl')) as (ReturnType<typeof readTrips>[number] & { off?: number; saved?: string })[];
+  const discountedLogged = heldLogged.filter((t) => (t.off ?? 0) > 0);
+  const savedRight = discountedLogged.every((t) => t.providerName === 'Halo Compute' && t.off === 3_500 && t.saved === usd(costOf(haloPrice, t.inputTokens, t.outputTokens) - costOf(discounted(haloPrice, 3_500), t.inputTokens, t.outputTokens)));
+  const weekStart = Date.now() - 7 * 86_400_000, inWeek = discountedLogged.filter((t) => t.at >= weekStart);
+  const heldUsd = usd(inWeek.reduce((a, t) => a + BigInt(Math.round(Number(t.saved) * 1e6)), 0n));
+  const wantHeld = `Holding $OREY took $${heldUsd} off ${inWeek.length === 1 ? 'one of these answers' : `${inWeek.length} of these answers`}: ${inWeek.length === 1 ? 'the node that served it charges' : 'the nodes that served them charge'} holders 35% less.`;
+  const sdHeld = (sd as { held?: { answers: number; usd: string; off: number[]; line: string } } | null)?.held;
+  check('the router keeps what holding $OREY took off each answer and says the total in orrery spend and its console',
+    discountedLogged.length >= 2 && savedRight && (haloTrip as { saved?: string }).saved === usd(listCost - holderCost)
+    && !!sdHeld && sdHeld.answers === inWeek.length && sdHeld.usd === heldUsd && JSON.stringify(sdHeld.off) === '[3500]' && sdHeld.line === wantHeld
+    && dayText.split('\n').includes(wantHeld) && rPage.includes('id="spendheld"'),
+    sdHeld?.line ?? `no held in /orrery/spend · ${discountedLogged.length} answers at a holder price in the log`);
 }
 // The console page the router serves: the browser that opens it is sent nowhere else, not even for a font.
 const consoleHtml = await (await fetch(`${ROUTER}/`)).text();

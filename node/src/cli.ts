@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, heldSaved, heldSavedLine, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -655,7 +655,9 @@ async function main() {
     const skips = skipped(spendTrips, windowMs(since));
     // Requests no node answered: nothing was signed for them, and the router keeps them apart from the answers.
     const unanswered = unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since));
-    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed }, null, 2));
+    // What holding the network token took off these answers, at the nodes that priced them for holders.
+    const held = heldSaved(spendTrips, windowMs(since));
+    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, held: { answers: held.answers, usd: usd(held.units), off: held.offs } }, null, 2));
     if (!total.answers) return console.log(`No answers in the last ${since}. The router logs each answer it pays for to ${home('router', 'trips.jsonl')}.${unanswered.requests ? ` ${unansweredNote(unanswered)}` : ''}`);
     const line = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => `${r.key.padEnd(26)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r.cacheKept ? `  ${r.cacheKept} kept for cache` : ''}`;
     console.log(`last ${since}, by ${by}`);
@@ -663,6 +665,7 @@ async function main() {
     console.log(line(total));
     // Your books by day end with the month so far, whatever the window.
     if (by === 'day') console.log(spentMonthLine(spentThisMonth(spendTrips)));
+    if (held.answers) console.log(heldSavedLine(held));
     if (skips.answers || skips.resumed) console.log(skipNote(skips));
     if (unanswered.requests) console.log(unansweredNote(unanswered));
     return;
