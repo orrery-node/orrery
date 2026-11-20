@@ -560,6 +560,12 @@ check('the router’s log keeps which answers another node finished after the fi
     !!sdMonth && sdMonth.month === monthKey && sdMonth.answers === inMonth.length && sdMonth.usd === monthPaid && sdMonth.line.endsWith(`so far (UTC): ${inMonth.length.toLocaleString('en-US')} answers, $${monthPaid} paid`)
     && dayText.split('\n').includes(sdMonth.line) && rPage.includes('id="spendmonth"'),
     sdMonth?.line ?? 'no month in /orrery/spend');
+  // The month as a card the user can post: what the month paid and what holding took off it, from the same log.
+  const monthSaved = usd(inMonth.reduce((a, t) => a + (typeof (t as { saved?: string }).saved === 'string' ? BigInt(Math.round(Number((t as { saved?: string }).saved) * 1e6)) : 0n), 0n));
+  const sdSaved = (sd as { month?: { saved?: string } } | null)?.month?.saved;
+  check('the router’s console draws this month as a card to save and post: what it paid and what holding $OREY took off, from its own log',
+    sdSaved === monthSaved && Number(monthSaved) > 0 && rPage.includes('id="card"') && rPage.includes('id="cardsave"') && rPage.includes('function drawCard(m)'),
+    `month saved $${sdSaved ?? 'not in /orrery/spend'} (log: $${monthSaved}) · console card ${rPage.includes('id="card"') ? 'there' : 'missing'}`);
   // Holder roadmap 4: on each answer a node priced for holders, the router keeps what the holder price took off (the
   // node's listed prices for the same tokens, less its holder prices for them), and its books say the total.
   const heldLogged = readTrips(join(WORK, 'home/router/trips.jsonl')) as (ReturnType<typeof readTrips>[number] & { off?: number; saved?: string })[];

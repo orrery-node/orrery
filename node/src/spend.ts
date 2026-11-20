@@ -119,16 +119,18 @@ export function spendCsv(rows: SpendRow[], by: 'model' | 'provider' | 'task' | '
   return [`${by === 'day' ? 'day_utc' : by},answers,input_tokens,output_tokens,paid_usdc`, ...rows.map((r) => `${cell(r.key)},${r.answers},${r.inputTokens},${r.outputTokens},${usd(r.units)}`)].join('\n');
 }
 
-/** What the router paid this UTC month so far, from its log of answers: the line under its books by day. */
-export function spentThisMonth(trips: LoggedTrip[], now = Date.now()): { month: string; answers: number; units: bigint } {
+/** What the router paid this UTC month so far, from its log of answers: the line under its books by day. `saved` is what
+ * holding the network token took off those answers (the `saved` the log keeps on each one at a holder price). */
+export function spentThisMonth(trips: LoggedTrip[], now = Date.now()): { month: string; answers: number; units: bigint; saved: bigint } {
   const month = new Date(now).toISOString().slice(0, 7);
-  let answers = 0, paid = 0n;
+  let answers = 0, paid = 0n, saved = 0n;
   for (const t of trips) {
     if (t.at > now || new Date(t.at).toISOString().slice(0, 7) !== month) continue;
     answers += 1;
     paid += units(t.cost);
+    if (typeof t.saved === 'string') saved += units(t.saved);
   }
-  return { month, answers, units: paid };
+  return { month, answers, units: paid, saved };
 }
 
 /** "November so far (UTC): 857 answers, $0.439719 paid" */

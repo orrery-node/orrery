@@ -172,8 +172,11 @@ it('says what the router paid this UTC month so far, nothing from last month', (
   const now = Date.parse('2026-11-19T22:40:00Z');
   const trip = (iso: string, cost: string) => ({ at: Date.parse(iso), model: 'm', provider: 'p', providerName: 'P', inputTokens: 1, outputTokens: 1, cost });
   const m = s.spentThisMonth!([trip('2026-10-31T23:59:59Z', '0.5'), trip('2026-11-01T00:00:00Z', '0.000020'), trip('2026-11-19T22:00:00Z', '0.000003')], now);
-  assert.deepEqual(m, { month: '2026-11', answers: 2, units: 23n });
+  assert.deepEqual(m, { month: '2026-11', answers: 2, units: 23n, saved: 0n });
   assert.equal(s.spentMonthLine!(m), 'November so far (UTC): 2 answers, $0.000023 paid');
+  // What holding took off this month's answers, for the month card: only this month's.
+  const held = s.spentThisMonth!([{ ...trip('2026-10-31T23:59:59Z', '0.5'), saved: '0.1' }, { ...trip('2026-11-02T00:00:00Z', '0.000013'), saved: '0.000007' }, trip('2026-11-03T00:00:00Z', '0.000020')], now) as unknown as { saved: bigint };
+  assert.equal(held.saved, 7n);
   assert.equal(s.spentMonthLine!(s.spentThisMonth!([], Date.parse('2026-12-01T00:00:01Z'))), 'December so far (UTC): 0 answers, $0.000000 paid');
 });
 

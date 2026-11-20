@@ -327,7 +327,7 @@ export class Router {
         const m = spentThisMonth(spendTrips);
         // What the holder price took off the answers in the window, from the router's own log.
         const held = heldSaved(spendTrips, windowMs(since));
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), month: { month: m.month, answers: m.answers, usd: usd(m.units), line: spentMonthLine(m) }, held: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldSavedLine(held) },afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), month: { month: m.month, answers: m.answers, usd: usd(m.units), saved: usd(m.saved), line: spentMonthLine(m) }, held: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldSavedLine(held) },afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
