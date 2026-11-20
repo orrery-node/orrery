@@ -410,6 +410,7 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const rrCost = rr.headers.get('x-orrery-cost');
   const rrExpected = costOf({ input: 20_000, output: 0 }, rrj.usage?.total_tokens ?? 0, 0);
   const rrTrip = trips.at(-1);
+  writeFileSync(join(WORK, 'rerank.json'), JSON.stringify({ request: { model: 'bge-reranker-v2-m3', query: 'how is each answer paid on solana', documents: docs, top_n: 2 }, status: rr.status, headers: Object.fromEntries([...rr.headers].filter(([k]) => k.startsWith('x-orrery-'))), body: rrj }, null, 2));
   const noQuery = await fetch(`${ROUTER}/v1/rerank`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'bge-reranker-v2-m3', documents: docs }) }).then(async (r) => ({ status: r.status, code: ((await r.json()) as { error?: { code?: string } }).error?.code }));
   check('reranking is routed and paid like any answer, on input tokens: the documents come back ordered by the query, with a score each',
     rr.status === 200 && rrj.model === 'bge-reranker-v2-m3' && rrj.results?.length === 2 && rrj.results[0].index === 2 && rrj.results[1].index === 1 && rrj.results[0].relevance_score > rrj.results[1].relevance_score && (rrj.usage?.total_tokens ?? 0) > 0
