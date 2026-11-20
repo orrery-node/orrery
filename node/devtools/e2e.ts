@@ -2144,6 +2144,12 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
     warm.status === 200 && warm.name === 'Lantern One-Slot' && turnedAway.status === 200 && turnedAway.name === 'Ember Backup' && turnedAway.skipped === '1'
     && right.status === 200 && right.name === 'Ember Backup' && !right.skipped && (lanternStats?.fail ?? 0) === 0 && (lanternStats?.cooldownUntil ?? 0) <= Date.now() && !!fullLine,
     `first: ${warm.name} · while full: ${turnedAway.status} ${turnedAway.name ?? turnedAway.said} (skipped ${turnedAway.skipped ?? 0}) · next: ${right.name} · counted against Lantern: ${lanternStats?.fail ?? 0} · ${fullLine.slice(0, 90) || 'no router line'}`);
+  // The router says so where its user looks: /orrery/status and its console, with the seconds left.
+  const fullSeen = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { address: string; full?: number | null }[] }).providers.find((p) => p.address === lanternAddr)?.full ?? null;
+  const routerPageNow = await (await fetch(`${ROUTER}/`)).text();
+  check('the router’s status and console say which node said it was full and for how many seconds more it is asked after the others',
+    typeof fullSeen === 'number' && fullSeen > 0 && fullSeen <= 30 && routerPageNow.includes("'<span class=sig>full · asked after the others for '+p.full+' s</span>'"),
+    `Lantern One-Slot: ${fullSeen === null ? 'not shown as full' : `full, ${fullSeen} s left`}`);
   (router as unknown as { log: (l: string) => void }).log = routerLog;
   await slotNode.close();
   await backupNode.close();

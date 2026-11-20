@@ -383,6 +383,8 @@ export class Router {
       record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address) }),
       // Whether its last health check was answered (null before the first check), and since when it has not been.
       answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
+      // Seconds it is still asked after the others, having said every slot was answering; null when it has not.
+      full: ((until) => (until > Date.now() ? Math.ceil((until - Date.now()) / 1000) : null))(this.fullUntil.get(e.address) ?? 0),
       // How a request and its payment go to this node: inside (both sealed to its own key), request (sealed, payment in
       // headers), plain (JSON inside TLS), or withheld (it showed a signed wire key before and shows none now).
       sealing: e.wire ? (e.wireInside ? 'inside' : 'request') : this.o.registry.pinned(e.address) ? 'withheld' : 'plain',
