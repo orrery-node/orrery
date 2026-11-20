@@ -101,6 +101,13 @@ class Unserved extends Error {
   }
 }
 
+/** A node whose every slot was answering turned the request away (503 busy) before anything was owed. Nothing went
+ * wrong at that node: it is full for now, so the router asks the next one and counts nothing against it. */
+class NodeFull extends Error {}
+
+/** How long a node that said it was full is asked after the others, on every route. */
+export const FULL_MS = 30_000;
+
 /** What a job has spent and has left, as the headers every answer and every budget refusal under it carries. */
 const taskHeaders = (t: { budget: bigint; spent: bigint }): Record<string, string> => ({
   'x-orrery-task-spent': usd(t.spent), 'x-orrery-task-left': usd(t.budget > t.spent ? t.budget - t.spent : 0n),
@@ -175,6 +182,8 @@ export class Router {
   private busy(address: string) {
     return this.lanes.has(address);
   }
+  /** Nodes that said every slot was answering, and until when they are asked after the others. */
+  private fullUntil = new Map<string, number>();
   private log: (line: string) => void;
 
   constructor(private o: RouterOptions) {
@@ -539,7 +548,11 @@ export class Router {
     const top = ranked.slice(0, 3);
     // On the auto and speed routes a provider already answering another request hands this one to the next of the top
     // three that is free; the price and reputation routes wait their turn.
-    const cands = route === 'auto' || route === 'speed' ? [...top.filter((c) => !this.busy(c.entry.address)), ...top.filter((c) => this.busy(c.entry.address))] : top;
+    const free = route === 'auto' || route === 'speed' ? [...top.filter((c) => !this.busy(c.entry.address)), ...top.filter((c) => this.busy(c.entry.address))] : top;
+    // A node that said in the last 30 s that every slot was answering goes after the others on every route: asked
+    // first, it would hold the request in its queue until it turned it away again.
+    const full = (c: (typeof top)[number]) => (this.fullUntil.get(c.entry.address) ?? 0) > Date.now();
+    const cands = [...free.filter((c) => !full(c)), ...free.filter(full)];
     let prefill: string | null = null;
     const counted = new Set<string>();
     // A channel that could not be opened because of this router's own wallet: nothing a node did.
@@ -562,6 +575,13 @@ export class Router {
             continue;
           }
           if (round === 0) tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
+          // A full node is there and honest about it: the next node is asked, and this one is not counted against.
+          if (err instanceof NodeFull) {
+            allAway = false;
+            this.fullUntil.set(cand.entry.address, Date.now() + FULL_MS);
+            this.log(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)} said every slot was answering; asking the next node, nothing counted against it, and it goes after the others for ${FULL_MS / 1000} s`);
+            continue;
+          }
           if (!away(err)) allAway = false;
           // One request counts once against a node, however many rounds it took.
           if (!counted.has(cand.entry.address)) {
@@ -695,6 +715,7 @@ export class Router {
       // its JSON error is dropped unread.
       const code = r.ok ? null : ((await r.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code;
       if (r.ok) drop(r);
+      if (r.status === 503 && code === 'busy') throw new NodeFull('provider answered 503 (busy): every slot was answering');
       throw new Error(`provider answered ${r.status}${typeof code === 'string' && /^[a-z_]{1,40}$/.test(code) ? ` (${code})` : ''}`);
     }
     const theirs = nodeSaid(r.headers.get('server-timing'));

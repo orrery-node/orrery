@@ -2038,7 +2038,7 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   const slotNode = new ProviderNode({
     name: 'Lantern One-Slot', region: 'eu-central', listen: 17293, host: '127.0.0.1', publicUrl: 'http://127.0.0.1:17293', rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(slotDir, 'wallet.json'), dataDir: slotDir, upstream: { baseUrl: 'http://127.0.0.1:19112/v1' },
-    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 200_000, output: 800_000 } }],
+    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 150_000, output: 600_000 } }],
     redeem: { everySecs: 3_600, minUnits: 1 }, holder: { tiers: HOLDER_TIERS }, slots: 1,
   } as ConstructorParameters<typeof ProviderNode>[0]);
   const slotSaid: string[] = [];
@@ -2089,7 +2089,7 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   // prices for the same tokens less the holder price, and the line provider earnings and the console print from it.
   const slotServed = readTrips(join(slotDir, 'served.jsonl')) as (ReturnType<typeof readTrips>[number] & { off?: number; saved?: string })[];
   const atHolder = slotServed.filter((t) => t.off);
-  const lanternPrice = { input: 200_000, output: 800_000 };
+  const lanternPrice = { input: 150_000, output: 600_000 };
   const givenOk = atHolder.length === 1 && atHolder[0].off === 3_500 && atHolder[0].saved === usd(costOf(lanternPrice, atHolder[0].inputTokens, atHolder[0].outputTokens) - costOf(discounted(lanternPrice, 3_500), atHolder[0].inputTokens, atHolder[0].outputTokens));
   const slotEarn = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'earnings', '--config', slotCfgPath, '--since', '24h'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
   const wantGiven = `holder prices: 1 of ${slotServed.length} answers went to $OREY holders at 35% off, $${atHolder[0]?.saved} under your list prices`;
@@ -2097,7 +2097,54 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   check('a node’s books say how many answers went at its holder price and what that came to below its list prices, in its log, provider earnings and its console',
     givenOk && slotServed.length === 4 && slotEarn.split('\n').includes(wantGiven) && slotEarnApi.holders?.answers === 1 && slotEarnApi.holders.line === wantGiven && slotPage.includes('id="holders"'),
     slotEarn.split('\n').find((l) => l.startsWith('holder prices:')) ?? `${atHolder.length} answers at the holder price in the log, no line in provider earnings`);
+  // A router meets the full node. The node turns a request away after 1 s in its queue here (30 s by default), the
+  // router asks the next node, counts nothing against the full one, and asks it after the others for a while.
+  const { Slots: SlotsQueue } = await import('../src/provider/slots.ts');
+  (slotNode as unknown as { slots: unknown }).slots = new SlotsQueue(1, 1_000);
+  // A second gemma node, dearer and with no slots, for the router to fall through to.
+  const backupWallet = Keypair.generate();
+  const backupDir = join(WORK, 'providers', 'ember');
+  mkdirSync(backupDir, { recursive: true });
+  writeFileSync(join(backupDir, 'wallet.json'), JSON.stringify(Array.from(backupWallet.secretKey)));
+  const backupNode = new ProviderNode({
+    name: 'Ember Backup', region: 'eu-central', listen: 17294, host: '127.0.0.1', publicUrl: 'http://127.0.0.1:17294', rpcUrl: RPC, settleMint: usdc.toBase58(),
+    wallet: join(backupDir, 'wallet.json'), dataDir: backupDir, upstream: { baseUrl: 'http://127.0.0.1:19112/v1' },
+    models: [{ id: 'gemma-3-27b', context: 131_072, maxOutput: 4_096, price: { input: 250_000, output: 1_000_000 } }],
+    redeem: { everySecs: 3_600, minUnits: 1 },
+  });
+  backupNode.log = (l) => console.log(`    [Ember] ${l}`);
+  await fund(backupWallet.publicKey);
+  await fund(backupNode.node.publicKey);
+  await sendAndConfirmTransaction(conn, new Transaction().add(backupNode.registerInstruction(backupWallet.publicKey)), [backupWallet]);
+  await backupNode.listen();
+  await registry.refresh();
+  const lanternAddr = slotNode.pda.toBase58();
+  const routerSaid: string[] = [];
+  const routerLog = (router as unknown as { log: (l: string) => void }).log;
+  (router as unknown as { log: (l: string) => void }).log = (l) => { routerSaid.push(l); routerLog(l); };
+  const gemmaCheap = async () => {
+    const r = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-route': 'cheap' }, body: JSON.stringify({ model: 'gemma-3-27b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+    const text = await r.text();
+    return { status: r.status, name: r.headers.get('x-orrery-provider-name'), skipped: r.headers.get('x-orrery-skipped'), said: r.ok ? '' : text.slice(0, 240) };
+  };
+  const occupyCh = await new Channels(conn, plainWallet, Keypair.generate(), usdc, join(WORK, 'home/slots-occupy.json'), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD }).ensure(lanternAddr, 1n);
+  const warm = await gemmaCheap();
+  const occupying = slotAsk('occupying the one slot', occupyCh.channel);
+  await sleep(200);
+  const turnedAway = await gemmaCheap();
+  const right = await gemmaCheap();
+  await occupying;
+  const lanternStats = router.stats.all().get(lanternAddr) as { fail?: number; cooldownUntil?: number } | undefined;
+  const fullLine = routerSaid.find((l) => l.startsWith('Lantern One-Slot said every slot was answering; asking the next node, nothing counted against it')) ?? '';
+  check('a router meets a node whose every slot is answering: it asks the next node, counts nothing against the full one, and asks it after the others for a while',
+    warm.status === 200 && warm.name === 'Lantern One-Slot' && turnedAway.status === 200 && turnedAway.name === 'Ember Backup' && turnedAway.skipped === '1'
+    && right.status === 200 && right.name === 'Ember Backup' && !right.skipped && (lanternStats?.fail ?? 0) === 0 && (lanternStats?.cooldownUntil ?? 0) <= Date.now() && !!fullLine,
+    `first: ${warm.name} · while full: ${turnedAway.status} ${turnedAway.name ?? turnedAway.said} (skipped ${turnedAway.skipped ?? 0}) · next: ${right.name} · counted against Lantern: ${lanternStats?.fail ?? 0} · ${fullLine.slice(0, 90) || 'no router line'}`);
+  (router as unknown as { log: (l: string) => void }).log = routerLog;
   await slotNode.close();
+  await backupNode.close();
+  registry.entries.delete(lanternAddr);
+  registry.entries.delete(backupNode.pda.toBase58());
   slotUp.kill('SIGTERM');
 }
 

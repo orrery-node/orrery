@@ -405,7 +405,7 @@ export default function Docs() {
               <tr><td><code>redeem.everySecs</code>, <code>minUnits</code></td><td>how often to cash vouchers, and the smallest amount worth a transaction</td></tr>
               <tr><td><code>holder.tiers</code></td><td>optional holder prices: <code>share</code> of the network token&apos;s supply and <code>off</code> the list price, both in basis points</td></tr>
               <tr><td><code>notify.url</code> / <code>urlEnv</code></td><td>optional webhook (Slack, Discord or your own) that gets one line each time a payout reaches your wallet, read back from the chain, and the day&apos;s books just after midnight UTC; <code>orrery provider check</code> sends a test notice</td></tr>
-              <tr><td><code>slots</code></td><td>optional: how many answers the node streams from your model server at once. When all are answering, the next request waits for a free one, a ${TICKER} holder&apos;s ahead of those without a holder price; one that waits 30 s is turned away as busy before anything is owed, and its router asks the next node. Unset: no limit</td></tr>
+              <tr><td><code>slots</code></td><td>optional: how many answers the node streams from your model server at once. When all are answering, the next request waits for a free one, a ${TICKER} holder&apos;s ahead of those without a holder price; one that waits 30 s is turned away as busy before anything is owed, and its router asks the next node without counting it against yours. Unset: no limit</td></tr>
             </tbody>
           </table>
 
