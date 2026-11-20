@@ -103,6 +103,14 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(dayLine!({ answers: 0, usd: '0.000000' }), '  last 24 h             no answers');
   });
 
+  it('says this UTC month so far under the last 24 hours: billed, payouts and what reached the wallet', () => {
+    const monthLine = (own as unknown as { monthLine?: (m: unknown) => string }).monthLine;
+    assert.equal(typeof monthLine, 'function', 'console.ts writes the line');
+    assert.equal(monthLine!({ day: '2026-11', answers: 1312, billed: '0.038912', payouts: 3, paid: '0.120000' }), '  this month (UTC)      1,312 answers, $0.038912 billed; 3 payouts, $0.120000 to your wallet');
+    assert.equal(monthLine!({ day: '2026-11', answers: 1, billed: '0.000029', payouts: 0, paid: '0.000000' }), '  this month (UTC)      1 answer, $0.000029 billed; 0 payouts, $0.000000 to your wallet');
+    assert.equal(monthLine!({ day: '2026-12', answers: 0, billed: '0.000000', payouts: 0, paid: '0.000000' }), '  this month (UTC)      nothing yet');
+  });
+
   it('says what reached the wallet in the window earnings looks at, the last one, and nothing when nothing is kept', () => {
     const paidOutLine = (payouts as unknown as { paidOutLine?: (list: unknown[], sinceMs: number, since: string, now: number) => string | null }).paidOutLine;
     assert.equal(typeof paidOutLine, 'function', 'payouts.ts writes the line');

@@ -82,6 +82,21 @@ export function dayLine(t: { answers: number; usd: string }): string {
   return `  last 24 h             ${t.answers ? `${t.answers.toLocaleString('en-US')} answer${t.answers === 1 ? '' : 's'}, $${t.usd} billed` : 'no answers'}`;
 }
 
+export type OwnMonth = { day: string; answers: number; billed: string; payouts: number; paid: string };
+
+/** This UTC month so far from the node's own books (/orrery/books, kept days included), with the key; null when no
+ * node answers. */
+export async function readOwnMonth(port: number, key: string): Promise<OwnMonth | null> {
+  const r = await fetch(`http://127.0.0.1:${port}/orrery/books?since=1d`, { headers: { 'x-orrery-console-key': key } }).catch(() => null);
+  const j = r?.ok ? ((await r.json().catch(() => null)) as { month?: OwnMonth } | null) : null;
+  return j?.month && typeof j.month.answers === 'number' ? { day: j.month.day, answers: j.month.answers, billed: j.month.billed, payouts: j.month.payouts, paid: j.month.paid } : null;
+}
+
+/** "  this month (UTC)      1,312 answers, $0.038912 billed; 3 payouts, $0.120000 to your wallet", or "nothing yet". */
+export function monthLine(m: OwnMonth): string {
+  return `  this month (UTC)      ${m.answers || m.payouts ? `${m.answers.toLocaleString('en-US')} answer${m.answers === 1 ? '' : 's'}, $${m.billed} billed; ${m.payouts} payout${m.payouts === 1 ? '' : 's'}, $${m.paid} to your wallet` : 'nothing yet'}`;
+}
+
 /** The page that asks for the key: a local visit to the console without it. Says where the address is, not the key. */
 export function consoleKeyPage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}

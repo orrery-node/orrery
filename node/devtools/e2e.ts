@@ -1048,6 +1048,20 @@ check('orrery provider status says the last payout arrived, once the node has re
 // And what the wallet held right after it, as the console shows it: what the chain holds in that wallet now.
 const walletSaid = ironStatusText.split('\n').find((l) => /^\s+in your wallet\s/.test(l)) ?? '';
 check('orrery provider status says what the wallet held after the last payout, per the chain', !!ironLastKept && walletSaid === `  in your wallet        $${usd(heldNow[1])} after the last payout, per the chain (tx ${ironLastKept.tx.slice(0, 12)}…)`, walletSaid.trim() || 'no such line');
+// And this UTC month so far, for a node on a server with no browser: what its log of answers billed and what its
+// payouts sent to the wallet since the 1st, in the text and in --json.
+{
+  const monthStart = Date.parse(`${new Date().toISOString().slice(0, 7)}-01T00:00:00Z`);
+  const servedMonth = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => t.at >= monthStart);
+  const paidMonth = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).filter((p) => p.at >= monthStart);
+  const billedM = usd(servedMonth.reduce((n, t) => n + BigInt(Math.round(Number(t.cost) * 1e6)), 0n)), paidM = usd(paidMonth.reduce((n, p) => n + BigInt(p.units), 0n));
+  const monthSaidCli = ironStatusText.split('\n').find((l) => /^\s+this month \(UTC\)\s/.test(l)) ?? '';
+  const statusJson = JSON.parse((await cliOut(['status', '--json'])) || '{}') as { month?: { answers: number; billed: string; payouts: number; paidOut: string } | null };
+  check('orrery provider status says this UTC month so far: answers and billed from the node’s log, payouts and what reached the wallet',
+    servedMonth.length > 0 && paidMonth.length > 0 && monthSaidCli === `  this month (UTC)      ${servedMonth.length.toLocaleString('en-US')} answers, $${billedM} billed; ${paidMonth.length} payout${paidMonth.length === 1 ? '' : 's'}, $${paidM} to your wallet`
+    && statusJson.month?.answers === servedMonth.length && statusJson.month.billed === billedM && statusJson.month.payouts === paidMonth.length && statusJson.month.paidOut === paidM,
+    monthSaidCli.trim() || 'no such line');
+}
 // When the UTC date moves on, the node says the day that ended in one line of its log: what it billed (its log of
 // answers), what it paid out (its payouts) and what the wallet then held (the chain, which agrees now).
 {
