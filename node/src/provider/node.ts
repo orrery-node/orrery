@@ -13,7 +13,7 @@ import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from 
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
-import { canonical, manifestHash, MODEL_KINDS, type Manifest, type ModelOffer } from '../manifest.ts';
+import { canonical, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
 import { TICKER } from '../brand.ts';
@@ -532,6 +532,7 @@ export class ProviderNode {
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') return await this.complete(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/embeddings') return await this.complete(req, res, 'embeddings');
       if (req.method === 'POST' && url.pathname === '/v1/rerank') return await this.complete(req, res, 'rerank');
+      if (req.method === 'POST' && url.pathname === '/v1/audio/speech') return await this.complete(req, res, 'speech');
       return fail(res, 404, 'not_found', 'no such route');
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -540,7 +541,7 @@ export class ProviderNode {
     }
   }
 
-  private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | 'embeddings' | 'rerank' = 'chat'): Promise<void> {
+  private async complete(req: IncomingMessage, res: ServerResponse, kind: 'chat' | ModelKind = 'chat'): Promise<void> {
     // Which channel pays, and the voucher for what came before: as headers from an older router, or inside the sealed
     // body, where nothing in front of this process (a hosting platform's balancer) can read them.
     let address = String(req.headers['x-orrery-channel'] ?? '');
@@ -585,7 +586,7 @@ export class ProviderNode {
     const offer = this.cfg.models.find((m) => m.id === body.model);
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
     // A model listed for one kind of request takes only that kind, refused before anything is owed.
-    if (offer.kind !== undefined && offer.kind !== kind) return fail(res, 400, 'wrong_kind', `${offer.id} on this node is listed for ${offer.kind}; send it to /v1/${offer.kind}`);
+    if (offer.kind !== undefined && offer.kind !== kind) return fail(res, 400, 'wrong_kind', `${offer.id} on this node is listed for ${offer.kind}; send it to /v1/${kindPath(offer.kind)}`);
     const e = await this.entry(address);
     const off = this.holders ? await this.holders.off(this.cfg.holder!.tiers, e.channel.payer) : 0;
     // A holder-first model answers only wallets that get the holder price; anyone else is told so before anything is owed.
@@ -648,15 +649,19 @@ export class ProviderNode {
     const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
 
     if (kind !== 'chat') {
-      // Embeddings and reranking ride the same envelope as a chat stream: one data event with the upstream's answer,
-      // then the usage record, so a router pays for them exactly like any other answer, on input tokens only. A rerank
-      // goes to the model server's /rerank, in the query-and-documents shape vLLM and Infinity serve.
+      // Embeddings, reranking and speech ride the same envelope as a chat stream: one data event with the upstream's
+      // answer, then the usage record, so a router pays for them exactly like any other answer, on input tokens only. A
+      // rerank goes to the model server's /rerank, in the query-and-documents shape vLLM and Infinity serve; speech to
+      // its /audio/speech, the shape Kokoro-FastAPI and other OpenAI-compatible speech servers serve.
       const afterChecks = performance.now();
       const upModel = offer.upstreamModel ?? offer.id;
+      const opt = (k: string) => (body[k] !== undefined ? { [k]: body[k] } : {});
       const upBody = kind === 'rerank'
-        ? { model: upModel, query: body.query, documents: body.documents, ...(body.top_n !== undefined ? { top_n: body.top_n } : {}), ...(body.return_documents !== undefined ? { return_documents: body.return_documents } : {}) }
-        : { model: upModel, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) };
-      const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/${kind}`, {
+        ? { model: upModel, query: body.query, documents: body.documents, ...opt('top_n'), ...opt('return_documents') }
+        : kind === 'speech'
+          ? { model: upModel, input: body.input, ...opt('voice'), ...opt('response_format'), ...opt('speed') }
+          : { model: upModel, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) };
+      const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/${kindPath(kind)}`, {
         method: 'POST',
         timeoutMs: 30_000,
         headers: upHeaders,
@@ -668,11 +673,16 @@ export class ProviderNode {
         appendRefused(`${this.dir}/refused.jsonl`, { at: Date.now(), model: offer.id, kind: why.kind });
         return fail(res, why.status, why.code, why.message);
       }
-      const j = (await up.json()) as { usage?: { prompt_tokens?: number; total_tokens?: number } } & Record<string, unknown>;
+      // Speech comes back as audio, which a model server does not count in tokens: it travels base64 in the one data
+      // event, with its type, and is billed on its text.
+      const audio = kind === 'speech' ? Buffer.from(await up.arrayBuffer()) : null;
+      const j = audio
+        ? { object: 'audio.speech', contentType: up.headers.get('content-type') ?? 'audio/mpeg', bytes: audio.length, audio: audio.toString('base64') } as Record<string, unknown> & { usage?: undefined }
+        : (await up.json()) as { usage?: { prompt_tokens?: number; total_tokens?: number } } & Record<string, unknown>;
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
       const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
       sendE(JSON.stringify({ ...j, model: offer.id }));
-      settle(sendE, j.usage?.prompt_tokens ?? j.usage?.total_tokens ?? estimateInputTokens(body), 0, 0);
+      settle(sendE, audio ? speechTokens(body.input) : j.usage?.prompt_tokens ?? j.usage?.total_tokens ?? estimateInputTokens(body), 0, 0);
       return;
     }
 

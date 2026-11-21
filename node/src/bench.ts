@@ -2,11 +2,12 @@
 // provider at a time, and reports what you would get from each: first-token time, total time and what an answer cost.
 // Each ask is a real, paid request. A model listed on input tokens only is an embedding model and is asked through
 // /v1/embeddings.
+import { kindPath, type ModelKind } from './manifest.ts';
 import type { ProviderEntry } from './router/registry.ts';
 
 export type BenchRow = { name: string; address: string; asked: number; answered: number; ttftMs: number[]; totalMs: number[]; units: bigint[]; price: { input: number; output: number } | null; error?: string };
 
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; headers: { get(name: string): string | null }; json(): Promise<unknown> }>;
+type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; headers: { get(name: string): string | null }; json(): Promise<unknown>; arrayBuffer?(): Promise<ArrayBuffer> }>;
 
 export const median = (xs: number[]) => {
   if (!xs.length) return NaN;
@@ -22,12 +23,13 @@ const toUnits = (usd: string | null) => {
 
 /** The kind of request to bench a model with: what its listing says it is for, or, for a listing that says nothing,
  * embeddings when it has no output price (provider init lists embedding models that way) and chat otherwise. */
-export const benchKind = (offer: { price: { output: number }; kind?: 'embeddings' | 'rerank' } | undefined): 'chat' | 'embeddings' | 'rerank' => offer?.kind ?? (offer?.price.output === 0 ? 'embeddings' : 'chat');
-export const isEmbedding = (offer: { price: { output: number }; kind?: 'embeddings' | 'rerank' } | undefined) => benchKind(offer) === 'embeddings';
+export const benchKind = (offer: { price: { output: number }; kind?: ModelKind } | undefined): 'chat' | ModelKind => offer?.kind ?? (offer?.price.output === 0 ? 'embeddings' : 'chat');
+export const isEmbedding = (offer: { price: { output: number }; kind?: ModelKind } | undefined) => benchKind(offer) === 'embeddings';
 
 /** One benchmark request of each kind, small and the same every time. */
-const benchBody = (kind: 'chat' | 'embeddings' | 'rerank', model: string, i: number) =>
-  kind === 'embeddings' ? { model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
+const benchBody = (kind: 'chat' | ModelKind, model: string, i: number) =>
+  kind === 'speech' ? { model, input: `Benchmark ${i + 1}: one short sentence to speak.` }
+  : kind === 'embeddings' ? { model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
   : kind === 'rerank' ? { model, query: `Benchmark ${i + 1}: which passage is about payment?`, documents: ['Payment channels settle on Solana.', 'Owls hunt at night.'] }
   : { model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 };
 
@@ -43,12 +45,13 @@ export async function bench(o: { model: string; providers: ProviderEntry[]; rout
       const t0 = now();
       try {
         const kind = benchKind(offer);
-        const r = await f(`${o.router.replace(/\/$/, '')}/v1/${kind === 'chat' ? 'chat/completions' : kind}`, {
+        const r = await f(`${o.router.replace(/\/$/, '')}/v1/${kindPath(kind)}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-orrery-provider': e.address },
           body: JSON.stringify(benchBody(kind, o.model, i)),
         });
-        const j = (await r.json()) as { error?: { message?: string } };
+        // Speech answers with the audio itself; anything else, and any refusal, with JSON.
+        const j = (r.ok && kind === 'speech' ? await r.arrayBuffer?.().then(() => ({})) : await r.json()) as { error?: { message?: string } };
         if (!r.ok) {
           row.error = j.error?.message ?? `router answered ${r.status}`;
           break;

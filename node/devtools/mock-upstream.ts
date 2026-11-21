@@ -34,8 +34,8 @@ createServer(async (req, res) => {
     for await (const c of req) parts.push(c as Buffer);
     const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
     noteIdentity(body);
-    // A reranker scores pairs; it does not embed, and a real model server says so.
-    if (/rerank/i.test(String(body.model ?? ''))) {
+    // A reranker scores pairs and a speech model speaks; neither embeds, and a real model server says so.
+    if (/rerank|kokoro|tts/i.test(String(body.model ?? ''))) {
       res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Embeddings API` } }));
       return;
     }
@@ -59,6 +59,25 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ id: `rerank-${Date.now()}`, model: body.model, results: typeof body.top_n === 'number' ? scored.slice(0, body.top_n) : scored, usage: { total_tokens: tokens } }));
     return;
   }
+  if (req.method === 'POST' && req.url?.endsWith('/audio/speech')) {
+    // Text to speech in the OpenAI shape, as Kokoro-FastAPI serves it: the audio itself, no token count. Here a WAV of a
+    // quiet tone as long as the text would take to say, so the bytes are real audio a player opens.
+    const parts: Buffer[] = [];
+    for await (const c of req) parts.push(c as Buffer);
+    const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+    noteIdentity(body);
+    if (!/kokoro|tts/i.test(String(body.model ?? ''))) {
+      res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Speech API` } }));
+      return;
+    }
+    const rate = 16_000, samples = Math.round(rate * Math.min(3, 0.06 * String(body.input ?? '').length));
+    const wav = Buffer.alloc(44 + samples * 2);
+    wav.write('RIFF', 0); wav.writeUInt32LE(36 + samples * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+    for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(1_200 * Math.sin((2 * Math.PI * 220 * i) / rate)), 44 + i * 2);
+    res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': String(wav.length) }).end(wav);
+    return;
+  }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;
@@ -67,8 +86,8 @@ createServer(async (req, res) => {
   for await (const c of req) parts.push(c as Buffer);
   const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
   noteIdentity(body);
-  // A reranker is not a chat model: like a real model server, this one refuses to chat with it.
-  if (/rerank/i.test(String(body.model ?? ''))) {
+  // A reranker or a speech model is not a chat model: like a real model server, this one refuses to chat with it.
+  if (/rerank|kokoro|tts/i.test(String(body.model ?? ''))) {
     res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Chat Completions API` } }));
     return;
   }

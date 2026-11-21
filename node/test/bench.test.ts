@@ -45,8 +45,25 @@ describe('orrery bench', () => {
     assert.equal(rows[0].answered, 2);
   });
 
+  it('asks a speech model through /v1/audio/speech and takes the audio it answers with, not JSON', async () => {
+    const urls: string[] = [];
+    const bodies: Record<string, unknown>[] = [];
+    const fetchFn = async (url: string, init: { body: string }) => {
+      urls.push(url);
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, status: 200, headers: { get: (h: string) => (h === 'x-orrery-cost' ? '0.000002' : h === 'x-orrery-ttft-ms' ? '30' : null) }, json: async () => { throw new Error('audio is not JSON'); }, arrayBuffer: async () => new ArrayBuffer(8) };
+    };
+    const tts = { address: 't', manifest: { name: 'Voice', models: [{ id: 'kokoro-82m', price: { input: 1_000_000, output: 0 }, kind: 'speech' }] } } as never;
+    const rows = await bench({ model: 'kokoro-82m', providers: [tts], router: 'http://r', n: 2, fetchFn, now: () => 0 });
+    assert.deepEqual(urls, ['http://r/v1/audio/speech', 'http://r/v1/audio/speech']);
+    assert.equal(typeof bodies[0].input, 'string');
+    assert.equal(rows[0].answered, 2);
+    assert.equal(rows[0].error, undefined);
+  });
+
   it('goes by the kind a listing says: a reranker gets /v1/rerank, a model that says nothing is read from its prices', () => {
     assert.equal(benchKind({ price: { output: 0 }, kind: 'rerank' }), 'rerank');
+    assert.equal(benchKind({ price: { output: 0 }, kind: 'speech' }), 'speech');
     assert.equal(benchKind({ price: { output: 0 }, kind: 'embeddings' }), 'embeddings');
     assert.equal(benchKind({ price: { output: 0 } }), 'embeddings');
     assert.equal(benchKind({ price: { output: 450_000 } }), 'chat');

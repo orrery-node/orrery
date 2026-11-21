@@ -108,7 +108,7 @@ const HOOK = `http://127.0.0.1:${(hookServer.address() as { port: number }).port
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0], ['kokoro-82m', 1_000_000, 0]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, inside: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -125,7 +125,7 @@ for (const s of providerSpecs) {
   const node = new ProviderNode({
     name: s.name, region: s.region, listen: s.port, host: '127.0.0.1', publicUrl: `http://127.0.0.1:${s.port}`, rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
-    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) }, ...(id === 'bge-reranker-v2-m3' ? { kind: 'rerank' as const } : {}) }; }),
+    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) }, ...(id === 'bge-reranker-v2-m3' ? { kind: 'rerank' as const } : id === 'kokoro-82m' ? { kind: 'speech' as const } : {}) }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
@@ -179,7 +179,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 7 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 8 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 // Kestrel lists qwen3-32b at 8,192 tokens of context and Vault Nine at 131,072. Kestrel is the cheaper, so a short
 // prompt goes there; one clearly longer than 8,192 tokens goes to Vault Nine, and Kestrel is not counted against.
@@ -483,6 +483,35 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
       el.textContent || 'no by-kind line drawn');
   }
 }
+// Beyond text: speech. A node that lists a text-to-speech model ("kind": "speech") sells audio next to chat, on the same
+// channel: the router hands back the audio its model server made, billed on the text, one input token per 4 characters.
+{
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const say = 'Every answer is paid on Solana, one voucher at a time.';
+  const spReq = { model: 'kokoro-82m', input: say, voice: 'af_heart', response_format: 'wav' };
+  const sp = await fetch(`${ROUTER}/v1/audio/speech`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(spReq) });
+  const audio = Buffer.from(await sp.arrayBuffer());
+  const spTrip = trips.at(-1);
+  const spTokens = Math.ceil(say.length / 4);
+  const spExpected = costOf({ input: 1_000_000, output: 0 }, spTokens, 0);
+  const wavOk = audio.length > 44 && audio.subarray(0, 4).toString() === 'RIFF' && audio.subarray(8, 12).toString() === 'WAVE' && audio.readUInt32LE(40) === audio.length - 44;
+  const seconds = wavOk ? (audio.length - 44) / audio.readUInt32LE(28) : 0;
+  writeFileSync(join(WORK, 'speech.wav'), audio);
+  writeFileSync(join(WORK, 'speech.json'), JSON.stringify({ request: spReq, status: sp.status, contentType: sp.headers.get('content-type'), bytes: audio.length, seconds, headers: Object.fromEntries([...sp.headers].filter(([k]) => k.startsWith('x-orrery-'))) }, null, 2));
+  const noInput = await fetch(`${ROUTER}/v1/audio/speech`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'kokoro-82m' }) }).then(async (r) => ({ status: r.status, code: ((await r.json()) as { error?: { code?: string } }).error?.code }));
+  check('text to speech is routed and paid like any answer: the router hands back the audio the node’s model server made, billed on its text',
+    sp.status === 200 && sp.headers.get('content-type') === 'audio/wav' && wavOk && seconds > 0 && sp.headers.get('x-orrery-cost') === usd(spExpected) && sp.headers.get('x-orrery-input-tokens') === String(spTokens)
+    && spTrip?.model === 'kokoro-82m' && spTrip.kind === 'speech' && spTrip.inputTokens === spTokens && spTrip.outputTokens === 0 && nameOf(sp.headers.get('x-orrery-provider')) === 'Ironbridge Compute' && noInput.status === 400 && noInput.code === 'bad_request',
+    `${audio.length.toLocaleString('en-US')} bytes of ${sp.headers.get('content-type')} (${seconds.toFixed(2)} s) · ${spTrip?.inputTokens} input tokens for ${say.length} characters · $${sp.headers.get('x-orrery-cost')} via ${nameOf(sp.headers.get('x-orrery-provider'))} · no input: ${noInput.status}`);
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const chatToVoice = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'kokoro-82m', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }) }).then(async (r) => ({ status: r.status, j: (await r.json()) as { error?: { code?: string; message?: string } } }));
+  const voiceListing = ((await (await fetch(`${ROUTER}/v1/models`)).json()) as { data: { id: string; kind?: string }[] }).data.find((m) => m.id === 'kokoro-82m');
+  const voiceBench = await bench({ model: 'kokoro-82m', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'kokoro-82m')), router: ROUTER, n: 2 });
+  check('a speech model takes only speech: /v1/models says so, a chat request for it is refused before any node is asked, and orrery bench asks it through /v1/audio/speech',
+    voiceListing?.kind === 'speech' && chatToVoice.status === 400 && chatToVoice.j.error?.code === 'wrong_kind' && chatToVoice.j.error.message === 'kokoro-82m is listed for speech; send it to /v1/audio/speech'
+    && voiceBench.length === 1 && voiceBench[0].answered === 2 && !voiceBench[0].error,
+    `models: kokoro-82m kind ${voiceListing?.kind ?? 'none'} · chat to it: ${chatToVoice.status} ${chatToVoice.j.error?.message ?? ''} · bench: ${voiceBench[0]?.answered ?? 0}/2 ${voiceBench[0]?.error ?? ''}`);
+}
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
   r.on('error', () => done(0));
@@ -748,7 +777,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 49 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 52 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.

@@ -17,8 +17,14 @@ export type ModelOffer = {
   kind?: ModelKind;
 };
 
-export const MODEL_KINDS = ['embeddings', 'rerank'] as const;
+export const MODEL_KINDS = ['embeddings', 'rerank', 'speech'] as const;
 export type ModelKind = (typeof MODEL_KINDS)[number];
+
+/** Where each kind of request goes, under /v1/ on a router and on a node: speech at /v1/audio/speech, as OpenAI serves it. */
+export const kindPath = (k: 'chat' | ModelKind): string => (k === 'chat' ? 'chat/completions' : k === 'speech' ? 'audio/speech' : k);
+
+/** Text to speech has no token count from the model server: it is billed on the text, one input token per 4 characters. */
+export const speechTokens = (input: unknown): number => Math.max(1, Math.ceil(String(input ?? '').length / 4));
 
 /** The kind of request a model takes, from its listing: what it says, or chat. */
 export const kindOf = (o: { kind?: string }): 'chat' | ModelKind => ((MODEL_KINDS as readonly string[]).includes(o.kind ?? '') ? (o.kind as ModelKind) : 'chat');
@@ -72,7 +78,7 @@ export function checkManifest(m: unknown): Manifest {
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
     if (o.holdersOnly !== undefined && o.holdersOnly !== true) throw new Error(`manifest: holdersOnly for ${o.id}, when listed, is true`);
     if (o.holdersOnly && !x.holder?.tiers?.length) throw new Error(`manifest: ${o.id} is listed for holders only, which needs holder tiers`);
-    if (o.kind !== undefined && !(MODEL_KINDS as readonly string[]).includes(o.kind)) throw new Error(`manifest: kind for ${o.id}, when listed, is ${MODEL_KINDS.join(' or ')}`);
+    if (o.kind !== undefined && !(MODEL_KINDS as readonly string[]).includes(o.kind)) throw new Error(`manifest: kind for ${o.id}, when listed, is ${MODEL_KINDS.slice(0, -1).join(', ')} or ${MODEL_KINDS.at(-1)}`);
   }
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
   if (x.burn !== undefined && (!Number.isSafeInteger(x.burn?.share) || x.burn.share < 1 || x.burn.share > 10_000)) throw new Error('manifest: burn.share must be 1 to 10000 basis points');

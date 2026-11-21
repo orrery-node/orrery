@@ -22,6 +22,13 @@ describe('orrery provider check asks each listed model one small thing', () => {
     assert.deepEqual((calls[0].body as unknown as { query: string; documents: string[] }).documents, ['ok']);
   });
 
+  it('asks a speech model to say a word at /audio/speech', async () => {
+    const calls: Call[] = [];
+    const line = await (modelTest as unknown as (b: string, h: Record<string, string>, m: unknown[], f: unknown) => Promise<{ ok: boolean; detail: string }>)('http://h/v1', {}, [{ ...M('kokoro-82m', 0), kind: 'speech' }], server(() => ({ status: 200, body: 'RIFF' }), calls));
+    assert.equal(line.ok, true);
+    assert.deepEqual(calls.map((c) => [c.url, c.body.model, (c.body as unknown as { input?: string }).input]), [['http://h/v1/audio/speech', 'kokoro-82m', 'ok']]);
+  });
+
   it('says each model answered, and how long it took', async () => {
     assert.equal(typeof modelTest, 'function', 'check.ts tests the models');
     const calls: Call[] = [];
