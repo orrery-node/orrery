@@ -1338,6 +1338,12 @@ check('orrery provider status says what the wallet held after the last payout, p
   // reach (here one kept three days back, before this rehearsal's logs begin) still shows in the books by day.
   const daysPath = join(WORK, 'providers', 'ironbridge', 'days.jsonl');
   const keptToday = existsSync(daysPath) ? readFileSync(daysPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { day: string; answers: number; billed: string; payouts: number; paid: string }).find((d) => d.day === today) : undefined;
+  // What the notify webhook gets for that day: the same line, and the kinds of work as JSON for a script.
+  const noticeBody = (nodes[1] as unknown as { booksNoticeBody?: (day: string, kept: unknown) => { text: string; books: { kinds?: { kind: string; answers: number; billed: string }[] } | null } | null }).booksNoticeBody?.(today, keptToday ?? null);
+  const wantKinds = [...kindToday].sort(([ka, a], [kb, b]) => (a.u === b.u ? ka.localeCompare(kb) : a.u > b.u ? -1 : 1)).map(([k, e]) => ({ kind: k, answers: e.n, billed: usd(e.u) }));
+  check('the notify webhook gets the day’s books with what each kind of work billed, as JSON a script can read',
+    !!noticeBody && noticeBody.text === `${providerSpecs[1].name}: ${booksSaid}` && JSON.stringify(noticeBody.books?.kinds) === JSON.stringify(wantKinds),
+    noticeBody ? `books.kinds: ${(noticeBody.books?.kinds ?? []).map((k) => `${k.kind} ${k.answers} $${k.billed}`).join(' · ') || 'none'}` : 'no booksNoticeBody on the node');
   const oldDay = new Date(dayStart - 3 * 86_400_000).toISOString().slice(0, 10);
   appendFileSync(daysPath, `${JSON.stringify({ day: oldDay, answers: 41, billed: '123456', payouts: 2, paid: '120000' })}\n`);
   const weekBooks = await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/books?since=7d`, { headers: { 'x-orrery-console-key': ibKey } }).then((r) => r.json()).catch(() => null) as { rows?: { day: string; answers: number; billed: string; paid: string }[] } | null;

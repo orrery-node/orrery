@@ -65,15 +65,27 @@ export function dayBooksLine(day: string, served: { at: number; cost: string; sa
   const after = held && lastPaid && held.tx === lastPaid.tx ? `; it held $${usd(BigInt(held.units))} after the last, per the chain` : '';
   const atHolder = answers.filter((t) => typeof t.saved === 'string');
   const under = atHolder.reduce((n, t) => n + toUnits(t.saved!), 0n);
-  const kinds = new Map<string, { answers: number; units: bigint }>();
-  if (kindOf) for (const t of answers) { const k = kindOf(t.model ?? ''); const e = kinds.get(k) ?? { answers: 0, units: 0n }; e.answers += 1; e.units += toUnits(t.cost); kinds.set(k, e); }
-  const byKind = kinds.size > 1
-    ? `by kind: ${[...kinds].sort(([ka, a], [kb, b]) => (a.units === b.units ? ka.localeCompare(kb) : a.units > b.units ? -1 : 1)).map(([k, e]) => `${k} ${e.answers.toLocaleString('en-US')}, $${usd(e.units)}`).join(' · ')}`
-    : '';
+  const kinds = kindOf ? dayKinds(day, answers, kindOf) : [];
+  const byKind = kinds.length > 1 ? `by kind: ${kinds.map((k) => `${k.kind} ${k.answers.toLocaleString('en-US')}, $${usd(k.units)}`).join(' · ')}` : '';
   const notes = [...(atHolder.length ? [`${atHolder.length.toLocaleString('en-US')} at your holder price, $${usd(under)} under list`] : []), ...(byKind ? [byKind] : [])];
   const a = `${answers.length.toLocaleString('en-US')} answer${answers.length === 1 ? '' : 's'}, $${usd(billed)} billed${notes.length ? ` (${notes.join('; ')})` : ''}`;
   const p = paid.length ? `${paid.length} payout${paid.length === 1 ? '' : 's'}, $${usd(out)} to your wallet` : 'no payout';
   return `books for ${day} (UTC): ${a}; ${p}${after}`;
+}
+
+/** What each kind of work billed in a UTC day, by what each model is for in the node's listing, most first. */
+export function dayKinds(day: string, served: { at: number; cost: string; model?: string }[], kindOf: (model: string) => string): { kind: string; answers: number; units: bigint }[] {
+  const start = Date.parse(`${day}T00:00:00Z`);
+  const kinds = new Map<string, { answers: number; units: bigint }>();
+  for (const t of served) {
+    if (!(t.at >= start && t.at < start + DAY)) continue;
+    const k = kindOf(t.model ?? '');
+    const e = kinds.get(k) ?? { answers: 0, units: 0n };
+    e.answers += 1;
+    e.units += toUnits(t.cost);
+    kinds.set(k, e);
+  }
+  return [...kinds].map(([kind, e]) => ({ kind, ...e })).sort((a, b) => (a.units === b.units ? a.kind.localeCompare(b.kind) : a.units > b.units ? -1 : 1));
 }
 
 export type DayBooks = { day: string; answers: number; billed: bigint; payouts: number; paid: bigint };
@@ -126,9 +138,11 @@ export function dayToKeep(day: string, served: { at: number; cost: string }[], p
 
 /** What the node posts to its `notify` webhook just after midnight UTC: the day's line from its log, under `text` and
  * `content` as a payout's notice has it, and the day's totals under `books` in USDC. */
-export function booksNotice(node: string, line: string, d: DayKept | null): { text: string; content: string; books: { day: string; answers: number; billed: string; payouts: number; paidOut: string } | null } {
+export function booksNotice(node: string, line: string, d: DayKept | null, kinds: { kind: string; answers: number; units: bigint }[] = []): { text: string; content: string; books: { day: string; answers: number; billed: string; payouts: number; paidOut: string; kinds?: { kind: string; answers: number; billed: string }[] } | null } {
   const text = `${node}: ${line}`;
-  return { text, content: text, books: d ? { day: d.day, answers: d.answers, billed: usd(BigInt(d.billed)), payouts: d.payouts, paidOut: usd(BigInt(d.paid)) } : null };
+  // With more than one kind of work in the day, a script reads what each billed here rather than out of the text.
+  const byKind = kinds.length > 1 ? { kinds: kinds.map((k) => ({ kind: k.kind, answers: k.answers, billed: usd(k.units) })) } : {};
+  return { text, content: text, books: d ? { day: d.day, answers: d.answers, billed: usd(BigInt(d.billed)), payouts: d.payouts, paidOut: usd(BigInt(d.paid)), ...byKind } : null };
 }
 
 /** `provider earnings --by day`:

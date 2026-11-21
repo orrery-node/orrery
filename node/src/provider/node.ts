@@ -23,7 +23,7 @@ import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
-import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayToKeep, keepDay, monthBooksLine, monthNotice, monthSentence, monthSoFar, readDays, utcDay, type DayBooks } from './books.ts';
+import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayKinds, dayToKeep, keepDay, monthBooksLine, monthNotice, monthSentence, monthSoFar, readDays, utcDay, type DayBooks, type DayKept } from './books.ts';
 import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
@@ -995,10 +995,20 @@ export class ProviderNode {
   }
 
   /** The day's books in one line, from the files the node keeps; null when nothing was served or paid out that day. */
+  /** What each model is for, from this node's listing: the day's books say what each kind billed when there were two. */
+  private kindOfModel = (model: string): string => {
+    const o = this.cfg.models.find((m) => m.id === model);
+    return o ? (o.kind ?? (o.price.output === 0 ? 'embeddings' : 'chat')) : 'chat';
+  };
+
+  /** What the notify webhook is sent for a closed UTC day: the line, the day's totals, and what each kind of work billed. */
+  booksNoticeBody(day: string, kept: DayKept | null): ReturnType<typeof booksNotice> | null {
+    const line = this.booksLine(day);
+    return line ? booksNotice(this.cfg.name, line, kept, dayKinds(day, readTrips(`${this.dir}/served.jsonl`), this.kindOfModel)) : null;
+  }
+
   booksLine(day: string): string | null {
-    // What each model is for, from this node's listing: the day's line says what each kind billed when there were two.
-    const kindOfModel = (model: string) => { const o = this.cfg.models.find((m) => m.id === model); return o ? (o.kind ?? (o.price.output === 0 ? 'embeddings' : 'chat')) : 'chat'; };
-    return dayBooksLine(day, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), readHeld(`${this.dir}/held.json`), kindOfModel);
+    return dayBooksLine(day, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), readHeld(`${this.dir}/held.json`), this.kindOfModel);
   }
 
   /** Once the UTC date has moved on, say the day that ended. */
@@ -1011,7 +1021,7 @@ export class ProviderNode {
     if (kept) keepDay(`${this.dir}/days.jsonl`, kept);
     if (line) {
       this.log(line);
-      void this.notice(booksNotice(this.cfg.name, line, kept), 'books');
+      void this.notice(this.booksNoticeBody(this.booksDay, kept) ?? booksNotice(this.cfg.name, line, kept), 'books');
     }
     // And when the day that ended was its month's last, the month that ended: its days added up, kept days included.
     if (day.slice(0, 7) !== this.booksDay.slice(0, 7)) {
