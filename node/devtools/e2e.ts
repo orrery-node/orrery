@@ -158,7 +158,7 @@ const WATCHED = join(WORK, 'home/router/watched.json');
 const registry = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(conn, { allowDev: true, measurements: [] }, undefined, WATCHED);
 const channels = new Channels(conn, user, session, usdc, join(WORK, 'home/router/channels.json'), { deposit: USD, topUpBelow: USD / 5n, dailyCap: 5n * USD });
 const OBSERVED = join(WORK, 'home/router/observed.json');
-const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, observedPath: OBSERVED, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b'), agentCaps: new Map([['researcher', 20n]]) });
+const router = new Router({ port: 17171, route: 'auto', minReputation: 0, registry, channels, conn, refreshSecs: 3_600, observedPath: OBSERVED, log: (l) => console.log(`    [router] ${l}`), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases('claude-*=llama-3.3-70b'), agentCaps: new Map([['researcher', 20n]]), agentModels: new Map([['researcher', new Set(['llama-3.3-70b'])]]) });
 await router.start();
 console.log(`router up with ${registry.usable().length} providers`);
 
@@ -1522,6 +1522,15 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
     outA[2]?.result?.isError === true && mcpAsk.endsWith(`\n— agent researcher: $${usd(agentUnits)} spent today, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`)
     && mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`,
     `ask: ${mcpAsk.split('\n').at(-1) || 'no answer'} · status: ${mcpAgents || 'no researcher line'}`);
+  // And a menu per agent (--agent-models): researcher may use llama-3.3-70b only, so a request for another model is
+  // refused (403) before any node is asked or anything counted against its day; status lists the menu.
+  const tripsBeforeMenu = trips.length;
+  const offMenu = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-agent': 'researcher' }, body: JSON.stringify({ model: 'deepseek-v3', max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) })
+    .then(async (r) => ({ status: r.status, j: (await r.json()) as { error?: { code?: string; message?: string } } }));
+  const menuStatus = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { agents?: { name: string; models?: string[] }[] }).agents?.find((a) => a.name === 'researcher');
+  check('an agent kept to a list of models (--agent-models) is refused another model before any node is asked, and status lists its models',
+    offMenu.status === 403 && offMenu.j.error?.code === 'agent_model' && offMenu.j.error.message === 'agent researcher may use llama-3.3-70b; deepseek-v3 is not one of them' && trips.length === tripsBeforeMenu && JSON.stringify(menuStatus?.models) === '["llama-3.3-70b"]',
+    `${offMenu.status} ${offMenu.j.error?.code ?? ''}: ${offMenu.j.error?.message ?? ''} · status models ${JSON.stringify(menuStatus?.models ?? null)}`);
 }
 const spendByTask =(await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=task`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
 const jobSpend = spendByTask.rows.find((x) => x.key === 'rehearsal-job');

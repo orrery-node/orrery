@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · A menu per agent. `orrery router --agent-models coder=qwen3-coder-30b|deepseek-v3,researcher=llama-3.3-70b` (or `ORRERY_AGENT_MODELS`) keeps each named agent to its models: a request from that agent for any other is refused before a node is asked or anything is owed ("agent researcher may use llama-3.3-70b; deepseek-v3 is not one of them", 403 `agent_model`). An agent not named may use any model, and `/orrery/status` lists each agent's models beside its limit for the day.
+
 ## 0.1.25 · 2026-11-21 03:28 UTC
 
 **Agent wallets with a daily limit and a bill per agent, MCP and every client included; reranking and embeddings on the same rails as chat; holder lanes and holder-first models; and both sides' months as cards to post.**

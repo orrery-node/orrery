@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A menu per agent. `orrery router --agent-models coder=qwen3-coder-30b|deepseek-v3,researcher=llama-3.3-70b` (or `ORRERY_AGENT_MODELS`) keeps each named agent to its models: a request from that agent for any other is refused before a node is asked or anything is owed ("agent researcher may use llama-3.3-70b; deepseek-v3 is not one of them", 403 `agent_model`). An agent not named may use any model, and `/orrery/status` lists each agent\'s models beside its limit for the day.' },
 ];
 
 export const RELEASES: Release[] = [

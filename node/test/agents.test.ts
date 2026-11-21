@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { AgentBook, agentFromKey, parseAgentCaps } from '../src/router/agents.ts';
+import { AgentBook, agentFromKey, parseAgentCaps, parseAgentModels } from '../src/router/agents.ts';
 import { appendTrip, spendCsv, summarize } from '../src/spend.ts';
 
 describe('agent wallets', () => {
@@ -12,6 +12,13 @@ describe('agent wallets', () => {
     assert.equal(parseAgentCaps(undefined).size, 0);
     assert.equal(parseAgentCaps('').size, 0);
     for (const bad of ['researcher', 'researcher=0', 'researcher=-1', 'a b=1', 'x=1.1234567']) assert.throws(() => parseAgentCaps(bad), /--agent-cap takes name=dollars/);
+  });
+
+  it('reads each agent’s models as name=model|model and refuses anything else at start', () => {
+    assert.deepEqual([...parseAgentModels('researcher=deepseek-v3|llama-3.3-70b, coder=qwen3-coder-30b')].map(([k, v]) => [k, [...v]]), [['researcher', ['deepseek-v3', 'llama-3.3-70b']], ['coder', ['qwen3-coder-30b']]]);
+    assert.equal(parseAgentModels(undefined).size, 0);
+    assert.equal(parseAgentModels(' ').size, 0);
+    for (const bad of ['researcher', 'researcher=', 'a b=m', 'x=Model', 'x=m||n']) assert.throws(() => parseAgentModels(bad), /--agent-models takes name=model\|model/);
   });
 
   it('names an agent in the key for tools that cannot add headers', () => {

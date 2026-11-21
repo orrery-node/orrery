@@ -31,6 +31,19 @@ export function parseAgentCaps(s: string | undefined): Map<string, bigint> {
   return caps;
 }
 
+/** "researcher=deepseek-v3|llama-3.3-70b,coder=qwen3-coder-30b": the models each named agent may use; throws on
+ * anything else, so a typo stops the router at start. An agent not named here may use any model. */
+export function parseAgentModels(s: string | undefined): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  if (!s?.trim()) return out;
+  for (const part of s.split(',')) {
+    const m = /^\s*([A-Za-z0-9._:\-]{1,64})\s*=\s*([a-z0-9][a-z0-9._\-/]{0,95}(?:\|[a-z0-9][a-z0-9._\-/]{0,95})*)\s*$/.exec(part);
+    if (!m) throw new Error(`--agent-models takes name=model|model, comma-separated (researcher=deepseek-v3|llama-3.3-70b,coder=qwen3-coder-30b), not "${part.trim()}"`);
+    out.set(m[1], new Set(m[2].split('|')));
+  }
+  return out;
+}
+
 export class AgentBook {
   private today = '';
   private spent = new Map<string, bigint>();
