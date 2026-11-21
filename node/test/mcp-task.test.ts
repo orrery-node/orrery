@@ -309,6 +309,8 @@ describe('orrery mcp and task budgets', () => {
     assert.match(text, /\nagents, today \(UTC\):\nresearcher \(this one\): \$0\.000020 spent today of \$0\.000020, nothing left until 00:00 UTC\ncoder: \$0\.000020 spent today of \$2\.000000, \$1\.999980 left\ntagger: \$0\.000001 spent today, no limit$/);
     const fresh = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, 'http://r', (async (url: string) => (url.endsWith('/orrery/status') ? reply({ ...st, agents: [] }) : reply({}))) as never, '0', 'writer') as { result: { content: { text: string }[] } }).result.content[0].text;
     assert.match(fresh, /\nthis agent: writer, nothing spent today$/);
+    const menu = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, 'http://r', (async (url: string) => (url.endsWith('/orrery/status') ? reply({ ...st, agents: [{ name: 'coder', cap: null, spent: '0.000001', left: null, models: ['qwen3-coder-30b', 'deepseek-v3'] }] }) : reply({}))) as never, '0', 'coder') as { result: { content: { text: string }[] } }).result.content[0].text;
+    assert.match(menu, /\ncoder \(this one\): \$0\.000001 spent today, no limit; may use qwen3-coder-30b, deepseek-v3$/);
   });
 
   it('rerank lists the documents best first with their index and score, and what it paid; it says what it needs', async () => {

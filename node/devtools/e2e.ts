@@ -1535,8 +1535,14 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
     `OpenAI key ${oaKey || 'none'} → ${viaOpenai} · Anthropic key ${anKey || 'none'} → ${viaAnth} · logged as writer: ${writerTrips} · mcp ${conMcp.includes('--agent writer') ? 'with --agent writer' : 'no --agent'}`);
   check('orrery mcp --agent names every call with its agent, and the agent is told what it has spent today and has left, in a refusal too and in status',
     outA[2]?.result?.isError === true && mcpAsk.endsWith(`\n— agent researcher: $${usd(agentUnits)} spent today, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`)
-    && mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`,
+    && mcpAgents.startsWith(`researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`),
     `ask: ${mcpAsk.split('\n').at(-1) || 'no answer'} · status: ${mcpAgents || 'no researcher line'}`);
+  // And the models an agent is kept to (--agent-models) are where its day is shown: the MCP status tool and the console.
+  const consoleAgents = await (await fetch(`${ROUTER}/`)).text();
+  check('an agent’s models are listed beside its day: in the MCP status tool and in the router console’s agents table',
+    mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}; may use llama-3.3-70b`
+    && consoleAgents.includes('<th>left</th><th>models</th>') && consoleAgents.includes("a.models.map(esc).join(', '):'any'"),
+    mcpAgents || 'no researcher line');
   // And a menu per agent (--agent-models): researcher may use llama-3.3-70b only, so a request for another model is
   // refused (403) before any node is asked or anything counted against its day; status lists the menu.
   const tripsBeforeMenu = trips.length;
