@@ -120,6 +120,10 @@ export function walletNote(o: { wallet: string; exists: boolean; isHome: boolean
  * share (bge, mxbai, jina). */
 export const isRerankModel = (id: string) => /(^|[/_.-])re-?rank/i.test(id);
 
+/** Text-to-speech models by their usual names (Kokoro, Piper, Orpheus, Chatterbox, or anything called TTS): listed with
+ * "kind": "speech" and billed on the text they are given, one input token per 4 characters. */
+export const isSpeechModel = (id: string) => !isRerankModel(id) && /(kokoro|piper|orpheus|chatterbox|tts)/i.test(id);
+
 /** Embedding models by their usual names; they are priced on input tokens only and listed with "kind": "embeddings". */
 export const isEmbeddingModel = (id: string) => !isRerankModel(id) && /(^|[/_.-])(embed|embedding|bge|e5|gte|nomic-embed|mxbai|arctic-embed|jina-embeddings)/i.test(id);
 
@@ -142,9 +146,10 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     upstream: { baseUrl: found.baseUrl },
     // The context the server says it serves, where it says: a router's clients size their prompts to the listed
     // number, and a longer one fails at the server. A quarter of it is kept for the answer, up to 4,096 tokens.
-    models: found.models.map((id): { id: string; upstreamModel: string; context: number; maxOutput: number; price: { input: number; output: number; cachedInput?: number }; kind?: 'embeddings' | 'rerank' } => {
-      const served = found.contexts?.[id] ?? (found.name === 'Ollama' && !isEmbeddingModel(id) && !isRerankModel(id) ? OLLAMA_CONTEXT : undefined);
+    models: found.models.map((id): { id: string; upstreamModel: string; context: number; maxOutput: number; price: { input: number; output: number; cachedInput?: number }; kind?: 'embeddings' | 'rerank' | 'speech' } => {
+      const served = found.contexts?.[id] ?? (found.name === 'Ollama' && !isEmbeddingModel(id) && !isRerankModel(id) && !isSpeechModel(id) ? OLLAMA_CONTEXT : undefined);
       if (isRerankModel(id)) return { id: networkId(id), upstreamModel: id, context: served ?? 8_192, maxOutput: 1, price: { input: 20_000, output: 0 }, kind: 'rerank' as const };
+      if (isSpeechModel(id)) return { id: networkId(id), upstreamModel: id, context: served ?? 4_096, maxOutput: 1, price: { input: 2_000_000, output: 0 }, kind: 'speech' as const };
       return isEmbeddingModel(id)
         ? { id: networkId(id), upstreamModel: id, context: served ?? 8_192, maxOutput: 1, price: { input: 20_000, output: 0 }, kind: 'embeddings' as const }
         : { id: networkId(id), upstreamModel: id, context: served ?? 32_768, maxOutput: served ? Math.max(1, Math.min(4_096, Math.floor(served / 4))) : 4_096, price: { input: 500_000, output: 1_000_000, ...(CACHE_REPORTING[found.name] ? { cachedInput: 125_000 } : {}) } };

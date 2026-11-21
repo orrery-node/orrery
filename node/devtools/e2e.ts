@@ -452,6 +452,9 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const rrBench = await bench({ model: 'bge-reranker-v2-m3', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'bge-reranker-v2-m3')), router: ROUTER, n: 2 });
   const rrBenchTrips = trips.slice(benchBefore);
   const mcpModelLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('bge-reranker-v2-m3')) ?? '';
+  const mcpVoiceLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('kokoro-82m')) ?? '';
+  check('the MCP models tool tells an agent where a speech model is asked: at /v1/audio/speech on its router, not a tool',
+    mcpVoiceLine.endsWith('  ·  speech: send it to /v1/audio/speech on your router; its answer is audio'), mcpVoiceLine || 'no kokoro-82m line');
   check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
     rrBench.length === 1 && rrBench[0].answered === 2 && !rrBench[0].error && rrBenchTrips.length === 2 && rrBenchTrips.every((t) => t.model === 'bge-reranker-v2-m3' && t.outputTokens === 0) && mcpModelLine.endsWith('  ·  rerank: use the rerank tool'),
     `bench ${rrBench[0] ? `${rrBench[0].answered}/${rrBench[0].asked} answered${rrBench[0].error ? ` (${rrBench[0].error})` : ''}` : 'no row'} · mcp: ${mcpModelLine || 'no line'}`);
@@ -2292,7 +2295,7 @@ check('orrery provider init lists the context the model server says it serves, a
 // so routers send the reranker /v1/rerank and the embedder /v1/embeddings, and says so. The list it writes is one a
 // node starts with and a router accepts.
 {
-  const kindMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19111', '5', 'kinds'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'BAAI/bge-reranker-v2-m3,BAAI/bge-m3,Qwen/Qwen3-32B' } });
+  const kindMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19111', '5', 'kinds'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'BAAI/bge-reranker-v2-m3,BAAI/bge-m3,Qwen/Qwen3-32B,hexgrad/Kokoro-82M' } });
   procs.push(kindMock);
   for (let i = 0; i < 50 && !(await fetch('http://127.0.0.1:19111/v1/models').then((r) => r.ok).catch(() => false)); i++) await sleep(100);
   const kindCfgPath = join(walkHome, 'provider-kinds.json');
@@ -2302,7 +2305,8 @@ check('orrery provider init lists the context the model server says it serves, a
   // embedding model for an embedding, the chat model for an answer. The stand-in server, like a real one, will not
   // chat with a reranker.
   const { modelTest } = await import('../src/provider/check.ts');
-  const probed = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models) : null;
+  const probed = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind !== 'speech')) : null;
+  const probedVoice = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind === 'speech')) : null;
   kindMock.kill();
   const kindOfId = (id: string) => kindCfg?.models.find((m) => m.id === id);
   const { checkManifest } = await import('../src/manifest.ts');
@@ -2314,6 +2318,11 @@ check('orrery provider init lists the context the model server says it serves, a
   check('orrery provider check asks each model the way it is listed: a reranker for a ranking, an embedding model for an embedding, a chat model for an answer',
     !!probed && probed.ok === true && /^BAAI\/bge-reranker-v2-m3 answered a test request in \d+ ms; BAAI\/bge-m3 in \d+ ms; Qwen\/Qwen3-32B in \d+ ms$/.test(probed.detail),
     probed?.detail ?? 'no model test');
+  check('orrery provider init lists a text-to-speech model as "kind": "speech", billed on its text, and provider check asks it to speak',
+    kindOfId('kokoro-82m')?.kind === 'speech' && kindOfId('kokoro-82m')?.price.output === 0 && kindOfId('kokoro-82m')?.price.input === 2_000_000 && listable
+    && kindInit.text.includes('hexgrad/Kokoro-82M is a speech model: listed for /v1/audio/speech, billed on the text at one input token per 4 characters')
+    && !!probedVoice && probedVoice.ok === true && /^hexgrad\/Kokoro-82M answered a test request in \d+ ms$/.test(probedVoice.detail),
+    `${kindOfId('kokoro-82m') ? `kokoro-82m ${kindOfId('kokoro-82m')?.kind ?? 'chat'}, $${(kindOfId('kokoro-82m')!.price.input / 1e6).toFixed(2)}/M in` : 'not listed'} · check: ${probedVoice?.detail ?? 'no model test'}`);
 }
 writeFileSync(ctxCfgPath, JSON.stringify({ ...(ctxCfg as object), rpcUrl: RPC, publicUrl: 'http://127.0.0.1:17991', dataDir: join(walkHome, 'context-data'), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 32_768, maxOutput: 4_096 })) }, null, 2));
 const ctxCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);

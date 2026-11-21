@@ -18,7 +18,7 @@ import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/
 import { Registry } from './router/registry.ts';
 import { Router } from './router/server.ts';
 import { serveMcp } from './mcp.ts';
-import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALLET, walletNote, findUpstream, isEmbeddingModel, isRerankModel, nextSteps, OLLAMA_NOTE } from './provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALLET, walletNote, findUpstream, isEmbeddingModel, isRerankModel, isSpeechModel, nextSteps, OLLAMA_NOTE } from './provider/init.ts';
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
@@ -602,6 +602,8 @@ async function main() {
     if (emb.length) console.log(`${emb.join(', ')} ${emb.length === 1 ? 'is an embedding model' : 'are embedding models'}: listed for /v1/embeddings, priced on input tokens only ($0.02 per million to start)`);
     const rer = found.models.filter(isRerankModel);
     if (rer.length) console.log(`${rer.join(', ')} ${rer.length === 1 ? 'is a reranker' : 'are rerankers'}: listed for /v1/rerank, priced on input tokens only ($0.02 per million to start); your model server answers /rerank`);
+    const voices = found.models.filter(isSpeechModel);
+    if (voices.length) console.log(`${voices.join(', ')} ${voices.length === 1 ? 'is a speech model' : 'are speech models'}: listed for /v1/audio/speech, billed on the text at one input token per 4 characters ($2 per million tokens to start); your model server answers /audio/speech`);
     if (found.name === 'Ollama' && found.models.some((m) => !isEmbeddingModel(m))) console.log(OLLAMA_NOTE);
     if (CACHE_REPORTING[found.name]) console.log(`each model also has a cached-input price (a quarter of input) for prompt-cache hits; start ${found.name} with ${CACHE_REPORTING[found.name]} so it reports them`);
     // Where the draft prices would stand against what is already listed, so the first edit is an informed one.
