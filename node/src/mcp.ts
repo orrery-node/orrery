@@ -67,6 +67,25 @@ const TOOLS = [
     },
   },
   {
+    name: 'image',
+    description: "Make images with an image model on the Orrery network, paid for this one call: each image is billed as 1,000 output tokens at the node's listed price, and the prompt on input. Returns the images themselves.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'a network image model id, e.g. flux.1-schnell' },
+        prompt: { type: 'string', description: 'what to draw' },
+        n: { type: 'number', description: 'optional: how many images, 1 to 4; 1 when not given' },
+        size: { type: 'string', description: 'optional: e.g. 1024x1024, as the model server takes it' },
+        max_cost: { type: 'number', description: 'optional budget in dollars for this one call, e.g. 0.01; only providers whose worst case fits are used' },
+        task: { type: 'string', description: 'optional name for the job this call belongs to; ask, embed, rerank and image calls with the same task draw from one budget' },
+        task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call' },
+        node: { type: 'string', description: 'optional: use this node only, by the name status lists or by its address' },
+        patience: { type: 'number', description: 'optional: seconds to wait for a node that is away, 0 to 30; 30 when not given' },
+      },
+      required: ['model', 'prompt'],
+    },
+  },
+  {
     name: 'quote',
     description: 'What one request would cost at every provider that lists a model, from the prices pinned on Solana, cheapest first, with the cached-input rate where one is listed, and what this router itself saw of each node: how often it was up, what it answered and how fast it started. Nothing is sent or paid. Use it to pick a model or a node, or check a job fits a budget before asking.',
     inputSchema: {
@@ -95,6 +114,9 @@ const TOOLS = [
 ];
 
 const text = (t: string, isError = false) => ({ content: [{ type: 'text', text: t }], ...(isError ? { isError: true } : {}) });
+
+/** The type of a base64 image from its first bytes: PNG, JPEG or WebP, as image servers send them; PNG otherwise. */
+export const imageType = (b64: string): string => (b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('UklGR') ? 'image/webp' : 'image/png');
 
 /** Answers one JSON-RPC message from an MCP client; null for notifications. */
 export async function handle(msg: Json, router: string, fetchFn: Fetch, version: string, agent: string | null = null): Promise<Json | null> {
@@ -175,6 +197,19 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const rows = (j.results ?? []).map((x, i) => `${i + 1}. [${x.index}] ${x.relevance_score.toFixed(4)}  ${(docs[x.index] ?? '').replace(/\s+/g, ' ').slice(0, 160)}`);
       return text(`${rows.join('\n') || '(no results)'}\n\n— ${rows.length} of ${docs.length} document${docs.length === 1 ? '' : 's'} ranked, ${j.usage?.total_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`);
     }
+    if (name === 'image') {
+      if (typeof a.model !== 'string' || typeof a.prompt !== 'string' || !a.prompt) return text('image needs a model and a prompt', true);
+      const n = typeof a.n === 'number' && Number.isFinite(a.n) ? Math.max(1, Math.min(4, Math.floor(a.n))) : 1;
+      const headers = callHeaders(a, agent);
+      const noSuchNode = await pinNode(a, headers, router, fetchFn);
+      if (noSuchNode) return text(noSuchNode, true);
+      const { r, j } = await sendPatiently<{ data?: { b64_json?: string }[]; usage?: { input_tokens?: number; output_tokens?: number }; error?: { code?: string; message?: string } }>(() => fetchFn(`${router}/v1/images/generations`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, prompt: a.prompt, n, ...(typeof a.size === 'string' ? { size: a.size } : {}) }) }), headers);
+      const task = taskLine(a, r) + agentLine(agent, r);
+      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
+      const images = (j.data ?? []).filter((d) => typeof d.b64_json === 'string' && d.b64_json).map((d) => ({ type: 'image', data: d.b64_json!, mimeType: imageType(d.b64_json!) }));
+      const said = `— ${images.length} image${images.length === 1 ? '' : 's'}, ${j.usage?.input_tokens ?? '?'} prompt tokens + ${(j.usage?.output_tokens ?? 0).toLocaleString('en-US')} output tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`;
+      return { content: [...images, { type: 'text', text: said }] };
+    }
     if (name === 'quote') {
       if (typeof a.model !== 'string') return text('quote needs a model', true);
       const q = new URLSearchParams({ model: a.model });
@@ -191,7 +226,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const r = await fetchFn(`${router}/v1/models`);
       const j = (await r.json()) as { data?: { id: string; providers: number; context_length?: number; kind?: string; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number } }[] };
       const usd = (v: number) => `$${v < 0.1 ? v.toFixed(4) : v.toFixed(2)}`;
-      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'send it to /v1/images/generations on your router; its answer is images' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
+      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'use the image tool' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
       return text(rows.length ? rows.join('\n') : 'no models on the network right now');
     }
     if (name === 'status') {

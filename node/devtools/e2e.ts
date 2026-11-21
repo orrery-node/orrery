@@ -320,7 +320,7 @@ const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
 check('an agent is told through orrery mcp how what it paid compares with the prices the node listed on chain', /paid \$\d\.\d{6} for this answer(, what its listed prices come to|, under its listed \$\d\.\d{6}| \(it asked)/.test(mcpAnswer), (mcpAnswer.split('\n').find((l) => l.includes('paid $')) ?? 'no paid line').replace(/\(([1-9A-HJ-NP-Za-km-z]{6})…\)/, '($1…)').slice(0, 150));
-check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
+check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,image,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
 const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
 const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
 const mcpStatus = mcpOut[6]?.result?.content?.[0]?.text ?? '';
@@ -464,8 +464,8 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const mcpModelLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('bge-reranker-v2-m3')) ?? '';
   const mcpVoiceLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('kokoro-82m')) ?? '';
   const mcpPainterLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('flux-schnell')) ?? '';
-  check('the MCP models tool tells an agent where an image model is asked: at /v1/images/generations on its router',
-    mcpPainterLine.endsWith('  ·  image: send it to /v1/images/generations on your router; its answer is images'), mcpPainterLine || 'no flux-schnell line');
+  check('the MCP models tool tells an agent to use the image tool for an image model',
+    mcpPainterLine.endsWith('  ·  image: use the image tool'), mcpPainterLine || 'no flux-schnell line');
   check('the MCP models tool tells an agent where a speech model is asked: at /v1/audio/speech on its router, not a tool',
     mcpVoiceLine.endsWith('  ·  speech: send it to /v1/audio/speech on your router; its answer is audio'), mcpVoiceLine || 'no kokoro-82m line');
   check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
@@ -558,6 +558,24 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && imgQuote.kind === 'image' && imgQuote.images === 2 && imgQuote.outTokens === 2_000 && imgQuote.inTokens === imTokens && (imgQuote.text ?? '').includes(`cheapest: Ironbridge Compute, $${usd(imExpected)} a request`)
     && (imgQuote.text ?? '').split('\n')[0] === `flux-schnell · image · 2 images (1,000 output tokens each), ${imTokens} tokens of prompt · listed prices on Solana, before any holder discount`,
     `chat to it: ${chatToPainter.status} ${chatToPainter.j.error?.message ?? ''} · bench ${painterBench[0]?.answered ?? 0}/2 ${painterBench[0]?.error ?? ''} · quote: ${(imgQuote.text ?? '').split('\n')[0]}`);
+  // And an agent gets images through orrery mcp: the image tool hands back the pictures themselves, with what they cost
+  // and what its task has left.
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const mcpI = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'mcp', '--router', ROUTER], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const outI: Record<number, { result?: { content?: { type: string; text?: string; data?: string; mimeType?: string }[]; isError?: boolean; tools?: { name: string }[] } }> = {};
+  let bufI = '';
+  mcpI.stdout!.on('data', (c) => { bufI += c; let i; while ((i = bufI.indexOf('\n')) >= 0) { const line = bufI.slice(0, i); bufI = bufI.slice(i + 1); try { const m = JSON.parse(line) as { id?: number }; if (typeof m.id === 'number') outI[m.id] = m as never; } catch { /* not a message */ } } });
+  for (const m of [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'image', arguments: { model: 'flux-schnell', prompt: draw, n: 2, size: '256x256', task: 'rehearsal-image', task_budget: 0.05 } } }]) mcpI.stdin!.write(`${JSON.stringify(m)}\n`);
+  for (let i = 0; i < 75 && !(outI[2] && outI[3]); i++) await sleep(200);
+  mcpI.kill();
+  const got = outI[3]?.result?.content ?? [];
+  const pics = got.filter((c) => c.type === 'image');
+  const picsOk = pics.length === 2 && pics.every((c) => c.mimeType === 'image/png' && Buffer.from(c.data ?? '', 'base64').subarray(1, 4).toString() === 'PNG');
+  const imgSaid = got.find((c) => c.type === 'text')?.text ?? '';
+  check('an agent makes images through orrery mcp: the image tool hands back the pictures themselves, says what they cost, and counts under its task',
+    !!outI[2]?.result?.tools?.some((t) => t.name === 'image') && outI[3]?.result?.isError === undefined && picsOk && trips.at(-1)?.model === 'flux-schnell'
+    && new RegExp(`^— 2 images, ${imTokens} prompt tokens \\+ 2,000 output tokens, paid \\$${usd(imExpected).replace('.', '\\.')}, answered by Ironbridge Compute \\(`).test(imgSaid) && /\n— task rehearsal-image: \$0\.00\d{4} spent, \$0\.0\d{5} left$/.test(imgSaid),
+    `${pics.length} image contents (${pics.map((c) => c.mimeType).join(', ')}) · ${imgSaid.replace(/\n/g, ' ').slice(0, 170) || 'no text'}`);
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
@@ -824,7 +842,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 55 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 56 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
