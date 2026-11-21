@@ -7,6 +7,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 ## Unreleased (in main)
 
 - **Router** · A menu per agent. `orrery router --agent-models coder=qwen3-coder-30b|deepseek-v3,researcher=llama-3.3-70b` (or `ORRERY_AGENT_MODELS`) keeps each named agent to its models: a request from that agent for any other is refused before a node is asked or anything is owed ("agent researcher may use llama-3.3-70b; deepseek-v3 is not one of them", 403 `agent_model`). An agent not named may use any model, and `/orrery/status` lists each agent's models beside its limit for the day.
+- **Node** · `orrery provider earnings --by kind` says what each kind of work billed: chat, embeddings and reranking, by your own listing (a model's `"kind"`, or embeddings for one with no output price), with the answers and tokens of each. `--json` gives the same rows with `"by": "kind"`.
 
 ## 0.1.25 · 2026-11-21 03:28 UTC
 

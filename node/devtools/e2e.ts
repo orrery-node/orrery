@@ -1117,6 +1117,21 @@ check('orrery provider status says what the wallet held after the last payout, p
     servedMonth.length > 0 && paidMonth.length > 0 && monthSaidCli === `  this month (UTC)      ${servedMonth.length.toLocaleString('en-US')} answers, $${billedM} billed; ${paidMonth.length} payout${paidMonth.length === 1 ? '' : 's'}, $${paidM} to your wallet`
     && statusJson.month?.answers === servedMonth.length && statusJson.month.billed === billedM && statusJson.month.payouts === paidMonth.length && statusJson.month.paidOut === paidM,
     monthSaidCli.trim() || 'no such line');
+  // And what each kind of work billed: chat, embeddings (bge-m3, no output price) and reranking (listed "kind":
+  // "rerank"), by the node's own listing, in the text and in --json; the kinds add up to the total.
+  const ironModels = (JSON.parse(readFileSync(ironCfgPath, 'utf8')) as { models: { id: string; kind?: string; price: { output: number } }[] }).models;
+  const kindOfModel = (id: string) => { const m = ironModels.find((x) => x.id === id); return m?.kind ?? (m?.price.output === 0 ? 'embeddings' : 'chat'); };
+  const weekStart = Date.now() - 7 * 86_400_000;
+  const servedWeek = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => t.at >= weekStart);
+  const expectKinds = new Map<string, { answers: number; units: bigint }>();
+  for (const t of servedWeek) { const k = kindOfModel(t.model); const e = expectKinds.get(k) ?? { answers: 0, units: 0n }; e.answers += 1; e.units += BigInt(Math.round(Number(t.cost) * 1e6)); expectKinds.set(k, e); }
+  const kindJson = JSON.parse((await cliOut(['earnings', '--since', '7d', '--by', 'kind', '--json'])) || '{}') as { by?: string; rows?: { key: string; answers: number; billed: string }[]; total?: { billed: string } };
+  const kindText = await cliOut(['earnings', '--since', '7d', '--by', 'kind']);
+  const rowsOk = (kindJson.rows ?? []).length === expectKinds.size && (kindJson.rows ?? []).every((r) => expectKinds.get(r.key)?.answers === r.answers && usd(expectKinds.get(r.key)!.units) === r.billed);
+  check('orrery provider earnings --by kind says what chat, embeddings and reranking each billed, by the node’s own listing',
+    kindJson.by === 'kind' && expectKinds.has('rerank') && expectKinds.has('embeddings') && expectKinds.has('chat') && rowsOk
+    && kindText.split('\n')[0].includes(', last 7d, by kind (billed') && ['chat', 'embeddings', 'rerank'].every((k) => kindText.split('\n').some((l) => l.startsWith(k.padEnd(24)))),
+    (kindJson.rows ?? []).map((r) => `${r.key} ${r.answers} answers $${r.billed}`).join(' · ') || kindText.slice(0, 160));
 }
 // When the UTC date moves on, the node says the day that ended in one line of its log: what it billed (its log of
 // answers), what it paid out (its payouts) and what the wallet then held (the chain, which agrees now).

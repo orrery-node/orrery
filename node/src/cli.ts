@@ -23,7 +23,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
@@ -123,7 +123,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider register --config provider.json [--wallet <keypair.json>] [--fund-key [sol]] [--private-address]   list or update on chain; --fund-key also sends the node’s key fee money
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
-  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|day|month] [--csv|--json]   what this node billed, from its own log; by day or month, what each billed and paid out
+  ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|kind|day|month] [--csv|--json]   what this node billed, from its own log; by day or month, what each billed and paid out
   ${CLI} provider payouts --config provider.json [--last 5] [--json|--csv]   each payout this node kept, checked against what the chain says reached your wallet
   ${CLI} provider price  --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
@@ -324,9 +324,14 @@ async function provider(sub: string) {
   }
   if (sub === 'earnings') {
     const by = flag('by', 'model') === 'channel' ? 'provider' : 'model';
+    // By kind: the rows by model folded by what each model does in this node's listing (chat, embeddings, rerank).
+    const byKind = flag('by') === 'kind';
+    const label = byKind ? 'kind' : by === 'provider' ? 'channel' : 'model';
     const since = flag('since', '24h')!;
     const log = `${expand(cfg.dataDir ?? home('provider'))}/served.jsonl`;
-    const { rows, total } = summarize(readTrips(log), by, windowMs(since));
+    const summed = summarize(readTrips(log), by, windowMs(since));
+    const total = summed.total;
+    const rows = byKind ? rowsByKind(summed.rows, cfg.models) : summed.rows;
     // What has already landed in the wallet: the listing on chain counts every payout and what they settled.
     const onChain = async (): Promise<{ payouts: number; settled: string } | null> => {
       try {
@@ -384,7 +389,7 @@ async function provider(sub: string) {
       const out = readPayouts(payoutsPath).filter((p) => Date.now() - p.at <= windowMs(since)).sort((a, b) => b.at - a.at);
       const held = heldSaved(served, windowMs(since));
       return console.log(JSON.stringify({
-        since, by: by === 'provider' ? 'channel' : 'model',
+        since, by: label,
         rows: rows.map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, billed: usd(r.units) })),
         total: { answers: total.answers, inputTokens: total.inputTokens, outputTokens: total.outputTokens, billed: usd(total.units) },
         holders: { answers: held.answers, underList: usd(held.units), off: held.offs },
@@ -398,7 +403,7 @@ async function provider(sub: string) {
       await landed();
       return nextOut();
     }
-    console.log(`"${cfg.name}", last ${since}, by ${by === 'provider' ? 'channel' : 'model'} (billed; routers sign the lower of the bill and their own math)`);
+    console.log(`"${cfg.name}", last ${since}, by ${label} (billed; routers sign the lower of the bill and their own math)`);
     // What reached the wallet in the same window, from the payouts this node keeps beside its log.
     const paidOut = paidOutLine(readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(since), since);
     for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);

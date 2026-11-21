@@ -92,6 +92,27 @@ export type SpendRow = { key: string; answers: number; inputTokens: number; outp
 
 export type SpendBy = 'model' | 'provider' | 'task' | 'day' | 'agent';
 
+/** The kind of work a listed model does: what its listing says, else embeddings for a model with no output price
+ * (provider init lists embedding models that way), else chat. A model no longer listed counts as chat. */
+export const workKind = (m: { kind?: string; price: { output: number } } | undefined): string => m?.kind ?? (m?.price.output === 0 ? 'embeddings' : 'chat');
+
+/** Rows by model folded into rows by the kind of work, by the node's own listing: what chat, embeddings and
+ * reranking each billed. Most billed first. */
+export function rowsByKind(rows: SpendRow[], models: { id: string; kind?: string; price: { output: number } }[]): SpendRow[] {
+  const out = new Map<string, SpendRow>();
+  for (const r of rows) {
+    const key = workKind(models.find((m) => m.id === r.key));
+    const k = out.get(key) ?? { key, answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
+    k.answers += r.answers;
+    k.inputTokens += r.inputTokens;
+    k.outputTokens += r.outputTokens;
+    k.units += r.units;
+    k.cacheKept += r.cacheKept;
+    out.set(key, k);
+  }
+  return [...out.values()].sort((a, b) => (a.units === b.units ? a.key.localeCompare(b.key) : a.units > b.units ? -1 : 1));
+}
+
 /** Totals by model, provider, task or agent, most expensive first, plus the grand total. Answers outside any task (or
  * agent) are grouped as "(no task)" ("(no agent)"). By day, one row a UTC day, newest first: the router's own books of
  * what it paid. */

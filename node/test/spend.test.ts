@@ -208,3 +208,12 @@ it('says under a node’s earnings how many answers went at its holder price and
   assert.equal(s.heldGivenLine!(s.heldSaved(served.slice(0, 1), 86_400_000, now), 1), 'holder prices: 1 of 1 answer went to $OREY holders at 35% off, $0.000005 under your list prices');
   assert.equal(s.heldGivenLine!(s.heldSaved(served.slice(1, 3), 86_400_000, now), 2), '');
 });
+
+it('folds a node’s rows by model into rows by the kind of work its listing says, most billed first', () => {
+  const s = spend as unknown as { rowsByKind?: (rows: unknown[], models: unknown[]) => { key: string; answers: number; units: bigint }[] };
+  assert.equal(typeof s.rowsByKind, 'function', 'spend.ts folds rows by kind');
+  const row = (key: string, answers: number, units: bigint) => ({ key, answers, inputTokens: answers * 10, outputTokens: 0, units, cacheKept: 0 });
+  const models = [{ id: 'llama-3.3-70b', price: { output: 450_000 } }, { id: 'bge-m3', price: { output: 0 } }, { id: 'bge-reranker-v2-m3', kind: 'rerank', price: { output: 0 } }, { id: 'e5', kind: 'embeddings', price: { output: 0 } }];
+  const out = s.rowsByKind!([row('llama-3.3-70b', 15, 219n), row('bge-m3', 6, 6n), row('bge-reranker-v2-m3', 4, 4n), row('e5', 1, 3n), row('gone-model', 2, 50n)], models);
+  assert.deepEqual(out.map((r) => [r.key, r.answers, r.units]), [['chat', 17, 269n], ['embeddings', 7, 9n], ['rerank', 4, 4n]]);
+});
