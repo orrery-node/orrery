@@ -572,6 +572,7 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const pics = got.filter((c) => c.type === 'image');
   const picsOk = pics.length === 2 && pics.every((c) => c.mimeType === 'image/png' && Buffer.from(c.data ?? '', 'base64').subarray(1, 4).toString() === 'PNG');
   const imgSaid = got.find((c) => c.type === 'text')?.text ?? '';
+  writeFileSync(join(WORK, 'mcp-image.json'), JSON.stringify({ tools: (outI[2]?.result?.tools ?? []).map((t) => t.name), call: { name: 'image', arguments: { model: 'flux-schnell', prompt: draw, n: 2, size: '256x256', task: 'rehearsal-image', task_budget: 0.05 } }, content: got.map((c) => (c.type === 'image' ? { type: 'image', mimeType: c.mimeType, bytes: Buffer.from(c.data ?? '', 'base64').length, data: c.data } : c)) }, null, 2));
   check('an agent makes images through orrery mcp: the image tool hands back the pictures themselves, says what they cost, and counts under its task',
     !!outI[2]?.result?.tools?.some((t) => t.name === 'image') && outI[3]?.result?.isError === undefined && picsOk && trips.at(-1)?.model === 'flux-schnell'
     && new RegExp(`^— 2 images, ${imTokens} prompt tokens \\+ 2,000 output tokens, paid \\$${usd(imExpected).replace('.', '\\.')}, answered by Ironbridge Compute \\(`).test(imgSaid) && /\n— task rehearsal-image: \$0\.00\d{4} spent, \$0\.0\d{5} left$/.test(imgSaid),
