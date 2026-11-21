@@ -13,7 +13,7 @@ import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from 
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
-import { canonical, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
+import { canonical, manifestHash, MODEL_KINDS, type Manifest, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
 import { TICKER } from '../brand.ts';
@@ -276,6 +276,7 @@ export class ProviderNode {
     for (const m of cfg.models) {
       if (m.holdersOnly !== undefined && m.holdersOnly !== true) throw new Error(`"holdersOnly" for ${m.id} is true or left out`);
       if (m.holdersOnly && !cfg.holder) throw new Error(`${m.id} is set "holdersOnly", which opens it to wallets that get your holder price: set "holder" tiers too`);
+      if (m.kind !== undefined && !(MODEL_KINDS as readonly string[]).includes(m.kind)) throw new Error(`"kind" for ${m.id} is ${MODEL_KINDS.map((k) => `"${k}"`).join(' or ')}, or left out for a chat model`);
     }
     const slots = checkSlots(cfg.slots);
     this.slots = slots ? new Slots(slots, 30_000, checkHolderSlots(cfg.holderSlots, slots, !!cfg.holder)) : null;
@@ -582,6 +583,8 @@ export class ProviderNode {
     const afterOpen = performance.now();
     const offer = this.cfg.models.find((m) => m.id === body.model);
     if (!offer) return fail(res, 404, 'model_not_offered', `this node does not serve ${String(body.model)}`);
+    // A model listed for one kind of request takes only that kind, refused before anything is owed.
+    if (offer.kind !== undefined && offer.kind !== kind) return fail(res, 400, 'wrong_kind', `${offer.id} on this node is listed for ${offer.kind}; send it to /v1/${offer.kind}`);
     const e = await this.entry(address);
     const off = this.holders ? await this.holders.off(this.cfg.holder!.tiers, e.channel.payer) : 0;
     // A holder-first model answers only wallets that get the holder price; anyone else is told so before anything is owed.

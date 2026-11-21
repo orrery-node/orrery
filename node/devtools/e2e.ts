@@ -125,7 +125,7 @@ for (const s of providerSpecs) {
   const node = new ProviderNode({
     name: s.name, region: s.region, listen: s.port, host: '127.0.0.1', publicUrl: `http://127.0.0.1:${s.port}`, rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
-    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) } }; }),
+    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) }, ...(id === 'bge-reranker-v2-m3' ? { kind: 'rerank' as const } : {}) }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
@@ -431,6 +431,21 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     !!outR[2]?.result?.tools?.some((t) => t.name === 'rerank') && outR[3]?.result?.isError === undefined && mcpRank.startsWith(`1. [2] ${rrj.results?.[0]?.relevance_score.toFixed(4)}  ${docs[2]}\n2. [1] `)
     && mcpRank.includes(`— 2 of 4 documents ranked, ${rrj.usage?.total_tokens} input tokens, paid $${rrCost}, answered by Ironbridge Compute (`) && /\n— task rehearsal-rerank: \$0\.0000\d\d spent, \$0\.000\d\d\d left$/.test(mcpRank) && mcpTrip?.model === 'bge-reranker-v2-m3',
     mcpRank.split('\n').filter(Boolean).slice(0, 1).concat(mcpRank.split('\n').filter((l) => l.startsWith('—'))).join(' · ') || 'no answer');
+  // The reranker's listing says what it is for ("kind": "rerank"): /v1/models shows it, and a chat or embeddings
+  // request for it is refused by the router before any node is asked or paid. A listing that says nothing (bge-m3
+  // here, as every listing before this) still takes what it took.
+  const kindModels = (await (await fetch(`${ROUTER}/v1/models`)).json()) as { data: { id: string; kind?: string }[] };
+  const tripsBeforeKind = trips.length;
+  const kindReq = (path: string, body: Record<string, unknown>) => fetch(`${ROUTER}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, j: (await r.json()) as { error?: { code?: string; message?: string } } }));
+  const chatToRanker = await kindReq('/v1/chat/completions', { model: 'bge-reranker-v2-m3', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] });
+  const embToRanker = await kindReq('/v1/embeddings', { model: 'bge-reranker-v2-m3', input: 'hi' });
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const embStill = await kindReq('/v1/embeddings', { model: 'bge-m3', input: 'still answered' });
+  check('a listing says what its model is for: /v1/models shows "kind", and the router refuses another kind of request for it before any node is asked',
+    kindModels.data.find((m) => m.id === 'bge-reranker-v2-m3')?.kind === 'rerank' && kindModels.data.find((m) => m.id === 'llama-3.3-70b')?.kind === undefined
+    && chatToRanker.status === 400 && chatToRanker.j.error?.code === 'wrong_kind' && chatToRanker.j.error.message === 'bge-reranker-v2-m3 is listed for rerank; send it to /v1/rerank'
+    && embToRanker.status === 400 && embToRanker.j.error?.code === 'wrong_kind' && embStill.status === 200 && trips.length === tripsBeforeKind + 1,
+    `models: bge-reranker-v2-m3 kind ${kindModels.data.find((m) => m.id === 'bge-reranker-v2-m3')?.kind ?? 'none'} · chat to it: ${chatToRanker.status} ${chatToRanker.j.error?.code ?? ''} · embeddings to it: ${embToRanker.status} · bge-m3 (no kind) embeddings: ${embStill.status}`);
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
@@ -697,7 +712,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 46 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 47 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.

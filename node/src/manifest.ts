@@ -12,7 +12,16 @@ export type ModelOffer = {
   family?: string;
   /** Open only to wallets that get this node's holder price (a holder-first model); needs holder tiers. */
   holdersOnly?: true;
+  /** What the model is for, when it is not chat: routers send it only requests of that kind, and the node refuses any
+   * other before anything is owed. Left out, the model takes any request, as every listing did before. */
+  kind?: ModelKind;
 };
+
+export const MODEL_KINDS = ['embeddings', 'rerank'] as const;
+export type ModelKind = (typeof MODEL_KINDS)[number];
+
+/** The kind of request a model takes, from its listing: what it says, or chat. */
+export const kindOf = (o: { kind?: string }): 'chat' | ModelKind => ((MODEL_KINDS as readonly string[]).includes(o.kind ?? '') ? (o.kind as ModelKind) : 'chat');
 
 export type Manifest = {
   v: 1;
@@ -63,6 +72,7 @@ export function checkManifest(m: unknown): Manifest {
     if (!Number.isSafeInteger(o.context) || !Number.isSafeInteger(o.maxOutput) || o.maxOutput <= 0) throw new Error(`manifest: bad limits for ${o.id}`);
     if (o.holdersOnly !== undefined && o.holdersOnly !== true) throw new Error(`manifest: holdersOnly for ${o.id}, when listed, is true`);
     if (o.holdersOnly && !x.holder?.tiers?.length) throw new Error(`manifest: ${o.id} is listed for holders only, which needs holder tiers`);
+    if (o.kind !== undefined && !(MODEL_KINDS as readonly string[]).includes(o.kind)) throw new Error(`manifest: kind for ${o.id}, when listed, is ${MODEL_KINDS.join(' or ')}`);
   }
   if (x.holder !== undefined) checkTiers(x.holder?.tiers);
   if (x.burn !== undefined && (!Number.isSafeInteger(x.burn?.share) || x.burn.share < 1 || x.burn.share > 10_000)) throw new Error('manifest: burn.share must be 1 to 10000 basis points');

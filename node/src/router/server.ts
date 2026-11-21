@@ -360,6 +360,7 @@ export class Router {
     const data = this.o.registry.catalog().map((m) => ({
       id: m.id, object: 'model', owned_by: 'network', providers: m.providers, private_providers: m.private, context_length: m.context,
       pricing: { prompt_per_million: m.cheapest.input / 1e6, completion_per_million: m.cheapest.output / 1e6, ...(m.cachedFrom !== null ? { cached_prompt_per_million: m.cachedFrom / 1e6 } : {}) },
+      ...(m.kind ? { kind: m.kind } : {}),
     }));
     send(res, 200, { object: 'list', data });
   }
@@ -498,6 +499,11 @@ export class Router {
     const estOut = (anth?.kind === 'embeddings' || anth?.kind === 'rerank') ? 0 : Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
+    // A listing that says what its model is for gets only that kind of request; one that does not takes any, as before.
+    const wantKind = anth?.kind === 'embeddings' || anth?.kind === 'rerank' ? anth.kind : 'chat';
+    const otherKind = offers.find((o) => o.offer.kind !== undefined && o.offer.kind !== wantKind)?.offer.kind;
+    offers = offers.filter((o) => o.offer.kind === undefined || o.offer.kind === wantKind);
+    if (!offers.length && otherKind) throw new Unserved(`${model} is listed for ${otherKind}; send it to /v1/${otherKind}`, 400, 'wrong_kind');
     if (!offers.length) throw new Unserved(`no provider on the network serves ${model}${pin ? ` as ${pin}` : ''}`, 404, 'model_not_found');
     const answering = offers.filter((o) => o.entry.upstream !== 'down');
     if (!answering.length) throw new Unserved(`every provider of ${model} reports its model server down right now`, 503, 'no_provider');
