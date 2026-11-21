@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.25 · 2026-11-21 03:28 UTC
+
+**Agent wallets with a daily limit and a bill per agent, MCP and every client included; reranking and embeddings on the same rails as chat; holder lanes and holder-first models; and both sides' months as cards to post.**
 
 - **Node** · Your books say what your holder prices gave. On each answer the node serves at its holder price, its log of answers now keeps the discount and what it came to: your list prices for the same tokens, less the holder price. `orrery provider earnings` says it under the totals ("holder prices: 12 of 59 answers went to $OREY holders at 35% off, $0.000412 under your list prices"), and so does the console under the last 24 hours; `/orrery/earnings` carries it as `holders`. The line the node closes each UTC day with, in its log and to your `notify` webhook, carries it too: "books for 2026-11-20 (UTC): 59 answers, $0.161250 billed (12 at your holder price, $0.004120 under list); …". It is the other side of the line your router keeps of what holding saved.
 - **Router** · A node that is full is not a failed node. When a node with `slots` turns a request away as busy (every slot answering, nothing owed), your router now asks the next node without counting it against the full one, so its success rate and cooldown are untouched, and asks it after the others for 30 seconds instead of sending the next request to wait in the same queue. The log says so: "Lantern said every slot was answering; asking the next node, nothing counted against it, and it goes after the others for 30 s". The router’s console shows it in the node’s row ("full · asked after the others for 27 s"), and `/orrery/status` carries it as `full`, the seconds left.
@@ -25,6 +27,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Everyone** · A listing can say what a model is for: `"kind": "embeddings"` or `"kind": "rerank"` on a model in provider.json. Routers send it only that kind of request, `/v1/models` shows `kind`, and a chat request for a reranker is refused by the router before any node is asked ("bge-reranker-v2-m3 is listed for rerank; send it to /v1/rerank", 400 `wrong_kind`); the node refuses one that reaches it anyway before anything is owed. A model listed without `kind` takes any request, as every listing did before, and keeps its hash.
 - **Router** · The tools go by a model's kind. `orrery bench` asks a reranker through `/v1/rerank` (and an embedding model through `/v1/embeddings`, as before), `orrery models` shows the kind and its endpoint beside the price, and the `models` tool of `orrery mcp` tells an agent which tool a model takes ("rerank: use the rerank tool").
 - **Node** · `orrery provider init` lists a reranker it finds on your model server (bge-reranker, mxbai-rerank, jina-reranker, Qwen3-Reranker and the like) with `"kind": "rerank"`, and an embedding model with `"kind": "embeddings"`, both priced on input tokens only, and says which endpoint each is listed for. Before, a reranker named like an embedder (bge, mxbai) was listed as an embedding model.
+
+`npx -y orrery-node@0.1.25`
 
 ## 0.1.24 · 2026-11-20 05:21 UTC
 
