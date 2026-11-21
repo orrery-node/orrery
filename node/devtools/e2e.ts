@@ -2242,8 +2242,13 @@ check('orrery provider init lists the context the model server says it serves, a
   for (let i = 0; i < 50 && !(await fetch('http://127.0.0.1:19111/v1/models').then((r) => r.ok).catch(() => false)); i++) await sleep(100);
   const kindCfgPath = join(walkHome, 'provider-kinds.json');
   const kindInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19111/v1', '--out', kindCfgPath, '--force']);
+  const kindCfg = existsSync(kindCfgPath) ? JSON.parse(readFileSync(kindCfgPath, 'utf8')) as { name: string; models: { id: string; upstreamModel?: string; kind?: string; price: { input: number; output: number } }[] } : null;
+  // provider check's model test asks each model the way its listing says it works: the reranker for a ranking, the
+  // embedding model for an embedding, the chat model for an answer. The stand-in server, like a real one, will not
+  // chat with a reranker.
+  const { modelTest } = await import('../src/provider/check.ts');
+  const probed = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models) : null;
   kindMock.kill();
-  const kindCfg = existsSync(kindCfgPath) ? JSON.parse(readFileSync(kindCfgPath, 'utf8')) as { name: string; models: { id: string; kind?: string; price: { input: number; output: number } }[] } : null;
   const kindOfId = (id: string) => kindCfg?.models.find((m) => m.id === id);
   const { checkManifest } = await import('../src/manifest.ts');
   const listable = (() => { try { checkManifest({ v: 1, name: kindCfg!.name, authority: 'a', nodeKey: 'k', models: kindCfg!.models.map(({ upstreamModel: _u, ...m }: Record<string, unknown>) => m) }); return true; } catch { return false; } })();
@@ -2251,6 +2256,9 @@ check('orrery provider init lists the context the model server says it serves, a
     kindInit.code === 0 && kindOfId('bge-reranker-v2-m3')?.kind === 'rerank' && kindOfId('bge-reranker-v2-m3')?.price.output === 0 && kindOfId('bge-m3')?.kind === 'embeddings' && kindOfId('qwen3-32b')?.kind === undefined && listable
     && kindInit.text.includes('BAAI/bge-reranker-v2-m3 is a reranker: listed for /v1/rerank') && kindInit.text.includes('BAAI/bge-m3 is an embedding model: listed for /v1/embeddings'),
     kindCfg ? kindCfg.models.map((m) => `${m.id} ${m.kind ?? 'chat'}`).join(', ') : kindInit.text.slice(0, 160));
+  check('orrery provider check asks each model the way it is listed: a reranker for a ranking, an embedding model for an embedding, a chat model for an answer',
+    !!probed && probed.ok === true && /^BAAI\/bge-reranker-v2-m3 answered a test request in \d+ ms; BAAI\/bge-m3 in \d+ ms; Qwen\/Qwen3-32B in \d+ ms$/.test(probed.detail),
+    probed?.detail ?? 'no model test');
 }
 writeFileSync(ctxCfgPath, JSON.stringify({ ...(ctxCfg as object), rpcUrl: RPC, publicUrl: 'http://127.0.0.1:17991', dataDir: join(walkHome, 'context-data'), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 32_768, maxOutput: 4_096 })) }, null, 2));
 const ctxCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);

@@ -13,6 +13,15 @@ const server = (answers: (model: string) => { status: number; body?: string }, c
 };
 
 describe('orrery provider check asks each listed model one small thing', () => {
+  it('asks each model the way its listing says it works: a ranking from a reranker, an embedding from an embedder', async () => {
+    const calls: Call[] = [];
+    const models = [{ ...M('bge-reranker-v2-m3', 0), kind: 'rerank' }, { ...M('bge-m3', 0), kind: 'embeddings' }, M('e5', 0)];
+    const line = await (modelTest as unknown as (b: string, h: Record<string, string>, m: unknown[], f: unknown) => Promise<{ ok: boolean; detail: string }>)('http://h/v1', {}, models, server(() => ({ status: 200 }), calls));
+    assert.equal(line.ok, true);
+    assert.deepEqual(calls.map((c) => [c.url, c.body.model]), [['http://h/v1/rerank', 'bge-reranker-v2-m3'], ['http://h/v1/embeddings', 'bge-m3'], ['http://h/v1/embeddings', 'e5']]);
+    assert.deepEqual((calls[0].body as unknown as { query: string; documents: string[] }).documents, ['ok']);
+  });
+
   it('says each model answered, and how long it took', async () => {
     assert.equal(typeof modelTest, 'function', 'check.ts tests the models');
     const calls: Call[] = [];

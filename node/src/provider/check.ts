@@ -237,20 +237,22 @@ const took = (ms: number) => (ms < 1_000 ? `${Math.round(ms)} ms` : `${(ms / 1_0
 
 /** Asks each listed model one small thing (the first three), the way the node itself would: a model that is listed
  * but not loaded, not pulled or out of memory fails here, in front of the operator, and not later in front of a
- * router. A model priced on input only is an embedding model and is asked for an embedding. */
+ * router. Each is asked the way its listing says it works: a reranker ("kind": "rerank") for a ranking at /rerank, an
+ * embedding model ("kind": "embeddings", or priced on input only) for an embedding, and anything else for a chat answer. */
 export async function modelTest(
   base: string,
   headers: Record<string, string>,
-  models: { id: string; upstreamModel?: string; price: { input: number; output: number } }[],
+  models: { id: string; upstreamModel?: string; kind?: string; price: { input: number; output: number } }[],
   fetchFn: TestFetch = (url, init) => fetchWithTimeout(url, { ...init, timeoutMs: 60_000 }),
 ): Promise<CheckLine> {
   const good: string[] = [], bad: string[] = [];
   for (const m of models.slice(0, MODELS_TESTED)) {
-    const name = m.upstreamModel ?? m.id, embeds = m.price.output === 0, t0 = performance.now();
-    const said = await fetchFn(`${base}/${embeds ? 'embeddings' : 'chat/completions'}`, {
+    const name = m.upstreamModel ?? m.id, t0 = performance.now();
+    const kind = m.kind ?? (m.price.output === 0 ? 'embeddings' : 'chat');
+    const said = await fetchFn(`${base}/${kind === 'chat' ? 'chat/completions' : kind}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(embeds ? { model: name, input: 'ok' } : { model: name, messages: [{ role: 'user', content: 'Reply with the word ok.' }], max_tokens: 8, stream: false }),
+      body: JSON.stringify(kind === 'rerank' ? { model: name, query: 'ok', documents: ['ok'] } : kind === 'embeddings' ? { model: name, input: 'ok' } : { model: name, messages: [{ role: 'user', content: 'Reply with the word ok.' }], max_tokens: 8, stream: false }),
     })
       .then(async (r) => {
         const text = await r.text();

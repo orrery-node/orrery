@@ -34,6 +34,11 @@ createServer(async (req, res) => {
     for await (const c of req) parts.push(c as Buffer);
     const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
     noteIdentity(body);
+    // A reranker scores pairs; it does not embed, and a real model server says so.
+    if (/rerank/i.test(String(body.model ?? ''))) {
+      res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Embeddings API` } }));
+      return;
+    }
     const inputs: string[] = Array.isArray(body.input) ? body.input.map(String) : [String(body.input ?? '')];
     const vec = (text: string) => Array.from({ length: 8 }, (_, i) => Number((Math.sin(text.length * (i + 1)) / 2).toFixed(6)));
     const tokens = inputs.reduce((a, t) => a + Math.max(1, Math.ceil(t.length / 4)), 0);
@@ -62,6 +67,11 @@ createServer(async (req, res) => {
   for await (const c of req) parts.push(c as Buffer);
   const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
   noteIdentity(body);
+  // A reranker is not a chat model: like a real model server, this one refuses to chat with it.
+  if (/rerank/i.test(String(body.model ?? ''))) {
+    res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Chat Completions API` } }));
+    return;
+  }
   const prompt = JSON.stringify(body.messages ?? '');
   const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
   // With MOCK_MAX_MODEL_LEN a prompt and its max_tokens beyond that are refused the way vLLM refuses them.
