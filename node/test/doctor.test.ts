@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { newer, render, versionCheck } from '../src/doctor.ts';
-import { keptLine, paidLine } from '../src/doctor.ts';
+import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,5 +79,11 @@ describe('orrery doctor, what the running router paid', () => {
     writeFileSync(join(dir, 'channels.json'), JSON.stringify({ channels: [{ provider: 'A' }], spend: { day: '2026-11-17', units: '0' } }));
     assert.deepEqual(keptLine(dir), { ok: null, what: 'kept here', detail: `${dir}: 2 answers, 1 unanswered request, a record of 2 nodes, 1 channel · models, token counts, prices and timings, never a prompt or an answer` });
     assert.equal(keptLine(join(dir, 'nowhere')), null);
+  });
+
+  it('says an agent’s day: its limit, what it spent and has left, and the models it is kept to', () => {
+    assert.equal(agentDayLine({ name: 'researcher', cap: '0.000020', spent: '0.000018', left: '0.000002', models: ['llama-3.3-70b'] }), 'researcher: $0.000018 of $0.000020 spent today (UTC), $0.000002 left; may use llama-3.3-70b');
+    assert.equal(agentDayLine({ name: 'coder', cap: '2.000000', spent: '2.000000', left: '0.000000' }), 'coder: $2.000000 of $2.000000 spent today (UTC), nothing left until 00:00 UTC');
+    assert.equal(agentDayLine({ name: 'writer', cap: null, spent: '0.000012', left: null }), 'writer: $0.000012 spent today (UTC), no limit');
   });
 });

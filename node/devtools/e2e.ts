@@ -1567,6 +1567,11 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
     mcpAgents === `researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}; may use llama-3.3-70b`
     && consoleAgents.includes('<th>left</th><th>models</th>') && consoleAgents.includes("a.models.map(esc).join(', '):'any'"),
     mcpAgents || 'no researcher line');
+  // orrery doctor says each agent's day too, under the router line: the one place a person checks first.
+  const docAgents = (await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD })).filter((l) => l.what.trim() === 'agent').map((l) => l.detail);
+  check('orrery doctor says each agent’s day under the router: its limit, what it spent and has left, and the models it is kept to',
+    docAgents.includes(`researcher: $${usd(agentUnits)} of $0.000020 spent today (UTC), ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}; may use llama-3.3-70b`),
+    docAgents.join(' · ') || 'no agent lines in doctor');
   // And a menu per agent (--agent-models): researcher may use llama-3.3-70b only, so a request for another model is
   // refused (403) before any node is asked or anything counted against its day; status lists the menu.
   const tripsBeforeMenu = trips.length;
