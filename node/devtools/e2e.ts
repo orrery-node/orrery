@@ -1156,6 +1156,13 @@ check('orrery provider status says what the wallet held after the last payout, p
     (nodeEarn.kinds ?? []).length === want24.size && want24.size >= 3 && (nodeEarn.kinds ?? []).every((k) => want24.get(k.key)?.answers === k.answers && usd(want24.get(k.key)!.units) === k.usd)
     && ibPageNow.includes('id="kinds"') && ibPageNow.includes("'By kind of work: '"),
     (nodeEarn.kinds ?? []).map((k) => `${k.key} ${k.answers} $${k.usd}`).join(' · ') || 'no kinds in /orrery/earnings');
+  // And orrery provider status, for a node on a server with no browser, under its last 24 hours.
+  const statusNow = await cliOut(['status']);
+  const kindsSaid = statusNow.split('\n').find((l) => l.startsWith('  by kind (24 h)')) ?? '';
+  const order = (nodeEarn.kinds ?? []).map((k) => `${k.key} ${k.answers.toLocaleString('en-US')}, $${k.usd}`).join(' · ');
+  check('orrery provider status says the last 24 hours by kind of work under the day’s total',
+    !!order && kindsSaid === `  by kind (24 h)        ${order}` && ['chat', 'embeddings', 'rerank'].every((k) => kindsSaid.includes(`${k} ${want24.get(k)?.answers}`)),
+    kindsSaid.trim() || 'no by-kind line in provider status');
 }
 // When the UTC date moves on, the node says the day that ended in one line of its log: what it billed (its log of
 // answers), what it paid out (its payouts) and what the wallet then held (the chain, which agrees now).

@@ -29,7 +29,7 @@ import { quote, renderQuote } from './quote.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
-import { consoleLine, dayLine, monthLine, nextPayoutHint, payoutHint, readOwnDay, readOwnMonth, readOwnStatus } from './provider/console.ts';
+import { consoleLine, dayLine, kindsLine, monthLine, nextPayoutHint, payoutHint, readOwnDay, readOwnMonth, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
 import { AgentBook, parseAgentCaps, parseAgentModels } from './router/agents.ts';
 import { checkPayouts, nextPayoutSentence, noticeLine, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
@@ -458,13 +458,14 @@ async function provider(sub: string) {
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
       ...(listing ? [listingLine(listing, { config: cfgPath, endpoint: onChain?.endpoint })] : []),
       `  answers since start   ${s.answers}`,
       ...(day ? [dayLine(day)] : []),
+      ...(kindsLine(day?.kinds) ? [kindsLine(day?.kinds)!] : []),
       ...(month ? [monthLine(month)] : []),
       `  signed to you         $${s.signed}`,
       `  redeemed on chain     $${s.redeemed}`,

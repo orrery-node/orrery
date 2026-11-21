@@ -111,6 +111,14 @@ describe('what a node has paid out to its wallet', () => {
     assert.equal(monthLine!({ day: '2026-12', answers: 0, billed: '0.000000', payouts: 0, paid: '0.000000' }), '  this month (UTC)      nothing yet');
   });
 
+  it('says the last 24 hours by kind of work, only when the node did more than one kind', () => {
+    const kindsLine = (own as unknown as { kindsLine?: (k: unknown) => string | null }).kindsLine;
+    assert.equal(typeof kindsLine, 'function', 'console.ts writes the line');
+    assert.equal(kindsLine!([{ key: 'chat', answers: 1312, usd: '0.038912' }, { key: 'rerank', answers: 4, usd: '0.000004' }]), '  by kind (24 h)        chat 1,312, $0.038912 · rerank 4, $0.000004');
+    assert.equal(kindsLine!([{ key: 'chat', answers: 2, usd: '0.000030' }]), null);
+    assert.equal(kindsLine!(undefined), null);
+  });
+
   it('says what reached the wallet in the window earnings looks at, the last one, and nothing when nothing is kept', () => {
     const paidOutLine = (payouts as unknown as { paidOutLine?: (list: unknown[], sinceMs: number, since: string, now: number) => string | null }).paidOutLine;
     assert.equal(typeof paidOutLine, 'function', 'payouts.ts writes the line');
