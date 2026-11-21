@@ -468,6 +468,20 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     byKind.by === 'kind' && wantRr.answers >= 4 && kRow('rerank')?.answers === wantRr.answers && kRow('rerank')?.usd === wantRr.usd && kRow('embeddings')?.answers === wantEmb.answers && kRow('embeddings')?.usd === wantEmb.usd && !!kRow('chat')
     && kindCli.split('\n').some((l) => l.startsWith('rerank ') && l.replace(/\s+/g, ' ').includes(`${wantRr.answers} answers`)),
     (byKind.rows ?? []).map((r) => `${r.key} ${r.answers} $${r.usd}`).join(' · ') || 'no rows');
+  // The router's console says the last 24 hours by kind under its table by model: its own script, run against this
+  // router's /orrery/spend, must write what that endpoint says.
+  {
+    const { runInNewContext } = await import('node:vm');
+    const page = await (await fetch(`${ROUTER}/`)).text();
+    const at = page.indexOf("try{const sk=await (await fetch('/orrery/spend?since=24h&by=kind'))");
+    const snippet = at < 0 ? '' : page.slice(at, page.indexOf('}catch(e){}', at) + '}catch(e){}'.length);
+    const el = { textContent: '', hidden: true };
+    if (snippet) await runInNewContext(`(async () => { ${snippet} })()`, { fetch: (p: string) => fetch(`${ROUTER}${p}`), document: { getElementById: () => el }, Number });
+    const day = (await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=kind`)).json()) as { rows: { key: string; answers: number; usd: string }[] };
+    check('the router’s console says what each kind of work cost in the last 24 hours, from its own log',
+      !el.hidden && el.textContent === `By kind of work: ${day.rows.map((k) => `${k.key} ${k.answers.toLocaleString('en-US')} answer${k.answers === 1 ? '' : 's'}, $${k.usd}`).join(' · ')}.` && day.rows.some((k) => k.key === 'rerank'),
+      el.textContent || 'no by-kind line drawn');
+  }
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
