@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_REPORTING, draftConfig, draftWallet, findUpstream, isEmbeddingModel, networkId, nextSteps, walletNote } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, findUpstream, isEmbeddingModel, isRerankModel, networkId, nextSteps, walletNote } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -63,6 +63,13 @@ describe('orrery provider init', () => {
     for (const id of ['Qwen/Qwen3-32B', 'llama3.1:8b', 'deepseek-v3', 'gemma-3-27b']) assert.ok(!isEmbeddingModel(id), id);
     const c = draftConfig({ name: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['nomic-embed-text', 'llama3.1:8b'] });
     assert.deepEqual(c.models.map((m) => [m.id, m.price.input, m.price.output]), [['nomic-embed-text', 20_000, 0], ['llama3.1-8b', 500_000, 1_000_000]]);
+  });
+
+  it('lists rerankers as "kind": "rerank" and embedding models as "kind": "embeddings", telling a reranker from the embedder it shares a name with', () => {
+    for (const id of ['BAAI/bge-reranker-v2-m3', 'mixedbread-ai/mxbai-rerank-large-v1', 'jinaai/jina-reranker-v2-base-multilingual', 'Qwen/Qwen3-Reranker-4B']) assert.ok(isRerankModel(id) && !isEmbeddingModel(id), id);
+    for (const id of ['BAAI/bge-m3', 'mxbai-embed-large', 'Qwen/Qwen3-32B']) assert.ok(!isRerankModel(id), id);
+    const c = draftConfig({ name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', models: ['BAAI/bge-reranker-v2-m3', 'BAAI/bge-m3', 'Qwen/Qwen3-32B'] });
+    assert.deepEqual(c.models.map((m) => [m.id, m.kind ?? 'chat', m.price.output]), [['bge-reranker-v2-m3', 'rerank', 0], ['bge-m3', 'embeddings', 0], ['qwen3-32b', 'chat', 1_000_000]]);
   });
 
   it('names a wallet the operator has: the one orrery wallet new made, else the usual Solana file, else where wallet new will put one', () => {

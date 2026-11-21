@@ -2179,6 +2179,25 @@ const ctxCfgPath = join(walkHome, 'provider-context.json');
 const ctxInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19109/v1', '--out', ctxCfgPath, '--force']);
 const ctxCfg = existsSync(ctxCfgPath) ? JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as { models: { id: string; context: number; maxOutput: number }[] } : null;
 check('orrery provider init lists the context the model server says it serves, and leaves room for the answer', ctxInit.code === 0 && ctxCfg?.models.length === 1 && ctxCfg.models[0].id === 'qwen3-32b' && ctxCfg.models[0].context === 8192 && ctxCfg.models[0].maxOutput === 2048, ctxCfg ? ctxCfg.models.map((m) => `${m.id} context ${m.context} · max output ${m.maxOutput}`).join(', ') : ctxInit.text.slice(0, 120));
+// A model server with a reranker and an embedding model beside a chat model: provider init lists each for what it is,
+// so routers send the reranker /v1/rerank and the embedder /v1/embeddings, and says so. The list it writes is one a
+// node starts with and a router accepts.
+{
+  const kindMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19111', '5', 'kinds'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'BAAI/bge-reranker-v2-m3,BAAI/bge-m3,Qwen/Qwen3-32B' } });
+  procs.push(kindMock);
+  for (let i = 0; i < 50 && !(await fetch('http://127.0.0.1:19111/v1/models').then((r) => r.ok).catch(() => false)); i++) await sleep(100);
+  const kindCfgPath = join(walkHome, 'provider-kinds.json');
+  const kindInit = await walkRun(['provider', 'init', '--offline', '--upstream', 'http://127.0.0.1:19111/v1', '--out', kindCfgPath, '--force']);
+  kindMock.kill();
+  const kindCfg = existsSync(kindCfgPath) ? JSON.parse(readFileSync(kindCfgPath, 'utf8')) as { name: string; models: { id: string; kind?: string; price: { input: number; output: number } }[] } : null;
+  const kindOfId = (id: string) => kindCfg?.models.find((m) => m.id === id);
+  const { checkManifest } = await import('../src/manifest.ts');
+  const listable = (() => { try { checkManifest({ v: 1, name: kindCfg!.name, authority: 'a', nodeKey: 'k', models: kindCfg!.models.map(({ upstreamModel: _u, ...m }: Record<string, unknown>) => m) }); return true; } catch { return false; } })();
+  check('orrery provider init lists a reranker as "kind": "rerank" and an embedding model as "kind": "embeddings", and says where each is sent',
+    kindInit.code === 0 && kindOfId('bge-reranker-v2-m3')?.kind === 'rerank' && kindOfId('bge-reranker-v2-m3')?.price.output === 0 && kindOfId('bge-m3')?.kind === 'embeddings' && kindOfId('qwen3-32b')?.kind === undefined && listable
+    && kindInit.text.includes('BAAI/bge-reranker-v2-m3 is a reranker: listed for /v1/rerank') && kindInit.text.includes('BAAI/bge-m3 is an embedding model: listed for /v1/embeddings'),
+    kindCfg ? kindCfg.models.map((m) => `${m.id} ${m.kind ?? 'chat'}`).join(', ') : kindInit.text.slice(0, 160));
+}
 writeFileSync(ctxCfgPath, JSON.stringify({ ...(ctxCfg as object), rpcUrl: RPC, publicUrl: 'http://127.0.0.1:17991', dataDir: join(walkHome, 'context-data'), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 32_768, maxOutput: 4_096 })) }, null, 2));
 const ctxCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
 const ctxLine = ctxCheck.text.split('\n').find((l) => /^\S context /.test(l)) ?? '';
