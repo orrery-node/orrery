@@ -25,7 +25,8 @@ import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNA
 import { doctor, render } from './doctor.ts';
 import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
-import { quote, renderQuote } from './quote.ts';
+import { quote, quoteKind, renderQuote } from './quote.ts';
+import { speechTokens } from './manifest.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
@@ -754,21 +755,24 @@ async function main() {
   if (cmd === 'models') return listModels();
   if (cmd === 'quote') {
     const model = sub;
-    if (!model) throw new Error(`usage: ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]`);
-    const prompt = flag('prompt');
-    const inTokens = prompt ? estimateInputTokens({ messages: [{ role: 'user', content: prompt }] }) : Number(flag('in', '2000'));
-    const outTokens = Number(flag('out', '500'));
-    const cachedShare = Math.max(0, Math.min(1, Number(flag('cached', '0.8'))));
+    if (!model) throw new Error(`usage: ${CLI} quote <model> [--in 2000 | --prompt "..." | --text "..."] [--out 500] [--cached 0.8] [--json]`);
     const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
+    // A model listed for embeddings, reranking or speech has no output to price; speech is billed on its text, so the
+    // text to speak (--text, or --prompt) is counted the way a node bills it, one input token per 4 characters.
+    const kind = quoteKind(registry.usable(), model);
+    const prompt = flag('text') ?? flag('prompt');
+    const inTokens = prompt ? (kind === 'speech' ? speechTokens(prompt) : estimateInputTokens({ messages: [{ role: 'user', content: prompt }] })) : Number(flag('in', '2000'));
+    const outTokens = kind === 'chat' ? Number(flag('out', '500')) : 0;
+    const cachedShare = Math.max(0, Math.min(1, Number(flag('cached', '0.8'))));
     const rows = quote(registry.usable(), model, inTokens, outTokens, cachedShare);
     // What this computer's router saw of each node, from the records it keeps in its home: no request is made for it.
     const watched = loadWatched(home('router', 'watched.json'));
     const seen = new Stats(home('router', 'observed.json'));
     const billsBy = new Map(bills(readTrips(home('router', 'trips.jsonl')), 86_400_000).map((x) => [x.provider, x]));
     const saw = (address: string) => sawText(watched.get(address), seen.all().get(address), Date.now(), billsBy.get(address));
-    if (has('json')) return console.log(JSON.stringify({ model, inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })) }, null, 2));
-    return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows, saw));
+    if (has('json')) return console.log(JSON.stringify({ model, ...(kind === 'chat' ? {} : { kind }), ...(kind === 'speech' && prompt ? { chars: prompt.length } : {}), inTokens, outTokens, cachedShare, rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })) }, null, 2));
+    return console.log(renderQuote(model, inTokens, outTokens, cachedShare, rows, saw, { kind, ...(kind === 'speech' && prompt ? { chars: prompt.length } : {}) }));
   }
   if (cmd === 'enclave') {
     // orrery enclave verify: every check a router runs before it seals a prompt, one line each, on your own machine.

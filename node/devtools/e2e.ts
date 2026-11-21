@@ -1001,6 +1001,14 @@ const quoteSaid = (await (await fetch(`${ROUTER}/orrery/quote?model=llama-3.3-70
 const quoteCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'quote', 'llama-3.3-70b', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
 const quoteLine = (t: string) => t.split('\n').find((l) => l.startsWith('  Ironbridge Compute  ')) ?? '';
 check('a quote says beside each price what this router saw of that node, from the running router and from the command line', /what your router saw of them:\n/.test(quoteSaid.text ?? '') && /^ {2}Ironbridge Compute {2}up in \d+ of \d+ checks this router made over /.test(quoteLine(quoteSaid.text ?? '')) && /up in \d+ of \d+ checks/.test(quoteSaid.rows?.find((r) => r.name === 'Ironbridge Compute')?.saw ?? '') && /^ {2}Ironbridge Compute {2}up in \d+ of \d+ checks/.test(quoteLine(quoteCli)), quoteLine(quoteSaid.text ?? '').trim().slice(0, 160) || 'no record under the prices');
+// A speech model is quoted on its text, the way a node bills it: one input token per 4 characters, nothing for output.
+const sayQuoted = 'Every answer is paid on Solana, one voucher at a time.';
+const speechQuote = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'quote', 'kokoro-82m', '--text', sayQuoted, '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const speechQuoteWant = usd(costOf({ input: 1_000_000, output: 0 }, Math.ceil(sayQuoted.length / 4), 0));
+check('orrery quote prices a speech model on the text it is given, one input token per 4 characters, as the node bills it',
+  speechQuote.split('\n')[0] === `kokoro-82m · speech · ${sayQuoted.length} characters of text, ${Math.ceil(sayQuoted.length / 4)} tokens in (one per 4 characters) · listed prices on Solana, before any holder discount`
+  && speechQuote.includes(`cheapest: Ironbridge Compute, $${speechQuoteWant} a request`),
+  `${speechQuote.split('\n')[0]} · ${speechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? 'no cheapest line'}`);
 // Both say too whether that node's bills stayed within the prices it listed, from the same log of answers.
 const billsRecordRe = /(every bill was within its listed prices|its bill was within its listed prices|billed above its listed prices)/;
 check('what your router saw of a node, in a quote and in orrery providers, says whether its bills stayed within its listed prices', billsRecordRe.test(quoteLine(quoteSaid.text ?? '')) && billsRecordRe.test(quoteLine(quoteCli)) && billsRecordRe.test(ironSaw), (quoteLine(quoteSaid.text ?? '').match(billsRecordRe)?.[0] ?? 'no bill record') + ' · providers: ' + (ironSaw.match(billsRecordRe)?.[0] ?? 'none'));

@@ -1,12 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { quote, renderQuote } from '../src/quote.ts';
+import { quote, quoteKind, renderQuote } from '../src/quote.ts';
 import { sawText } from '../src/router/watched.ts';
 
 const entry = (name: string, address: string, price: { input: number; output: number; cachedInput?: number }, model = 'm') =>
   ({ address, manifest: { name, models: [{ id: model, price }] }, tee: null }) as never;
 
 describe('orrery quote', () => {
+  it('quotes a speech model on its text, one token per 4 characters, with no output column', () => {
+    const voice = { address: 'v', manifest: { name: 'Voice', models: [{ id: 'kokoro-82m', price: { input: 1_000_000, output: 0 }, kind: 'speech' }] }, tee: null } as never;
+    assert.equal(quoteKind([voice], 'kokoro-82m'), 'speech');
+    assert.equal(quoteKind([entry('Chat', 'c', { input: 1, output: 1 })], 'm'), 'chat');
+    const rows = quote([voice], 'kokoro-82m', 14, 0, 0.8);
+    const text = (renderQuote as unknown as (m: string, i: number, o: number, c: number, r: typeof rows, s: undefined, a: { kind: string; chars: number }) => string)('kokoro-82m', 14, 0, 0.8, rows, undefined, { kind: 'speech', chars: 54 });
+    assert.equal(text.split('\n')[0], 'kokoro-82m · speech · 54 characters of text, 14 tokens in (one per 4 characters) · listed prices on Solana, before any holder discount');
+    assert.match(text, /^Voice {17} +\$1\.00\/M +\$0\.000014 +—$/m);
+    assert.match(text, /cheapest: Voice, \$0\.000014 a request/);
+  });
+
   it('prices one request at every provider of the model, cheapest first, with the cached rate where one is listed', () => {
     const rows = quote([entry('Dear', 'a', { input: 200_000, output: 800_000 }), entry('Cheap', 'b', { input: 40_000, output: 140_000, cachedInput: 10_000 }), entry('Other', 'c', { input: 1, output: 1 }, 'x')], 'm', 10_000, 500, 0.8);
     assert.deepEqual(rows.map((r) => r.name), ['Cheap', 'Dear']);
