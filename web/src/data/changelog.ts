@@ -9,6 +9,7 @@ export type Release = { version: string; at: string; headline: string; changes: 
 export const UNRELEASED: Change[] = [
   { who: 'router', text: 'A menu per agent. `orrery router --agent-models coder=qwen3-coder-30b|deepseek-v3,researcher=llama-3.3-70b` (or `ORRERY_AGENT_MODELS`) keeps each named agent to its models: a request from that agent for any other is refused before a node is asked or anything is owed ("agent researcher may use llama-3.3-70b; deepseek-v3 is not one of them", 403 `agent_model`). An agent not named may use any model. `/orrery/status`, the router console\'s agents table and the `status` tool of `orrery mcp` list each agent\'s models beside its limit for the day ("researcher (this one): $0.000018 spent today of $0.000020, $0.000002 left; may use llama-3.3-70b").' },
   { who: 'provider', text: '`orrery provider earnings --by kind` says what each kind of work billed: chat, embeddings and reranking, by your own listing (a model\'s `"kind"`, or embeddings for one with no output price), with the answers and tokens of each. `--json` gives the same rows with `"by": "kind"`.' },
+  { who: 'router', text: '`orrery spend --by kind` gives your router\'s books by the kind of work: what reranking and embeddings cost you, apart from chat. The router\'s log now keeps the kind on each embeddings and rerank answer (answers logged before this count as chat); `/orrery/spend?by=kind` and `--csv` give the same rows.' },
 ];
 
 export const RELEASES: Release[] = [

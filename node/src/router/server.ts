@@ -88,6 +88,8 @@ export type Trip = {
   task?: string;
   /** The agent named for this request (x-orrery-agent or the key agent/<name>). */
   agent?: string;
+  /** What kind of work the answer was, when it was not chat: embeddings or rerank. */
+  kind?: 'embeddings' | 'rerank';
   /** The request and answer were encrypted to the node's own key, so nothing between the two machines could read them. */
   wire?: boolean;
   /** Identifying fields the client attached and the router did not send on (names only, never the values). */
@@ -329,7 +331,7 @@ export class Router {
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {
         const since = url.searchParams.get('since') ?? '24h';
         const byParam = url.searchParams.get('by');
-        const by = byParam === 'provider' || byParam === 'task' || byParam === 'day' || byParam === 'agent' ? byParam : 'model';
+        const by = byParam === 'provider' || byParam === 'task' || byParam === 'day' || byParam === 'agent' || byParam === 'kind' ? byParam : 'model';
         const spendTrips = readTrips(home('router', 'trips.jsonl'));
         const { rows, total } = summarize(spendTrips, by, windowMs(since));
         // The console's "Download CSV": the same rows as orrery spend --csv, saved as a file.
@@ -851,7 +853,7 @@ export class Router {
     this.o.registry.noteRequest(address, true);
     const trip: Trip = {
       at: Date.now(), model: cand.offer.id, route, provider: address, providerName: cand.entry.manifest?.name ?? address.slice(0, 6),
-      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), ...(this.agentOf.get(res) ? { agent: this.agentOf.get(res) } : {}), fellThrough, off: claimedOff, ...(saved ? { saved: usd(saved) } : {}), ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
+      inputTokens: record.inputTokens, outputTokens: record.outputTokens, cost: usd(fair), billed: usd(record.cost), listed: usd(ours), ttftMs: ttft, totalMs: Date.now() - t0, ms: timing, sealed: !!key && !wired, ...(wired ? { wire: true } : {}), ...(withheld.length ? { withheld } : {}), ...(key && enclave ? { enclave } : {}), ...(this.taskOf.get(res) ? { task: this.taskOf.get(res) } : {}), ...(this.agentOf.get(res) ? { agent: this.agentOf.get(res) } : {}), ...(anth?.kind === 'embeddings' || anth?.kind === 'rerank' ? { kind: anth.kind } : {}), fellThrough, off: claimedOff, ...(saved ? { saved: usd(saved) } : {}), ...(resumed ? { resumed: true } : {}), ...(cand.cached && !fellThrough ? { cacheKept: true } : {}),
     };
     this.trips.push(trip);
     if (this.trips.length > 500) this.trips.splice(0, this.trips.length - 500);

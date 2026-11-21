@@ -455,6 +455,19 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
     rrBench.length === 1 && rrBench[0].answered === 2 && !rrBench[0].error && rrBenchTrips.length === 2 && rrBenchTrips.every((t) => t.model === 'bge-reranker-v2-m3' && t.outputTokens === 0) && mcpModelLine.endsWith('  ·  rerank: use the rerank tool'),
     `bench ${rrBench[0] ? `${rrBench[0].answered}/${rrBench[0].asked} answered${rrBench[0].error ? ` (${rrBench[0].error})` : ''}` : 'no row'} · mcp: ${mcpModelLine || 'no line'}`);
+  // And the router's own books by kind: what it spent on reranking and on embeddings, apart from chat. Counted here
+  // from the log by model name (the reranker and the embedding model this rehearsal lists), so the kind each answer
+  // was logged under is checked against what was actually asked.
+  const logged = trips;
+  const sumOf = (pick: (t: { model: string }) => boolean) => { const ts = logged.filter(pick); return { answers: ts.length, usd: usd(ts.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n)) }; };
+  const wantRr = sumOf((t) => t.model === 'bge-reranker-v2-m3'), wantEmb = sumOf((t) => t.model === 'bge-m3');
+  const byKind = (await (await fetch(`${ROUTER}/orrery/spend?since=7d&by=kind`)).json()) as { by?: string; rows?: { key: string; answers: number; usd: string }[] };
+  const kRow = (k: string) => byKind.rows?.find((r) => r.key === k);
+  const kindCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', '--by', 'kind', '--since', '7d'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  check('orrery spend --by kind gives the router’s books by the kind of work: reranking and embeddings apart from chat',
+    byKind.by === 'kind' && wantRr.answers >= 4 && kRow('rerank')?.answers === wantRr.answers && kRow('rerank')?.usd === wantRr.usd && kRow('embeddings')?.answers === wantEmb.answers && kRow('embeddings')?.usd === wantEmb.usd && !!kRow('chat')
+    && kindCli.split('\n').some((l) => l.startsWith('rerank ') && l.replace(/\s+/g, ' ').includes(`${wantRr.answers} answers`)),
+    (byKind.rows ?? []).map((r) => `${r.key} ${r.answers} $${r.usd}`).join(' · ') || 'no rows');
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });

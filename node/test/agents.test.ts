@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentBook, agentFromKey, parseAgentCaps, parseAgentModels } from '../src/router/agents.ts';
@@ -56,5 +56,17 @@ describe('agent wallets', () => {
     assert.deepEqual(rows.map((r) => [r.key, r.answers, r.units]), [['coder', 1, 20n], ['researcher', 2, 12n], ['(no agent)', 1, 1n]]);
     assert.equal(total.units, 33n);
     assert.equal(spendCsv(rows, 'agent').split('\n')[0], 'agent,answers,input_tokens,output_tokens,paid_usdc');
+  });
+
+  it('orrery spend --by kind keeps reranking and embeddings apart from chat, and the log keeps the kind', () => {
+    const now = Date.parse('2026-11-21T07:30:00Z');
+    const trip = (cost: string, kind?: string) => ({ at: now - 1_000, model: 'm', provider: 'p', providerName: 'P', inputTokens: 10, outputTokens: kind ? 0 : 5, cost, ...(kind ? { kind } : {}) });
+    const { rows } = summarize([trip('0.000030'), trip('0.000001', 'rerank'), trip('0.000001', 'rerank'), trip('0.000003', 'embeddings')], 'kind', 86_400_000, now);
+    assert.deepEqual(rows.map((r) => [r.key, r.answers, r.units]), [['chat', 1, 30n], ['embeddings', 1, 3n], ['rerank', 2, 2n]]);
+    const log = join(mkdtempSync(join(tmpdir(), 'orrery-kind-')), 'trips.jsonl');
+    appendTrip(log, trip('0.000001', 'rerank'));
+    appendTrip(log, trip('0.000030'));
+    assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n').map((l) => (JSON.parse(l) as { kind?: string }).kind ?? null), ['rerank', null]);
+    assert.equal(spendCsv(rows, 'kind').split('\n')[0], 'kind,answers,input_tokens,output_tokens,paid_usdc');
   });
 });

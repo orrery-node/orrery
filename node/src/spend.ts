@@ -8,7 +8,7 @@ import { usd } from './pricing.ts';
 /** `enclave` is kept for a sealed answer: the hardware the router verified before it encrypted the prompt, the image
  * that machine booted, and the verdict the router reached. `task` is the job an agent named for the request. */
 export type Enclave = { kind: string; image: string; verdict: string };
-export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number; billed?: string; listed?: string; off?: number; saved?: string; agent?: string };
+export type LoggedTrip = { at: number; model: string; provider: string; providerName: string; inputTokens: number; outputTokens: number; cost: string; cacheKept?: boolean; fellThrough?: number; resumed?: boolean; sealed?: boolean; enclave?: Enclave; task?: string; inside?: boolean; ttftMs?: number; billed?: string; listed?: string; off?: number; saved?: string; agent?: string; kind?: string };
 
 /** The log rolls over at this size: the current file becomes <path>.1 (replacing the previous one) and a new one starts. */
 export const ROLL_BYTES = 10 * 1024 * 1024;
@@ -17,7 +17,7 @@ export function appendTrip(path: string, t: LoggedTrip, rollBytes = ROLL_BYTES) 
   try {
     mkdirSync(dirname(path), { recursive: true });
     if (existsSync(path) && statSync(path).size >= rollBytes) renameSync(path, `${path}.1`);
-    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}), ...(typeof t.billed === 'string' ? { billed: t.billed } : {}), ...(typeof t.listed === 'string' ? { listed: t.listed } : {}), ...(t.off ? { off: t.off } : {}), ...(typeof t.saved === 'string' ? { saved: t.saved } : {}), ...(t.agent ? { agent: t.agent } : {}) })}\n`);
+    appendFileSync(path, `${JSON.stringify({ at: t.at, model: t.model, provider: t.provider, providerName: t.providerName, inputTokens: t.inputTokens, outputTokens: t.outputTokens, cost: t.cost, ...(t.cacheKept ? { cacheKept: true } : {}), ...(t.fellThrough ? { fellThrough: t.fellThrough } : {}), ...(t.resumed ? { resumed: true } : {}), ...(t.sealed ? { sealed: true } : {}), ...(t.sealed && t.enclave ? { enclave: t.enclave } : {}), ...(t.task ? { task: t.task } : {}), ...(t.inside ? { inside: true } : {}), ...(typeof t.ttftMs === 'number' ? { ttftMs: t.ttftMs } : {}), ...(typeof t.billed === 'string' ? { billed: t.billed } : {}), ...(typeof t.listed === 'string' ? { listed: t.listed } : {}), ...(t.off ? { off: t.off } : {}), ...(typeof t.saved === 'string' ? { saved: t.saved } : {}), ...(t.agent ? { agent: t.agent } : {}), ...(t.kind ? { kind: t.kind } : {}) })}\n`);
   } catch {
     // The log is a convenience; an answer is never held back because it could not be written.
   }
@@ -90,7 +90,7 @@ const units = (usd: string) => {
 
 export type SpendRow = { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number };
 
-export type SpendBy = 'model' | 'provider' | 'task' | 'day' | 'agent';
+export type SpendBy = 'model' | 'provider' | 'task' | 'day' | 'agent' | 'kind';
 
 /** The kind of work a listed model does: what its listing says, else embeddings for a model with no output price
  * (provider init lists embedding models that way), else chat. A model no longer listed counts as chat. */
@@ -121,7 +121,7 @@ export function summarize(trips: LoggedTrip[], by: SpendBy, sinceMs: number, now
   const total: SpendRow = { key: 'total', answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
   for (const t of trips) {
     if (now - t.at > sinceMs) continue;
-    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : by === 'agent' ? (t.agent ?? '(no agent)') : by === 'day' ? new Date(t.at).toISOString().slice(0, 10) : t.providerName;
+    const key = by === 'model' ? t.model : by === 'task' ? (t.task ?? '(no task)') : by === 'agent' ? (t.agent ?? '(no agent)') : by === 'kind' ? (t.kind ?? 'chat') : by === 'day' ? new Date(t.at).toISOString().slice(0, 10) : t.providerName;
     const r = rows.get(key) ?? { key, answers: 0, inputTokens: 0, outputTokens: 0, units: 0n, cacheKept: 0 };
     for (const x of [r, total]) {
       x.answers += 1;
