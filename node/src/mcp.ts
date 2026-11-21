@@ -187,9 +187,9 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
     }
     if (name === 'models') {
       const r = await fetchFn(`${router}/v1/models`);
-      const j = (await r.json()) as { data?: { id: string; providers: number; context_length?: number; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number } }[] };
+      const j = (await r.json()) as { data?: { id: string; providers: number; context_length?: number; kind?: string; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number } }[] };
       const usd = (v: number) => `$${v < 0.1 ? v.toFixed(4) : v.toFixed(2)}`;
-      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}`);
+      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.kind ? `  ·  ${m.kind}: use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool` : ''}`);
       return text(rows.length ? rows.join('\n') : 'no models on the network right now');
     }
     if (name === 'status') {

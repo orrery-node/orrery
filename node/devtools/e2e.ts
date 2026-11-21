@@ -422,8 +422,8 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const outR: Record<number, { result?: { content?: { text?: string }[]; isError?: boolean; tools?: { name: string }[] } }> = {};
   let bufR = '';
   mcpR.stdout!.on('data', (c) => { bufR += c; let i; while ((i = bufR.indexOf('\n')) >= 0) { const line = bufR.slice(0, i); bufR = bufR.slice(i + 1); try { const m = JSON.parse(line) as { id?: number }; if (typeof m.id === 'number') outR[m.id] = m as never; } catch { /* not a message */ } } });
-  for (const m of [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'rerank', arguments: { model: 'bge-reranker-v2-m3', query: 'how is each answer paid on solana', documents: docs, top_n: 2, task: 'rehearsal-rerank', task_budget: 0.001 } } }]) mcpR.stdin!.write(`${JSON.stringify(m)}\n`);
-  for (let i = 0; i < 75 && !(outR[2] && outR[3]); i++) await sleep(200);
+  for (const m of [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'rerank', arguments: { model: 'bge-reranker-v2-m3', query: 'how is each answer paid on solana', documents: docs, top_n: 2, task: 'rehearsal-rerank', task_budget: 0.001 } } }, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'models', arguments: {} } }]) mcpR.stdin!.write(`${JSON.stringify(m)}\n`);
+  for (let i = 0; i < 75 && !(outR[2] && outR[3] && outR[4]); i++) await sleep(200);
   mcpR.kill();
   const mcpRank = outR[3]?.result?.content?.[0]?.text ?? '';
   const mcpTrip = trips.at(-1);
@@ -446,6 +446,15 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && chatToRanker.status === 400 && chatToRanker.j.error?.code === 'wrong_kind' && chatToRanker.j.error.message === 'bge-reranker-v2-m3 is listed for rerank; send it to /v1/rerank'
     && embToRanker.status === 400 && embToRanker.j.error?.code === 'wrong_kind' && embStill.status === 200 && trips.length === tripsBeforeKind + 1,
     `models: bge-reranker-v2-m3 kind ${kindModels.data.find((m) => m.id === 'bge-reranker-v2-m3')?.kind ?? 'none'} · chat to it: ${chatToRanker.status} ${chatToRanker.j.error?.code ?? ''} · embeddings to it: ${embToRanker.status} · bge-m3 (no kind) embeddings: ${embStill.status}`);
+  // And the tools go by it: orrery bench asks a reranker with /v1/rerank, and the MCP models tool says which tool to use.
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const benchBefore = trips.length;
+  const rrBench = await bench({ model: 'bge-reranker-v2-m3', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'bge-reranker-v2-m3')), router: ROUTER, n: 2 });
+  const rrBenchTrips = trips.slice(benchBefore);
+  const mcpModelLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('bge-reranker-v2-m3')) ?? '';
+  check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
+    rrBench.length === 1 && rrBench[0].answered === 2 && !rrBench[0].error && rrBenchTrips.length === 2 && rrBenchTrips.every((t) => t.model === 'bge-reranker-v2-m3' && t.outputTokens === 0) && mcpModelLine.endsWith('  ·  rerank: use the rerank tool'),
+    `bench ${rrBench[0] ? `${rrBench[0].answered}/${rrBench[0].asked} answered${rrBench[0].error ? ` (${rrBench[0].error})` : ''}` : 'no row'} · mcp: ${mcpModelLine || 'no line'}`);
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
@@ -712,7 +721,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 47 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 49 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.

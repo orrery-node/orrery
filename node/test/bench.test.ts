@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bench, median, renderBench } from '../src/bench.ts';
+import { bench, benchKind, median, renderBench } from '../src/bench.ts';
 
 const entry = (name: string, address: string) => ({ address, manifest: { name, models: [{ id: 'm', price: { input: 37_500, output: 140_000 } }] } }) as never;
 
@@ -43,5 +43,13 @@ describe('orrery bench', () => {
     assert.deepEqual(urls, ['http://r/v1/embeddings', 'http://r/v1/embeddings']);
     assert.ok(Array.isArray(bodies[0].input) && !('messages' in bodies[0]));
     assert.equal(rows[0].answered, 2);
+  });
+
+  it('goes by the kind a listing says: a reranker gets /v1/rerank, a model that says nothing is read from its prices', () => {
+    assert.equal(benchKind({ price: { output: 0 }, kind: 'rerank' }), 'rerank');
+    assert.equal(benchKind({ price: { output: 0 }, kind: 'embeddings' }), 'embeddings');
+    assert.equal(benchKind({ price: { output: 0 } }), 'embeddings');
+    assert.equal(benchKind({ price: { output: 450_000 } }), 'chat');
+    assert.equal(benchKind(undefined), 'chat');
   });
 });

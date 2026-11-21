@@ -20,8 +20,16 @@ const toUnits = (usd: string | null) => {
   return BigInt(w) * 1_000_000n + BigInt((f + '000000').slice(0, 6));
 };
 
-/** provider init lists embedding models with an output price of zero; a chat model always charges for output. */
-export const isEmbedding = (offer: { price: { output: number } } | undefined) => offer?.price.output === 0;
+/** The kind of request to bench a model with: what its listing says it is for, or, for a listing that says nothing,
+ * embeddings when it has no output price (provider init lists embedding models that way) and chat otherwise. */
+export const benchKind = (offer: { price: { output: number }; kind?: 'embeddings' | 'rerank' } | undefined): 'chat' | 'embeddings' | 'rerank' => offer?.kind ?? (offer?.price.output === 0 ? 'embeddings' : 'chat');
+export const isEmbedding = (offer: { price: { output: number }; kind?: 'embeddings' | 'rerank' } | undefined) => benchKind(offer) === 'embeddings';
+
+/** One benchmark request of each kind, small and the same every time. */
+const benchBody = (kind: 'chat' | 'embeddings' | 'rerank', model: string, i: number) =>
+  kind === 'embeddings' ? { model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
+  : kind === 'rerank' ? { model, query: `Benchmark ${i + 1}: which passage is about payment?`, documents: ['Payment channels settle on Solana.', 'Owls hunt at night.'] }
+  : { model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 };
 
 export async function bench(o: { model: string; providers: ProviderEntry[]; router: string; n: number; fetchFn?: Fetch; now?: () => number }): Promise<BenchRow[]> {
   const f = o.fetchFn ?? (fetch as unknown as Fetch);
@@ -34,12 +42,11 @@ export async function bench(o: { model: string; providers: ProviderEntry[]; rout
       row.asked += 1;
       const t0 = now();
       try {
-        const r = await f(`${o.router.replace(/\/$/, '')}/v1/${isEmbedding(offer) ? 'embeddings' : 'chat/completions'}`, {
+        const kind = benchKind(offer);
+        const r = await f(`${o.router.replace(/\/$/, '')}/v1/${kind === 'chat' ? 'chat/completions' : kind}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-orrery-provider': e.address },
-          body: JSON.stringify(isEmbedding(offer)
-            ? { model: o.model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
-            : { model: o.model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 }),
+          body: JSON.stringify(benchBody(kind, o.model, i)),
         });
         const j = (await r.json()) as { error?: { message?: string } };
         if (!r.ok) {
