@@ -48,6 +48,25 @@ const TOOLS = [
     },
   },
   {
+    name: 'rerank',
+    description: 'Order documents by how well they answer a query, with a reranker on the Orrery network, paid for this one call on input tokens. Returns the documents best first, each with its index in the list you gave and its score.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'a network reranker id, e.g. bge-reranker-v2-m3' },
+        query: { type: 'string', description: 'what the documents should answer' },
+        documents: { type: 'array', items: { type: 'string' }, description: 'the texts to order' },
+        top_n: { type: 'number', description: 'optional: return only this many, the best' },
+        max_cost: { type: 'number', description: 'optional budget in dollars for this one call, e.g. 0.001; only providers whose worst case fits are used' },
+        task: { type: 'string', description: 'optional name for the job this call belongs to; ask, embed and rerank calls with the same task draw from one budget' },
+        task_budget: { type: 'number', description: 'the budget in dollars for that task, e.g. 0.05, sent with its first call' },
+        node: { type: 'string', description: 'optional: use this node only, by the name status lists or by its address' },
+        patience: { type: 'number', description: 'optional: seconds to wait for a node that is away, 0 to 30; 30 when not given' },
+      },
+      required: ['model', 'query', 'documents'],
+    },
+  },
+  {
     name: 'quote',
     description: 'What one request would cost at every provider that lists a model, from the prices pinned on Solana, cheapest first, with the cached-input rate where one is listed, and what this router itself saw of each node: how often it was up, what it answered and how fast it started. Nothing is sent or paid. Use it to pick a model or a node, or check a job fits a budget before asking.',
     inputSchema: {
@@ -142,6 +161,18 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
       const vectors = (j.data ?? []).map((d) => d.embedding);
       return text(`${JSON.stringify(vectors)}\n\n— ${vectors.length} vector${vectors.length === 1 ? '' : 's'} of ${vectors[0]?.length ?? 0} dimensions, ${j.usage?.prompt_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`);
+    }
+    if (name === 'rerank') {
+      if (typeof a.model !== 'string' || typeof a.query !== 'string' || !Array.isArray(a.documents) || !a.documents.length) return text('rerank needs a model, a query and a list of documents', true);
+      const docs = a.documents.map(String);
+      const headers = callHeaders(a, agent);
+      const noSuchNode = await pinNode(a, headers, router, fetchFn);
+      if (noSuchNode) return text(noSuchNode, true);
+      const { r, j } = await sendPatiently<{ results?: { index: number; relevance_score: number }[]; usage?: { total_tokens?: number }; error?: { code?: string; message?: string } }>(() => fetchFn(`${router}/v1/rerank`, { method: 'POST', headers, body: JSON.stringify({ model: a.model, query: a.query, documents: docs, ...(typeof a.top_n === 'number' && a.top_n > 0 ? { top_n: Math.floor(a.top_n) } : {}) }) }), headers);
+      const task = taskLine(a, r) + agentLine(agent, r);
+      if (!r.ok) return text(`the router could not answer: ${j.error?.message ?? r.status}${task}`, true);
+      const rows = (j.results ?? []).map((x, i) => `${i + 1}. [${x.index}] ${x.relevance_score.toFixed(4)}  ${(docs[x.index] ?? '').replace(/\s+/g, ' ').slice(0, 160)}`);
+      return text(`${rows.join('\n') || '(no results)'}\n\n— ${rows.length} of ${docs.length} document${docs.length === 1 ? '' : 's'} ranked, ${j.usage?.total_tokens ?? '?'} input tokens, paid $${r.headers.get('x-orrery-cost') ?? '?'}, answered by ${answeredBy(r)}${task}`);
     }
     if (name === 'quote') {
       if (typeof a.model !== 'string') return text('quote needs a model', true);

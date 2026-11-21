@@ -310,4 +310,16 @@ describe('orrery mcp and task budgets', () => {
     const fresh = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, 'http://r', (async (url: string) => (url.endsWith('/orrery/status') ? reply({ ...st, agents: [] }) : reply({}))) as never, '0', 'writer') as { result: { content: { text: string }[] } }).result.content[0].text;
     assert.match(fresh, /\nthis agent: writer, nothing spent today$/);
   });
+
+  it('rerank lists the documents best first with their index and score, and what it paid; it says what it needs', async () => {
+    let sent: { url: string; body: Record<string, unknown> } | null = null;
+    const fetchFn = async (url: string, init?: { body?: string }) => { sent = { url, body: JSON.parse(init?.body ?? '{}') }; return reply({ results: [{ index: 2, relevance_score: 0.428571 }, { index: 0, relevance_score: 0.1 }], usage: { total_tokens: 49 } }, 200, { 'x-orrery-provider': '76UdbaSy69', 'x-orrery-provider-name': 'Orrery Seed', 'x-orrery-cost': '0.000001' }); };
+    const out = await call('rerank', { model: 'r', query: 'q', documents: ['a  first', 'b', 'c third'], top_n: 2 }, fetchFn as never);
+    assert.equal(sent!.url, 'http://r/v1/rerank');
+    assert.deepEqual(sent!.body, { model: 'r', query: 'q', documents: ['a  first', 'b', 'c third'], top_n: 2 });
+    assert.equal(out.result.content[0].text, '1. [2] 0.4286  c third\n2. [0] 0.1000  a first\n\n— 2 of 3 documents ranked, 49 input tokens, paid $0.000001, answered by Orrery Seed (76Udba…)');
+    const missing = await call('rerank', { model: 'r', query: 'q', documents: [] }, fetchFn as never);
+    assert.equal(missing.result.isError, true);
+    assert.equal(missing.result.content[0].text, 'rerank needs a model, a query and a list of documents');
+  });
 });

@@ -318,7 +318,7 @@ const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
 check('an agent is told through orrery mcp how what it paid compares with the prices the node listed on chain', /paid \$\d\.\d{6} for this answer(, what its listed prices come to|, under its listed \$\d\.\d{6}| \(it asked)/.test(mcpAnswer), (mcpAnswer.split('\n').find((l) => l.includes('paid $')) ?? 'no paid line').replace(/\(([1-9A-HJ-NP-Za-km-z]{6})…\)/, '($1…)').slice(0, 150));
-check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
+check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
 const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
 const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
 const mcpStatus = mcpOut[6]?.result?.content?.[0]?.text ?? '';
@@ -416,6 +416,21 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     rr.status === 200 && rrj.model === 'bge-reranker-v2-m3' && rrj.results?.length === 2 && rrj.results[0].index === 2 && rrj.results[1].index === 1 && rrj.results[0].relevance_score > rrj.results[1].relevance_score && (rrj.usage?.total_tokens ?? 0) > 0
     && rrCost === usd(rrExpected) && rrTrip?.model === 'bge-reranker-v2-m3' && rrTrip.outputTokens === 0 && noQuery.status === 400,
     `top ${rrj.results?.map((r) => `#${r.index} ${r.relevance_score}`).join(', ') ?? 'none'} · ${rrj.usage?.total_tokens} input tokens · $${rrCost} via ${nameOf(rr.headers.get('x-orrery-provider'))} · no query: ${noQuery.status}`);
+  // And an agent can rerank through orrery mcp: the rerank tool, answered and paid the same way, under a task.
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const mcpR = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'mcp', '--router', ROUTER], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const outR: Record<number, { result?: { content?: { text?: string }[]; isError?: boolean; tools?: { name: string }[] } }> = {};
+  let bufR = '';
+  mcpR.stdout!.on('data', (c) => { bufR += c; let i; while ((i = bufR.indexOf('\n')) >= 0) { const line = bufR.slice(0, i); bufR = bufR.slice(i + 1); try { const m = JSON.parse(line) as { id?: number }; if (typeof m.id === 'number') outR[m.id] = m as never; } catch { /* not a message */ } } });
+  for (const m of [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'rehearsal', version: '0' } } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'rerank', arguments: { model: 'bge-reranker-v2-m3', query: 'how is each answer paid on solana', documents: docs, top_n: 2, task: 'rehearsal-rerank', task_budget: 0.001 } } }]) mcpR.stdin!.write(`${JSON.stringify(m)}\n`);
+  for (let i = 0; i < 75 && !(outR[2] && outR[3]); i++) await sleep(200);
+  mcpR.kill();
+  const mcpRank = outR[3]?.result?.content?.[0]?.text ?? '';
+  const mcpTrip = trips.at(-1);
+  check('an agent reranks through orrery mcp: the rerank tool lists the documents best first with their scores, says what it paid, and counts under its task',
+    !!outR[2]?.result?.tools?.some((t) => t.name === 'rerank') && outR[3]?.result?.isError === undefined && mcpRank.startsWith(`1. [2] ${rrj.results?.[0]?.relevance_score.toFixed(4)}  ${docs[2]}\n2. [1] `)
+    && mcpRank.includes(`— 2 of 4 documents ranked, ${rrj.usage?.total_tokens} input tokens, paid $${rrCost}, answered by Ironbridge Compute (`) && /\n— task rehearsal-rerank: \$0\.0000\d\d spent, \$0\.000\d\d\d left$/.test(mcpRank) && mcpTrip?.model === 'bge-reranker-v2-m3',
+    mcpRank.split('\n').filter(Boolean).slice(0, 1).concat(mcpRank.split('\n').filter((l) => l.startsWith('—'))).join(' · ') || 'no answer');
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
@@ -682,7 +697,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 45 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 46 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
