@@ -6,7 +6,7 @@ import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, standingLine, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { TICKER } from '../brand.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { kindPath, type ModelKind } from '../manifest.ts';
+import { kindPath, speechTokens, type ModelKind } from '../manifest.ts';
 import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
@@ -27,7 +27,7 @@ import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
 import { appendTrip, bills, heldSaved, heldSavedLine, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines, sawText } from './watched.ts';
-import { quote, renderQuote } from '../quote.ts';
+import { quote, quoteKind, renderQuote } from '../quote.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
@@ -317,10 +317,14 @@ export class Router {
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {
         // What one request would cost at every provider of a model, from the lists on chain; nothing is sent or paid.
+        // A model listed for embeddings, reranking or speech has no output to price, and speech is billed on its text: the
+        // text to speak (text, or prompt) is counted the way a node bills it, one input token per 4 characters.
         const model = url.searchParams.get('model') ?? '';
-        const prompt = url.searchParams.get('prompt');
-        const inTokens = prompt ? estimateInputTokens({ messages: [{ role: 'user', content: prompt }] }) : Number(url.searchParams.get('in') ?? 2000);
-        const outTokens = Number(url.searchParams.get('out') ?? 500);
+        const kind = quoteKind(this.o.registry.usable(), model);
+        const prompt = url.searchParams.get('text') ?? url.searchParams.get('prompt');
+        const inTokens = prompt ? (kind === 'speech' ? speechTokens(prompt) : estimateInputTokens({ messages: [{ role: 'user', content: prompt }] })) : Number(url.searchParams.get('in') ?? 2000);
+        const outTokens = kind === 'chat' ? Number(url.searchParams.get('out') ?? 500) : 0;
+        const about = { kind, ...(kind === 'speech' && prompt ? { chars: prompt.length } : {}) };
         const cachedShare = Math.max(0, Math.min(1, Number(url.searchParams.get('cached') ?? 0.8)));
         if (!model || !Number.isFinite(inTokens) || !Number.isFinite(outTokens)) return send(res, 400, { error: { message: 'quote needs a model and token counts', type: 'invalid_request_error' } });
         const rows = quote(this.o.registry.usable(), model, inTokens, outTokens, cachedShare);
@@ -328,9 +332,9 @@ export class Router {
         const billsBy = new Map(this.billsNow().map((x) => [x.provider, x]));
         const saw = (address: string) => sawText(this.o.registry.watched(address), this.stats.all().get(address), Date.now(), billsBy.get(address));
         return send(res, 200, {
-          model, inTokens, outTokens, cachedShare,
+          model, ...(kind === 'chat' ? {} : { kind }), ...(about.chars !== undefined ? { chars: about.chars } : {}), inTokens, outTokens, cachedShare,
           rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })),
-          text: renderQuote(model, inTokens, outTokens, cachedShare, rows, saw),
+          text: renderQuote(model, inTokens, outTokens, cachedShare, rows, saw, about),
         });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/spend') {

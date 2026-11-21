@@ -307,6 +307,8 @@ mcpSend({ jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'embed',
 for (let i = 0; i < 50 && !mcpOut[11]; i++) await sleep(200);
 mcpSend({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'status', arguments: {} } });
 for (let i = 0; i < 50 && !mcpOut[12]; i++) await sleep(200);
+mcpSend({ jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'quote', arguments: { model: 'kokoro-82m', text: 'Every answer is paid on Solana, one voucher at a time.' } } });
+for (let i = 0; i < 50 && !mcpOut[13]; i++) await sleep(200);
 const mcpEmbedTask = mcpOut[11]?.result?.content?.[0]?.text ?? '';
 const mcpEmbedTrailer = mcpEmbedTask.slice(mcpEmbedTask.lastIndexOf('\n\n') + 2);
 check('an agent embeds under a task and from one node through orrery mcp, and is told which node answered and what the task has left', /^— 1 vector of 8 dimensions, \d+ input tokens, paid \$0\.0000\d\d, answered by Ironbridge Compute \([^)]+\)\n— task rehearsal-embed: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpEmbedTrailer) && /rehearsal-embed: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpOut[12]?.result?.content?.[0]?.text ?? ''),
@@ -324,6 +326,14 @@ const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
 const mcpStatus = mcpOut[6]?.result?.content?.[0]?.text ?? '';
 const mcpEmbed = mcpOut[7]?.result?.content?.[0]?.text ?? '';
 const mcpQuote = mcpOut[8]?.result?.content?.[0]?.text ?? '';
+// An agent asking what speech would cost gets it on the text, the way the node bills it, from the router and through MCP.
+const speechSaid = (await (await fetch(`${ROUTER}/orrery/quote?model=kokoro-82m&text=${encodeURIComponent('Every answer is paid on Solana, one voucher at a time.')}`)).json()) as { kind?: string; chars?: number; inTokens?: number; outTokens?: number; text?: string };
+const mcpSpeechQuote = mcpOut[13]?.result?.content?.[0]?.text ?? '';
+const speechHead = 'kokoro-82m · speech · 54 characters of text, 14 tokens in (one per 4 characters) · listed prices on Solana, before any holder discount';
+check('an agent prices speech on its text, from the router and through orrery mcp: one input token per 4 characters, nothing for output',
+  speechSaid.kind === 'speech' && speechSaid.chars === 54 && speechSaid.inTokens === 14 && speechSaid.outTokens === 0 && (speechSaid.text ?? '').split('\n')[0] === speechHead
+  && mcpSpeechQuote.split('\n')[0] === speechHead && /cheapest: Ironbridge Compute, \$0\.000014 a request/.test(mcpSpeechQuote),
+  `router: ${(speechSaid.text ?? '').split('\n')[0] || 'no text'} · mcp: ${(mcpSpeechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? mcpSpeechQuote.split('\n')[0] ?? '').slice(0, 80)}`);
 const quoteRows = mcpQuote.split('\n').filter((l) => /\$0\.\d{6}\s*/.test(l) && !l.startsWith('cheapest')).length;
 check('an agent prices a job at every provider before paying, through orrery mcp', quoteRows >= 2 && /cheapest: .+, \$0\.\d{6} a request/.test(mcpQuote) && mcpQuote.includes('Nothing was sent or paid'), `${quoteRows} providers priced · ${(mcpQuote.split('\n').pop() ?? '').slice(0, 70)}`);
 check('an agent gets embeddings from the network through orrery mcp, paid per call', /— 2 vectors of 8 dimensions, \d+ input tokens, paid \$0\.0000\d+/.test(mcpEmbed), mcpEmbed.split('\n').pop() ?? '');
