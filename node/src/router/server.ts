@@ -6,7 +6,7 @@ import type { Connection } from '@solana/web3.js';
 import { discounted, knownOff, sharePct, standingLine, tierOff, type HolderBook, type Standing } from '../holder.ts';
 import { TICKER } from '../brand.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
-import { kindPath, speechTokens, type ModelKind } from '../manifest.ts';
+import { IMAGE_TOKENS, imageCount, kindPath, speechTokens, type ModelKind } from '../manifest.ts';
 import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
@@ -34,7 +34,10 @@ import { home } from '../keys.ts';
 type Shape = { kind: 'anthropic' | 'responses' | ModelKind; id: string; withheld?: string[] };
 
 /** The kind of work a request is, when it is not chat: embeddings, rerank or speech, each paid on input tokens only. */
-const workOf = (a: Shape | null | undefined): ModelKind | null => (a?.kind === 'embeddings' || a?.kind === 'rerank' || a?.kind === 'speech' ? a.kind : null);
+const workOf = (a: Shape | null | undefined): ModelKind | null => (a?.kind === 'embeddings' || a?.kind === 'rerank' || a?.kind === 'speech' || a?.kind === 'image' ? a.kind : null);
+
+/** The output a request of that kind can be billed for: images at 1,000 tokens each, nothing for the other kinds. */
+const workOut = (a: Shape | null | undefined, body: Record<string, unknown>): number => (a?.kind === 'image' ? imageCount(body) * IMAGE_TOKENS : 0);
 
 export type RouterOptions = {
   port: number;
@@ -312,6 +315,7 @@ export class Router {
       if (req.method === 'POST' && (url.pathname === '/v1/embeddings' || url.pathname === '/embeddings')) return await this.embeddings(req, res);
       if (req.method === 'POST' && (url.pathname === '/v1/rerank' || url.pathname === '/rerank')) return await this.rerank(req, res);
       if (req.method === 'POST' && (url.pathname === '/v1/audio/speech' || url.pathname === '/audio/speech')) return await this.speech(req, res);
+      if (req.method === 'POST' && (url.pathname === '/v1/images/generations' || url.pathname === '/images/generations')) return await this.images(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
@@ -322,9 +326,10 @@ export class Router {
         const model = url.searchParams.get('model') ?? '';
         const kind = quoteKind(this.o.registry.usable(), model);
         const prompt = url.searchParams.get('text') ?? url.searchParams.get('prompt');
-        const inTokens = prompt ? (kind === 'speech' ? speechTokens(prompt) : estimateInputTokens({ messages: [{ role: 'user', content: prompt }] })) : Number(url.searchParams.get('in') ?? 2000);
-        const outTokens = kind === 'chat' ? Number(url.searchParams.get('out') ?? 500) : 0;
-        const about = { kind, ...(kind === 'speech' && prompt ? { chars: prompt.length } : {}) };
+        const images = kind === 'image' ? imageCount({ n: url.searchParams.get('images') ?? 1 }) : 0;
+        const inTokens = prompt ? (kind === 'speech' || kind === 'image' ? speechTokens(prompt) : estimateInputTokens({ messages: [{ role: 'user', content: prompt }] })) : Number(url.searchParams.get('in') ?? (kind === 'image' ? 50 : 2000));
+        const outTokens = kind === 'chat' ? Number(url.searchParams.get('out') ?? 500) : images * IMAGE_TOKENS;
+        const about = { kind, ...(kind === 'speech' && prompt ? { chars: prompt.length } : {}), ...(images ? { images } : {}) };
         const cachedShare = Math.max(0, Math.min(1, Number(url.searchParams.get('cached') ?? 0.8)));
         if (!model || !Number.isFinite(inTokens) || !Number.isFinite(outTokens)) return send(res, 400, { error: { message: 'quote needs a model and token counts', type: 'invalid_request_error' } });
         const rows = quote(this.o.registry.usable(), model, inTokens, outTokens, cachedShare);
@@ -332,7 +337,7 @@ export class Router {
         const billsBy = new Map(this.billsNow().map((x) => [x.provider, x]));
         const saw = (address: string) => sawText(this.o.registry.watched(address), this.stats.all().get(address), Date.now(), billsBy.get(address));
         return send(res, 200, {
-          model, ...(kind === 'chat' ? {} : { kind }), ...(about.chars !== undefined ? { chars: about.chars } : {}), inTokens, outTokens, cachedShare,
+          model, ...(kind === 'chat' ? {} : { kind }), ...(about.chars !== undefined ? { chars: about.chars } : {}), ...(images ? { images } : {}), inTokens, outTokens, cachedShare,
           rows: rows.map((r) => ({ ...r, full: usd(r.full), cached: r.cached === null ? null : usd(r.cached), saw: saw(r.address) || null })),
           text: renderQuote(model, inTokens, outTokens, cachedShare, rows, saw, about),
         });
@@ -467,6 +472,16 @@ export class Router {
     return this.serve({ ...a, stream: false }, req, res, { kind: 'speech', id: '', withheld: identityIn(a) });
   }
 
+  /** Image generation (the OpenAI shape: a prompt, n, a size): routed and paid like any answer, each image billed as
+   * 1,000 output tokens and the prompt on input. The images come back base64 (b64_json), inside the seal like any answer. */
+  private async images(req: IncomingMessage, res: ServerResponse) {
+    const a = await readJson(req);
+    if (typeof a.model !== 'string' && !Array.isArray(a.models)) throw new Unserved('model is required', 400, 'bad_request');
+    if (typeof a.prompt !== 'string' || !a.prompt) throw new Unserved('prompt is required: what to draw', 400, 'bad_request');
+    if (a.n !== undefined && imageCount({ n: a.n }) !== Number(a.n)) throw new Unserved('n is the number of images, 1 to 10', 400, 'bad_request');
+    return this.serve({ ...a, stream: false }, req, res, { kind: 'image', id: '', withheld: identityIn(a) });
+  }
+
   private async responses(req: IncomingMessage, res: ServerResponse) {
     const a = await readJson(req);
     if (typeof a.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
@@ -518,7 +533,7 @@ export class Router {
     const pin = req.headers['x-orrery-provider'] ? String(req.headers['x-orrery-provider']) : null;
     const wantsStream = body.stream === true;
     const estIn = estimateInputTokens(body);
-    const estOut = workOf(anth) ? 0 : Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
+    const estOut = workOf(anth) ? workOut(anth, body) : Number(body.max_completion_tokens ?? body.max_tokens ?? 1_024);
     let offers = this.o.registry.offers(model);
     if (pin) offers = offers.filter((o) => o.entry.address.startsWith(pin));
     // A listing that says what its model is for gets only that kind of request; one that does not takes any, as before.
@@ -606,7 +621,7 @@ export class Router {
       if (budgetHeader !== undefined && (!Number.isFinite(dollars) || dollars <= 0)) throw new Unserved('x-orrery-max-cost must be a dollar amount such as 0.001', 400, 'bad_request');
       const own = budgetHeader === undefined ? null : BigInt(Math.floor(dollars * 1e6));
       const budget = own === null ? limitLeft! : limitLeft !== null && limitLeft < own ? limitLeft : own;
-      const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, workOf(anth) ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
+      const worst = (o: (typeof offers)[number]) => costOf(discounted(o.offer.price, offOf(o.entry)), estIn, workOf(anth) ? workOut(anth, body) : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? o.offer.maxOutput), o.offer.maxOutput));
       const fits = offers.filter((o) => worst(o) <= budget);
       if (!fits.length) {
         const low = offers.map(worst).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
@@ -703,7 +718,7 @@ export class Router {
 
   private async forward(cand: Candidate, body: Record<string, unknown>, wantsStream: boolean, res: ServerResponse, route: Route, fellThrough: number, retried = false, anth: Shape | null = null, state: StreamState = { started: false, stream: null, text: '', tools: false }, resumed = false): Promise<void> {
     const address = cand.entry.address;
-    const maxOut = workOf(anth) ? 0 : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
+    const maxOut = workOf(anth) ? workOut(anth, body) : Math.min(Number(body.max_completion_tokens ?? body.max_tokens ?? cand.offer.maxOutput), cand.offer.maxOutput);
     const maxCost = costOf(cand.offer.price, estimateInputTokens(body), maxOut);
     const beforeChannel = performance.now();
     const ch = await this.o.channels.ensure(address, maxCost);
@@ -907,6 +922,10 @@ export class Router {
       res.writeHead(200, { ...orreryHeaders, 'content-type': a.contentType ?? 'audio/mpeg', 'content-length': String(bytes.length), 'x-orrery-input-tokens': String(record.inputTokens) });
       res.end(bytes);
       return;
+    }
+    if (anth?.kind === 'image') {
+      const made = (chunks[0] ?? {}) as { data?: unknown[] };
+      return send(res, 200, { ...made, model: cand.offer.id, usage: { input_tokens: record.inputTokens, output_tokens: record.outputTokens, images: Array.isArray(made.data) ? made.data.length : 0, cost: Number(trip.cost) } }, orreryHeaders);
     }
     if (anth?.kind === 'rerank') return send(res, 200, { ...(chunks[0] ?? {}), model: cand.offer.id, usage: { total_tokens: record.inputTokens, cost: Number(trip.cost) } }, orreryHeaders);
     if (anth?.kind === 'responses') {

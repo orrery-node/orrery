@@ -13,7 +13,7 @@ import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from 
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
-import { canonical, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
+import { canonical, IMAGE_TOKENS, imageCount, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
 import { TICKER } from '../brand.ts';
@@ -533,6 +533,7 @@ export class ProviderNode {
       if (req.method === 'POST' && url.pathname === '/v1/embeddings') return await this.complete(req, res, 'embeddings');
       if (req.method === 'POST' && url.pathname === '/v1/rerank') return await this.complete(req, res, 'rerank');
       if (req.method === 'POST' && url.pathname === '/v1/audio/speech') return await this.complete(req, res, 'speech');
+      if (req.method === 'POST' && url.pathname === '/v1/images/generations') return await this.complete(req, res, 'image');
       return fail(res, 404, 'not_found', 'no such route');
     } catch (err) {
       const e = err as Error & { code?: string; status?: number };
@@ -605,7 +606,7 @@ export class ProviderNode {
     const paid = e.best?.cumulative ?? 0n;
     if (paid < e.owed) return payFail(402, 'payment_required', 'previous requests are not paid for', { owed: e.owed.toString(), paid: paid.toString(), unpaid: e.unpaid.map((r) => ({ ...r, cost: r.cost.toString(), owedAfter: r.owedAfter.toString() })) });
     const askedOut = Number(body.max_completion_tokens ?? body.max_tokens ?? offer.maxOutput);
-    const maxOut = kind !== 'chat' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
+    const maxOut = kind === 'image' ? imageCount(body) * IMAGE_TOKENS : kind !== 'chat' ? 0 : Math.max(1, Math.min(Number.isFinite(askedOut) ? askedOut : offer.maxOutput, offer.maxOutput));
     const maxCost = costOf(price, estimateInputTokens(body), maxOut);
     if (e.owed + maxCost > e.channel.deposit) {
       await this.entry(address, true);
@@ -660,6 +661,8 @@ export class ProviderNode {
         ? { model: upModel, query: body.query, documents: body.documents, ...opt('top_n'), ...opt('return_documents') }
         : kind === 'speech'
           ? { model: upModel, input: body.input, ...opt('voice'), ...opt('response_format'), ...opt('speed') }
+          : kind === 'image'
+            ? { model: upModel, prompt: body.prompt, n: imageCount(body), ...opt('size'), ...opt('quality'), response_format: 'b64_json' }
           : { model: upModel, input: body.input, ...(body.encoding_format ? { encoding_format: body.encoding_format } : {}), ...(body.dimensions ? { dimensions: body.dimensions } : {}) };
       const up = await fetchWithTimeout(`${this.cfg.upstream.baseUrl.replace(/\/$/, '')}/${kindPath(kind)}`, {
         method: 'POST',
@@ -682,7 +685,11 @@ export class ProviderNode {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
       const sendE = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
       sendE(JSON.stringify({ ...j, model: offer.id }));
-      settle(sendE, audio ? speechTokens(body.input) : j.usage?.prompt_tokens ?? j.usage?.total_tokens ?? estimateInputTokens(body), 0, 0);
+      // An image is billed as 1,000 output tokens, for the images that came back (never more than were asked for), and
+      // its prompt like speech, one input token per 4 characters.
+      const images = kind === 'image' ? Math.min(Array.isArray(j.data) ? j.data.length : 0, imageCount(body)) : 0;
+      if (kind === 'image') settle(sendE, speechTokens(body.prompt), images * IMAGE_TOKENS, 0);
+      else settle(sendE, audio ? speechTokens(body.input) : j.usage?.prompt_tokens ?? j.usage?.total_tokens ?? estimateInputTokens(body), 0, 0);
       return;
     }
 

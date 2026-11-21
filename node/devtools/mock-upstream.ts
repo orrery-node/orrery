@@ -1,6 +1,7 @@
 // A stand-in for vLLM/Ollama: an OpenAI-compatible server that streams a deterministic reply with real usage
 // numbers, after a configurable delay. Used by the local end-to-end run so the network can be exercised without GPUs.
 import { createServer } from 'node:http';
+import { deflateSync } from 'node:zlib';
 
 const port = Number(process.argv[2] ?? 9000);
 const delayMs = Number(process.argv[3] ?? 50);
@@ -35,7 +36,7 @@ createServer(async (req, res) => {
     const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
     noteIdentity(body);
     // A reranker scores pairs and a speech model speaks; neither embeds, and a real model server says so.
-    if (/rerank|kokoro|tts/i.test(String(body.model ?? ''))) {
+    if (/rerank|kokoro|tts|flux|sdxl|stable-diffusion/i.test(String(body.model ?? ''))) {
       res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Embeddings API` } }));
       return;
     }
@@ -78,6 +79,24 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': String(wav.length) }).end(wav);
     return;
   }
+  if (req.method === 'POST' && req.url?.endsWith('/images/generations')) {
+    // Image generation in the OpenAI shape: n images as base64 PNGs. Here each is a small gradient whose colours come from
+    // the prompt, so the bytes are a real PNG an image viewer opens, and no usage is reported, as local image servers do.
+    const parts: Buffer[] = [];
+    for await (const c of req) parts.push(c as Buffer);
+    const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+    noteIdentity(body);
+    if (!/flux|sdxl|stable-diffusion/i.test(String(body.model ?? ''))) {
+      res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Images API` } }));
+      return;
+    }
+    const n = Math.max(1, Math.min(10, Number(body.n ?? 1)));
+    const side = Math.max(16, Math.min(256, Number(String(body.size ?? '256x256').split('x')[0]) || 256));
+    const seed = [...String(body.prompt ?? '')].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+    const pngs = Array.from({ length: n }, (_, k) => png(side, (seed + k * 97) >>> 0).toString('base64'));
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ created: Math.floor(Date.now() / 1000), data: pngs.map((b64_json) => ({ b64_json })) }));
+    return;
+  }
   if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
     res.writeHead(404).end();
     return;
@@ -87,7 +106,7 @@ createServer(async (req, res) => {
   const body = JSON.parse(Buffer.concat(parts).toString('utf8'));
   noteIdentity(body);
   // A reranker or a speech model is not a chat model: like a real model server, this one refuses to chat with it.
-  if (/rerank|kokoro|tts/i.test(String(body.model ?? ''))) {
+  if (/rerank|kokoro|tts|flux|sdxl|stable-diffusion/i.test(String(body.model ?? ''))) {
     res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { message: `The model ${body.model} does not support Chat Completions API` } }));
     return;
   }
@@ -129,3 +148,22 @@ createServer(async (req, res) => {
   res.write('data: [DONE]\n\n');
   res.end();
 }).listen(port, '127.0.0.1', () => console.log(`mock upstream ${label} on :${port} (delay ${delayMs}ms)`));
+
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (b: Buffer) => { let c = 0xffffffff; for (const x of b) c = CRC[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+const chunk = (type: string, data: Buffer) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); };
+/** A side × side RGB PNG: a diagonal gradient between two colours taken from the seed. */
+function png(side: number, seed: number): Buffer {
+  const a = [seed & 0xff, (seed >>> 8) & 0xff, (seed >>> 16) & 0xff], b = [255 - a[2], 255 - a[0], 255 - a[1]];
+  const raw = Buffer.alloc(side * (side * 3 + 1));
+  for (let y = 0; y < side; y++) {
+    raw[y * (side * 3 + 1)] = 0;
+    for (let x = 0; x < side; x++) {
+      const t = (x + y) / (2 * (side - 1));
+      for (let c = 0; c < 3; c++) raw[y * (side * 3 + 1) + 1 + x * 3 + c] = Math.round(a[c] * (1 - t) + b[c] * t);
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(side, 0); ihdr.writeUInt32BE(side, 4); ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}

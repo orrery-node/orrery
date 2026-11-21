@@ -253,7 +253,7 @@ export async function modelTest(
     const said = await fetchFn(`${base}/${kindPath(kindOf({ kind }))}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(kind === 'rerank' ? { model: name, query: 'ok', documents: ['ok'] } : kind === 'speech' ? { model: name, input: 'ok' } : kind === 'embeddings' ? { model: name, input: 'ok' } : { model: name, messages: [{ role: 'user', content: 'Reply with the word ok.' }], max_tokens: 8, stream: false }),
+      body: JSON.stringify(kind === 'rerank' ? { model: name, query: 'ok', documents: ['ok'] } : kind === 'speech' ? { model: name, input: 'ok' } : kind === 'image' ? { model: name, prompt: 'ok', n: 1, size: '256x256', response_format: 'b64_json' } : kind === 'embeddings' ? { model: name, input: 'ok' } : { model: name, messages: [{ role: 'user', content: 'Reply with the word ok.' }], max_tokens: 8, stream: false }),
     })
       .then(async (r) => {
         const text = await r.text();

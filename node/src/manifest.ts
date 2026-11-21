@@ -17,14 +17,24 @@ export type ModelOffer = {
   kind?: ModelKind;
 };
 
-export const MODEL_KINDS = ['embeddings', 'rerank', 'speech'] as const;
+export const MODEL_KINDS = ['embeddings', 'rerank', 'speech', 'image'] as const;
 export type ModelKind = (typeof MODEL_KINDS)[number];
 
 /** Where each kind of request goes, under /v1/ on a router and on a node: speech at /v1/audio/speech, as OpenAI serves it. */
-export const kindPath = (k: 'chat' | ModelKind): string => (k === 'chat' ? 'chat/completions' : k === 'speech' ? 'audio/speech' : k);
+export const kindPath = (k: 'chat' | ModelKind): string => (k === 'chat' ? 'chat/completions' : k === 'speech' ? 'audio/speech' : k === 'image' ? 'images/generations' : k);
 
 /** Text to speech has no token count from the model server: it is billed on the text, one input token per 4 characters. */
 export const speechTokens = (input: unknown): number => Math.max(1, Math.ceil(String(input ?? '').length / 4));
+
+/** An image is billed as 1,000 output tokens, whatever its size: a node lists its price for an image as its output price
+ * per million tokens, so $3 per million is $0.003 an image. Its prompt is billed on input, one token per 4 characters. */
+export const IMAGE_TOKENS = 1_000;
+
+/** How many images a request asks for: n, from 1 to 10, else 1. */
+export const imageCount = (body: { n?: unknown }): number => {
+  const n = Number(body.n ?? 1);
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : 1;
+};
 
 /** The kind of request a model takes, from its listing: what it says, or chat. */
 export const kindOf = (o: { kind?: string }): 'chat' | ModelKind => ((MODEL_KINDS as readonly string[]).includes(o.kind ?? '') ? (o.kind as ModelKind) : 'chat');

@@ -29,6 +29,7 @@ export const isEmbedding = (offer: { price: { output: number }; kind?: ModelKind
 /** One benchmark request of each kind, small and the same every time. */
 const benchBody = (kind: 'chat' | ModelKind, model: string, i: number) =>
   kind === 'speech' ? { model, input: `Benchmark ${i + 1}: one short sentence to speak.` }
+  : kind === 'image' ? { model, prompt: `Benchmark ${i + 1}: a small blue circle.`, n: 1, size: '256x256' }
   : kind === 'embeddings' ? { model, input: [`Benchmark ${i + 1}: a short passage to embed.`] }
   : kind === 'rerank' ? { model, query: `Benchmark ${i + 1}: which passage is about payment?`, documents: ['Payment channels settle on Solana.', 'Owls hunt at night.'] }
   : { model, messages: [{ role: 'user', content: `Benchmark ${i + 1}: reply with one short sentence.` }], max_tokens: 32 };

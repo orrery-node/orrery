@@ -108,7 +108,7 @@ const HOOK = `http://127.0.0.1:${(hookServer.address() as { port: number }).port
 
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
-  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0], ['kokoro-82m', 1_000_000, 0]] },
+  { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0], ['kokoro-82m', 1_000_000, 0], ['flux-schnell', 100_000, 3_000_000]] },
   { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, inside: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
@@ -125,7 +125,7 @@ for (const s of providerSpecs) {
   const node = new ProviderNode({
     name: s.name, region: s.region, listen: s.port, host: '127.0.0.1', publicUrl: `http://127.0.0.1:${s.port}`, rpcUrl: RPC, settleMint: usdc.toBase58(),
     wallet: join(dir, 'wallet.json'), dataDir: dir, upstream: { baseUrl: `http://127.0.0.1:${s.up}/v1` },
-    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) }, ...(id === 'bge-reranker-v2-m3' ? { kind: 'rerank' as const } : id === 'kokoro-82m' ? { kind: 'speech' as const } : {}) }; }),
+    models: s.models.map((m) => { const [id, input, output, cachedInput] = m as readonly [string, number, number, number?]; return { id, context: s.name.startsWith('Kestrel') && id === 'qwen3-32b' ? 8_192 : 131_072, maxOutput: 4_096, price: { input, output, ...(cachedInput ? { cachedInput } : {}) }, ...(id === 'bge-reranker-v2-m3' ? { kind: 'rerank' as const } : id === 'kokoro-82m' ? { kind: 'speech' as const } : id === 'flux-schnell' ? { kind: 'image' as const } : {}) }; }),
     tee: s.tee ? { mode: 'dev', kind: 3 } : undefined, redeem: { everySecs: 3_600, minUnits: 1 }, resume: 'resume' in s ? s.resume : undefined,
     holder: 'holder' in s ? { tiers: HOLDER_TIERS } : undefined,
     burn: 'burn' in s ? { share: s.burn as number, minUnits: 1 } : undefined,
@@ -179,7 +179,7 @@ const nameOf = (addr: string | null) => registry.get(addr ?? '')?.manifest?.name
 
 console.log('\nrequests');
 const models = await (await fetch(`${ROUTER}/v1/models`)).json();
-check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 8 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
+check('/v1/models lists the network catalog, with a cached-input price where one is listed', models.data.length === 9 && models.data.find((m: { id: string }) => m.id === 'gpt-oss-120b')?.pricing?.cached_prompt_per_million === 0.009375, models.data.map((m: { id: string; providers: number }) => `${m.id}×${m.providers}`).join(' '));
 
 // Kestrel lists qwen3-32b at 8,192 tokens of context and Vault Nine at 131,072. Kestrel is the cheaper, so a short
 // prompt goes there; one clearly longer than 8,192 tokens goes to Vault Nine, and Kestrel is not counted against.
@@ -463,6 +463,9 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const rrBenchTrips = trips.slice(benchBefore);
   const mcpModelLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('bge-reranker-v2-m3')) ?? '';
   const mcpVoiceLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('kokoro-82m')) ?? '';
+  const mcpPainterLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('flux-schnell')) ?? '';
+  check('the MCP models tool tells an agent where an image model is asked: at /v1/images/generations on its router',
+    mcpPainterLine.endsWith('  ·  image: send it to /v1/images/generations on your router; its answer is images'), mcpPainterLine || 'no flux-schnell line');
   check('the MCP models tool tells an agent where a speech model is asked: at /v1/audio/speech on its router, not a tool',
     mcpVoiceLine.endsWith('  ·  speech: send it to /v1/audio/speech on your router; its answer is audio'), mcpVoiceLine || 'no kokoro-82m line');
   check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
@@ -524,6 +527,37 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     voiceListing?.kind === 'speech' && chatToVoice.status === 400 && chatToVoice.j.error?.code === 'wrong_kind' && chatToVoice.j.error.message === 'kokoro-82m is listed for speech; send it to /v1/audio/speech'
     && voiceBench.length === 1 && voiceBench[0].answered === 2 && !voiceBench[0].error,
     `models: kokoro-82m kind ${voiceListing?.kind ?? 'none'} · chat to it: ${chatToVoice.status} ${chatToVoice.j.error?.message ?? ''} · bench: ${voiceBench[0]?.answered ?? 0}/2 ${voiceBench[0]?.error ?? ''}`);
+}
+// And images: a node that lists an image model ("kind": "image") sells pictures on the same channel. Each image is billed
+// as 1,000 output tokens and its prompt like speech, one input token per 4 characters; the images come back base64.
+{
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const draw = 'a lighthouse made of glass on a night sea';
+  const imgReq = { model: 'flux-schnell', prompt: draw, n: 2, size: '256x256' };
+  const im = await fetch(`${ROUTER}/v1/images/generations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(imgReq) });
+  const imj = (await im.json()) as { data?: { b64_json?: string }[]; model?: string; usage?: { input_tokens: number; output_tokens: number; images: number; cost: number } };
+  const imTrip = trips.at(-1);
+  const pngs = (imj.data ?? []).map((d) => Buffer.from(d.b64_json ?? '', 'base64'));
+  const pngOk = pngs.length === 2 && pngs.every((b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) && b.readUInt32BE(16) === 256);
+  const imTokens = Math.ceil(draw.length / 4);
+  const imExpected = costOf({ input: 100_000, output: 3_000_000 }, imTokens, 2_000);
+  if (pngs[0]) writeFileSync(join(WORK, 'image-1.png'), pngs[0]);
+  writeFileSync(join(WORK, 'image.json'), JSON.stringify({ request: imgReq, status: im.status, images: pngs.length, bytes: pngs.map((b) => b.length), usage: imj.usage, headers: Object.fromEntries([...im.headers].filter(([k]) => k.startsWith('x-orrery-'))) }, null, 2));
+  const badN = await fetch(`${ROUTER}/v1/images/generations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...imgReq, n: 40 }) }).then(async (r) => ({ status: r.status, code: ((await r.json()) as { error?: { code?: string } }).error?.code }));
+  check('image generation is routed and paid like any answer: the images come back as PNGs, each billed as 1,000 output tokens and the prompt on input',
+    im.status === 200 && imj.model === 'flux-schnell' && pngOk && imj.usage?.images === 2 && imj.usage.output_tokens === 2_000 && imj.usage.input_tokens === imTokens && im.headers.get('x-orrery-cost') === usd(imExpected)
+    && imTrip?.model === 'flux-schnell' && imTrip.kind === 'image' && imTrip.outputTokens === 2_000 && nameOf(im.headers.get('x-orrery-provider')) === 'Ironbridge Compute' && badN.status === 400,
+    `${pngs.length} PNGs of ${pngs.map((b) => b.length.toLocaleString('en-US')).join(' and ')} bytes · ${imj.usage?.input_tokens} prompt tokens + ${imj.usage?.output_tokens} output tokens · $${im.headers.get('x-orrery-cost')} via ${nameOf(im.headers.get('x-orrery-provider'))} · n=40: ${badN.status}`);
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const chatToPainter = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'flux-schnell', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }) }).then(async (r) => ({ status: r.status, j: (await r.json()) as { error?: { code?: string; message?: string } } }));
+  const painterBench = await bench({ model: 'flux-schnell', providers: registry.usable().filter((e) => e.manifest!.models.some((m) => m.id === 'flux-schnell')), router: ROUTER, n: 2 });
+  const imgQuote = (await (await fetch(`${ROUTER}/orrery/quote?model=flux-schnell&prompt=${encodeURIComponent(draw)}&images=2`)).json()) as { kind?: string; images?: number; inTokens?: number; outTokens?: number; text?: string };
+  check('an image model takes only images: a chat request for it is refused before any node is asked, orrery bench asks it for an image, and a quote prices it per image',
+    chatToPainter.status === 400 && chatToPainter.j.error?.code === 'wrong_kind' && chatToPainter.j.error.message === 'flux-schnell is listed for image; send it to /v1/images/generations'
+    && painterBench.length === 1 && painterBench[0].answered === 2 && !painterBench[0].error
+    && imgQuote.kind === 'image' && imgQuote.images === 2 && imgQuote.outTokens === 2_000 && imgQuote.inTokens === imTokens && (imgQuote.text ?? '').includes(`cheapest: Ironbridge Compute, $${usd(imExpected)} a request`)
+    && (imgQuote.text ?? '').split('\n')[0] === `flux-schnell · image · 2 images (1,000 output tokens each), ${imTokens} tokens of prompt · listed prices on Solana, before any holder discount`,
+    `chat to it: ${chatToPainter.status} ${chatToPainter.j.error?.message ?? ''} · bench ${painterBench[0]?.answered ?? 0}/2 ${painterBench[0]?.error ?? ''} · quote: ${(imgQuote.text ?? '').split('\n')[0]}`);
 }
 const rawGet = (port: number, path: string, headers: Record<string, string>) => new Promise<number>((done) => {
   const r = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => { res.resume(); done(res.statusCode ?? 0); });
@@ -790,7 +824,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 52 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 55 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.
@@ -1021,6 +1055,7 @@ check('orrery quote prices a speech model on the text it is given, one input tok
   `${speechQuote.split('\n')[0]} · ${speechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? 'no cheapest line'}`);
 const modelsCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'models', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
 const modelsLine = (id: string) => modelsCli.split('\n').find((l) => l.startsWith(`${id} `)) ?? '';
+check('orrery models says an image model is sent to /v1/images/generations and billed per image', modelsLine('flux-schnell').endsWith('  · image (/v1/images/generations, billed as 1,000 output tokens an image)'), modelsLine('flux-schnell').replace(/\s+/g, ' ') || 'no flux-schnell line');
 check('orrery models says where each kind of work is sent: a speech model to /v1/audio/speech, billed on the text, a reranker to /v1/rerank',
   modelsLine('kokoro-82m').endsWith('  · speech (/v1/audio/speech, billed on the text: one input token per 4 characters)') && modelsLine('bge-reranker-v2-m3').endsWith('  · rerank (/v1/rerank)') && !modelsLine('llama-3.3-70b').includes(' · chat'),
   `${modelsLine('kokoro-82m').replace(/\s+/g, ' ') || 'no kokoro-82m line'} · ${modelsLine('bge-reranker-v2-m3').replace(/\s+/g, ' ').slice(-24)}`);
