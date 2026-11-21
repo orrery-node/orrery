@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CACHE_REPORTING, draftConfig, draftWallet, findUpstream, isEmbeddingModel, isRerankModel, isSpeechModel, networkId, nextSteps, walletNote } from '../src/provider/init.ts';
+import { CACHE_REPORTING, draftConfig, draftWallet, findUpstream, isEmbeddingModel, isImageModel, isRerankModel, isSpeechModel, networkId, nextSteps, walletNote } from '../src/provider/init.ts';
 
 const fake = (served: Record<string, string[]>) => async (url: string) => {
   const base = url.replace(/\/models$/, '');
@@ -77,6 +77,13 @@ describe('orrery provider init', () => {
     for (const id of ['Qwen/Qwen3-32B', 'llama3.1:8b', 'BAAI/bge-m3', 'BAAI/bge-reranker-v2-m3', 'deepseek-v3']) assert.ok(!isSpeechModel(id), id);
     const c = draftConfig({ name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', models: ['hexgrad/Kokoro-82M', 'Qwen/Qwen3-32B'] });
     assert.deepEqual(c.models.map((m) => [m.id, m.kind ?? 'chat', m.price.input, m.price.output]), [['kokoro-82m', 'speech', 2_000_000, 0], ['qwen3-32b', 'chat', 500_000, 1_000_000]]);
+  });
+
+  it('lists image models as "kind": "image", each image at $0.003 to start, and nothing else as an image model', () => {
+    for (const id of ['black-forest-labs/FLUX.1-schnell', 'stabilityai/stable-diffusion-3.5-large', 'stabilityai/sdxl-turbo', 'kandinsky-community/kandinsky-3', 'PixArt-alpha/PixArt-Sigma-XL-2-1024-MS', 'playgroundai/playground-v2.5-1024px-aesthetic', 'HiDream-ai/HiDream-I1-Full']) assert.ok(isImageModel(id) && !isEmbeddingModel(id) && !isSpeechModel(id), id);
+    for (const id of ['Qwen/Qwen3-32B', 'llama3.1:8b', 'BAAI/bge-m3', 'BAAI/bge-reranker-v2-m3', 'hexgrad/Kokoro-82M', 'deepseek-v3', 'gpt-oss-120b']) assert.ok(!isImageModel(id), id);
+    const c = draftConfig({ name: 'vLLM', baseUrl: 'http://127.0.0.1:8000/v1', models: ['black-forest-labs/FLUX.1-schnell', 'Qwen/Qwen3-32B'] });
+    assert.deepEqual(c.models.map((m) => [m.id, m.kind ?? 'chat', m.price.input, m.price.output]), [['flux.1-schnell', 'image', 100_000, 3_000_000], ['qwen3-32b', 'chat', 500_000, 1_000_000]]);
   });
 
   it('names a wallet the operator has: the one orrery wallet new made, else the usual Solana file, else where wallet new will put one', () => {

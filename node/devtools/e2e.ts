@@ -2353,7 +2353,7 @@ check('orrery provider init lists the context the model server says it serves, a
 // so routers send the reranker /v1/rerank and the embedder /v1/embeddings, and says so. The list it writes is one a
 // node starts with and a router accepts.
 {
-  const kindMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19111', '5', 'kinds'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'BAAI/bge-reranker-v2-m3,BAAI/bge-m3,Qwen/Qwen3-32B,hexgrad/Kokoro-82M' } });
+  const kindMock = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/devtools/mock-upstream.ts'), '19111', '5', 'kinds'], { stdio: 'ignore', env: { ...process.env, MOCK_MODELS: 'BAAI/bge-reranker-v2-m3,BAAI/bge-m3,Qwen/Qwen3-32B,hexgrad/Kokoro-82M,black-forest-labs/FLUX.1-schnell' } });
   procs.push(kindMock);
   for (let i = 0; i < 50 && !(await fetch('http://127.0.0.1:19111/v1/models').then((r) => r.ok).catch(() => false)); i++) await sleep(100);
   const kindCfgPath = join(walkHome, 'provider-kinds.json');
@@ -2363,7 +2363,8 @@ check('orrery provider init lists the context the model server says it serves, a
   // embedding model for an embedding, the chat model for an answer. The stand-in server, like a real one, will not
   // chat with a reranker.
   const { modelTest } = await import('../src/provider/check.ts');
-  const probed = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind !== 'speech')) : null;
+  const probed = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind !== 'speech' && m.kind !== 'image')) : null;
+  const probedPainter = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind === 'image')) : null;
   const probedVoice = kindCfg ? await modelTest('http://127.0.0.1:19111/v1', {}, kindCfg.models.filter((m) => m.kind === 'speech')) : null;
   kindMock.kill();
   const kindOfId = (id: string) => kindCfg?.models.find((m) => m.id === id);
@@ -2376,6 +2377,11 @@ check('orrery provider init lists the context the model server says it serves, a
   check('orrery provider check asks each model the way it is listed: a reranker for a ranking, an embedding model for an embedding, a chat model for an answer',
     !!probed && probed.ok === true && /^BAAI\/bge-reranker-v2-m3 answered a test request in \d+ ms; BAAI\/bge-m3 in \d+ ms; Qwen\/Qwen3-32B in \d+ ms$/.test(probed.detail),
     probed?.detail ?? 'no model test');
+  check('orrery provider init lists an image model as "kind": "image", each image billed as 1,000 output tokens, and provider check asks it for one image',
+    kindOfId('flux.1-schnell')?.kind === 'image' && kindOfId('flux.1-schnell')?.price.output === 3_000_000 && listable
+    && kindInit.text.includes('black-forest-labs/FLUX.1-schnell is an image model: listed for /v1/images/generations, each image billed as 1,000 output tokens')
+    && !!probedPainter && probedPainter.ok === true && /^black-forest-labs\/FLUX\.1-schnell answered a test request in \d+ ms$/.test(probedPainter.detail),
+    `${kindOfId('flux.1-schnell') ? `flux.1-schnell ${kindOfId('flux.1-schnell')?.kind ?? 'chat'}, $${(kindOfId('flux.1-schnell')!.price.output / 1e6).toFixed(2)}/M out` : 'not listed'} · check: ${probedPainter?.detail ?? 'no model test'}`);
   check('orrery provider init lists a text-to-speech model as "kind": "speech", billed on its text, and provider check asks it to speak',
     kindOfId('kokoro-82m')?.kind === 'speech' && kindOfId('kokoro-82m')?.price.output === 0 && kindOfId('kokoro-82m')?.price.input === 2_000_000 && listable
     && kindInit.text.includes('hexgrad/Kokoro-82M is a speech model: listed for /v1/audio/speech, billed on the text at one input token per 4 characters')
