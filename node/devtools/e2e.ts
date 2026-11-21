@@ -1145,6 +1145,17 @@ check('orrery provider status says what the wallet held after the last payout, p
     kindJson.by === 'kind' && expectKinds.has('rerank') && expectKinds.has('embeddings') && expectKinds.has('chat') && rowsOk
     && kindText.split('\n')[0].includes(', last 7d, by kind (billed') && ['chat', 'embeddings', 'rerank'].every((k) => kindText.split('\n').some((l) => l.startsWith(k.padEnd(24)))),
     (kindJson.rows ?? []).map((r) => `${r.key} ${r.answers} answers $${r.billed}`).join(' · ') || kindText.slice(0, 160));
+  // The running node says the same for its console: /orrery/earnings carries the last 24 hours by kind, and the
+  // console shows it under the table by model.
+  const dayStartK = Date.now() - 86_400_000;
+  const want24 = new Map<string, { answers: number; units: bigint }>();
+  for (const t of servedWeek.filter((x) => x.at >= dayStartK)) { const k = kindOfModel(t.model); const e = want24.get(k) ?? { answers: 0, units: 0n }; e.answers += 1; e.units += BigInt(Math.round(Number(t.cost) * 1e6)); want24.set(k, e); }
+  const nodeEarn = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { kinds?: { key: string; answers: number; usd: string }[] };
+  const ibPageNow = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}`)).text();
+  check('the node’s console says what each kind of work billed in the last 24 hours, from /orrery/earnings',
+    (nodeEarn.kinds ?? []).length === want24.size && want24.size >= 3 && (nodeEarn.kinds ?? []).every((k) => want24.get(k.key)?.answers === k.answers && usd(want24.get(k.key)!.units) === k.usd)
+    && ibPageNow.includes('id="kinds"') && ibPageNow.includes("'By kind of work: '"),
+    (nodeEarn.kinds ?? []).map((k) => `${k.key} ${k.answers} $${k.usd}`).join(' · ') || 'no kinds in /orrery/earnings');
 }
 // When the UTC date moves on, the node says the day that ended in one line of its log: what it billed (its log of
 // answers), what it paid out (its payouts) and what the wallet then held (the chain, which agrees now).

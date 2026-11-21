@@ -29,7 +29,7 @@ import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
 import { folderWarning } from './folder.ts';
-import { appendTrip, heldGivenLine, heldSaved, paidInside, readTrips, summarize, windowMs } from '../spend.ts';
+import { appendTrip, heldGivenLine, heldSaved, paidInside, readTrips, rowsByKind, summarize, windowMs } from '../spend.ts';
 
 export type ProviderOffer = ModelOffer & { upstreamModel?: string };
 
@@ -435,7 +435,8 @@ export class ProviderNode {
         }
         // The answers at the holder price, and what they came to below the list prices.
         const held = heldSaved(served, windowMs(since));
-        return json(res, 200, { since, rows: rows.map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), holders: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldGivenLine(held, total.answers) }, onChain: this.listingRead?.onChain ?? null, fees: this.listingRead?.fees ?? null });
+        // And the same rows by the kind of work each model does in this node's listing: chat, embeddings, rerank.
+        return json(res, 200, { since, rows: rows.map(out), kinds: rowsByKind(rows, this.cfg.models).map(out), total: out(total), paidInside: paidInside(served, windowMs(since)), holders: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldGivenLine(held, total.answers) }, onChain: this.listingRead?.onChain ?? null, fees: this.listingRead?.fees ?? null });
       }
       // The books day by day (UTC), from the node's own files: what each day billed and paid out. No chain call.
       if (req.method === 'GET' && url.pathname === '/orrery/books') {
