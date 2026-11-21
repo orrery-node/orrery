@@ -5,7 +5,7 @@
 //   cd node && npx tsx devtools/e2e.ts     (needs program/target/deploy/orrery.so: anchor build --arch v2)
 import { readPayouts } from '../src/provider/payouts.ts';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createServer as createHttpServer, request as httpRequest } from 'node:http';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
@@ -873,6 +873,34 @@ const ibNextSaid = ((await import('../src/provider/payouts.ts')) as unknown as {
 const ibConsole = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}`)).text();
 check('the node counts its next payout channel by channel and its console says when the money goes out', !!ibNext && ibNext.first && ibNext.below === '0' && usd(BigInt(ibNext.due)) === ibStatusNow.waiting
   && ibNextSaid === `$${ibStatusNow.waiting} goes out in the next round, within 60 min, as this node’s first payout.` && ibConsole.includes('id="next"') && ibConsole.includes('nextPayoutSentence(s.nextPayout)'), ibNextSaid || 'no next payout in the status');
+const vouchersJsonText = await cliOut(['vouchers', '--json']);
+const vouchersText = await cliOut(['vouchers']);
+const tamperDir = join(WORK, 'ironbridge-tampered');
+cpSync((nodes[1].cfg as { dataDir: string }).dataDir, tamperDir, { recursive: true });
+{
+  const led = JSON.parse(readFileSync(join(tamperDir, 'ledger.json'), 'utf8')) as Record<string, { best?: string }>;
+  const first = Object.keys(led).find((k) => led[k].best)!;
+  led[first].best = led[first].best!.replace(/^(\d+)\./, (_, n: string) => `${BigInt(n) + 1n}.`);
+  writeFileSync(join(tamperDir, 'ledger.json'), JSON.stringify(led));
+}
+const tamperCfgPath = join(WORK, 'ironbridge-tampered.json');
+writeFileSync(tamperCfgPath, JSON.stringify({ ...(nodes[1].cfg as object), dataDir: tamperDir }));
+const { text: tamperedText, code: tamperedExit } = await new Promise<{ text: string; code: number | null }>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'vouchers', '--config', tamperCfgPath], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', (code) => done({ text: out.trim(), code })); });
+// Every voucher the node holds, checked against its channel on chain the way the program checks a redeem: what can be
+// redeemed adds up to what the node says is waiting. A copy of its folder with one voucher's amount raised by a unit
+// fails the signature check, as the program would refuse it.
+const vouchersJson = (() => { try { return JSON.parse(vouchersJsonText) as { vouchers?: { signatureGood: boolean | null; redeemable: string; problem: string | null }[]; redeemable?: string }; } catch { return {}; } })();
+const vouchersLines = vouchersText.split('\n');
+const vN = vouchersJson.vouchers?.length ?? 0;
+const tamperedLines = tamperedText.split('\n');
+check('orrery provider vouchers checks every voucher the node holds against its channel on chain, and what can be redeemed is what the node says is waiting',
+  vN >= 1 && (vouchersJson.vouchers ?? []).every((v) => v.signatureGood === true && v.problem === null) && vouchersJson.redeemable === ibStatusNow.waiting
+  && new RegExp(`^"Ironbridge Compute": ${vN} vouchers?, checked against each channel on chain the way the program checks a redeem$`).test(vouchersLines[0] ?? '')
+  && (vouchersLines.at(-1) ?? '').startsWith(`${vN} of ${vN} would pass the program's check. $${ibStatusNow.waiting} can be redeemed now`),
+  `${vouchersLines.at(-1) ?? 'no output'} · the node says $${ibStatusNow.waiting} waiting`);
+check('a voucher whose amount was changed after it was signed fails the check, and orrery provider vouchers says the program would refuse it',
+  tamperedLines.some((l) => l.includes('signature bad') && l.includes("the program would refuse it")) && (tamperedLines.at(-1) ?? '').startsWith(`${vN - 1} of ${vN} would pass the program's check.`) && tamperedExit === 1,
+  `${(tamperedLines.find((l) => l.includes('signature bad')) ?? 'no bad line').trim().replace(/\s{2,}/g, ' ').slice(0, 140)} · exit ${tamperedExit}`);
 // The fee money too, before it is a problem: SOL on the node key and about how many payouts it pays for; and the same
 // as JSON for a monitor.
 const statusJson = await cliOut(['status', '--json']);

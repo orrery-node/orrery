@@ -7,7 +7,8 @@ import { dirname, resolve as resolvePath } from 'node:path';
 import { PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { sendOne } from './chain/send.ts';
 import { CLI, NAME, PROVIDER_PORT, ROUTER_PORT, USDC_MAINNET } from './brand.ts';
-import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId } from './chain/program.ts';
+import { ACCOUNT, decodeChannel, decodeConfig, decodeProvider, ins, pda, programId, type ChannelAccount } from './chain/program.ts';
+import { checkVouchers, renderVouchers } from './provider/vouchers.ts';
 import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { newWallet, walletNextSteps } from './wallet.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
@@ -125,6 +126,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider attest  --config provider.json   post the enclave claim (node key signs)
   ${CLI} provider redeem  --config provider.json   redeem every channel now
   ${CLI} provider earnings --config provider.json [--since 24h] [--by model|channel|kind|day|month] [--csv|--json]   what this node billed, from its own log; by day or month, what each billed and paid out
+  ${CLI} provider vouchers --config provider.json [--json]   every voucher this node holds, checked against its channel on chain the way the program checks a redeem
   ${CLI} provider payouts --config provider.json [--last 5] [--json|--csv]   each payout this node kept, checked against what the chain says reached your wallet
   ${CLI} provider price  --config provider.json [--beat 5] [--floor <in/out>] [--write]   undercut the cheapest other listing by a margin, never below your floor
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
@@ -437,6 +439,23 @@ async function provider(sub: string) {
     const lines = payoutCheckLines(cfg.name, rows, kept.length);
     if (rows.some((r) => r.chain && !(r.chain.state === 'landed' && r.chain.units === BigInt(r.p.units)))) process.exitCode = 1;
     return console.log(lines.join('\n'));
+  }
+  // Every voucher this node holds, checked against its channel on chain the way the program checks a redeem: one read
+  // of all the channels, no transaction, nothing paid.
+  if (sub === 'vouchers') {
+    const ledgerFile = `${node.dir}/ledger.json`;
+    const ledger = existsSync(ledgerFile) ? (JSON.parse(readFileSync(ledgerFile, 'utf8')) as Record<string, { best?: string }>) : {};
+    const addresses = Object.keys(ledger).filter((a) => ledger[a].best);
+    const accounts = new Map<string, ChannelAccount | null>();
+    for (let i = 0; i < addresses.length; i += 100) {
+      const part = addresses.slice(i, i + 100);
+      const infos = await node.conn.getMultipleAccountsInfo(part.map((a) => new PublicKey(a)));
+      part.forEach((a, k) => accounts.set(a, infos[k] ? decodeChannel(infos[k]!.data) : null));
+    }
+    const rows = checkVouchers(ledger, accounts, node.pda);
+    if (rows.some((r) => r.problem && r.signed !== null)) process.exitCode = 1;
+    if (has('json')) return console.log(JSON.stringify({ name: cfg.name, vouchers: rows.map((r) => ({ channel: r.channel, signedFor: usd(r.cumulative), deposit: r.deposit === null ? null : usd(r.deposit), settled: r.settled === null ? null : usd(r.settled), signatureGood: r.signed, redeemable: usd(r.pays), closingAt: r.closingAt === null ? null : new Date(r.closingAt * 1000).toISOString(), problem: r.problem ?? null })), redeemable: usd(rows.reduce((a, r) => a + r.pays, 0n)) }, null, 2));
+    return console.log(renderVouchers(cfg.name, rows));
   }
   // The console's address with its key, from this node's folder: for an operator whose start output is gone.
   if (sub === 'console') return console.log(`http://127.0.0.1:${cfg.listen}/?key=${node.consoleKey()}`);
