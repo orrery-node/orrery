@@ -996,7 +996,9 @@ export class ProviderNode {
 
   /** The day's books in one line, from the files the node keeps; null when nothing was served or paid out that day. */
   booksLine(day: string): string | null {
-    return dayBooksLine(day, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), readHeld(`${this.dir}/held.json`));
+    // What each model is for, from this node's listing: the day's line says what each kind billed when there were two.
+    const kindOfModel = (model: string) => { const o = this.cfg.models.find((m) => m.id === model); return o ? (o.kind ?? (o.price.output === 0 ? 'embeddings' : 'chat')) : 'chat'; };
+    return dayBooksLine(day, readTrips(`${this.dir}/served.jsonl`), readPayouts(`${this.dir}/payouts.jsonl`), readHeld(`${this.dir}/held.json`), kindOfModel);
   }
 
   /** Once the UTC date has moved on, say the day that ended. */

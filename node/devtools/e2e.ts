@@ -1325,8 +1325,13 @@ check('orrery provider status says what the wallet held after the last payout, p
   const before = nodeSaid[1].length;
   (nodes[1] as unknown as { booksTick?: (now: number) => void }).booksTick?.(dayStart + 86_400_000 + 1_000);
   const booksSaid = nodeSaid[1].slice(before).find((l) => l.startsWith('books for ')) ?? '';
-  check('just after midnight UTC, the node says the day’s books in one line: billed, paid out, and what the wallet then held per the chain',
-    booksSaid === `books for ${today} (UTC): ${servedToday.length.toLocaleString('en-US')} answer${servedToday.length === 1 ? '' : 's'}, $${usd(billedToday)} billed; ${paidToday.length} payout${paidToday.length === 1 ? '' : 's'}, $${usd(paidUnits)} to your wallet; it held $${usd(heldNow[1])} after the last, per the chain`,
+  // Ironbridge did more than one kind of work today, so the line says what each kind billed, by its own listing.
+  const ironListing = (nodes[1].cfg as { models: { id: string; kind?: string; price: { output: number } }[] }).models;
+  const kindToday = new Map<string, { n: number; u: bigint }>();
+  for (const t of servedToday) { const o = ironListing.find((m) => m.id === t.model); const k = o ? (o.kind ?? (o.price.output === 0 ? 'embeddings' : 'chat')) : 'chat'; const e = kindToday.get(k) ?? { n: 0, u: 0n }; e.n += 1; e.u += BigInt(Math.round(Number(t.cost) * 1e6)); kindToday.set(k, e); }
+  const kindsToday = [...kindToday].sort(([ka, a], [kb, b]) => (a.u === b.u ? ka.localeCompare(kb) : a.u > b.u ? -1 : 1)).map(([k, e]) => `${k} ${e.n.toLocaleString('en-US')}, $${usd(e.u)}`).join(' · ');
+  check('just after midnight UTC, the node says the day’s books in one line: billed, by kind of work, paid out, and what the wallet then held per the chain',
+    kindToday.size >= 4 && booksSaid === `books for ${today} (UTC): ${servedToday.length.toLocaleString('en-US')} answer${servedToday.length === 1 ? '' : 's'}, $${usd(billedToday)} billed (by kind: ${kindsToday}); ${paidToday.length} payout${paidToday.length === 1 ? '' : 's'}, $${usd(paidUnits)} to your wallet; it held $${usd(heldNow[1])} after the last, per the chain`,
     booksSaid || 'no such line');
   // And it keeps the closed day's totals in days.jsonl, which does not roll over with the logs: a day the logs no longer
   // reach (here one kept three days back, before this rehearsal's logs begin) still shows in the books by day.

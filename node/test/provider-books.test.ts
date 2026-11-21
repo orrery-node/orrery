@@ -36,6 +36,18 @@ describe('a node’s books for one UTC day', () => {
     // Answers at the holder price: the line says how many and how far under the list prices they went.
     const withHolders = [...served, { at: at('2026-11-18T13:00:00Z'), cost: '0.000010', saved: '0.000005' }, { at: at('2026-11-18T14:00:00Z'), cost: '0.000013', saved: '0.000007' }];
     assert.equal(fns.dayBooksLine!('2026-11-18', withHolders, payouts, held), 'books for 2026-11-18 (UTC): 4 answers, $0.038935 billed (2 at your holder price, $0.000012 under list); 2 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain');
+    // Given what each model is for, a day with more than one kind of work says what each kind billed, most first; a
+    // day of one kind says nothing more.
+    type Line = (day: string, served: unknown[], payouts: unknown[], held: unknown, kindOf?: (m: string) => string) => string | null;
+    const kindOf = (m: string) => (m === 'flux-schnell' ? 'image' : m === 'kokoro-82m' ? 'speech' : 'chat');
+    const mixed = [
+      { at: at('2026-11-18T01:00:00Z'), cost: '0.000400', model: 'llama-3.3-70b' },
+      { at: at('2026-11-18T02:00:00Z'), cost: '0.006002', model: 'flux-schnell' },
+      { at: at('2026-11-18T03:00:00Z'), cost: '0.000014', model: 'kokoro-82m', saved: '0.000003' },
+      { at: at('2026-11-18T04:00:00Z'), cost: '0.000200', model: 'llama-3.3-70b' },
+    ];
+    assert.equal((fns.dayBooksLine as unknown as Line)('2026-11-18', mixed, [], null, kindOf), 'books for 2026-11-18 (UTC): 4 answers, $0.006616 billed (1 at your holder price, $0.000003 under list; by kind: image 1, $0.006002 · chat 2, $0.000600 · speech 1, $0.000014); no payout');
+    assert.equal((fns.dayBooksLine as unknown as Line)('2026-11-18', mixed.filter((t) => t.model === 'llama-3.3-70b'), [], null, kindOf), 'books for 2026-11-18 (UTC): 2 answers, $0.000600 billed; no payout');
   });
 
   it('lays out the books day by day over a window, newest first, with the total under them', () => {

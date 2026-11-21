@@ -48,8 +48,11 @@ const toUnits = (cost: string): bigint => {
 
 /** One line for the day, or null when nothing was served or paid out in it:
  *   books for 2026-11-18 (UTC): 1,312 answers, $0.038912 billed (40 at your holder price, $0.000412 under list); 3 payouts, $0.120000 to your wallet; it held $1.412500 after the last, per the chain
- * The part in brackets is there when some answers went at the holder price (the log keeps `saved` on each). */
-export function dayBooksLine(day: string, served: { at: number; cost: string; saved?: string }[], payouts: Payout[], held: Held | null): string | null {
+ * The part in brackets is there when some answers went at the holder price (the log keeps `saved` on each), and, given
+ * what each model is for in the node's listing, when the day had more than one kind of work: what each kind billed,
+ *   … $0.038912 billed (by kind: chat 1,290, $0.032000 · image 2, $0.006002 · speech 20, $0.000910); …
+ */
+export function dayBooksLine(day: string, served: { at: number; cost: string; saved?: string; model?: string }[], payouts: Payout[], held: Held | null, kindOf?: (model: string) => string): string | null {
   const start = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(start)) return null;
   const inDay = (at: number) => at >= start && at < start + DAY;
@@ -62,8 +65,13 @@ export function dayBooksLine(day: string, served: { at: number; cost: string; sa
   const after = held && lastPaid && held.tx === lastPaid.tx ? `; it held $${usd(BigInt(held.units))} after the last, per the chain` : '';
   const atHolder = answers.filter((t) => typeof t.saved === 'string');
   const under = atHolder.reduce((n, t) => n + toUnits(t.saved!), 0n);
-  const holder = atHolder.length ? ` (${atHolder.length.toLocaleString('en-US')} at your holder price, $${usd(under)} under list)` : '';
-  const a = `${answers.length.toLocaleString('en-US')} answer${answers.length === 1 ? '' : 's'}, $${usd(billed)} billed${holder}`;
+  const kinds = new Map<string, { answers: number; units: bigint }>();
+  if (kindOf) for (const t of answers) { const k = kindOf(t.model ?? ''); const e = kinds.get(k) ?? { answers: 0, units: 0n }; e.answers += 1; e.units += toUnits(t.cost); kinds.set(k, e); }
+  const byKind = kinds.size > 1
+    ? `by kind: ${[...kinds].sort(([ka, a], [kb, b]) => (a.units === b.units ? ka.localeCompare(kb) : a.units > b.units ? -1 : 1)).map(([k, e]) => `${k} ${e.answers.toLocaleString('en-US')}, $${usd(e.units)}`).join(' · ')}`
+    : '';
+  const notes = [...(atHolder.length ? [`${atHolder.length.toLocaleString('en-US')} at your holder price, $${usd(under)} under list`] : []), ...(byKind ? [byKind] : [])];
+  const a = `${answers.length.toLocaleString('en-US')} answer${answers.length === 1 ? '' : 's'}, $${usd(billed)} billed${notes.length ? ` (${notes.join('; ')})` : ''}`;
   const p = paid.length ? `${paid.length} payout${paid.length === 1 ? '' : 's'}, $${usd(out)} to your wallet` : 'no payout';
   return `books for ${day} (UTC): ${a}; ${p}${after}`;
 }
