@@ -1009,6 +1009,11 @@ check('orrery quote prices a speech model on the text it is given, one input tok
   speechQuote.split('\n')[0] === `kokoro-82m · speech · ${sayQuoted.length} characters of text, ${Math.ceil(sayQuoted.length / 4)} tokens in (one per 4 characters) · listed prices on Solana, before any holder discount`
   && speechQuote.includes(`cheapest: Ironbridge Compute, $${speechQuoteWant} a request`),
   `${speechQuote.split('\n')[0]} · ${speechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? 'no cheapest line'}`);
+const modelsCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'models', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+const modelsLine = (id: string) => modelsCli.split('\n').find((l) => l.startsWith(`${id} `)) ?? '';
+check('orrery models says where each kind of work is sent: a speech model to /v1/audio/speech, billed on the text, a reranker to /v1/rerank',
+  modelsLine('kokoro-82m').endsWith('  · speech (/v1/audio/speech, billed on the text: one input token per 4 characters)') && modelsLine('bge-reranker-v2-m3').endsWith('  · rerank (/v1/rerank)') && !modelsLine('llama-3.3-70b').includes(' · chat'),
+  `${modelsLine('kokoro-82m').replace(/\s+/g, ' ') || 'no kokoro-82m line'} · ${modelsLine('bge-reranker-v2-m3').replace(/\s+/g, ' ').slice(-24)}`);
 // Both say too whether that node's bills stayed within the prices it listed, from the same log of answers.
 const billsRecordRe = /(every bill was within its listed prices|its bill was within its listed prices|billed above its listed prices)/;
 check('what your router saw of a node, in a quote and in orrery providers, says whether its bills stayed within its listed prices', billsRecordRe.test(quoteLine(quoteSaid.text ?? '')) && billsRecordRe.test(quoteLine(quoteCli)) && billsRecordRe.test(ironSaw), (quoteLine(quoteSaid.text ?? '').match(billsRecordRe)?.[0] ?? 'no bill record') + ' · providers: ' + (ironSaw.match(billsRecordRe)?.[0] ?? 'none'));

@@ -26,7 +26,7 @@ import { doctor, render } from './doctor.ts';
 import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, quoteKind, renderQuote } from './quote.ts';
-import { speechTokens } from './manifest.ts';
+import { kindPath, speechTokens, type ModelKind } from './manifest.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
 import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
@@ -185,12 +185,16 @@ async function router() {
   }
 }
 
+/** What `orrery models` says beside a model listed for a kind of work other than chat: where it is sent, and for speech
+ * what it is billed on. */
+const modelsKindNote = (kind: ModelKind) => `${kind} (/v1/${kindPath(kind)}${kind === 'speech' ? ', billed on the text: one input token per 4 characters' : ''})`;
+
 async function listModels() {
   const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
   await registry.refresh();
   const rows = registry.catalog();
   if (!rows.length) return console.log('No models listed yet.');
-  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} ${m.providers === 1 ? 'provider ' : 'providers'}  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.cachedFrom !== null ? ` · cached in from ${perMillion(m.cachedFrom)}` : ''}${m.private ? `  · ${m.private} private` : ''}${m.kind ? `  · ${m.kind} (/v1/${m.kind})` : ''}`);
+  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} ${m.providers === 1 ? 'provider ' : 'providers'}  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.cachedFrom !== null ? ` · cached in from ${perMillion(m.cachedFrom)}` : ''}${m.private ? `  · ${m.private} private` : ''}${m.kind ? `  · ${modelsKindNote(m.kind)}` : ''}`);
 }
 
 const tiersText = (t?: HolderTier[]) => (t?.length ? `holders ${t.map((x) => `${x.share / 100}%→−${x.off / 100}%`).join(' ')}  ` : '');
