@@ -189,14 +189,14 @@ async function router() {
 
 /** What `orrery models` says beside a model listed for a kind of work other than chat: where it is sent, and for speech
  * what it is billed on. */
-const modelsKindNote = (kind: ModelKind) => `${kind} (/v1/${kindPath(kind)}${kind === 'speech' ? ', billed on the text: one input token per 4 characters' : kind === 'image' ? ', billed as 1,000 output tokens an image' : ''})`;
+const modelsKindNote = (kind: ModelKind, cheapest?: { input: number; output: number }) => `${kind} (/v1/${kindPath(kind)}${kind === 'speech' ? `, billed on the text: one input token per 4 characters${cheapest ? `, from $${(cheapest.input / 4 / 1e6).toFixed(2)} per million characters` : ''}` : kind === 'image' ? `, billed as 1,000 output tokens an image${cheapest ? `, from $${((cheapest.output * IMAGE_TOKENS) / 1e12).toFixed(4)} an image` : ''}` : ''})`;
 
 async function listModels() {
   const registry = new Registry(rpcConnection(rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
   await registry.refresh();
   const rows = registry.catalog();
   if (!rows.length) return console.log('No models listed yet.');
-  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} ${m.providers === 1 ? 'provider ' : 'providers'}  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.cachedFrom !== null ? ` · cached in from ${perMillion(m.cachedFrom)}` : ''}${m.private ? `  · ${m.private} private` : ''}${m.kind ? `  · ${modelsKindNote(m.kind)}` : ''}`);
+  for (const m of rows) console.log(`${m.id.padEnd(40)} ${String(m.providers).padStart(3)} ${m.providers === 1 ? 'provider ' : 'providers'}  from ${perMillion(m.cheapest.input)} in · ${perMillion(m.cheapest.output)} out${m.cachedFrom !== null ? ` · cached in from ${perMillion(m.cachedFrom)}` : ''}${m.private ? `  · ${m.private} private` : ''}${m.kind ? `  · ${modelsKindNote(m.kind, m.cheapest)}` : ''}`);
 }
 
 const tiersText = (t?: HolderTier[]) => (t?.length ? `holders ${t.map((x) => `${x.share / 100}%→−${x.off / 100}%`).join(' ')}  ` : '');

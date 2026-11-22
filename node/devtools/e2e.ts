@@ -464,8 +464,8 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
   const mcpModelLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('bge-reranker-v2-m3')) ?? '';
   const mcpVoiceLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('kokoro-82m')) ?? '';
   const mcpPainterLine = (outR[4]?.result?.content?.[0]?.text ?? '').split('\n').find((l) => l.startsWith('flux-schnell')) ?? '';
-  check('the MCP models tool tells an agent to use the image tool for an image model',
-    mcpPainterLine.endsWith('  ·  image: use the image tool'), mcpPainterLine || 'no flux-schnell line');
+  check('the MCP models tool tells an agent what an image costs and to use the image tool for it',
+    mcpPainterLine.endsWith('  ·  from $0.0030 an image  ·  image: use the image tool'), mcpPainterLine || 'no flux-schnell line');
   check('the MCP models tool tells an agent where a speech model is asked: at /v1/audio/speech on its router, not a tool',
     mcpVoiceLine.endsWith('  ·  speech: send it to /v1/audio/speech on your router; its answer is audio'), mcpVoiceLine || 'no kokoro-82m line');
   check('orrery bench asks a reranker the way it is listed, through /v1/rerank, and the MCP models tool tells an agent to use rerank for it',
@@ -558,6 +558,12 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && imgQuote.kind === 'image' && imgQuote.images === 2 && imgQuote.outTokens === 2_000 && imgQuote.inTokens === imTokens && (imgQuote.text ?? '').includes(`cheapest: Ironbridge Compute, $${usd(imExpected)} a request`)
     && (imgQuote.text ?? '').split('\n')[0] === `flux-schnell · image · 2 images (1,000 output tokens each), ${imTokens} tokens of prompt · listed prices on Solana, before any holder discount`,
     `chat to it: ${chatToPainter.status} ${chatToPainter.j.error?.message ?? ''} · bench ${painterBench[0]?.answered ?? 0}/2 ${painterBench[0]?.error ?? ''} · quote: ${(imgQuote.text ?? '').split('\n')[0]}`);
+  // The catalog says what a picture and a page of speech cost, worked out from the listing the way a node bills them.
+  const priced = ((await (await fetch(`${ROUTER}/v1/models`)).json()) as { data: { id: string; pricing: { per_image?: number; per_million_characters?: number; completion_per_million: number } }[] }).data;
+  const fluxP = priced.find((m) => m.id === 'flux-schnell')?.pricing, kokoroP = priced.find((m) => m.id === 'kokoro-82m')?.pricing, llamaP = priced.find((m) => m.id === 'llama-3.3-70b')?.pricing;
+  check('/v1/models gives an image model its price per image and a speech model its price per million characters',
+    fluxP?.per_image === 0.003 && kokoroP?.per_million_characters === 0.25 && llamaP !== undefined && llamaP.per_image === undefined && llamaP.per_million_characters === undefined,
+    `flux-schnell per_image ${fluxP?.per_image} · kokoro-82m per_million_characters ${kokoroP?.per_million_characters} · llama-3.3-70b neither: ${llamaP?.per_image === undefined && llamaP?.per_million_characters === undefined}`);
   // And an agent gets images through orrery mcp: the image tool hands back the pictures themselves, with what they cost
   // and what its task has left.
   for (const o of router.stats.all().values()) o.cooldownUntil = 0;
@@ -1102,9 +1108,9 @@ check('orrery quote prices a speech model on the text it is given, one input tok
   `${speechQuote.split('\n')[0]} · ${speechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? 'no cheapest line'}`);
 const modelsCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'models', '--rpc', RPC], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
 const modelsLine = (id: string) => modelsCli.split('\n').find((l) => l.startsWith(`${id} `)) ?? '';
-check('orrery models says an image model is sent to /v1/images/generations and billed per image', modelsLine('flux-schnell').endsWith('  · image (/v1/images/generations, billed as 1,000 output tokens an image)'), modelsLine('flux-schnell').replace(/\s+/g, ' ') || 'no flux-schnell line');
+check('orrery models says an image model is sent to /v1/images/generations and what an image costs', modelsLine('flux-schnell').endsWith('  · image (/v1/images/generations, billed as 1,000 output tokens an image, from $0.0030 an image)'), modelsLine('flux-schnell').replace(/\s+/g, ' ') || 'no flux-schnell line');
 check('orrery models says where each kind of work is sent: a speech model to /v1/audio/speech, billed on the text, a reranker to /v1/rerank',
-  modelsLine('kokoro-82m').endsWith('  · speech (/v1/audio/speech, billed on the text: one input token per 4 characters)') && modelsLine('bge-reranker-v2-m3').endsWith('  · rerank (/v1/rerank)') && !modelsLine('llama-3.3-70b').includes(' · chat'),
+  modelsLine('kokoro-82m').endsWith('  · speech (/v1/audio/speech, billed on the text: one input token per 4 characters, from $0.25 per million characters)') && modelsLine('bge-reranker-v2-m3').endsWith('  · rerank (/v1/rerank)') && !modelsLine('llama-3.3-70b').includes(' · chat'),
   `${modelsLine('kokoro-82m').replace(/\s+/g, ' ') || 'no kokoro-82m line'} · ${modelsLine('bge-reranker-v2-m3').replace(/\s+/g, ' ').slice(-24)}`);
 // Both say too whether that node's bills stayed within the prices it listed, from the same log of answers.
 const billsRecordRe = /(every bill was within its listed prices|its bill was within its listed prices|billed above its listed prices)/;

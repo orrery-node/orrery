@@ -378,7 +378,9 @@ export class Router {
   private models(res: ServerResponse) {
     const data = this.o.registry.catalog().map((m) => ({
       id: m.id, object: 'model', owned_by: 'network', providers: m.providers, private_providers: m.private, context_length: m.context,
-      pricing: { prompt_per_million: m.cheapest.input / 1e6, completion_per_million: m.cheapest.output / 1e6, ...(m.cachedFrom !== null ? { cached_prompt_per_million: m.cachedFrom / 1e6 } : {}) },
+      // An image model's price per image and a speech model's per million characters, worked out from the listing the way
+      // a node bills them, so a client need not know the token rules to see what a picture or a page of speech costs.
+      pricing: { prompt_per_million: m.cheapest.input / 1e6, completion_per_million: m.cheapest.output / 1e6, ...(m.cachedFrom !== null ? { cached_prompt_per_million: m.cachedFrom / 1e6 } : {}), ...(m.kind === 'image' ? { per_image: (m.cheapest.output * IMAGE_TOKENS) / 1e12 } : {}), ...(m.kind === 'speech' ? { per_million_characters: m.cheapest.input / 4 / 1e6 } : {}) },
       ...(m.kind ? { kind: m.kind } : {}),
     }));
     send(res, 200, { object: 'list', data });
