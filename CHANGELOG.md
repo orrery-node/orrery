@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · A quote (`orrery quote`, `/orrery/quote`, the MCP `quote` tool) says what the same request costs with `:private`: "with :private: Vault Nine runs in an enclave this router verified, $0.000740 a request (2.1× the cheapest).", or that the cheapest node already runs in one. A long node name is cut before its ·enclave mark, never the mark.
 - **Node** · A node with a `notify` webhook is told when payouts start failing: one notice in the console's words, with the failure as JSON (`payoutFailed`: node, time, the chain's words), and not again each round. The next payout that lands is posted as usual.
 - **Router** · `orrery connect opencode` and `orrery connect aider`: opencode gets an `opencode.jsonc` with your router as an OpenAI-compatible provider, starting on a model it lists, and aider gets one line (`OPENAI_API_BASE=… OPENAI_API_KEY=… aider --model openai/…`). With `--agent`, every request goes as that agent (a header for opencode, the key for aider). The rehearsal sends a request with each, as printed, and the router answers and logs the agent.
 - **Router** · The `quote` tool of `orrery mcp` takes `images` for an image model, so an agent can price a batch before it draws it: "flux-schnell · image · 2 images (1,000 output tokens each), 11 tokens of prompt", the same quote the router gives. Before, it always priced one.

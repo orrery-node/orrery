@@ -335,6 +335,13 @@ check('an agent prices speech on its text, from the router and through orrery mc
   && mcpSpeechQuote.split('\n')[0] === speechHead && /cheapest: Ironbridge Compute, \$0\.000014 a request/.test(mcpSpeechQuote),
   `router: ${(speechSaid.text ?? '').split('\n')[0] || 'no text'} · mcp: ${(mcpSpeechQuote.split('\n').find((l) => l.startsWith('cheapest')) ?? mcpSpeechQuote.split('\n')[0] ?? '').slice(0, 80)}`);
 const quoteRows = mcpQuote.split('\n').filter((l) => /\$0\.\d{6}\s*/.test(l) && !l.startsWith('cheapest')).length;
+// The same quote says what :private would cost: the cheapest node in an enclave the router verified, beside the cheapest.
+const vaultRow = mcpQuote.split('\n').find((l) => l.startsWith('Vault Nine ·enclave')) ?? '';
+const vaultCost = (vaultRow.match(/\$(0\.\d{6})\s+(?:\$0\.\d{6}|—)\s*$/) ?? [])[1];
+const privateLine = mcpQuote.split('\n').find((l) => l.startsWith('with :private: ')) ?? '';
+check('a quote says what the same request costs with :private, at the cheapest node in an enclave the router verified',
+  !!vaultCost && privateLine.startsWith(`with :private: Vault Nine runs in an enclave this router verified, $${vaultCost} a request (`) && /\(\d+\.\d× the cheapest\)\.$/.test(privateLine),
+  privateLine || `no :private line${vaultRow ? '' : ', no Vault Nine ·enclave row'}`);
 check('an agent prices a job at every provider before paying, through orrery mcp', quoteRows >= 2 && /cheapest: .+, \$0\.\d{6} a request/.test(mcpQuote) && mcpQuote.includes('Nothing was sent or paid'), `${quoteRows} providers priced · ${(mcpQuote.split('\n').pop() ?? '').slice(0, 70)}`);
 check('an agent gets embeddings from the network through orrery mcp, paid per call', /— 2 vectors of 8 dimensions, \d+ input tokens, paid \$0\.0000\d+/.test(mcpEmbed), mcpEmbed.split('\n').pop() ?? '');
 check('an agent is told through orrery mcp how many of its answers came after a node did not answer, and that such a node is signed nothing', /\n\d+ of these answers came from the next node after another did not answer[^\n]*signed nothing\./.test(mcpStatus), mcpStatus.split('\n').find((l) => /did not answer/.test(l)) ?? 'status says nothing about them');

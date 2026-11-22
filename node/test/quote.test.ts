@@ -29,6 +29,18 @@ describe('orrery quote', () => {
     assert.match(text, /Nothing was sent or paid/);
   });
 
+  it('says what the same request costs with :private, at the cheapest node in an enclave the router verified', () => {
+    const rows = quote([entry('Cheap', 'b', { input: 40_000, output: 140_000 }), entry('Vault in the hills', 'v', { input: 100_000, output: 300_000 })], 'm', 10_000, 500, 0.8);
+    rows.forEach((r) => { r.enclave = r.name.startsWith('Vault'); });
+    const text = renderQuote('m', 10_000, 500, 0.8, rows);
+    assert.equal(text.split('\n').at(-1), 'with :private: Vault in the hills runs in an enclave this router verified, $0.001150 a request (2.4× the cheapest).');
+    assert.ok(text.includes('Vault in the ·enclave'), 'a long name is cut, never the mark');
+    rows.forEach((r) => { r.enclave = r.name === 'Cheap'; });
+    assert.equal(renderQuote('m', 10_000, 500, 0.8, rows).split('\n').at(-1), 'Cheap runs in an enclave this router verified, so :private costs the same.');
+    rows.forEach((r) => { r.enclave = false; });
+    assert.match(renderQuote('m', 10_000, 500, 0.8, rows).split('\n').at(-1)!, /^cheapest: Cheap/);
+  });
+
   it('says so when nobody lists the model', () => {
     assert.match(renderQuote('none', 1, 1, 0.8, []), /No provider on the network lists none/);
   });

@@ -46,12 +46,16 @@ export function renderQuote(model: string, inTokens: number, outTokens: number, 
   lines.push(`${'provider'.padEnd(22)}${(both ? 'in / out' : 'in').padStart(22)}${'this request'.padStart(15)}${`${pct}% cached`.padStart(15)}`);
   for (const r of rows) {
     const per = both ? `${perMillion(r.input)} / ${perMillion(r.output)}` : perMillion(r.input);
-    lines.push(`${(r.name + (r.enclave ? ' ·enclave' : '')).slice(0, 21).padEnd(22)}${per.padStart(22)}${`$${usd(r.full)}`.padStart(15)}${(r.cached === null ? '—' : `$${usd(r.cached)}`).padStart(15)}`);
+    lines.push(`${(r.enclave ? `${r.name.slice(0, 12)} ·enclave` : r.name.slice(0, 21)).padEnd(22)}${per.padStart(22)}${`$${usd(r.full)}`.padStart(15)}${(r.cached === null ? '—' : `$${usd(r.cached)}`).padStart(15)}`);
   }
   const seen = rows.flatMap((r) => { const said = saw?.(r.address) ?? ''; return said ? [`  ${r.name}  ${said}`] : []; });
   if (seen.length) lines.push('what your router saw of them:', ...seen);
   const best = rows[0];
   const thousand = best.full * 1000n;
   lines.push(`cheapest: ${best.name}, $${usd(best.full)} a request, $${usd(thousand, 2)} for a thousand like it. Nothing was sent or paid.`);
+  // What keeping the prompt from the node's operator too costs: the cheapest node in an enclave this router verified.
+  const sealed = rows.find((r) => r.enclave);
+  if (sealed === best) lines.push(`${best.name} runs in an enclave this router verified, so :private costs the same.`);
+  else if (sealed) lines.push(`with :private: ${sealed.name} runs in an enclave this router verified, $${usd(sealed.full)} a request${best.full > 0n ? ` (${(Number(sealed.full) / Number(best.full)).toFixed(1)}× the cheapest)` : ''}.`);
   return lines.join('\n');
 }
