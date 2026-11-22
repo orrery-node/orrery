@@ -1298,6 +1298,15 @@ check('orrery provider status says what the wallet held after the last payout, p
   const kindJson = JSON.parse((await cliOut(['earnings', '--since', '7d', '--by', 'kind', '--json'])) || '{}') as { by?: string; rows?: { key: string; answers: number; billed: string }[]; total?: { billed: string } };
   const kindText = await cliOut(['earnings', '--since', '7d', '--by', 'kind']);
   const rowsOk = (kindJson.rows ?? []).length === expectKinds.size && (kindJson.rows ?? []).every((r) => expectKinds.get(r.key)?.answers === r.answers && usd(expectKinds.get(r.key)!.units) === r.billed);
+  // An image model's row says how many pictures it sold and what each came to, from the node's own log of answers.
+  const fluxServed = servedWeek.filter((t) => t.model === 'flux-schnell');
+  const fluxImages = fluxServed.reduce((n, t) => n + Math.floor(t.outputTokens / 1000), 0);
+  const fluxUnits = fluxServed.reduce((n, t) => n + BigInt(Math.round(Number(t.cost) * 1e6)), 0n);
+  const earnText = await cliOut(['earnings', '--since', '7d']);
+  const fluxLine = earnText.split('\n').find((l) => l.startsWith('flux-schnell'.padEnd(24))) ?? '';
+  check('orrery provider earnings says how many images an image model sold and what each came to',
+    fluxImages >= 4 && fluxLine.endsWith(`  (${fluxImages} images, $${usd(fluxUnits / BigInt(fluxImages))} each)`) && kindText.split('\n').some((l) => l.startsWith('image'.padEnd(24)) && l.endsWith(`  (${fluxImages} images, $${usd(fluxUnits / BigInt(fluxImages))} each)`)),
+    fluxLine.replace(/\s{2,}/g, ' ') || 'no flux-schnell row');
   check('orrery provider earnings --by kind says what chat, embeddings and reranking each billed, by the node’s own listing',
     kindJson.by === 'kind' && expectKinds.has('rerank') && expectKinds.has('embeddings') && expectKinds.has('chat') && rowsOk
     && kindText.split('\n')[0].includes(', last 7d, by kind (billed') && ['chat', 'embeddings', 'rerank'].every((k) => kindText.split('\n').some((l) => l.startsWith(k.padEnd(24)))),

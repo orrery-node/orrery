@@ -413,7 +413,13 @@ async function provider(sub: string) {
     console.log(`"${cfg.name}", last ${since}, by ${label} (billed; routers sign the lower of the bill and their own math)`);
     // What reached the wallet in the same window, from the payouts this node keeps beside its log.
     const paidOut = paidOutLine(readPayouts(`${expand(cfg.dataDir ?? home('provider'))}/payouts.jsonl`), windowMs(since), since);
-    for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}`);
+    // An image model's row says how many pictures it sold and what each came to, from its 1,000 output tokens an image.
+    const isImageRow = (key: string) => (byKind ? key === 'image' : by === 'model' && cfg.models.find((m) => m.id === key)?.kind === 'image');
+    const imagesNote = (r: { key: string; outputTokens: number; units: bigint }) => {
+      const n = isImageRow(r.key) ? Math.floor(r.outputTokens / IMAGE_TOKENS) : 0;
+      return n ? `  (${n.toLocaleString('en-US')} image${n === 1 ? '' : 's'}, $${usd(r.units / BigInt(n))} each)` : '';
+    };
+    for (const r of [...rows, total]) console.log(`${r.key.padEnd(24)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r === total ? '' : imagesNote(r)}`);
     // How many of these answers went at the holder price, and what that came to below the list prices.
     const given = heldGivenLine(heldSaved(readTrips(log), windowMs(since)), total.answers);
     if (given) console.log(given);
