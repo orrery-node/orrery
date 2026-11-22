@@ -77,7 +77,7 @@ npx -y orrery-node connect codex --write      # writes ~/.codex/orrery.config.to
 codex --profile orrery
 ```
 
-`orrery quote <model> --in 12000 --out 800` prices one request at every provider of a model from the lists on chain, cached rate included, without sending or paying anything.
+`orrery quote <model> --in 12000 --out 800` prices one request at every provider of a model from the lists on chain, cached rate included, without sending or paying anything, and ends with what the same request costs with `:private`. For a speech model give the text (`--text "..."`), for an image model how many pictures (`--images 2`).
 
 `orrery bench <model> --n 3` asks every provider of a model a few short questions through your router, one provider at a time, and compares first-token time, total time and cost per answer against each listed price. An embedding model (listed on input tokens only) is asked through `/v1/embeddings`. Every ask is a real, paid request.
 

@@ -815,6 +815,15 @@ check('the router’s log keeps which answers another node finished after the fi
     && (byTask.rows ?? []).every((r) => lines.some((l) => l.startsWith(`${r.key}  ·  `))) && !!byTask.private?.line && lines.includes(byTask.private.line),
     lines.find((l) => l.startsWith('total')) ?? mcpSpend.slice(0, 120));
 }
+// orrery --help names every argument quote and spend read, the way their own usage lines do.
+{
+  const help = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), '--help'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const quoteHelp = help.split('\n').find((l) => l.includes(' quote <model> ')) ?? '', spendHelp = help.split('\n').find((l) => l.includes(' spend [')) ?? '';
+  check('orrery --help names every argument of quote (speech text, image count) and spend (a 30-day window), and what each now adds',
+    ['--in 2000', '--prompt "..."', '--text "..."', '--out 500', '--images 1', '--cached 0.8', '--json'].every((f) => quoteHelp.includes(f)) && quoteHelp.includes(':private')
+    && spendHelp.includes('--since 24h|7d|30d') && spendHelp.includes('enclave'),
+    `quote: ${quoteHelp.trim().slice(0, 110)}`);
+}
 // orrery spend --by day: the router's books, a UTC day a row; today's row is what its log of answers says it paid today.
 {
   const spendCli = (args: string[]) => new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });

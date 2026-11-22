@@ -103,12 +103,12 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} run claude [--budget <usd>] [--task <name>] [--model <id>] [-- <its own arguments>]   start Claude Code on your router as one job, and print the job's bill when it exits
   ${CLI} run [--budget <usd>] [--task <name>] -- <any command>   the same for any tool that reads OPENAI_BASE_URL or ANTHROPIC_BASE_URL: the job and its budget ride in the API key (orrery/<task>/<budget>)
   ${CLI} bench <model> [--n 3] [--json]   ask every provider of a model a few short questions through your router (paid) and compare
-  ${CLI} spend [--since 24h|7d] [--by model|provider|task|agent|kind|day] [--csv|--json]   what your router paid, from its own log of answers; by agent, each agent's bill; by day, your books
+  ${CLI} spend [--since 24h|7d|30d] [--by model|provider|task|agent|kind|day] [--csv|--json]   what your router paid, from its own log of answers, and what part went to an enclave; by agent, each agent's bill; by day, your books
   ${CLI} sealed [--since 30d] [--json]   every private answer your router paid for: the enclave it verified, the image, the verdict
   ${CLI} doctor [--wallet <keypair.json> | --address <pubkey>] [--json]   check the RPC, the program, every listing, a wallet and the router (reads only)
   ${CLI} models                  every model on the network, cheapest price, provider count
   ${CLI} wallet new [--out <file>]   a new wallet file (default ~/.orrery/wallet.json) and what to send it; ${CLI} wallet address prints a wallet's address
-  ${CLI} quote <model> [--in 2000 | --prompt "..."] [--out 500] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain (nothing is sent or paid)
+  ${CLI} quote <model> [--in 2000 | --prompt "..." | --text "..."] [--out 500 | --images 1] [--cached 0.8] [--json]   what one request costs at every provider, from prices on chain, and with :private (--text: speech, --images: pictures; nothing is sent or paid)
   ${CLI} enclave verify --node <listing> | --report <file> --vcek <file> | --quote <file>   audit a private node, or check an AMD SEV-SNP report or Intel TDX quote, here, against the chip maker’s roots
   ${CLI} providers               every listed provider, what the chain says about it, and whether its model server answers
   ${CLI} channels [--wallet <keypair.json> | --address <pubkey>]   your router's channels and what the chain says about each, plus any it has no record of
