@@ -2211,6 +2211,9 @@ await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transf
 iron.log = ironLogBefore;
 const feeLine = ironLines.find((l) => /redeem failed/.test(l));
 check('a node whose key cannot pay redeem fees says so, with the address to send SOL to, and that what was signed is safe', brokeRedeemed.length === 0 && !!feeLine && feeLine.includes(iron.node.publicKey.toBase58()) && /send a little SOL/.test(feeLine) && /safe/.test(feeLine), feeLine ? feeLine.replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 220) : 'no redeem was attempted');
+// The failed round stays on the node's status and console, in the chain's words, until a round goes through.
+const brokeStatus = (iron.status() as { payoutFailed?: { at: number; said: string } | null }).payoutFailed ?? null;
+const ironConsole = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${(iron as unknown as { consoleKey: () => string }).consoleKey()}`)).text();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Before it runs out: a node whose key is down to its last fees says so once, after a payout that still went
 // through, with about how many are left. A second payout under the line does not say it again.
@@ -2228,6 +2231,11 @@ await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transf
 iron.log = ironLogBefore;
 const lowSaid = lowLines.filter((l) => /running low/.test(l));
 check('a node whose key is running low on SOL for redeem fees says so once, before it runs out, with about how many payouts are left', lowRedeemed.length >= 1 && lowAgain.length >= 1 && lowSaid.length === 1 && lowSaid[0].includes(iron.node.publicKey.toBase58()) && /about \d+ more payouts/.test(lowSaid[0]), `${lowRedeemed.length} + ${lowAgain.length} payouts at ${(lowKeep / 1e9).toFixed(4)} SOL · ${lowSaid.length} heads-up line${lowSaid.length === 1 ? '' : 's'}${lowSaid[0] ? `: ${lowSaid[0].replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 200)}` : ''}`);
+const clearedStatus = (iron.status() as { payoutFailed?: { at: number; said: string } | null }).payoutFailed;
+check('a node whose payout round failed says so on its status and console, in the chain\'s words with what to do, until a round goes through',
+  !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
+  && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,
+  brokeStatus ? `${(((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? brokeStatus.said).replace(iron.node.publicKey.toBase58(), '<node key>').replace(/at \d\d:\d\d UTC/, 'at hh:mm UTC').slice(0, 150)} … then ${clearedStatus === null ? 'cleared by the next payout' : 'still shown after a payout'}` : 'nothing on the status');
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);

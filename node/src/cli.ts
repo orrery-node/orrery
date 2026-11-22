@@ -34,7 +34,7 @@ import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports
 import { consoleLine, dayLine, kindsLine, monthLine, nextPayoutHint, payoutHint, readOwnDay, readOwnMonth, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
 import { AgentBook, parseAgentCaps, parseAgentModels } from './router/agents.ts';
-import { checkPayouts, nextPayoutSentence, noticeLine, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
+import { checkPayouts, nextPayoutSentence, noticeLine, payoutFailedSentence, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
 import { booksByDay, booksByDayCsv, booksByDayLines, booksByMonth, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
@@ -489,7 +489,7 @@ async function provider(sub: string) {
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, payoutFailed: s.payoutFailed ?? null, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}`,
@@ -502,6 +502,7 @@ async function provider(sub: string) {
       `  redeemed on chain     $${s.redeemed}`,
       `  waiting to redeem     $${s.waiting}${s.nextPayout ? nextPayoutHint(s.nextPayout, cfgPath) : payoutHint(s.waiting, cfg.redeem?.minUnits ?? REDEEM_MIN_UNITS, cfg.redeem?.everySecs ?? 60, cfgPath, !(await node.paidOutBefore()))}`,
       // When money last landed in the wallet, and what the last day came to: kept by the node, so a restart keeps it.
+      ...(s.payoutFailed ? [`  ${payoutFailedSentence(s.payoutFailed)}`] : []),
       ...(s.payouts === undefined ? [] : payoutLines(s.payouts, Date.now(), !s.payouts && (await node.paidOutBefore()))),
       ...(s.wallet ? [walletLine(s.wallet)] : []),
       ...(s.notify ? [noticeLine(s.notify.host, s.notify.last)] : []),

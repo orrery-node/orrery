@@ -1,6 +1,6 @@
 // The provider's own page at http://127.0.0.1:<port>/ — what this node served, what routers signed for it, what is
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
-import { nextPayoutSentence, noticeSentence, payoutRows, type Held, type NextPayout, type NoticeSent, type PayoutSummary } from './payouts.ts';
+import { nextPayoutSentence, noticeSentence, payoutFailedSentence, payoutRows, type Held, type NextPayout, type NoticeSent, type PayoutSummary } from './payouts.ts';
 import { reachSentence, type ReachNow } from './reach.ts';
 import { slotsSentence, type SlotState } from './slots.ts';
 import { timingSafeEqual } from 'node:crypto';
@@ -60,7 +60,7 @@ export function nextPayoutHint(n: NextPayout, configPath: string): string {
   return `  ($${(Number(n.due) / 1e6).toFixed(6)} at the next round, every ${every}; $${(Number(n.below) / 1e6).toFixed(6)} waits for $${min} a channel)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null; slots?: SlotState | null };
+export type OwnStatus = { provider: string; name: string; answers: number; payoutFailed?: { at: number; said: string } | null; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null; slots?: SlotState | null };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */
@@ -117,7 +117,7 @@ export function providerConsolePage(): string {
 <div class="stats" id="sum"></div>
 <p class="lede" id="fees" hidden></p>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div><p class="lede" id="slots" hidden></p></section>
-<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="next" hidden></p><p class="lede" id="notice" hidden></p><p class="lede" id="checked" hidden></p><p class="lede" id="copied" hidden></p></section>
+<section><div class="pay"><h2>Payouts to your wallet, latest 12</h2><button class="check" id="check" type="button" hidden>Check against the chain</button></div><div class="wrap"><table><thead><tr><th>time</th><th>paid out</th><th>channels</th><th>transaction</th><th>on chain</th></tr></thead><tbody id="payouts"></tbody></table></div><p class="lede" id="failed" hidden></p><p class="lede" id="next" hidden></p><p class="lede" id="notice" hidden></p><p class="lede" id="checked" hidden></p><p class="lede" id="copied" hidden></p></section>
 <section><h2>Last 24 hours, by model (billed)</h2><div class="wrap"><table><thead><tr><th>model</th><th>answers</th><th>tokens in</th><th>tokens out</th><th>billed</th></tr></thead><tbody id="earn"></tbody></table></div><p class="lede" id="kinds" hidden></p><p class="lede" id="holders" hidden></p></section>
 <section><div class="pay"><h2>Your books by day (UTC), last 7 days</h2><a class="check" id="csv" href="#" download="orrery-books.csv">Download 90 days as CSV</a></div><div class="wrap"><table><thead><tr><th>day</th><th>answers</th><th>billed</th><th>payouts</th><th>paid out</th></tr></thead><tbody id="days"></tbody></table></div><p class="lede" id="month" hidden></p></section>
 <section id="cardsec" hidden><div class="pay"><h2>This month, as a card</h2><button class="check" id="cardsave" type="button">Download PNG</button></div><canvas id="card" width="2400" height="1260" style="display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:14px"></canvas></section>
@@ -129,6 +129,7 @@ const reachSentence=${reachSentence.toString()};
 const payoutRows=${payoutRows.toString()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nextPayoutSentence=${nextPayoutSentence.toString()};
+const payoutFailedSentence=${payoutFailedSentence.toString()};
 const noticeSentence=${noticeSentence.toString()};
 const slotsSentence=${slotsSentence.toString()};
 const checked={};
@@ -154,7 +155,7 @@ document.getElementById('sum').innerHTML='<div><b>'+s.answers+'</b><span class=c
 document.getElementById('sum').className=s.wallet?'stats five':'stats';
 document.getElementById('recent').innerHTML=s.recent.slice(0,12).map(r=>'<tr><td>'+new Date(r.at).toLocaleTimeString()+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.channel.slice(0,8))+'</td><td>'+r.inputTokens+'+'+r.outputTokens+'</td><td class=go>$'+esc(r.cost)+'</td><td>'+(r.sealed?'<span class=go>sealed</span> ':'')+(r.off?'<span class=go>holder −'+(r.off/100)+'%</span>':'')+'</td></tr>').join('')||'<tr class=empty><td colspan=6>No answers yet. Routers find you through your listing on chain.</td></tr>';
 if(s.payouts)s.payouts.checked=Object.assign({},s.payouts.checked,checked);document.getElementById('payouts').innerHTML=payoutRows(s.payouts);document.getElementById('check').hidden=!(s.payouts&&s.payouts.recent.length);
-const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;const no=document.getElementById('notice');no.textContent=s.notify?'Payout notices go '+noticeSentence(s.notify.host,s.notify.last,Date.now())+'.':'';no.hidden=!s.notify;
+const pf=payoutFailedSentence(s.payoutFailed),pe=document.getElementById('failed');pe.textContent=pf;pe.hidden=!pf;const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;const no=document.getElementById('notice');no.textContent=s.notify?'Payout notices go '+noticeSentence(s.notify.host,s.notify.last,Date.now())+'.':'';no.hidden=!s.notify;
 const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;
 const sl=document.getElementById('slots');sl.textContent=s.slots?'Slots: '+slotsSentence(s.slots)+'. When every slot is answering, the next free one goes to the largest holder discount.':'';sl.hidden=!s.slots;
 try{const e=await (await fetch('/orrery/earnings?since=24h',K)).json();const fe=document.getElementById('fees');fe.textContent=e.fees?'Fee money for payouts: '+e.fees.line+'.':'';fe.className=e.fees&&e.fees.low?'lede stop':'lede';fe.hidden=!e.fees;document.getElementById('earn').innerHTML=e.total.answers?[...e.rows,{...e.total,key:'total'}].map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served in the last 24 hours.</td></tr>';const ho=document.getElementById('holders'),hl=e.holders&&e.holders.answers?e.holders.line:'';ho.textContent=hl?hl.charAt(0).toUpperCase()+hl.slice(1)+'.':'';ho.hidden=!hl;const kd=document.getElementById('kinds'),ks=(e.kinds||[]);kd.textContent=ks.length>1?'By kind of work: '+ks.map(k=>k.key+' '+k.answers+' answer'+(k.answers===1?'':'s')+', $'+k.usd).join(' · ')+'.':'';kd.hidden=!(ks.length>1);}catch(err){}

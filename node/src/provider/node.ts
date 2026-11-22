@@ -382,6 +382,8 @@ export class ProviderNode {
       notify: this.notifyTo ? { host: new URL(this.notifyTo).host, last: readNotice(`${this.dir}/notice.json`) } : null,
       // How many answers stream at once and who is waiting; holders go first when every slot is taken. Null: no limit.
       slots: this.slots ? this.slots.state : null,
+      // The last payout round that failed and why, until one goes through: without it the money only looks stuck.
+      payoutFailed: this.payoutFailed,
     };
   }
 
@@ -880,6 +882,7 @@ export class ProviderNode {
       }
       // The listing's count of payouts just changed; the console's next read of it goes to the chain.
       this.listingRead = null;
+      this.payoutFailed = null;
       this.save();
       return true;
     } catch (err) {
@@ -891,6 +894,7 @@ export class ProviderNode {
       const broke = lamports === null ? '' : payoutFailureNote({ lamports, openingRent, nodeKey: this.node.publicKey.toBase58() });
       const said = (err as Error).message.split('\n')[0].trim().replace(/[.\s]+$/, '');
       this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${said}${broke}`);
+      this.payoutFailed = { at: Date.now(), said: `${said}${broke}` };
       return false;
     }
   }
@@ -968,6 +972,8 @@ export class ProviderNode {
 
   /** Whether this node's listing has been paid out on chain at least once. Read until it has, then remembered. */
   private paidOut = false;
+  /** The last payout round that failed, in the chain's words: shown until a round goes through. */
+  private payoutFailed: { at: number; said: string } | null = null;
   private paidOutChecked = false;
   async paidOutBefore(): Promise<boolean> {
     if (this.paidOut) return true;

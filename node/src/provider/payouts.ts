@@ -150,6 +150,13 @@ export function nextPayout(channels: { pending: bigint; closing: boolean }[], fl
  *   "$0.004211 is waiting in 1 channel. Each pays out once it reaches $0.050000 or its router closes it; this node
  *    checks every 1 min."
  * Its source goes into the console page, so it uses nothing from outside itself and names no local function. */
+/** What the last payout round said when it failed, for the console and `provider status`: when, and the chain's own words
+ * with what to do about them. Empty once a round goes through. */
+export function payoutFailedSentence(f: { at: number; said: string } | null | undefined): string {
+  if (!f) return '';
+  return 'The last payout round, at ' + new Date(f.at).toISOString().slice(11, 16) + ' UTC, failed: ' + f.said + '. Each round tries again' + (/ safe /.test(f.said) ? '.' : ', and nothing signed to you is lost meanwhile.');
+}
+
 export function nextPayoutSentence(n: { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean } | null | undefined): string {
   if (!n) return '';
   if (n.due === '0' && n.below === '0') return 'Nothing is waiting to be paid out.';
