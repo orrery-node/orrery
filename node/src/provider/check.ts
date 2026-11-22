@@ -123,6 +123,21 @@ export function pricesLine(rows: CompareRow[]): CheckLine | null {
   return { ok: null, what: 'prices', detail: `a 2,000-in / 500-out request: ${rows.slice(0, 4).map(say).join('; ')}${more}${under}` };
 }
 
+/** Models whose listing bills nothing for the work they do: an image model with no output price (an image is billed
+ * as output), a speech, embedding or rerank model with no input price (they are billed on input), a chat model with
+ * neither. Each would answer for free; null when every model bills something. */
+export function freeNote(models: { id: string; kind?: string; price: { input: number; output: number } }[]): string | null {
+  const free = models.flatMap((m) => {
+    if (!m.kind && m.price.input === 0 && m.price.output === 0) return [`${m.id} has neither an input nor an output price, so every answer would be free`];
+    const kind = m.kind ?? (m.price.output === 0 ? 'embeddings' : 'chat');
+    if (kind === 'image' && m.price.output === 0) return [`${m.id} is listed for images with no output price, and an image is billed as output, so every image would be free: an output price of $3 per million is $0.003 an image`];
+    if ((kind === 'speech' || kind === 'embeddings' || kind === 'rerank') && m.price.input === 0) return [`${m.id} is listed for ${kind} with no input price, and ${kind} is billed on input, so every answer would be free`];
+    if (kind === 'chat' && m.price.input === 0 && m.price.output === 0) return [`${m.id} has neither an input nor an output price, so every answer would be free`];
+    return [];
+  });
+  return free.length ? `${free.slice(0, 3).join('; ')}${free.length > 3 ? `; and ${free.length - 3} more` : ''}. Set the price in provider.json, then provider register` : null;
+}
+
 export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   const cfg = node.cfg, out: CheckLine[] = [];
   const base = cfg.upstream.baseUrl.replace(/\/$/, '');
@@ -136,6 +151,9 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   }
   const room = roomNote(cfg.models);
   if (room) out.push({ ok: false, what: 'max output', detail: room });
+  // A model that bills nothing for its work earns nothing for it: said before anyone is served for free.
+  const free = freeNote(cfg.models);
+  if (free) out.push({ ok: false, what: 'free work', detail: free });
   // What the model server turned away lately, from the node's own record of it: the node's log says each one.
   const refused = refusedCounts(readRefused(`${node.dir}/refused.jsonl`), 86_400_000);
   if (Object.keys(refused).length) out.push({ ok: null, what: 'refusals', detail: `the model server refused ${refusedText(refused)} (orrery provider status shows it too; the node's log says each one)` });

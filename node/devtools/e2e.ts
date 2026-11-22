@@ -2482,6 +2482,12 @@ writeFileSync(ctxCfgPath, JSON.stringify({ ...(JSON.parse(readFileSync(ctxCfgPat
 const roomCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
 const roomLine = roomCheck.text.split('\n').find((l) => /^\S max output /.test(l)) ?? '';
 check('orrery provider check fails a listing whose maxOutput leaves no room for the prompt, and says what to set', /^✗ max output +qwen3-32b lists a maxOutput of 8,192 in a context of 8,192: nothing is left for the prompt, .* Set maxOutput to a quarter of context or less \(2,048\)$/.test(roomLine), roomLine.slice(0, 150) || 'no max output line');
+// And the same listing priced at nothing: it would answer for free. Check says so, as a failure, before anyone is served.
+writeFileSync(ctxCfgPath, JSON.stringify({ ...(JSON.parse(readFileSync(ctxCfgPath, 'utf8')) as object), models: (ctxCfg?.models ?? []).map((m) => ({ ...m, context: 8_192, maxOutput: 2_048, price: { input: 0, output: 0 } })) }, null, 2));
+const freeCheck = await walkRun(['provider', 'check', '--config', ctxCfgPath, '--rpc', RPC]);
+const freeLine = freeCheck.text.split('\n').find((l) => /^\S free work /.test(l)) ?? '';
+check('orrery provider check fails a model priced at nothing, which would answer for free, and says where to set the price',
+  /^✗ free work +qwen3-32b has neither an input nor an output price, so every answer would be free\. Set the price in provider\.json, then provider register$/.test(freeLine) && freeCheck.code === 1, freeLine || 'no free work line');
 ctxMock.kill('SIGTERM');
 // A model server that answers /models the way Ollama does (owned_by "library"), given to init with --upstream: init
 // knows it for Ollama, lists a context Ollama reads whole, and says how to raise it.
