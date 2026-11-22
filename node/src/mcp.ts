@@ -96,6 +96,7 @@ const TOOLS = [
         output_tokens: { type: 'number', description: 'tokens it will write (default 500)' },
         prompt: { type: 'string', description: 'instead of input_tokens: the prompt, to estimate from' },
         text: { type: 'string', description: 'for a speech model: the text to speak, counted one input token per 4 characters, the way a node bills it' },
+        images: { type: 'number', description: 'for an image model: how many images, 1 to 10 (default 1), each billed as 1,000 output tokens the way a node bills it' },
         cached_share: { type: 'number', description: 'share of the input resent from a prompt cache, 0 to 1 (default 0.8)' },
       },
       required: ['model'],
@@ -215,6 +216,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const q = new URLSearchParams({ model: a.model });
       if (typeof a.prompt === 'string') q.set('prompt', a.prompt);
       if (typeof a.text === 'string') q.set('text', a.text);
+      if (typeof a.images === 'number') q.set('images', String(a.images));
       if (typeof a.input_tokens === 'number') q.set('in', String(a.input_tokens));
       if (typeof a.output_tokens === 'number') q.set('out', String(a.output_tokens));
       if (typeof a.cached_share === 'number') q.set('cached', String(a.cached_share));

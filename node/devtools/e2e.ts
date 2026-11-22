@@ -577,6 +577,12 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && imgQuote.kind === 'image' && imgQuote.images === 2 && imgQuote.outTokens === 2_000 && imgQuote.inTokens === imTokens && (imgQuote.text ?? '').includes(`cheapest: Ironbridge Compute, $${usd(imExpected)} a request`)
     && (imgQuote.text ?? '').split('\n')[0] === `flux-schnell · image · 2 images (1,000 output tokens each), ${imTokens} tokens of prompt · listed prices on Solana, before any holder discount`,
     `chat to it: ${chatToPainter.status} ${chatToPainter.j.error?.message ?? ''} · bench ${painterBench[0]?.answered ?? 0}/2 ${painterBench[0]?.error ?? ''} · quote: ${(imgQuote.text ?? '').split('\n')[0]}`);
+  // An agent prices pictures before it draws them: the quote tool of orrery mcp takes how many, and says what the router says.
+  const { handle: quoteMcpHandle } = await import('../src/mcp.ts');
+  const mcpImgQuote = await (quoteMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[]; isError?: boolean } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'quote', arguments: { model: 'flux-schnell', prompt: draw, images: 2 } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch((e) => String(e));
+  check('an agent asks orrery mcp what two images would cost before it draws them, and gets the router\'s own quote for two',
+    !!imgQuote.text && mcpImgQuote === imgQuote.text && mcpImgQuote.split('\n')[0].includes('· 2 images (1,000 output tokens each)'),
+    mcpImgQuote.split('\n')[0].slice(0, 160) || 'no quote');
   // The catalog says what a picture and a page of speech cost, worked out from the listing the way a node bills them.
   const priced = ((await (await fetch(`${ROUTER}/v1/models`)).json()) as { data: { id: string; pricing: { per_image?: number; per_million_characters?: number; completion_per_million: number } }[] }).data;
   const fluxP = priced.find((m) => m.id === 'flux-schnell')?.pricing, kokoroP = priced.find((m) => m.id === 'kokoro-82m')?.pricing, llamaP = priced.find((m) => m.id === 'llama-3.3-70b')?.pricing;
