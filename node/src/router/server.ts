@@ -28,6 +28,7 @@ import { Affinity, prefixes } from './affinity.ts';
 import { appendTrip, bills, heldSaved, heldSavedLine, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines, sawText } from './watched.ts';
 import { quote, quoteKind, renderQuote } from '../quote.ts';
+import { capped, workCap } from './workcap.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
@@ -868,8 +869,13 @@ export class Router {
       this.stats.penalize(address);
       this.log(`provider ${address.slice(0, 6)} lists a ${cand.off / 100}% holder price but applied ${claimedOff / 100}%; paying its number, counting it against its success rate`);
     }
-    const ours = costOf(discounted(cand.offer.price, claimedOff), record.inputTokens, record.outputTokens);
-    const full = costOf(cand.offer.price, record.inputTokens, record.outputTokens);
+    // Images and speech the router can count itself: no more images than came back, and the text it sent at the rule
+    // the node bills with. A node that says more is paid for what arrived.
+    const cap = workCap(anth?.kind, body, chunks[0]);
+    const pay = capped(record, cap);
+    if (pay.over) this.log(`provider ${address.slice(0, 6)} billed ${record.inputTokens}+${record.outputTokens} tokens for ${cap?.images !== undefined ? `${cap.images} image${cap.images === 1 ? '' : 's'} that came back` : 'the text this router sent'}; paying for ${pay.inputTokens}+${pay.outputTokens}`);
+    const ours = costOf(discounted(cand.offer.price, claimedOff), pay.inputTokens, pay.outputTokens);
+    const full = costOf(cand.offer.price, pay.inputTokens, pay.outputTokens);
     const saved = claimedOff && full > ours ? full - ours : 0n;
     const fair = record.cost <= ours && record.cost <= maxCost ? record.cost : ours < maxCost ? ours : maxCost;
     if (fair !== record.cost) this.log(`provider ${address.slice(0, 6)} billed ${record.cost} but its own prices say ${ours}; paying ${fair}`);
