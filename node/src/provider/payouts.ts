@@ -97,7 +97,9 @@ export function readPayouts(path: string): Payout[] {
   });
 }
 
-export type PayoutSummary = { last: Payout; day: { units: string; count: number }; recent: Payout[] };
+/** `all` is every payout kept on this machine: what reached the wallet in all, how many, since the first. Optional, so a
+ * console or `provider status` reading an older node still works. */
+export type PayoutSummary = { last: Payout; day: { units: string; count: number }; all?: { units: string; count: number; since: number }; recent: Payout[] };
 
 /** The last payout and what the last 24 hours came to; null when the node has paid nothing out yet. */
 export function payoutSummary(list: Payout[], now = Date.now()): PayoutSummary | null {
@@ -105,7 +107,8 @@ export function payoutSummary(list: Payout[], now = Date.now()): PayoutSummary |
   const last = list.reduce((a, b) => (b.at >= a.at ? b : a));
   const day = list.filter((p) => now - p.at <= 86_400_000);
   const recent = list.slice().sort((a, b) => b.at - a.at).slice(0, 12);
-  return { last, day: { units: day.reduce((n, p) => n + BigInt(p.units), 0n).toString(), count: day.length }, recent };
+  const all = { units: list.reduce((n, p) => n + BigInt(p.units), 0n).toString(), count: list.length, since: Math.min(...list.map((p) => p.at)) };
+  return { last, day: { units: day.reduce((n, p) => n + BigInt(p.units), 0n).toString(), count: day.length }, all, recent };
 }
 
 /** The two lines `provider status` prints under what is waiting:
@@ -123,6 +126,7 @@ export function payoutLines(s: (PayoutSummary & { checked?: Record<string, { uni
   return [
     `  last payout           $${usd(BigInt(s.last.units))} to your wallet ${ago} ago (${at})  tx ${s.last.tx.slice(0, 12)}…${s.checked?.[s.last.tx]?.units === s.last.units ? '  arrived, per the chain' : ''}`,
     `  paid out, last 24 h   $${usd(BigInt(s.day.units))} in ${s.day.count} payout${s.day.count === 1 ? '' : 's'}`,
+    ...(s.all ? [`  paid out in all       $${usd(BigInt(s.all.units))} in ${s.all.count.toLocaleString('en-US')} payout${s.all.count === 1 ? '' : 's'} since ${new Date(s.all.since).toISOString().slice(0, 10)}`] : []),
   ];
 }
 
@@ -194,12 +198,13 @@ export function nextPayoutSentence(n: { due: string; dueChannels: number; below:
  * payout what the chain says reached the wallet; only its state is compared and only numbers from it are printed.
  * The transaction is a button that copies the whole signature, to look it up on any Solana explorer: the page itself
  * names no other computer, and a link would hand the explorer this page's address, key and all. */
-export function payoutRows(p: { day: { units: string; count: number }; recent: { at: number; units: string; channels: number; tx: string }[]; checked?: Record<string, { state: string; units: string | null }> } | null): string {
+export function payoutRows(p: { day: { units: string; count: number }; all?: { units: string; count: number; since: number }; recent: { at: number; units: string; channels: number; tx: string }[]; checked?: Record<string, { state: string; units: string | null }> } | null): string {
   if (!p || !p.recent.length) return '<tr class=empty><td colspan=5>None recorded here yet. Each payout this node sends to your wallet is listed here, with its transaction.</td></tr>';
   return p.recent.map((r) => '<tr><td>' + new Date(r.at).toISOString().slice(0, 19).replace('T', ' ') + ' UTC</td><td class=go>$' + (Number(r.units) / 1e6).toFixed(6) + '</td><td>' + r.channels + '</td><td title="' + r.tx + '"><button class=tx type=button data-tx="' + r.tx + '" aria-label="Copy the whole transaction">' + r.tx.slice(0, 12) + '…</button></td><td>'
     + (!p.checked || !p.checked[r.tx] ? '' : p.checked[r.tx].state === 'missing' ? '<span class=stop>no record on chain</span>' : p.checked[r.tx].state === 'failed' ? '<span class=stop>failed on chain</span>'
       : p.checked[r.tx].state !== 'landed' ? '' : (p.checked[r.tx].units === r.units ? '<span class=go>arrived $' : '<span class=stop>arrived $') + (Number(p.checked[r.tx].units) / 1e6).toFixed(6) + '</span>') + '</td></tr>').join('')
-    + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=3>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>';
+    + '<tr><td>last 24 h</td><td class=go>$' + (Number(p.day.units) / 1e6).toFixed(6) + '</td><td colspan=3>' + p.day.count + ' payout' + (p.day.count === 1 ? '' : 's') + '</td></tr>'
+    + (p.all ? '<tr><td>in all</td><td class=go>$' + (Number(p.all.units) / 1e6).toFixed(6) + '</td><td colspan=3>' + p.all.count.toLocaleString('en-US') + ' payout' + (p.all.count === 1 ? '' : 's') + ' since ' + new Date(p.all.since).toISOString().slice(0, 10) + '</td></tr>' : '');
 }
 
 /** What reached the wallet in the window `provider earnings` looks at:

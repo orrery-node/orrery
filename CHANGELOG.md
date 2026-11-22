@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · The node console and `orrery provider status` add up every payout the node kept: "paid out in all $1.412500 in 1,204 payouts since 2026-11-06", a row under the payouts on the console, and `all` in the status JSON.
 - **Node** · `orrery provider redeem` no longer says "nothing to redeem" when the chain refused the payout: it says the round failed and why, and exits 1. When it goes through it says each channel with its transaction, then the total, the wallet it went to, and that `orrery provider payouts` checks it against the chain.
 - **Router** · `orrery spend` says what part of the bill went to an enclave this router verified: "2 of these 57 answers went to an enclave this router verified, $0.000031 of the total (orrery sealed lists them)." `--json` and `/orrery/spend` carry it as `private`.
 - **Router** · A quote (`orrery quote`, `/orrery/quote`, the MCP `quote` tool) says what the same request costs with `:private`: "with :private: Vault Nine runs in an enclave this router verified, $0.000740 a request (2.1× the cheapest).", or that the cheapest node already runs in one. A long node name is cut before its ·enclave mark, never the mark.

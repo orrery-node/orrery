@@ -23,7 +23,8 @@ describe('what a node has paid out to its wallet', () => {
       { at: now - 720_000, units: '50123', channels: 1, tx: '5GhKq2abcdefXYZ' },
       { at: now - 3_600_000, units: '69877', channels: 2, tx: 'mid' },
     ];
-    assert.deepEqual(payoutSummary(list, now), { last: list[1], day: { units: '120000', count: 2 }, recent: [list[1], list[2], list[0]] });
+    const allUnits = list.reduce((n, p) => n + BigInt(p.units), 0n).toString();
+    assert.deepEqual(payoutSummary(list, now), { last: list[1], day: { units: '120000', count: 2 }, all: { units: allUnits, count: 3, since: Math.min(...list.map((p) => p.at)) }, recent: [list[1], list[2], list[0]] });
     assert.equal(payoutSummary([], now), null);
   });
 
@@ -41,6 +42,14 @@ describe('what a node has paid out to its wallet', () => {
     ]);
     assert.deepEqual(payoutLines(null, now), ['  last payout           none yet']);
     assert.deepEqual(payoutLines(null, now, true), ['  last payout           none recorded here yet; this listing was paid out on chain before']);
+  });
+
+  it('adds up every payout kept on this machine, in status and on the console, when the node reports it', () => {
+    const now = Date.parse('2026-11-22T19:30:00Z');
+    const s = { last: { at: Date.parse('2026-11-22T19:05:11Z'), units: '50123', channels: 1, tx: '5GhKq2abcdefXYZ' }, day: { units: '120000', count: 3 }, all: { units: '1412500', count: 1204, since: Date.parse('2026-11-06T10:00:00Z') }, recent: [] };
+    assert.equal(payoutLines(s, now)[2], '  paid out in all       $1.412500 in 1,204 payouts since 2026-11-06');
+    const rows = (payouts as unknown as { payoutRows: (p: unknown) => string }).payoutRows;
+    assert.ok(rows({ ...s, recent: [s.last] }).endsWith('<tr><td>in all</td><td class=go>$1.412500</td><td colspan=3>1,204 payouts since 2026-11-06</td></tr>'));
   });
 
   it('says the last payout arrived once the node has read it back from the chain as kept, and not otherwise', () => {

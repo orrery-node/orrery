@@ -1298,6 +1298,15 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// And everything it kept, added up: what reached the wallet in all, how many payouts, since the first.
+{
+  const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl'));
+  const ibSum = ibKept.reduce((a, p) => a + BigInt(p.units), 0n), ibSince = new Date(Math.min(...ibKept.map((p) => p.at))).toISOString().slice(0, 10);
+  const ibAll = (nodes[1].status() as { payouts?: { all?: { units: string; count: number; since: number } } | null }).payouts?.all;
+  check('a node’s status and console add up every payout it kept: what reached the wallet in all, how many, and since when',
+    ibKept.length > 0 && ibAll?.units === ibSum.toString() && ibAll.count === ibKept.length && ibRows.includes(`<tr><td>in all</td><td class=go>$${usd(ibSum)}</td><td colspan=3>${ibKept.length} payout${ibKept.length === 1 ? '' : 's'} since ${ibSince}</td></tr>`),
+    ibAll ? `$${usd(BigInt(ibAll.units))} in ${ibAll.count} payouts since ${new Date(ibAll.since).toISOString().slice(0, 10)} (kept: ${ibKept.length})` : 'no total in status');
+}
 // Each transaction there is a button that copies the whole signature, to look up on any explorer; the page links nowhere.
 check('the node’s console copies each payout’s whole transaction for any explorer, and links to no other computer', ibRows.includes(`<button class=tx type=button data-tx="${ibLastTx}"`) && ibPage.includes('navigator.clipboard.writeText(tx)') && ibPage.includes('id="copied"') && !/<a\b[^>]*href="(?:https?:)?\/\//i.test(ibPage + ibRows),
   ibRows.match(/<button class=tx[^>]*>[^<]*<\/button>/)?.[0].replace(/data-tx="[^"]+"/, 'data-tx="…"') ?? 'no button');
