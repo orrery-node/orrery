@@ -157,6 +157,13 @@ export function payoutFailedSentence(f: { at: number; said: string } | null | un
   return 'The last payout round, at ' + new Date(f.at).toISOString().slice(11, 16) + ' UTC, failed: ' + f.said + '. Each round tries again' + (/ safe /.test(f.said) ? '.' : ', and nothing signed to you is lost meanwhile.');
 }
 
+/** The webhook notice for a payout round that failed: the console's sentence, and the same as JSON for a script. Sent
+ * once when payouts start failing, not every round. */
+export function payoutFailedNotice(node: string, f: { at: number; said: string }): { text: string; content: string; payoutFailed: { node: string; at: string; said: string } } {
+  const line = `${node}: ${payoutFailedSentence(f)}`;
+  return { text: line, content: line, payoutFailed: { node, at: new Date(f.at).toISOString(), said: f.said } };
+}
+
 export function nextPayoutSentence(n: { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean } | null | undefined): string {
   if (!n) return '';
   if (n.due === '0' && n.below === '0') return 'Nothing is waiting to be paid out.';

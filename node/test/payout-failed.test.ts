@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { payoutFailedSentence } from '../src/provider/payouts.ts';
+import { payoutFailedNotice, payoutFailedSentence } from '../src/provider/payouts.ts';
 
 describe('a payout round that failed', () => {
   it('says when, in UTC, and the chain\'s words with what to do, and that nothing signed is lost', () => {
@@ -11,6 +11,14 @@ describe('a payout round that failed', () => {
   it('does not say twice that what was signed is safe when the chain note already says it', () => {
     assert.equal(payoutFailedSentence({ at: Date.parse('2026-11-22T01:02:00Z'), said: 'Simulation failed; the node key has 0.000000 SOL for fees: send a little SOL to Key111. What routers signed is safe and is redeemed once the key can pay' }),
       'The last payout round, at 01:02 UTC, failed: Simulation failed; the node key has 0.000000 SOL for fees: send a little SOL to Key111. What routers signed is safe and is redeemed once the key can pay. Each round tries again.');
+  });
+
+  it('gives the webhook the same sentence, with the node, and the failure as JSON', () => {
+    const f = { at: Date.parse('2026-11-22T12:34:56Z'), said: 'Simulation failed' };
+    const n = payoutFailedNotice('Halo', f);
+    assert.equal(n.text, `Halo: ${payoutFailedSentence(f)}`);
+    assert.equal(n.content, n.text);
+    assert.deepEqual(n.payoutFailed, { node: 'Halo', at: '2026-11-22T12:34:56.000Z', said: 'Simulation failed' });
   });
 
   it('says nothing when no round has failed since the last that went through', () => {

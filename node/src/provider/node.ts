@@ -24,7 +24,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayKinds, dayToKeep, keepDay, monthBooksLine, monthNotice, monthSentence, monthSoFar, readDays, utcDay, type DayBooks, type DayKept } from './books.ts';
-import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout, payoutFailedNotice } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -894,7 +894,10 @@ export class ProviderNode {
       const broke = lamports === null ? '' : payoutFailureNote({ lamports, openingRent, nodeKey: this.node.publicKey.toBase58() });
       const said = (err as Error).message.split('\n')[0].trim().replace(/[.\s]+$/, '');
       this.log(`redeem failed for ${batch.map(([k]) => k.slice(0, 6)).join(', ')}: ${said}${broke}`);
+      // The webhook hears it when payouts start failing, once: rounds run every minute, and the console keeps the latest.
+      const first = !this.payoutFailed;
       this.payoutFailed = { at: Date.now(), said: `${said}${broke}` };
+      if (first) void this.notice(payoutFailedNotice(this.cfg.name, this.payoutFailed), 'payout');
       return false;
     }
   }

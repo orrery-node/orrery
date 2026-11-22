@@ -2231,7 +2231,11 @@ await (await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: {
 await sleep(600);
 const ironSol = await conn.getBalance(iron.node.publicKey);
 await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: iron.node.publicKey, toPubkey: admin.publicKey, lamports: ironSol - 5_000 })), [iron.node]);
+// For this part Ironbridge has a notify webhook too: payouts that start failing are told to it once, not every round.
+const IRON_HOOK = HOOK.replace('/hooks/kestrel', '/hooks/iron');
+(iron as unknown as { notifyTo: string | null }).notifyTo = IRON_HOOK;
 const brokeRedeemed = await iron.redeemDue(1n).catch(() => []);
+const brokeAgain = await iron.redeemDue(1n).catch(() => []);
 await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: iron.node.publicKey, lamports: ironSol })), [admin]);
 iron.log = ironLogBefore;
 const feeLine = ironLines.find((l) => /redeem failed/.test(l));
@@ -2239,6 +2243,10 @@ check('a node whose key cannot pay redeem fees says so, with the address to send
 // The failed round stays on the node's status and console, in the chain's words, until a round goes through.
 const brokeStatus = (iron.status() as { payoutFailed?: { at: number; said: string } | null }).payoutFailed ?? null;
 const brokeWaiting = iron.status().waiting;
+for (let t = 0; t < 20 && !hooked.some((h) => h.path === '/hooks/iron'); t++) await sleep(150);
+await sleep(300);
+(iron as unknown as { notifyTo: string | null }).notifyTo = null;
+const ironNotices = hooked.filter((h) => h.path === '/hooks/iron') as { path: string; body: { text?: string; content?: string; payoutFailed?: { node: string; at: string; said: string } } }[];
 const ironConsole = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${(iron as unknown as { consoleKey: () => string }).consoleKey()}`)).text();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Before it runs out: a node whose key is down to its last fees says so once, after a payout that still went
@@ -2262,6 +2270,11 @@ check('a node whose payout round failed says so on its status and console, in th
   !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
   && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,
   brokeStatus ? `${(((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? brokeStatus.said).replace(iron.node.publicKey.toBase58(), '<node key>').replace(/at \d\d:\d\d UTC/, 'at hh:mm UTC').slice(0, 150)} … then ${clearedStatus === null ? 'cleared by the next payout' : 'still shown after a payout'}` : 'nothing on the status');
+const failSaid = ((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? '';
+check('a node with a notify webhook is told once when payouts start failing, in the console\'s words, not again each round',
+  brokeAgain.length === 0 && ironNotices.length === 1 && ironNotices[0].body.text === `${providerSpecs[1].name}: ${failSaid}` && ironNotices[0].body.content === ironNotices[0].body.text
+  && ironNotices[0].body.payoutFailed?.node === providerSpecs[1].name && ironNotices[0].body.payoutFailed?.said === brokeStatus?.said,
+  `${ironNotices.length} notice${ironNotices.length === 1 ? '' : 's'} for 2 failed rounds${ironNotices[0]?.body.text ? `: ${ironNotices[0].body.text.replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 110)}…` : ''}`);
 // Kept for the media folder: the failed round as the node shows it, then the round after SOL came back. The node key is
 // a rehearsal key, shortened anyway.
 {
