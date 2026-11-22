@@ -1,14 +1,26 @@
 // `orrery provider compare`: a node's price list next to every other listing of the same models on the network, so an
 // operator can see where each model would rank before registering or changing prices. Reads chain listings only.
+import { IMAGE_TOKENS, speechTokens } from '../manifest.ts';
 import { costOf, perMillion, usd } from '../pricing.ts';
 import type { ProviderEntry } from '../router/registry.ts';
 
 type Price = { input: number; output: number; cachedInput?: number };
-export type CompareRow = { model: string; mine: Price; others: number; cheaper: number; lowest: Price | null; myCost: bigint; lowestCost: bigint | null };
+export type CompareRow = { model: string; mine: Price; others: number; cheaper: number; lowest: Price | null; myCost: bigint; lowestCost: bigint | null; per?: string };
 
-/** Cost of a typical request (2,000 tokens in, 500 out) is how the :cheap route compares listings. */
-export function compare(mine: { id: string; price: Price }[], network: ProviderEntry[], self: string | null, inTokens = 2000, outTokens = 500): CompareRow[] {
+/** What a typical request of a kind is, where chat's (2,000 tokens in, 500 out) says nothing useful: an image model is
+ * compared on one image (a 50-character prompt and its 1,000 output tokens), a speech model on 1,000 characters. */
+export function typicalOf(kind: string | undefined): { inTokens: number; outTokens: number; per: string } | null {
+  if (kind === 'image') return { inTokens: speechTokens('x'.repeat(50)), outTokens: IMAGE_TOKENS, per: 'an image' };
+  if (kind === 'speech') return { inTokens: speechTokens('x'.repeat(1_000)), outTokens: 0, per: 'per 1,000 characters' };
+  return null;
+}
+
+/** Cost of a typical request (2,000 tokens in, 500 out) is how the :cheap route compares listings; an image or a
+ * speech model is compared on a typical request of its own kind. */
+export function compare(mine: { id: string; price: Price; kind?: string }[], network: ProviderEntry[], self: string | null, chatIn = 2000, chatOut = 500): CompareRow[] {
   return mine.map((m) => {
+    const typical = typicalOf(m.kind);
+    const inTokens = typical?.inTokens ?? chatIn, outTokens = typical?.outTokens ?? chatOut;
     const others = network
       .filter((e) => e.address !== self)
       .map((e) => e.manifest?.models.find((x) => x.id === m.id)?.price)
@@ -23,12 +35,13 @@ export function compare(mine: { id: string; price: Price }[], network: ProviderE
       lowest: costs[0]?.p ?? null,
       myCost,
       lowestCost: costs[0]?.c ?? null,
+      ...(typical ? { per: typical.per } : {}),
     };
   });
 }
 
 export function renderCompare(name: string, rows: CompareRow[]): string {
-  const lines = [`"${name}" against the network · a 2,000-in / 500-out request, as the :cheap route compares them`];
+  const lines = [`"${name}" against the network · a 2,000-in / 500-out request, as the :cheap route compares them${rows.some((r) => r.per) ? '; an image model on one image, a speech model on 1,000 characters' : ''}`];
   lines.push(`${'model'.padEnd(26)}${'yours in / out'.padStart(22)}${'per request'.padStart(13)}   where it stands`);
   for (const r of rows) {
     const yours = `${perMillion(r.mine.input)} / ${perMillion(r.mine.output)}`;
@@ -36,7 +49,7 @@ export function renderCompare(name: string, rows: CompareRow[]): string {
     if (!r.others) stand = 'nobody else lists it: you would be the only one';
     else if (!r.cheaper) stand = `cheapest of ${r.others + 1}${r.lowestCost !== null && r.lowestCost > r.myCost ? `, $${usd(r.lowestCost - r.myCost)} under the next` : ''}`;
     else stand = `${r.cheaper} of ${r.others} cheaper; lowest ${perMillion(r.lowest!.input)} / ${perMillion(r.lowest!.output)} ($${usd(r.lowestCost!)})`;
-    lines.push(`${r.model.slice(0, 25).padEnd(26)}${yours.padStart(22)}${`$${usd(r.myCost)}`.padStart(13)}   ${stand}`);
+    lines.push(`${r.model.slice(0, 25).padEnd(26)}${yours.padStart(22)}${`$${usd(r.myCost)}`.padStart(13)}   ${r.per ? `${r.per}: ` : ''}${stand}`);
   }
   return lines.join('\n');
 }

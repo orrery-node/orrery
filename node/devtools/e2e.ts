@@ -1553,6 +1553,14 @@ const haloPrices = lineOf(haloCheck, 'prices')?.detail ?? '';
 check('orrery provider check says where each model’s price stands among the other listings of it, and points to provider price when some list it cheaper',
   haloPrices === 'a 2,000-in / 500-out request: gemma-3-27b listed by no other node' && ironStands.length > 0 && ironStands.every((r) => ironPrices.includes(!r.others ? `${r.model} listed by no other node` : !r.cheaper ? `${r.model} the cheapest of ${r.others + 1}` : r.others === 1 ? `${r.model} at $${usd(r.myCost)}, the one other listing cheaper at $${usd(r.lowestCost!)}` : `${r.model} at $${usd(r.myCost)}, ${r.cheaper} of ${r.others} other listings cheaper`)) && ironPrices.endsWith('orrery provider price suggests prices under the cheapest') === ironStands.some((r) => r.cheaper > 0),
   ironPrices.slice(0, 200) || 'no prices line');
+// An image model and a speech model are compared on a request of their own kind, not on chat's 2,000 in / 500 out.
+const compareSaid = await cliOut(['compare']);
+const cmpLine = (id: string) => compareSaid.split('\n').find((l) => l.startsWith(id.padEnd(26))) ?? '';
+const fluxTypical = usd(costOf({ input: 100_000, output: 3_000_000 }, 13, 1_000)), kokoroTypical = usd(costOf({ input: 1_000_000, output: 0 }, 250, 0));
+check('orrery provider compare prices an image model on one image and a speech model on 1,000 characters, and leaves the node’s own listing out of the others',
+  cmpLine('flux-schnell').endsWith(`$${fluxTypical}   an image: nobody else lists it: you would be the only one`) && cmpLine('kokoro-82m').endsWith(`$${kokoroTypical}   per 1,000 characters: nobody else lists it: you would be the only one`)
+  && compareSaid.split('\n')[0].endsWith('; an image model on one image, a speech model on 1,000 characters'),
+  `${cmpLine('flux-schnell').replace(/\s{2,}/g, ' ') || 'no flux-schnell row'} · ${cmpLine('kokoro-82m').replace(/\s{2,}/g, ' ').slice(-70)}`);
 // Registering from the command line with a wallet that has no SOL: stopped before anything is sent, with what a
 // listing takes, and the size the rent is worked out from is the size of a real listing.
 const brokeDir = join(WORK, 'providers', 'broke');

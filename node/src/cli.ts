@@ -306,8 +306,9 @@ async function provider(sub: string) {
   if (sub === 'compare') {
     const registry = new Registry(rpcConnection(cfg.rpcUrl ?? rpc()), { allowDev: has('allow-dev-enclaves'), measurements: [] });
     await registry.refresh();
-    const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : null;
-    const rows = compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), registry.usable(), self);
+    // This node's own listing is left out of the others: named by "authority", or by the wallet that lists it.
+    const self = cfg.authority ? pda.provider(new PublicKey(cfg.authority)).toBase58() : cfg.wallet && existsSync(expand(cfg.wallet)) ? pda.provider(loadKeypair(expand(cfg.wallet)).publicKey).toBase58() : null;
+    const rows = compare(cfg.models.map((m) => ({ id: m.id, price: m.price, kind: m.kind })), registry.usable(), self);
     if (has('json')) return console.log(JSON.stringify(rows.map((r) => ({ ...r, myCost: usd(r.myCost), lowestCost: r.lowestCost === null ? null : usd(r.lowestCost) })), null, 2));
     return console.log(renderCompare(cfg.name, rows));
   }
@@ -642,7 +643,7 @@ async function main() {
     if (!has('offline')) {
       const registry = new Registry(rpcConnection(rpc()), { allowDev: false, measurements: [] });
       const listed = await registry.refresh().then(() => registry.usable()).catch(() => null);
-      if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), listed, null))}\n`);
+      if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price, kind: m.kind })), listed, null))}\n`);
     }
     // Holder prices are written in unless the operator left them out; say what they are and how to drop them.
     if (cfg.holder) console.log(`${holderTiersNote(cfg.holder.tiers)} (the seed node's tiers; --no-holder-prices leaves them out, or edit "holder" in ${out})`);

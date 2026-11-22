@@ -117,7 +117,8 @@ export function listingLine(state: ListingState, o: { config: string; endpoint?:
  * cheaper, the command that suggests prices under them. Four models at most; null when there are none. */
 export function pricesLine(rows: CompareRow[]): CheckLine | null {
   if (!rows.length) return null;
-  const say = (r: CompareRow) => (!r.others ? `${r.model} listed by no other node` : !r.cheaper ? `${r.model} the cheapest of ${r.others + 1}` : r.others === 1 ? `${r.model} at $${usd(r.myCost)}, the one other listing cheaper at $${usd(r.lowestCost!)}` : `${r.model} at $${usd(r.myCost)}, ${r.cheaper} of ${r.others} other listings cheaper, the lowest $${usd(r.lowestCost!)}`);
+  const at = (r: CompareRow) => (r.per ? `$${usd(r.myCost)} ${r.per}` : `$${usd(r.myCost)}`);
+  const say = (r: CompareRow) => (!r.others ? `${r.model}${r.per ? ` at ${at(r)},` : ''} listed by no other node` : !r.cheaper ? `${r.model}${r.per ? ` at ${at(r)},` : ''} the cheapest of ${r.others + 1}` : r.others === 1 ? `${r.model} at ${at(r)}, the one other listing cheaper at $${usd(r.lowestCost!)}` : `${r.model} at ${at(r)}, ${r.cheaper} of ${r.others} other listings cheaper, the lowest $${usd(r.lowestCost!)}`);
   const more = rows.length > 4 ? `; and ${rows.length - 4} more` : '';
   const under = rows.some((r) => r.cheaper > 0) ? ' · orrery provider price suggests prices under the cheapest' : '';
   return { ok: null, what: 'prices', detail: `a 2,000-in / 500-out request: ${rows.slice(0, 4).map(say).join('; ')}${more}${under}` };
@@ -199,7 +200,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     await r.refresh();
     return r.usable();
   })().catch(() => null);
-  const prices = network ? pricesLine(compare(cfg.models.map((m) => ({ id: m.id, price: m.price })), network, node.pda.toBase58())) : null;
+  const prices = network ? pricesLine(compare(cfg.models.map((m) => ({ id: m.id, price: m.price, kind: m.kind })), network, node.pda.toBase58())) : null;
   if (prices) out.push(prices);
 
   // The price list as a router reads it, from the public address: a node listed anew and not restarted still serves the
