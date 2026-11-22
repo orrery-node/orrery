@@ -320,7 +320,7 @@ const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
 check('an agent is told through orrery mcp how what it paid compares with the prices the node listed on chain', /paid \$\d\.\d{6} for this answer(, what its listed prices come to|, under its listed \$\d\.\d{6}| \(it asked)/.test(mcpAnswer), (mcpAnswer.split('\n').find((l) => l.includes('paid $')) ?? 'no paid line').replace(/\(([1-9A-HJ-NP-Za-km-z]{6})…\)/, '($1…)').slice(0, 150));
-check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,image,quote,models,status' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
+check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,image,quote,models,status,spend' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
 const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
 const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
 const mcpStatus = mcpOut[6]?.result?.content?.[0]?.text ?? '';
@@ -802,6 +802,18 @@ check('the router’s log keeps which answers another node finished after the fi
     sealedWeek.length > 0 && privLine === `${sealedWeek.length} of these ${week.length} answers went to an enclave this router verified, $${sealedUsd} of the total (orrery sealed lists them).`
     && sp?.private?.answers === sealedWeek.length && sp.private.usd === sealedUsd,
     privLine || `no line (${sealedWeek.length} sealed answers in the log)`);
+}
+// An agent reads the router's bill through orrery mcp: the spend tool, by task over the week, with the same total the
+// router's /orrery/spend gives and the line about what went to an enclave.
+{
+  const { handle: spendMcpHandle } = await import('../src/mcp.ts');
+  const mcpSpend = await (spendMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[]; isError?: boolean } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spend', arguments: { since: '7d', by: 'task' } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch((e) => String(e));
+  const byTask = await fetch(`${ROUTER}/orrery/spend?since=7d&by=task`).then((r) => r.json()).catch(() => null) as { total?: { answers: number; usd: string }; rows?: { key: string }[]; private?: { line: string } } | null;
+  const lines = mcpSpend.split('\n');
+  check('an agent reads the router\'s bill through orrery mcp: by task over the week, with the router\'s own total and the part that went to an enclave',
+    !!byTask?.total && lines[0] === 'last 7d, by task' && lines.includes(`total  ·  ${byTask.total.answers.toLocaleString('en-US')} answers  ·  $${byTask.total.usd}`)
+    && (byTask.rows ?? []).every((r) => lines.some((l) => l.startsWith(`${r.key}  ·  `))) && !!byTask.private?.line && lines.includes(byTask.private.line),
+    lines.find((l) => l.startsWith('total')) ?? mcpSpend.slice(0, 120));
 }
 // orrery spend --by day: the router's books, a UTC day a row; today's row is what its log of answers says it paid today.
 {

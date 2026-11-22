@@ -64,7 +64,7 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:7171 ANTHROPIC_API_KEY=orrery claude`,
   },
   {
     id: 'mcp', name: 'MCP server', kind: 'Agents', rehearsed: true,
-    steps: ['Tools for any MCP client: ask, embed, quote, models and status.', 'quote prices a job at every node before the agent spends on it.'],
+    steps: ['Tools for any MCP client: ask, embed, rerank, image, quote, models, status and spend.', 'quote prices a job at every node before the agent spends on it; spend reads back what it cost, by task.'],
     lang: 'bash',
     code: `claude mcp add orrery -- npx -y orrery-node mcp --router http://127.0.0.1:7171
 

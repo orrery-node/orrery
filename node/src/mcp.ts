@@ -112,9 +112,29 @@ const TOOLS = [
     description: 'What the local router has spent today, the payment channels it has open, whether each node’s model server answers (the router skips one that is down), the last 24 hours of spend by model from its own log, every task with what it has spent and has left, and every agent with its limit for today (UTC) and what it has spent.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'spend',
+    description: 'What this router paid, from its own log of answers, over a window (24h by default; 7d or 30d for a week or a month), grouped by model, provider, task, agent, kind or day, with the total, what holding the network token took off, and what part went to an enclave this router verified. For a job\'s own bill, group by task or by agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        since: { type: 'string', description: 'how far back: 24h (default), 7d, 30d, or any number of h or d' },
+        by: { type: 'string', enum: ['model', 'provider', 'task', 'agent', 'kind', 'day'], description: 'how to group it (default model)' },
+      },
+    },
+  },
 ];
 
 const text = (t: string, isError = false) => ({ content: [{ type: 'text', text: t }], ...(isError ? { isError: true } : {}) });
+
+type SpendRow = { key: string; answers: number; usd: string };
+/** The spend tool's answer, from /orrery/spend: one line a group, the total, then what holding took off and what went to
+ * an enclave, when either happened in the window. */
+export function spendText(j: { since: string; by: string; rows: SpendRow[]; total: SpendRow; held?: { answers: number; line: string }; private?: { answers: number; line: string } }): string {
+  if (!j.total.answers) return `nothing paid in the last ${j.since}`;
+  const row = (r: SpendRow) => `${r.key}  ·  ${r.answers.toLocaleString('en-US')} answer${r.answers === 1 ? '' : 's'}  ·  $${r.usd}`;
+  return [`last ${j.since}, by ${j.by}`, ...j.rows.map(row), row({ ...j.total, key: 'total' }), ...(j.held?.answers ? [j.held.line] : []), ...(j.private?.answers ? [j.private.line] : [])].join('\n');
+}
 
 /** The type of a base64 image from its first bytes: PNG, JPEG or WebP, as image servers send them; PNG otherwise. */
 export const imageType = (b64: string): string => (b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('UklGR') ? 'image/webp' : 'image/png');
@@ -231,6 +251,13 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.private_providers ? `  ·  ${m.private_providers} in an enclave this router verified: add :private to send only there` : ''}${m.pricing.per_image !== undefined ? `  ·  from ${usd(m.pricing.per_image)} an image` : ''}${m.pricing.per_million_characters !== undefined ? `  ·  from ${usd(m.pricing.per_million_characters)} per million characters` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'use the image tool' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
       const noEnclave = rows.length && !(j.data ?? []).some((m) => m.private_providers) ? "\n:private: no node serving these runs in an enclave this router verified yet, so a :private ask would be refused. Without :private, each request still goes sealed to the node's own key." : '';
       return text(rows.length ? rows.join('\n') + noEnclave : 'no models on the network right now');
+    }
+    if (name === 'spend') {
+      const by = typeof a.by === 'string' && ['model', 'provider', 'task', 'agent', 'kind', 'day'].includes(a.by) ? a.by : 'model';
+      const since = typeof a.since === 'string' && /^\d+(h|d)$/.test(a.since) ? a.since : '24h';
+      const r = await fetchFn(`${router}/orrery/spend?${new URLSearchParams({ since, by })}`);
+      if (!r.ok) return text(`the router could not say what it spent: ${r.status}`, true);
+      return text(spendText((await r.json()) as Parameters<typeof spendText>[0]));
     }
     if (name === 'status') {
       const r = await fetchFn(`${router}/orrery/status`);
