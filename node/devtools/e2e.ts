@@ -2213,6 +2213,7 @@ const feeLine = ironLines.find((l) => /redeem failed/.test(l));
 check('a node whose key cannot pay redeem fees says so, with the address to send SOL to, and that what was signed is safe', brokeRedeemed.length === 0 && !!feeLine && feeLine.includes(iron.node.publicKey.toBase58()) && /send a little SOL/.test(feeLine) && /safe/.test(feeLine), feeLine ? feeLine.replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 220) : 'no redeem was attempted');
 // The failed round stays on the node's status and console, in the chain's words, until a round goes through.
 const brokeStatus = (iron.status() as { payoutFailed?: { at: number; said: string } | null }).payoutFailed ?? null;
+const brokeWaiting = iron.status().waiting;
 const ironConsole = await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/?key=${(iron as unknown as { consoleKey: () => string }).consoleKey()}`)).text();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Before it runs out: a node whose key is down to its last fees says so once, after a payout that still went
@@ -2236,6 +2237,13 @@ check('a node whose payout round failed says so on its status and console, in th
   !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
   && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,
   brokeStatus ? `${(((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? brokeStatus.said).replace(iron.node.publicKey.toBase58(), '<node key>').replace(/at \d\d:\d\d UTC/, 'at hh:mm UTC').slice(0, 150)} … then ${clearedStatus === null ? 'cleared by the next payout' : 'still shown after a payout'}` : 'nothing on the status');
+// Kept for the media folder: the failed round as the node shows it, then the round after SOL came back. The node key is
+// a rehearsal key, shortened anyway.
+{
+  const k = iron.node.publicKey.toBase58(), short = `${k.slice(0, 4)}…${k.slice(-4)}`;
+  const sentence = (((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? '');
+  writeFileSync(join(WORK, 'payout-failed.json'), JSON.stringify({ node: 'Ironbridge Compute', waiting: brokeWaiting, failed: brokeStatus ? { at: brokeStatus.at, said: brokeStatus.said.replaceAll(k, short) } : null, sentence: sentence.replaceAll(k, short), next: (lowRedeemed as { channel: string; amount: bigint; tx: string }[]).map((r) => ({ channel: `${r.channel.slice(0, 6)}`, amount: r.amount.toString(), tx: r.tx })), cleared: clearedStatus === null }, null, 1));
+}
 // What the node's front saw, kept for the media folder: one request and its voucher hand-over each way.
 const frontOf = (x: { url: string; body: string; headers?: Record<string, unknown> } | undefined) => x && ({ path: new URL(x.url).pathname, headers: Object.fromEntries(Object.entries(x.headers ?? {}).filter(([k]) => !['host', 'connection', 'accept', 'accept-language', 'sec-fetch-mode', 'accept-encoding', 'user-agent'].includes(k))), bodyBytes: x.body.length, bodyStart: x.body.slice(0, 96) });
 await sleep(400);
