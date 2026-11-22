@@ -794,6 +794,10 @@ check('the router’s log keeps which answers another node finished after the fi
   const sealedUsd = usd(sealedWeek.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n));
   const privLine = spendOut.split('\n').find((l) => l.includes('went to an enclave this router verified')) ?? '';
   const sp = await fetch(`${ROUTER}/orrery/spend?since=7d`).then((r) => r.json()).catch(() => null) as { private?: { answers: number; usd: string; line: string } } | null;
+  const spendPage = await (await fetch(`${ROUTER}/`)).text();
+  check('the router console shows under its books what part of the bill went to an enclave, from /orrery/spend',
+    spendPage.includes('<p class="lede" id="spendprivate" hidden></p>') && spendPage.includes("sp.textContent=sd.private&&sd.private.answers?sd.private.line:''") && !!sp?.private?.line && sp.private.line === privLine,
+    sp?.private?.line || 'no private line in /orrery/spend');
   check('orrery spend says how many answers went to an enclave this router verified and what part of the bill they were, and /orrery/spend gives it to the console',
     sealedWeek.length > 0 && privLine === `${sealedWeek.length} of these ${week.length} answers went to an enclave this router verified, $${sealedUsd} of the total (orrery sealed lists them).`
     && sp?.private?.answers === sealedWeek.length && sp.private.usd === sealedUsd,
