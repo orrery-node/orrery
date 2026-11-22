@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery doctor` adds up how private your requests are in one line, from what it found above it: how many nodes take the request and the payment sealed to their own key, how many run in an enclave this computer verified (where `:private` can go, or that it would find no node yet), whether a proxy keeps your address from the nodes and the RPC (and the one flag that sends it all through Tor), and that client IDs are dropped before anything leaves: "privacy  3 of 3 nodes take the request and the payment sealed to their own key · none runs in an enclave this computer verified, so :private would find no node yet · no proxy, so nodes and the RPC see your address (orrery router --proxy socks5://127.0.0.1:9050 sends it all through Tor) · client IDs are dropped before anything leaves".' },
+];
 
 export const RELEASES: Release[] = [
   {

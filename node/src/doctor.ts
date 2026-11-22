@@ -28,6 +28,22 @@ export function sealCheck(e: ProviderEntry, pinned: boolean): Check {
   return { ok: true, what, detail: `requests and payment sealed to its own key, both signed by its node key${listed}${pinned && !listed ? '; this router keeps to that if either goes missing' : ''}` };
 }
 
+/** One line on how private this router's requests are right now, from what the lines above found: how many nodes take
+ * the request and the payment sealed, how many run in an enclave this computer verified (where :private can go), whether
+ * a proxy keeps this computer's address from the nodes and the RPC, and that client IDs never leave. */
+export function privacyLine(nodes: { wire: boolean; inside: boolean; enclave: boolean }[], proxied: boolean): Check {
+  const all = nodes.length;
+  const inside = nodes.filter((x) => x.wire && x.inside).length, sealed = nodes.filter((x) => x.wire && !x.inside).length, plain = all - inside - sealed;
+  const enclaves = nodes.filter((x) => x.enclave).length;
+  const parts = [
+    `${inside} of ${all} node${all === 1 ? '' : 's'} take${all === 1 ? 's' : ''} the request and the payment sealed to ${all === 1 ? 'its' : 'their'} own key${sealed ? `, ${sealed} the request only` : ''}${plain ? `, ${plain} plain JSON inside TLS` : ''}`,
+    enclaves ? `${enclaves} run${enclaves === 1 ? 's' : ''} in an enclave this computer verified, so :private has somewhere to go` : 'none runs in an enclave this computer verified, so :private would find no node yet',
+    proxied ? 'requests leave through your proxy' : 'no proxy, so nodes and the RPC see your address (orrery router --proxy socks5://127.0.0.1:9050 sends it all through Tor)',
+    'client IDs are dropped before anything leaves',
+  ];
+  return { ok: null, what: 'privacy', detail: parts.join(' · ') };
+}
+
 const ms = (t0: number) => `${Date.now() - t0} ms`;
 const n = (k: number | bigint, one: string, many = `${one}s`) => `${k} ${Number(k) === 1 ? one : many}`;
 
@@ -103,6 +119,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   await registry.refresh();
   const entries = [...registry.entries.values()];
   const up: { name: string; endpoint: string }[] = [];
+  const privacy: { wire: boolean; inside: boolean; enclave: boolean }[] = [];
   out.push({ ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: `${entries.length} on chain, read in ${ms(t0)}` });
   for (const e of entries) {
     const name = e.manifest?.name ?? e.address.slice(0, 8);
@@ -124,6 +141,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     out.push({ ok: !!h && h.upstream !== 'down', what: `  ${name}`, detail: `${n(e.manifest.models.length, 'model')}, price list matches its hash on chain, paid out ${payouts} time${payouts === 1 ? '' : 's'} on chain, ${detail}` });
     // A node that claims an enclave: say whether this computer could verify it, and if not, which check stopped it.
     out.push(sealCheck(e, pins.has(e.account.nodeKey.toBase58())));
+    privacy.push({ wire: !!e.wire, inside: !!e.wire && !!e.wireInside, enclave: !!e.tee?.verified });
     if (e.tee) out.push({ ok: e.tee.verified ? true : e.tee.dev ? null : false, what: '    enclave', detail: `${TEE_KINDS[e.account.teeKind] ?? 'enclave'} · ${e.tee.verified ? `${e.tee.reason}; :private can use this node` : `not verified: ${e.tee.reason}`}` });
   }
   // What a node sees of this computer: the first node that says is asked, through the proxy when one is set.
@@ -131,6 +149,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     const said = await askSeen(up);
     out.push(seenCheck(said?.name ?? null, said?.seen ?? null, nodeProxy(), ownAddresses()));
   }
+  if (privacy.length) out.push(privacyLine(privacy, !!nodeProxy()));
 
   if (o.wallet) {
     const sol = await conn.getBalance(o.wallet);

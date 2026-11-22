@@ -679,6 +679,15 @@ check('orrery doctor says how many times each node has been paid out on chain', 
 check('orrery doctor says which nodes list payment inside in their price list on chain', /listed in its price list on chain/.test(haloSeal?.detail ?? '') && !/listed in its price list/.test(ironSeal?.detail ?? ''), `Halo: ${haloSeal?.detail ?? 'no line'} · Ironbridge: ${ironSeal?.detail ?? 'no line'}`);
 // What a node sees of the caller: the node says, and doctor prints it, so a proxy can be checked from the far side.
 const seenSaid = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`).then((r) => r.json()).catch(() => ({}))) as { address?: string; socket?: string; forwarded?: string[] };
+// And one line that adds it up: how many nodes take request and payment sealed, where :private can go, whether nodes see
+// this computer, and that client IDs never leave.
+const privacySaid = doc.find((l) => l.what === 'privacy');
+const insideNodes = sealLines.filter((l) => l.ok === true).length, enclaveNodes = doc.filter((l) => l.what.trim() === 'enclave' && l.ok === true).length;
+check('orrery doctor adds up privacy in one line: nodes sealed with the payment inside, where :private can go, the proxy, client IDs',
+  !!privacySaid && privacySaid.detail.startsWith(`${insideNodes} of ${sealLines.length} nodes take the request and the payment sealed to their own key`)
+  && privacySaid.detail.includes(enclaveNodes ? `${enclaveNodes} run${enclaveNodes === 1 ? 's' : ''} in an enclave this computer verified` : 'none runs in an enclave this computer verified')
+  && privacySaid.detail.endsWith(' · client IDs are dropped before anything leaves'),
+  privacySaid?.detail.slice(0, 200) ?? 'no privacy line');
 const seenLine = doc.find((l) => l.what === 'seen as');
 // A node behind a balancer: what the balancer wrote down, as a hosting front would write it.
 const fronted = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`, { headers: { 'x-forwarded-for': '198.51.100.7, 203.0.113.20, 10.0.0.3' } }).then((r) => r.json())) as { address?: string; socket?: string; forwarded?: string[] };
