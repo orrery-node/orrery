@@ -641,6 +641,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] The books go straight into a spreadsheet (`provider earnings --by day --csv`, `provider payouts --csv`, the console's "Download 90 days as CSV"), each closed day is kept so the books outlast the rolled-over logs, and the console says how much fee money the node key has left for payouts (0.1.23)
 - [x] $OREY holders go first on a busy node (`"slots"`), routers keep what holding saved them (`orrery spend`), every new node starts with holder prices (`provider init`), payouts ping a webhook as they land (`"notify"`), and both sides keep books by day and month (0.1.24)
 - [x] Agent wallets: a daily limit and a bill per agent (`--agent-cap`, `orrery spend --by agent`), set from `orrery mcp --agent` or `orrery connect --agent`; reranking at `/v1/rerank` and in MCP; a model's `"kind"` in its listing; holder lanes (`"holderSlots"`) and holder-first models (`"holdersOnly"`); routers and nodes draw their month as a card, and nodes close each month in their log (0.1.25)
+- [x] Speech (`/v1/audio/speech`) and images (`/v1/images/generations`) next to chat on the same channels, an `image` tool in `orrery mcp`, routers that pay for no more images than came back and count a screenshot as at most 8,192 tokens, `orrery quote` by the text and by the picture, `provider vouchers`, books by kind of work at midnight UTC, and `provider check` refusing free work (0.1.26)
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
 

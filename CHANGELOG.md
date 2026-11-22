@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.26 · 2026-11-22 07:06 UTC
+
+**Speech and images next to chat, paid on the same channels and billed by rules you can check; an image tool for agents; routers that pay for no more images than came back and budget a screenshot the way a vision model reads it; and nodes that check every voucher before a redeem, close their books by kind of work and refuse to work for free.**
 
 - **Node** · `orrery provider compare` and the prices line of `orrery provider check` compare an image model on one image (a 50-character prompt and its 1,000 output tokens) and a speech model on 1,000 characters, not on the 2,000-in / 500-out request chat is compared on, and say so on the row ("$0.003002   an image: …"). `provider compare` also leaves your own listing out of the others when provider.json names the wallet rather than an `authority`, where it counted itself as another node.
 - **Node** · `orrery provider check` fails a model that would answer for free, before anyone is served: an image model with no output price (an image is billed as output), a speech, embedding or rerank model with no input price, a model with neither. It names the model and why ("flux-schnell is listed for images with no output price, and an image is billed as output, so every image would be free: an output price of $3 per million is $0.003 an image. Set the price in provider.json, then provider register").
@@ -25,6 +27,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · `orrery spend --by kind` gives your router's books by the kind of work: what reranking and embeddings cost you, apart from chat. The router's log now keeps the kind on each embeddings and rerank answer (answers logged before this count as chat); `/orrery/spend?by=kind` and `--csv` give the same rows. The router's console says the last 24 hours by kind under its spend table ("By kind of work: chat 39 answers, $0.002446 · embeddings 6 answers, $0.000006 · rerank 4 answers, $0.000004."), once more than one kind has been asked for.
 - **Node** · `orrery provider check` asks each model the way your listing says it works: a reranker (`"kind": "rerank"`) for a ranking at `/rerank`, an embedding model for an embedding, and a chat model for an answer. Before, a reranker was asked for an embedding (it has no output price), which a model server refuses, and the check said it did not answer.
 - **Router** · `orrery doctor` says each agent's day under the router line: its limit, what it spent and has left today (UTC), and the models it is kept to ("researcher: $0.000018 of $0.000020 spent today (UTC), $0.000002 left; may use llama-3.3-70b").
+
+`npx -y orrery-node@0.1.26`
 
 ## 0.1.25 · 2026-11-21 03:28 UTC
 
