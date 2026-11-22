@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The router says the same privacy sentence as `orrery doctor`, over the nodes it would use: `/orrery/status` carries it as `privacy` (the line, how many nodes take the payment inside the seal, how many run in an enclave it verified, whether a proxy is set), the console shows it above the providers, and the `status` tool of `orrery mcp` gives it to an agent ("privacy: 4 of 4 nodes take the request and the payment sealed to their own key · 1 runs in an enclave this computer verified, so :private has somewhere to go · …").
 - **Router** · `orrery doctor` adds up how private your requests are in one line, from what it found above it: how many nodes take the request and the payment sealed to their own key, how many run in an enclave this computer verified (where `:private` can go, or that it would find no node yet), whether a proxy keeps your address from the nodes and the RPC (and the one flag that sends it all through Tor), and that client IDs are dropped before anything leaves: "privacy  3 of 3 nodes take the request and the payment sealed to their own key · none runs in an enclave this computer verified, so :private would find no node yet · no proxy, so nodes and the RPC see your address (orrery router --proxy socks5://127.0.0.1:9050 sends it all through Tor) · client IDs are dropped before anything leaves".
 
 ## 0.1.26 · 2026-11-22 07:06 UTC

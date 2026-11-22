@@ -688,6 +688,19 @@ check('orrery doctor adds up privacy in one line: nodes sealed with the payment 
   && privacySaid.detail.includes(enclaveNodes ? `${enclaveNodes} run${enclaveNodes === 1 ? 's' : ''} in an enclave this computer verified` : 'none runs in an enclave this computer verified')
   && privacySaid.detail.endsWith(' · client IDs are dropped before anything leaves'),
   privacySaid?.detail.slice(0, 200) ?? 'no privacy line');
+// The router says the same sentence over the nodes it would use: in /orrery/status, on its console, and to an agent
+// through the status tool of orrery mcp.
+const privSt = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string; inside: number; nodes: number; enclaves: number; proxied: boolean } | null; providers: { active: boolean; problem?: string | null; sealing: string; tee: { verified: boolean } | null; models: number }[] };
+const usableSt = privSt.providers.filter((p) => p.active && !p.problem && p.models > 0);
+const insideSt = usableSt.filter((p) => p.sealing === 'inside').length, enclavesSt = usableSt.filter((p) => p.tee?.verified).length;
+const privPage = await (await fetch(`${ROUTER}/`)).text();
+const { handle: privMcpHandle } = await import('../src/mcp.ts');
+const mcpPriv = await (privMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'status', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch((e) => String(e));
+check('the router says how private its requests are in /orrery/status, on its console and through the MCP status tool, from the nodes it would use',
+  !!privSt.privacy && privSt.privacy.nodes === usableSt.length && privSt.privacy.inside === insideSt && privSt.privacy.enclaves === enclavesSt
+  && privSt.privacy.line.startsWith(`${insideSt} of ${usableSt.length} node${usableSt.length === 1 ? '' : 's'} take`) && privSt.privacy.line.endsWith('client IDs are dropped before anything leaves')
+  && privPage.includes('id="privacy"') && privPage.includes("'Privacy: '+s.privacy.line") && mcpPriv.includes(`\nprivacy: ${privSt.privacy.line}\n`),
+  privSt.privacy ? privSt.privacy.line.slice(0, 170) : 'no privacy in /orrery/status');
 const seenLine = doc.find((l) => l.what === 'seen as');
 // A node behind a balancer: what the balancer wrote down, as a hosting front would write it.
 const fronted = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`, { headers: { 'x-forwarded-for': '198.51.100.7, 203.0.113.20, 10.0.0.3' } }).then((r) => r.json())) as { address?: string; socket?: string; forwarded?: string[] };

@@ -13,6 +13,7 @@ import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswer
 import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
+import { privacySentence, type NodePrivacy } from './privacy.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -31,17 +32,8 @@ export function sealCheck(e: ProviderEntry, pinned: boolean): Check {
 /** One line on how private this router's requests are right now, from what the lines above found: how many nodes take
  * the request and the payment sealed, how many run in an enclave this computer verified (where :private can go), whether
  * a proxy keeps this computer's address from the nodes and the RPC, and that client IDs never leave. */
-export function privacyLine(nodes: { wire: boolean; inside: boolean; enclave: boolean }[], proxied: boolean): Check {
-  const all = nodes.length;
-  const inside = nodes.filter((x) => x.wire && x.inside).length, sealed = nodes.filter((x) => x.wire && !x.inside).length, plain = all - inside - sealed;
-  const enclaves = nodes.filter((x) => x.enclave).length;
-  const parts = [
-    `${inside} of ${all} node${all === 1 ? '' : 's'} take${all === 1 ? 's' : ''} the request and the payment sealed to ${all === 1 ? 'its' : 'their'} own key${sealed ? `, ${sealed} the request only` : ''}${plain ? `, ${plain} plain JSON inside TLS` : ''}`,
-    enclaves ? `${enclaves} run${enclaves === 1 ? 's' : ''} in an enclave this computer verified, so :private has somewhere to go` : 'none runs in an enclave this computer verified, so :private would find no node yet',
-    proxied ? 'requests leave through your proxy' : 'no proxy, so nodes and the RPC see your address (orrery router --proxy socks5://127.0.0.1:9050 sends it all through Tor)',
-    'client IDs are dropped before anything leaves',
-  ];
-  return { ok: null, what: 'privacy', detail: parts.join(' · ') };
+export function privacyLine(nodes: NodePrivacy[], proxied: boolean): Check {
+  return { ok: null, what: 'privacy', detail: privacySentence(nodes, proxied) };
 }
 
 const ms = (t0: number) => `${Date.now() - t0} ms`;

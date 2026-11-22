@@ -29,6 +29,7 @@ import { appendTrip, bills, heldSaved, heldSavedLine, readTrips, skipped, speeds
 import { recordLines, sawText } from './watched.ts';
 import { quote, quoteKind, renderQuote } from '../quote.ts';
 import { capped, workCap } from './workcap.ts';
+import { privacySentence } from '../privacy.ts';
 import { home } from '../keys.ts';
 
 /** Which API the client spoke, when it is not chat completions: the answer is translated back into that shape. */
@@ -428,11 +429,14 @@ export class Router {
       burn: e.manifest?.burn ? { share: e.manifest.burn.share, verified: !!e.burn, spent: usd(e.burn?.spent ?? 0n), burned: (e.burn?.burned ?? 0n).toString(), receipts: e.burn?.receipts ?? 0, kept: e.burn?.kept ?? null } : null,
     }));
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
+    // How private requests are right now, over the nodes this router would use: the same sentence orrery doctor says.
+    const usable = [...this.o.registry.entries.values()].filter((e) => e.account.active && e.manifest && !e.problem).map((e) => ({ wire: !!e.wire, inside: !!e.wire && !!e.wireInside, enclave: !!e.tee?.verified }));
+    const privacy = usable.length ? { line: privacySentence(usable, !!nodeProxy()), inside: usable.filter((x) => x.inside).length, nodes: usable.length, enclaves: usable.filter((x) => x.enclave).length, proxied: !!nodeProxy() } : null;
     const s = await this.standing();
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER) } : null;
-    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
