@@ -528,6 +528,18 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && voiceBench.length === 1 && voiceBench[0].answered === 2 && !voiceBench[0].error,
     `models: kokoro-82m kind ${voiceListing?.kind ?? 'none'} · chat to it: ${chatToVoice.status} ${chatToVoice.j.error?.message ?? ''} · bench: ${voiceBench[0]?.answered ?? 0}/2 ${voiceBench[0]?.error ?? ''}`);
 }
+// A screenshot in a prompt is counted as at most 8,192 tokens, not as the length of its base64: an agent with a small
+// budget for one request still gets its answer, and pays no more than that budget.
+{
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const pic = `data:image/png;base64,${'A'.repeat(400_000)}`;
+  const seen = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-max-cost': '0.002' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: [{ type: 'text', text: 'What is in this picture?' }, { type: 'image_url', image_url: { url: pic } }] }] }) });
+  const seenJ = (await seen.json()) as { choices?: { message?: { content?: string } }[]; error?: { code?: string; message?: string } };
+  const seenCost = Number(seen.headers.get('x-orrery-cost') ?? 'NaN');
+  check('a prompt with a screenshot is counted as at most 8,192 tokens for the image, so a $0.002 budget still gets an answer and pays no more than that',
+    seen.status === 200 && !!seenJ.choices?.[0]?.message?.content && seenCost > 0 && seenCost <= 0.002,
+    seen.status === 200 ? `answered by ${nameOf(seen.headers.get('x-orrery-provider'))} · paid $${seen.headers.get('x-orrery-cost')} of a $0.002 budget, with a 400,000-character image in the prompt` : `${seen.status} ${seenJ.error?.code ?? ''}: ${(seenJ.error?.message ?? '').slice(0, 140)}`);
+}
 // And images: a node that lists an image model ("kind": "image") sells pictures on the same channel. Each image is billed
 // as 1,000 output tokens and its prompt like speech, one input token per 4 characters; the images come back base64.
 {
@@ -849,7 +861,7 @@ const billsSaid = (spendSaid as { bills?: { name: string; checked: number; over:
 check('the router keeps what each node billed beside what its listed prices come to, and its record says how many bills were within those prices',
   billedLogged.length >= 20 && billsSaid.length >= 3 && billsSaid.every((b) => b.checked >= 1 && b.over === 0) && (ironRecord?.record ?? []).some((l) => /^(every bill was|its bill was) within its listed prices \(/.test(l)) && doc.some((l) => l.what.trim() === 'bills' && /within its listed prices/.test(l.detail)),
   `${billedLogged.length} answers logged with both · ${billsSaid.map((b) => `${b.name} ${b.checked - b.over}/${b.checked} within`).join(', ') || 'no bills record'}`);
-check('router logged every answered request', trips.length === 56 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
+check('router logged every answered request', trips.length === 57 + codexTrips + claudeTrips + loadTrips, `${trips.length} trips`);
 
 const ib = nodes[1];
 // The key a node's own pages ask for (console.key in its folder); a node from before it had one ignores it.

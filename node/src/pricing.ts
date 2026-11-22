@@ -14,12 +14,26 @@ export function costOf(p: Price, inputTokens: number, outputTokens: number, cach
   return (raw + MILLION - 1n) / MILLION;
 }
 
+/** The most an image inside a prompt is counted as: vision models read a picture as a bounded number of tokens
+ * (around a thousand at common sizes, a few thousand at the largest), not as the length of its base64. */
+export const IMAGE_INPUT_TOKENS = 8_192;
+
 /** A rough upper bound for a request's prompt before it runs: 4 characters per token over everything the model
- * reads (messages, tool definitions, response schema). Router and provider compute it the same way. */
+ * reads (messages, tool definitions, response schema), with each image or other file sent inline (a data: URI)
+ * counted as at most IMAGE_INPUT_TOKENS, so a screenshot does not count as hundreds of thousands of tokens of text.
+ * Router and provider compute it the same way. */
 export function estimateInputTokens(body: unknown): number {
   const b = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
   const read = b && ('messages' in b || 'tools' in b) ? { m: b.messages, t: b.tools, r: b.response_format } : body;
-  return Math.ceil(JSON.stringify(read ?? '').length / 4);
+  let inline = 0;
+  const text = JSON.stringify(read ?? '', (_, v) => {
+    if (typeof v === 'string' && v.length > IMAGE_INPUT_TOKENS * 4 && v.startsWith('data:')) {
+      inline += IMAGE_INPUT_TOKENS;
+      return '';
+    }
+    return v;
+  });
+  return Math.ceil((text ?? '').length / 4) + inline;
 }
 
 export function usd(units: bigint, digits = 6): string {
