@@ -339,6 +339,13 @@ check('an agent prices a job at every provider before paying, through orrery mcp
 check('an agent gets embeddings from the network through orrery mcp, paid per call', /— 2 vectors of 8 dimensions, \d+ input tokens, paid \$0\.0000\d+/.test(mcpEmbed), mcpEmbed.split('\n').pop() ?? '');
 check('an agent is told through orrery mcp how many of its answers came after a node did not answer, and that such a node is signed nothing', /\n\d+ of these answers came from the next node after another did not answer[^\n]*signed nothing\./.test(mcpStatus), mcpStatus.split('\n').find((l) => /did not answer/.test(l)) ?? 'status says nothing about them');
 check('an agent reads its own last 24 hours of spend by model through orrery mcp', /last 24h by model:\n[\s\S]*answer/.test(mcpStatus), mcpStatus.split('\n').slice(-2).join(' · '));
+// An agent sees which models :private can reach: the enclave count on each line, from the router's own verification.
+const mcpPrivRows = mcpModels.split('\n');
+const privRow = (id: string) => mcpPrivRows.find((l: string) => l.startsWith(`${id}  ·`)) ?? '';
+check('an agent sees through orrery mcp which models :private can reach, on the line of each model a node serves from an enclave the router verified',
+  ['llama-3.3-70b', 'qwen3-32b', 'gpt-oss-120b'].every((id) => privRow(id).includes('  ·  1 in an enclave this router verified: add :private to send only there'))
+  && !privRow('deepseek-v3').includes('enclave') && !mcpModels.includes('\n:private: no node'),
+  privRow('qwen3-32b').replace(/^.*context/, '… context').slice(0, 160) || 'no qwen3-32b line');
 check('an agent sees on-chain prices, cached ones included, and caps what one ask may cost', /gpt-oss-120b .*cached in from \$0\.0094/.test(mcpModels) && mcpOut[5]?.result?.isError === true && mcpCapped.includes('price ceiling'), `${mcpModels.split('\n').find((l: string) => l.startsWith('gpt-oss-120b')) ?? ''} · capped ask: ${mcpCapped.slice(0, 90)}`);
 mcp.kill();
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;

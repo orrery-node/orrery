@@ -103,7 +103,7 @@ const TOOLS = [
   },
   {
     name: 'models',
-    description: 'List the models on the Orrery network with the cheapest price per million tokens, the cheapest cached-input price where one is listed, context length, and how many providers serve each. Prices come from listings pinned on Solana.',
+    description: 'List the models on the Orrery network with the cheapest price per million tokens, the cheapest cached-input price where one is listed, context length, how many providers serve each, and how many of those run in an enclave this router verified (the only ones :private sends to). Prices come from listings pinned on Solana.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -224,10 +224,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
     }
     if (name === 'models') {
       const r = await fetchFn(`${router}/v1/models`);
-      const j = (await r.json()) as { data?: { id: string; providers: number; context_length?: number; kind?: string; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number; per_image?: number; per_million_characters?: number } }[] };
+      const j = (await r.json()) as { data?: { id: string; providers: number; private_providers?: number; context_length?: number; kind?: string; pricing: { prompt_per_million: number; completion_per_million: number; cached_prompt_per_million?: number; per_image?: number; per_million_characters?: number } }[] };
       const usd = (v: number) => `$${v < 0.1 ? v.toFixed(4) : v.toFixed(2)}`;
-      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.pricing.per_image !== undefined ? `  ·  from ${usd(m.pricing.per_image)} an image` : ''}${m.pricing.per_million_characters !== undefined ? `  ·  from ${usd(m.pricing.per_million_characters)} per million characters` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'use the image tool' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
-      return text(rows.length ? rows.join('\n') : 'no models on the network right now');
+      const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.private_providers ? `  ·  ${m.private_providers} in an enclave this router verified: add :private to send only there` : ''}${m.pricing.per_image !== undefined ? `  ·  from ${usd(m.pricing.per_image)} an image` : ''}${m.pricing.per_million_characters !== undefined ? `  ·  from ${usd(m.pricing.per_million_characters)} per million characters` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'use the image tool' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
+      const noEnclave = rows.length && !(j.data ?? []).some((m) => m.private_providers) ? "\n:private: no node serving these runs in an enclave this router verified yet, so a :private ask would be refused. Without :private, each request still goes sealed to the node's own key." : '';
+      return text(rows.length ? rows.join('\n') + noEnclave : 'no models on the network right now');
     }
     if (name === 'status') {
       const r = await fetchFn(`${router}/orrery/status`);
