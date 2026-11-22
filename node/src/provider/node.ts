@@ -902,6 +902,11 @@ export class ProviderNode {
     }
   }
 
+  /** The last payout round that failed since one went through, in the chain's words; null when none has. */
+  payoutFailure(): { at: number; said: string } | null {
+    return this.payoutFailed;
+  }
+
   /** The chip certificate an SEV-SNP node serves, if it has one. */
   vcekDer(): Buffer | null {
     return this.vcek;

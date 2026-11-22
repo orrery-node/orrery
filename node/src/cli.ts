@@ -34,7 +34,7 @@ import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports
 import { consoleLine, dayLine, kindsLine, monthLine, nextPayoutHint, payoutHint, readOwnDay, readOwnMonth, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
 import { AgentBook, parseAgentCaps, parseAgentModels } from './router/agents.ts';
-import { checkPayouts, nextPayoutSentence, noticeLine, payoutFailedSentence, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
+import { checkPayouts, nextPayoutSentence, noticeLine, payoutFailedSentence, redeemLines, notifyUrl, paidOutLine, payoutCheckLines, payoutLines, payoutsCsv, readPayouts, walletLine } from './provider/payouts.ts';
 import { booksByDay, booksByDayCsv, booksByDayLines, booksByMonth, readDays } from './provider/books.ts';
 import { reachLine } from './provider/reach.ts';
 import { composeFile } from './provider/compose.ts';
@@ -593,9 +593,12 @@ async function provider(sub: string) {
     return;
   }
   if (sub === 'redeem') {
+    // Every channel now, whatever the minimum. A round the chain refused is said as such, never as nothing to redeem.
     const done = await node.redeemDue(1n);
-    console.log(done.length ? done.map((d) => `$${usd(d.amount)} from ${d.channel}`).join('\n') : 'nothing to redeem');
-    return;
+    const failed = node.payoutFailure();
+    if (failed) process.exitCode = 1;
+    const lines = done.some((d) => d.amount > 0n) || !failed ? redeemLines(done, node.authority.toBase58()) : [];
+    return console.log([...lines, ...(failed ? [payoutFailedSentence(failed)] : [])].join('\n'));
   }
   if (sub === 'show') {
     const info = await node.conn.getAccountInfo(node.pda);

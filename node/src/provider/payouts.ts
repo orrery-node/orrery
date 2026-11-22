@@ -164,6 +164,18 @@ export function payoutFailedNotice(node: string, f: { at: number; said: string }
   return { text: line, content: line, payoutFailed: { node, at: new Date(f.at).toISOString(), said: f.said } };
 }
 
+/** What `orrery provider redeem` says when it is done: each channel it paid out, the total and where it went, or that
+ * there was nothing to pay out. A round that failed is said by payoutFailedSentence instead. */
+export function redeemLines(done: { channel: string; amount: bigint; tx: string }[], wallet: string): string[] {
+  const paid = done.filter((d) => d.amount > 0n);
+  if (!paid.length) return ['nothing to redeem: no channel holds money signed to this node that is not paid out yet'];
+  const total = paid.reduce((a, d) => a + d.amount, 0n), txs = new Set(paid.map((d) => d.tx)).size;
+  return [
+    ...paid.map((d) => `$${usd(d.amount)} from channel ${d.channel.slice(0, 6)}…  tx ${d.tx}`),
+    `$${usd(total)} to your wallet ${wallet} in ${txs} transaction${txs === 1 ? '' : 's'}; orrery provider payouts checks ${txs === 1 ? 'it' : 'each'} against the chain`,
+  ];
+}
+
 export function nextPayoutSentence(n: { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean } | null | undefined): string {
   if (!n) return '';
   if (n.due === '0' && n.below === '0') return 'Nothing is waiting to be paid out.';

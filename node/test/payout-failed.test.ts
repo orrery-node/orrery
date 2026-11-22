@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { payoutFailedNotice, payoutFailedSentence } from '../src/provider/payouts.ts';
+import { payoutFailedNotice, payoutFailedSentence, redeemLines } from '../src/provider/payouts.ts';
 
 describe('a payout round that failed', () => {
   it('says when, in UTC, and the chain\'s words with what to do, and that nothing signed is lost', () => {
@@ -19,6 +19,15 @@ describe('a payout round that failed', () => {
     assert.equal(n.text, `Halo: ${payoutFailedSentence(f)}`);
     assert.equal(n.content, n.text);
     assert.deepEqual(n.payoutFailed, { node: 'Halo', at: '2026-11-22T12:34:56.000Z', said: 'Simulation failed' });
+  });
+
+  it('orrery provider redeem: each channel paid, then the total, the wallet and how many transactions to check', () => {
+    assert.deepEqual(redeemLines([{ channel: 'ChanA1111', amount: 300n, tx: 'TX1' }, { channel: 'ChanB2222', amount: 129n, tx: 'TX1' }, { channel: 'ChanC3333', amount: 0n, tx: 'TX1' }], 'Wallet1'), [
+      '$0.000300 from channel ChanA1…  tx TX1',
+      '$0.000129 from channel ChanB2…  tx TX1',
+      '$0.000429 to your wallet Wallet1 in 1 transaction; orrery provider payouts checks it against the chain',
+    ]);
+    assert.deepEqual(redeemLines([], 'Wallet1'), ['nothing to redeem: no channel holds money signed to this node that is not paid out yet']);
   });
 
   it('says nothing when no round has failed since the last that went through', () => {

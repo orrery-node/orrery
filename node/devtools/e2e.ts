@@ -2482,11 +2482,21 @@ const walkShortLine = walkShort.text.split('\n').find((l) => l.startsWith('redee
 check('a first payout the node key cannot cover, because it also opens the wallet’s USDC account, fails in plain words: what it takes, what the key has, and that what routers signed is safe',
   !walkShortAccount && /the first payout also opens your wallet’s USDC account, which takes about 0\.00\d+ SOL from the node key, and it has 0\.0010 SOL/.test(walkShortLine) && /What routers signed is safe/.test(walkShortLine),
   (walkShortLine || walkShort.text.trim().split('\n').slice(-1)[0] || 'no line').replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>').replace(/^.*?; /, '… ').slice(0, 150));
+// orrery provider redeem says the round failed and why, and exits 1: before, it printed 'nothing to redeem'.
+const walkShortLast = walkShort.text.trim().split('\n').at(-1) ?? '';
+check('orrery provider redeem says a refused payout round failed, and why, with exit code 1, never that there was nothing to redeem',
+  walkShort.code === 1 && walkShortLast.startsWith('The last payout round, at ') && /first payout also opens your wallet’s USDC account/.test(walkShortLast) && !/nothing to redeem/.test(walkShort.text),
+  `exit ${walkShort.code}: ${walkShortLast.replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>').replace(/at \d\d:\d\d UTC/, 'at hh:mm UTC').slice(0, 120)}`);
 // Topped back up to what --fund-key sent, and the payout goes through.
 await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: walkNodeKey.publicKey, lamports: walkKeyHad - (await conn.getBalance(walkNodeKey.publicKey)) })), [admin]);
 const walkKeyBefore = walkKey0() ? await conn.getBalance(new PublicKey(walkKey0()!)) : 0;
 const walkRedeem = await walkRun(['provider', 'redeem', '--config', walkCfg, '--rpc', RPC]);
 const walkUsdc = walkWallet ? await conn.getTokenAccountBalance(pda.ata(new PublicKey(walkWallet), usdc)).then((b) => b.value.amount, () => null) : null;
+// And once it goes through it says each channel, the total, the wallet it went to and the transaction to check.
+const walkRedeemLast = walkRedeem.text.split('\n').find((l) => /^\$\d+\.\d{6} to your wallet /.test(l)) ?? '';
+check('orrery provider redeem says what it paid out, to which wallet, in how many transactions, and how to check them against the chain',
+  walkRedeem.code === 0 && !!walkWallet && walkUsdc !== null && walkRedeemLast === `$${usd(BigInt(walkUsdc))} to your wallet ${walkWallet} in 1 transaction; orrery provider payouts checks it against the chain`,
+  walkRedeemLast.replace(/[1-9A-HJ-NP-Za-km-z]{43,88}/g, '<…>').slice(0, 120) || 'nothing said');
 const walkKeyAfter = walkKey0() ? await conn.getBalance(new PublicKey(walkKey0()!)) : 0;
 const walk5 = await walkRun(['provider', 'earnings', '--config', walkCfg, '--rpc', RPC]);
 walkNode.kill();

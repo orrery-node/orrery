@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider redeem` no longer says "nothing to redeem" when the chain refused the payout: it says the round failed and why, and exits 1. When it goes through it says each channel with its transaction, then the total, the wallet it went to, and that `orrery provider payouts` checks it against the chain.
 - **Router** · `orrery spend` says what part of the bill went to an enclave this router verified: "2 of these 57 answers went to an enclave this router verified, $0.000031 of the total (orrery sealed lists them)." `--json` and `/orrery/spend` carry it as `private`.
 - **Router** · A quote (`orrery quote`, `/orrery/quote`, the MCP `quote` tool) says what the same request costs with `:private`: "with :private: Vault Nine runs in an enclave this router verified, $0.000740 a request (2.1× the cheapest).", or that the cheapest node already runs in one. A long node name is cut before its ·enclave mark, never the mark.
 - **Node** · A node with a `notify` webhook is told when payouts start failing: one notice in the console's words, with the failure as JSON (`payoutFailed`: node, time, the chain's words), and not again each round. The next payout that lands is posted as usual.
