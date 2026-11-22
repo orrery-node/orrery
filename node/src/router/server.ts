@@ -25,7 +25,7 @@ import { consolePage } from './console.ts';
 import { AnthropicStream, anthropicError, toMessage, toOpenAI, type Chunk } from './anthropic.ts';
 import { ResponsesStream, responsesToChat } from './responses.ts';
 import { Affinity, prefixes } from './affinity.ts';
-import { appendTrip, bills, heldSaved, heldSavedLine, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
+import { appendTrip, bills, heldSaved, heldSavedLine, privateSpend, privateSpendLine, readTrips, skipped, speeds, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, type Bills, type Speed, appendUnanswered, readUnanswered, unansweredIn } from '../spend.ts';
 import { recordLines, sawText } from './watched.ts';
 import { quote, quoteKind, renderQuote } from '../quote.ts';
 import { capped, workCap } from './workcap.ts';
@@ -361,7 +361,9 @@ export class Router {
         const m = spentThisMonth(spendTrips);
         // What the holder price took off the answers in the window, from the router's own log.
         const held = heldSaved(spendTrips, windowMs(since));
-        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), month: { month: m.month, answers: m.answers, usd: usd(m.units), saved: usd(m.saved), line: spentMonthLine(m) }, held: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldSavedLine(held) },afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
+        // The part of the bill that went to an enclave this router verified.
+        const sealedPart = privateSpend(spendTrips, windowMs(since));
+        return send(res, 200, { since, by, rows: rows.map(out), total: out(total), private: { answers: sealedPart.answers, usd: usd(sealedPart.units), line: privateSpendLine(sealedPart, total) }, month: { month: m.month, answers: m.answers, usd: usd(m.units), saved: usd(m.saved), line: spentMonthLine(m) }, held: { answers: held.answers, usd: usd(held.units), off: held.offs, line: heldSavedLine(held) },afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, unanswered: unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since)), speed: speeds(spendTrips, windowMs(since)), bills: bills(spendTrips, windowMs(since)) });
       }
       if (req.method === 'GET' && url.pathname === '/') {
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

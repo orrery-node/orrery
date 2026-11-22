@@ -786,6 +786,19 @@ const spendOut = await new Promise<string>((done) => { let out = ''; const pc = 
 const spendSkipLine = spendOut.split('\n').find((l) => /did not answer/.test(l)) ?? '';
 check('orrery spend says how many answers came from the next node after another did not answer, and that such a node is signed nothing', skippedLogged.length > 0 && spendSkipLine.startsWith(`${skippedLogged.length} of these answers came from the next node after another did not answer`) && /signed nothing\.$/.test(spendSkipLine), spendSkipLine || `${skippedLogged.length} such answers in the log, and spend says nothing about them`);
 check('the router’s log keeps which answers another node finished after the first stopped mid-answer, and orrery spend says so apart from nodes that did not answer', resumedLogged.length >= 2 && spendSkipLine.includes(`; ${resumedLogged.length} were finished by another node after the first stopped mid-answer. A node that does not answer or does not finish is signed nothing.`), `${resumedLogged.length} in the log · ${spendSkipLine.split('; ')[1] ?? 'spend says nothing about them'}`);
+// orrery spend says what part of the bill went to an enclave this router verified, from the same log, and so does the
+// router's /orrery/spend for its console.
+{
+  const week = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => Date.now() - t.at <= 7 * 86_400_000);
+  const sealedWeek = week.filter((t) => (t as { sealed?: boolean }).sealed);
+  const sealedUsd = usd(sealedWeek.reduce((a, t) => a + BigInt(Math.round(Number(t.cost) * 1e6)), 0n));
+  const privLine = spendOut.split('\n').find((l) => l.includes('went to an enclave this router verified')) ?? '';
+  const sp = await fetch(`${ROUTER}/orrery/spend?since=7d`).then((r) => r.json()).catch(() => null) as { private?: { answers: number; usd: string; line: string } } | null;
+  check('orrery spend says how many answers went to an enclave this router verified and what part of the bill they were, and /orrery/spend gives it to the console',
+    sealedWeek.length > 0 && privLine === `${sealedWeek.length} of these ${week.length} answers went to an enclave this router verified, $${sealedUsd} of the total (orrery sealed lists them).`
+    && sp?.private?.answers === sealedWeek.length && sp.private.usd === sealedUsd,
+    privLine || `no line (${sealedWeek.length} sealed answers in the log)`);
+}
 // orrery spend --by day: the router's books, a UTC day a row; today's row is what its log of answers says it paid today.
 {
   const spendCli = (args: string[]) => new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'spend', ...args], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });

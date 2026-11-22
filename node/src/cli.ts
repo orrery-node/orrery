@@ -24,7 +24,7 @@ import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, sta
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
 import { doctor, render } from './doctor.ts';
-import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
+import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, privateSpend, privateSpendLine, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, quoteKind, renderQuote } from './quote.ts';
 import { IMAGE_TOKENS, imageCount, kindPath, speechTokens, type ModelKind } from './manifest.ts';
@@ -743,7 +743,9 @@ async function main() {
     const unanswered = unansweredIn(readUnanswered(home('router', 'unanswered.jsonl')), windowMs(since));
     // What holding the network token took off these answers, at the nodes that priced them for holders.
     const held = heldSaved(spendTrips, windowMs(since));
-    if (has('json')) return console.log(JSON.stringify({ since, by, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, held: { answers: held.answers, usd: usd(held.units), off: held.offs } }, null, 2));
+    // The part of the bill that went to an enclave this router verified.
+    const sealedPart = privateSpend(spendTrips, windowMs(since));
+    if (has('json')) return console.log(JSON.stringify({ since, by, private: { answers: sealedPart.answers, usd: usd(sealedPart.units) }, rows: [...rows, total].map((r) => ({ key: r.key, answers: r.answers, inputTokens: r.inputTokens, outputTokens: r.outputTokens, usd: usd(r.units), cacheKept: r.cacheKept })), afterANodeDidNotAnswer: { answers: skips.answers, nodes: skips.nodes }, finishedByAnotherNode: skips.resumed, held: { answers: held.answers, usd: usd(held.units), off: held.offs } }, null, 2));
     if (!total.answers) return console.log(`No answers in the last ${since}. The router logs each answer it pays for to ${home('router', 'trips.jsonl')}.${unanswered.requests ? ` ${unansweredNote(unanswered)}` : ''}`);
     const line = (r: { key: string; answers: number; inputTokens: number; outputTokens: number; units: bigint; cacheKept: number }) => `${r.key.padEnd(26)} ${String(r.answers).padStart(7)} ${r.answers === 1 ? 'answer ' : 'answers'}  ${r.inputTokens.toLocaleString('en-US').padStart(10)} in  ${r.outputTokens.toLocaleString('en-US').padStart(9)} out  ${`$${usd(r.units)}`.padStart(11)}${r.cacheKept ? `  ${r.cacheKept} kept for cache` : ''}`;
     console.log(`last ${since}, by ${by}`);
@@ -752,6 +754,7 @@ async function main() {
     // Your books by day end with the month so far, whatever the window.
     if (by === 'day') console.log(spentMonthLine(spentThisMonth(spendTrips)));
     if (held.answers) console.log(heldSavedLine(held));
+    if (sealedPart.answers) console.log(privateSpendLine(sealedPart, total));
     if (skips.answers || skips.resumed) console.log(skipNote(skips));
     if (unanswered.requests) console.log(unansweredNote(unanswered));
     return;

@@ -270,6 +270,20 @@ export function billsText(b: { checked: number; over: number }, window = '24 h')
   return `billed above its listed prices in ${n(b.over)} of ${n(b.checked)} answers in the last ${window}; this router paid no more than those prices`;
 }
 
+/** The answers in the window that went to an enclave this router verified (:private, or a router run --private-only),
+ * and what they cost: the part of the bill whose prompts not even the node's operator could read. */
+export function privateSpend(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; units: bigint } {
+  const recent = trips.filter((t) => t.sealed && now - t.at <= sinceMs);
+  return { answers: recent.length, units: recent.reduce((a, t) => a + units(t.cost), 0n) };
+}
+
+/** The line under a spend total, or nothing when no answer in the window went to an enclave:
+ *   3 of these 41 answers went to an enclave this router verified, $0.000096 of the total (orrery sealed lists them). */
+export function privateSpendLine(p: { answers: number; units: bigint }, total: { answers: number }): string {
+  if (!p.answers) return '';
+  return `${p.answers} of these ${total.answers} answer${total.answers === 1 ? '' : 's'} went to an enclave this router verified, $${usd(p.units)} of the total (orrery sealed lists them).`;
+}
+
 export function paidInside(trips: LoggedTrip[], sinceMs: number, now = Date.now()): { answers: number; inside: number } {
   const recent = trips.filter((t) => now - t.at <= sinceMs);
   return { answers: recent.length, inside: recent.filter((t) => t.inside).length };
