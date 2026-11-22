@@ -24,7 +24,7 @@ import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
 import { consoleKeyPage, hasConsoleKey, isLocal, providerConsolePage } from './console.ts';
 import { booksByDay, booksByDayCsv, booksNotice, dayBooksLine, dayKinds, dayToKeep, keepDay, monthBooksLine, monthNotice, monthSentence, monthSoFar, readDays, utcDay, type DayBooks, type DayKept } from './books.ts';
-import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout, payoutFailedNotice } from './payouts.ts';
+import { appendPayout, arrivalNote, checkPayouts, nextPayout, notifyUrl, payoutCheckLines, payoutNotice, payoutSummary, postNotice, readHeld, readNotice, readPayouts, withChecked, writeHeld, writeNotice, type Landed, type Payout, lowFeesNotice, payoutFailedNotice } from './payouts.ts';
 import { Reach, firstReachNote, quietNote } from './reach.ts';
 import { appendRefused, readRefused, refusal, refusedCounts } from './refusal.ts';
 import { seenFrom } from '../seen.ts';
@@ -830,7 +830,11 @@ export class ProviderNode {
     }
     if (this.warnedLowFees || lamports < 10_000) return;
     this.warnedLowFees = true;
-    this.log(`the node key is running low on SOL for redeem fees: ${(lamports / 1e9).toFixed(6)} SOL, about ${Math.floor(lamports / REDEEM_FEE_LAMPORTS)} more payouts. Send a little SOL to ${this.node.publicKey.toBase58()} before it runs out`);
+    const payoutsLeft = Math.floor(lamports / REDEEM_FEE_LAMPORTS);
+    const line = `the node key is running low on SOL for redeem fees: ${(lamports / 1e9).toFixed(6)} SOL, about ${payoutsLeft} more payouts. Send a little SOL to ${this.node.publicKey.toBase58()} before it runs out`;
+    this.log(line);
+    // The webhook hears it too, once, before payouts stop: an operator not watching the log can still top up in time.
+    void this.notice(lowFeesNotice(this.cfg.name, line, { lamports, payoutsLeft, nodeKey: this.node.publicKey.toBase58() }), 'payout');
   }
 
   /** Reads a payout's transaction back from the chain once it is sent and says in the log what reached the wallet, so

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · A node with a `notify` webhook is told once when its key runs low on SOL for payout fees, while payouts still go through: the log's line ("about 198 more payouts. Send a little SOL to …"), with the key, its SOL and the payouts left as JSON (`lowFees`). So it can be topped up before a round is refused.
 - **Router** · `orrery mcp` has a `spend` tool: an agent reads the router's bill from its own log, over a window (24h, 7d, 30d) and grouped by model, provider, task, agent, kind or day, with the total, what holding took off and what part went to an enclave. The same numbers as `orrery spend` and `/orrery/spend`.
 - **Node** · The node console and `orrery provider status` add up every payout the node kept: "paid out in all $1.412500 in 1,204 payouts since 2026-11-06", a row under the payouts on the console, and `all` in the status JSON.
 - **Node** · `orrery provider redeem` no longer says "nothing to redeem" when the chain refused the payout: it says the round failed and why, and exits 1. When it goes through it says each channel with its transaction, then the total, the wallet it went to, and that `orrery provider payouts` checks it against the chain.

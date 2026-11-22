@@ -2297,6 +2297,7 @@ for (const o of router.stats.all().values()) o.cooldownUntil = 0;
 // Before it runs out: a node whose key is down to its last fees says so once, after a payout that still went
 // through, with about how many are left. A second payout under the line does not say it again.
 const lowLines: string[] = [];
+(iron as unknown as { notifyTo: string | null }).notifyTo = HOOK.replace('/hooks/kestrel', '/hooks/iron-low');
 iron.log = (l) => { lowLines.push(l); ironLogBefore(l); };
 const ironFull = await conn.getBalance(iron.node.publicKey);
 const lowKeep = 1_000_000;
@@ -2309,8 +2310,16 @@ const lowAgain = await iron.redeemDue(1n);
 await sendAndConfirmTransaction(conn, new Transaction().add(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: iron.node.publicKey, lamports: ironFull - lowKeep })), [admin]);
 iron.log = ironLogBefore;
 const lowSaid = lowLines.filter((l) => /running low/.test(l));
+for (let t = 0; t < 20 && !hooked.some((h) => h.path === '/hooks/iron-low' && (h.body as { lowFees?: unknown }).lowFees); t++) await sleep(150);
+await sleep(300);
+(iron as unknown as { notifyTo: string | null }).notifyTo = null;
+const lowNotices = hooked.filter((h) => h.path === '/hooks/iron-low' && (h.body as { lowFees?: unknown }).lowFees) as { body: { text?: string; lowFees?: { node: string; sol: string; payoutsLeft: number; nodeKey: string } } }[];
 check('a node whose key is running low on SOL for redeem fees says so once, before it runs out, with about how many payouts are left', lowRedeemed.length >= 1 && lowAgain.length >= 1 && lowSaid.length === 1 && lowSaid[0].includes(iron.node.publicKey.toBase58()) && /about \d+ more payouts/.test(lowSaid[0]), `${lowRedeemed.length} + ${lowAgain.length} payouts at ${(lowKeep / 1e9).toFixed(4)} SOL · ${lowSaid.length} heads-up line${lowSaid.length === 1 ? '' : 's'}${lowSaid[0] ? `: ${lowSaid[0].replace(iron.node.publicKey.toBase58(), '<node key>').slice(0, 200)}` : ''}`);
 const clearedStatus = (iron.status() as { payoutFailed?: { at: number; said: string } | null }).payoutFailed;
+check('a node with a notify webhook is told once that its key is running low on SOL for payout fees, while payouts still go through',
+  lowSaid.length === 1 && lowNotices.length === 1 && lowNotices[0].body.text === `${providerSpecs[1].name}: ${lowSaid[0]}` && lowNotices[0].body.lowFees?.nodeKey === iron.node.publicKey.toBase58()
+  && (lowNotices[0].body.lowFees?.payoutsLeft ?? -1) > 0 && lowSaid[0].includes(`about ${lowNotices[0].body.lowFees?.payoutsLeft} more payouts`),
+  `${lowNotices.length} notice${lowNotices.length === 1 ? '' : 's'} for 2 payouts under the line${lowNotices[0]?.body.lowFees ? `: ${lowNotices[0].body.lowFees.sol} SOL, about ${lowNotices[0].body.lowFees.payoutsLeft} payouts left` : ''}`);
 check('a node whose payout round failed says so on its status and console, in the chain\'s words with what to do, until a round goes through',
   !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
   && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,

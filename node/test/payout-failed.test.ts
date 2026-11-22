@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { payoutFailedNotice, payoutFailedSentence, redeemLines } from '../src/provider/payouts.ts';
+import { lowFeesNotice, payoutFailedNotice, payoutFailedSentence, redeemLines } from '../src/provider/payouts.ts';
 
 describe('a payout round that failed', () => {
   it('says when, in UTC, and the chain\'s words with what to do, and that nothing signed is lost', () => {
@@ -28,6 +28,13 @@ describe('a payout round that failed', () => {
       '$0.000429 to your wallet Wallet1 in 1 transaction; orrery provider payouts checks it against the chain',
     ]);
     assert.deepEqual(redeemLines([], 'Wallet1'), ['nothing to redeem: no channel holds money signed to this node that is not paid out yet']);
+  });
+
+  it('gives the webhook the running-low line, and the key, its SOL and the payouts left as JSON', () => {
+    const n = lowFeesNotice('Halo', 'the node key is running low on SOL for redeem fees: 0.001000 SOL, about 200 more payouts. Send a little SOL to Key111 before it runs out', { lamports: 1_000_000, payoutsLeft: 200, nodeKey: 'Key111' });
+    assert.equal(n.text, 'Halo: the node key is running low on SOL for redeem fees: 0.001000 SOL, about 200 more payouts. Send a little SOL to Key111 before it runs out');
+    assert.equal(n.content, n.text);
+    assert.deepEqual(n.lowFees, { node: 'Halo', sol: '0.001000', payoutsLeft: 200, nodeKey: 'Key111' });
   });
 
   it('says nothing when no round has failed since the last that went through', () => {

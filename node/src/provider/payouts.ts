@@ -180,6 +180,13 @@ export function redeemLines(done: { channel: string; amount: bigint; tx: string 
   ];
 }
 
+/** The webhook notice for a node key running low on SOL for payout fees, sent once while payouts still go through: the
+ * log's line, and the numbers as JSON for a script (the key to top up, what it holds, about how many payouts are left). */
+export function lowFeesNotice(node: string, line: string, o: { lamports: number; payoutsLeft: number; nodeKey: string }): { text: string; content: string; lowFees: { node: string; sol: string; payoutsLeft: number; nodeKey: string } } {
+  const text = `${node}: ${line}`;
+  return { text, content: text, lowFees: { node, sol: (o.lamports / 1e9).toFixed(6), payoutsLeft: o.payoutsLeft, nodeKey: o.nodeKey } };
+}
+
 export function nextPayoutSentence(n: { due: string; dueChannels: number; below: string; belowChannels: number; floor: string; everySecs: number; first: boolean } | null | undefined): string {
   if (!n) return '';
   if (n.due === '0' && n.below === '0') return 'Nothing is waiting to be paid out.';
