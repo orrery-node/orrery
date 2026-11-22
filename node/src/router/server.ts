@@ -988,7 +988,12 @@ function assemble(chunks: Record<string, unknown>[], model: string, prompt: numb
 }
 
 /** Why the private route had nowhere to go: each node that claims an enclave, and the check that stopped it. */
-function whyNotPrivate(offers: { entry: { manifest: { name: string } | null; address: string; tee: { verified: boolean; reason: string } | null } }[]): string {
+/** Why :private found no node: the enclave claims this router could not verify, each with its reason, or, when no node
+ * serving the model claims an enclave at all, what that means for the request and how a node comes to offer :private. */
+export function whyNotPrivate(offers: { entry: { manifest: { name: string } | null; address: string; tee: { verified: boolean; reason: string } | null } }[]): string {
   const claims = offers.filter((o) => o.entry.tee && !o.entry.tee.verified).slice(0, 3).map((o) => `${o.entry.manifest?.name ?? o.entry.address.slice(0, 6)}: ${o.entry.tee!.reason}`);
-  return claims.length ? ` (${claims.join('; ')})` : '';
+  if (claims.length) return ` (${claims.join('; ')})`;
+  if (!offers.length || offers.some((o) => o.entry.tee)) return '';
+  const one = offers.length === 1;
+  return `: ${one ? 'the one node' : `none of the ${offers.length} nodes`} serving it ${one ? "doesn't run" : 'runs'} in an enclave yet. Without :private, a request to ${one ? 'it' : 'them'} is still sealed to the node's own key, which keeps it from the node's host but not from its operator. A node offers :private by running on AMD SEV-SNP or Intel TDX ("tee" in provider.json)`;
 }

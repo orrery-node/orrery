@@ -701,6 +701,14 @@ check('the router says how private its requests are in /orrery/status, on its co
   && privSt.privacy.line.startsWith(`${insideSt} of ${usableSt.length} node${usableSt.length === 1 ? '' : 's'} take`) && privSt.privacy.line.endsWith('client IDs are dropped before anything leaves')
   && privPage.includes('id="privacy"') && privPage.includes("'Privacy: '+s.privacy.line") && mcpPriv.includes(`\nprivacy: ${privSt.privacy.line}\n`),
   privSt.privacy ? privSt.privacy.line.slice(0, 170) : 'no privacy in /orrery/status');
+// :private on a model no node serves from an enclave: the refusal says why, what a request without :private gets, and how
+// a node comes to offer :private.
+{
+  const noEnclave = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-v3:private', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] }) }).then(async (r) => ({ status: r.status, j: (await r.json()) as { error?: { code?: string; message?: string } } }));
+  check(':private on a model no node serves from an enclave is refused with why, what a request without :private still gets, and how a node offers :private',
+    noEnclave.status === 503 && noEnclave.j.error?.message === `no provider with a verified enclave serves deepseek-v3: the one node serving it doesn't run in an enclave yet. Without :private, a request to it is still sealed to the node's own key, which keeps it from the node's host but not from its operator. A node offers :private by running on AMD SEV-SNP or Intel TDX ("tee" in provider.json)`,
+    `${noEnclave.status} ${noEnclave.j.error?.code ?? ''}: ${(noEnclave.j.error?.message ?? '').slice(0, 200)}`);
+}
 const seenLine = doc.find((l) => l.what === 'seen as');
 // A node behind a balancer: what the balancer wrote down, as a hosting front would write it.
 const fronted = (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/v1/seen`, { headers: { 'x-forwarded-for': '198.51.100.7, 203.0.113.20, 10.0.0.3' } }).then((r) => r.json())) as { address?: string; socket?: string; forwarded?: string[] };
