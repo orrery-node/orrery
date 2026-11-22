@@ -92,9 +92,17 @@ Model:                     llama-3.3-70b:cheap`,
   },
   {
     id: 'aider', name: 'Aider', kind: 'Coding agent',
-    steps: ['One environment variable and an openai/ model name.'],
+    steps: ['orrery connect aider prints the line: the base, a key, and an openai/ model name your router lists.'],
     lang: 'bash',
-    code: `OPENAI_API_BASE=http://127.0.0.1:7171/v1 aider --model openai/llama-3.3-70b:cheap`,
+    code: `orrery connect aider
+OPENAI_API_BASE=http://127.0.0.1:7171/v1 OPENAI_API_KEY=orrery aider --model openai/gpt-oss-120b`,
+  },
+  {
+    id: 'opencode', name: 'opencode', kind: 'Coding agent',
+    steps: ['orrery connect opencode prints an opencode.jsonc with your router as an OpenAI-compatible provider.', 'opencode starts on that model; /models lists it.'],
+    lang: 'bash',
+    code: `orrery connect opencode   # save what it prints as opencode.jsonc
+opencode`,
   },
   {
     id: 'open-webui', name: 'Open WebUI', kind: 'Chat app',

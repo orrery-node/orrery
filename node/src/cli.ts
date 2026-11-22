@@ -667,7 +667,7 @@ async function main() {
     const note = routerNote({ client: sub as Client, router: routerUrl, models: listed, model, asked: !!flag('model'), hasWallet: !!walletFlag() });
     const profilePath = `${expand(process.env.CODEX_HOME ?? '~/.codex')}/orrery.config.toml`;
     if (!has('write')) return console.log(instructions(sub as Client, routerUrl, model, profilePath, agent) + (note ? `\n${note}` : ''));
-    if (sub !== 'codex') throw new Error('--write is for codex; the others take environment variables');
+    if (sub !== 'codex') throw new Error('--write is for codex; for the others, use what it prints');
     if (existsSync(profilePath) && !has('force')) throw new Error(`${profilePath} exists; pass --force to replace it`);
     mkdirSync(dirname(profilePath), { recursive: true });
     const ctx = await contextFromRouter(routerUrl, model);

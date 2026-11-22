@@ -1804,6 +1804,25 @@ const job = taskList.tasks.find((t) => t.name === 'rehearsal-job');
   check('orrery connect --agent prints settings that make every request as that agent: the key for OpenAI and Anthropic clients, --agent for MCP',
     oaKey === 'agent/writer' && anKey === 'agent/writer' && viaOpenai === 200 && viaAnth === 200 && writerTrips === 2 && conMcp.includes('npx -y orrery-node mcp --router') && conMcp.split('\n').every((l) => !l.includes('orrery-node mcp') || l.endsWith('--agent writer')) && !badAgent.includes('OPENAI_API_KEY'),
     `OpenAI key ${oaKey || 'none'} → ${viaOpenai} · Anthropic key ${anKey || 'none'} → ${viaAnth} · logged as writer: ${writerTrips} · mcp ${conMcp.includes('--agent writer') ? 'with --agent writer' : 'no --agent'}`);
+  // opencode and aider, used as printed: opencode's provider block (base URL, model, agent header) and aider's command
+  // line (base, key, openai/ model). Each request reaches the router, is answered, and is logged as the agent.
+  const conOpencode = await connectOut(['opencode', '--agent', 'writer', '--model', 'llama-3.3-70b', '--router', ROUTER], join(WORK, 'home'));
+  const conAider = await connectOut(['aider', '--agent', 'writer', '--model', 'llama-3.3-70b', '--router', ROUTER], join(WORK, 'home'));
+  type OcConfig = { model?: string; providers?: { orrery?: { package?: string; settings?: { baseURL?: string }; headers?: Record<string, string>; models?: Record<string, unknown> } } };
+  let oc: OcConfig = {};
+  try { oc = JSON.parse(conOpencode.slice(conOpencode.indexOf('{'), conOpencode.lastIndexOf('}') + 1)) as OcConfig; } catch { }
+  const ocProv = oc.providers?.orrery, ocModel = (oc.model ?? '').replace(/^orrery\//, '');
+  const aiderLine = conAider.match(/^OPENAI_API_BASE=(\S+) OPENAI_API_KEY=(\S+) aider --model openai\/(\S+)$/m);
+  const writerBefore2 = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t as { agent?: string }).agent === 'writer').length;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const viaOpencode = ocProv?.settings?.baseURL ? await fetch(`${ocProv.settings.baseURL}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(ocProv.headers ?? {}) }, body: JSON.stringify({ model: ocModel, max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) }).then(async (r) => { await r.text(); return r.status; }) : 0;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const viaAider = aiderLine ? await fetch(`${aiderLine[1]}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${aiderLine[2]}` }, body: JSON.stringify({ model: aiderLine[3], max_tokens: 8, messages: [{ role: 'user', content: 'Say hi.' }] }) }).then(async (r) => { await r.text(); return r.status; }) : 0;
+  const writerTrips2 = readTrips(join(WORK, 'home/router/trips.jsonl')).filter((t) => (t as { agent?: string }).agent === 'writer').length - writerBefore2;
+  check('orrery connect prints settings for opencode and aider that work as printed: each request reaches the router, is answered and is logged as the agent',
+    ocProv?.package === '@opencode/ai/providers/openai-compatible' && ocModel === 'llama-3.3-70b' && !!ocProv.models?.[ocModel] && ocProv.headers?.['x-orrery-agent'] === 'writer'
+    && !!aiderLine && aiderLine[2] === 'agent/writer' && aiderLine[3] === 'llama-3.3-70b' && viaOpencode === 200 && viaAider === 200 && writerTrips2 === 2,
+    `opencode ${oc.model ?? 'no config'} → ${viaOpencode} · aider ${aiderLine ? `openai/${aiderLine[3]}` : 'no command'} → ${viaAider} · logged as writer: ${writerTrips2}`);
   check('orrery mcp --agent names every call with its agent, and the agent is told what it has spent today and has left, in a refusal too and in status',
     outA[2]?.result?.isError === true && mcpAsk.endsWith(`\n— agent researcher: $${usd(agentUnits)} spent today, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`)
     && mcpAgents.startsWith(`researcher (this one): $${usd(agentUnits)} spent today of $0.000020, ${leftUnits > 0n ? `$${usd(leftUnits)} left` : 'nothing left until 00:00 UTC'}`),

@@ -250,13 +250,14 @@ Codex CLI: `orrery connect codex --write`, then `codex --profile orrery`.
 </details>
 
 <details>
-<summary><b>Cursor, Continue, Aider, Open WebUI, LangChain</b></summary>
+<summary><b>Cursor, Continue, Aider, opencode, Open WebUI, LangChain</b></summary>
 
 | Tool | Setting |
 |---|---|
 | Cursor | Settings → Models → OpenAI API key: any string · Override OpenAI Base URL: `http://127.0.0.1:7171/v1` · add a model such as `llama-3.3-70b:cheap` |
 | Continue | a model with `provider: openai`, `apiBase: http://127.0.0.1:7171/v1`, `model: deepseek-v3` |
-| Aider | `OPENAI_API_BASE=http://127.0.0.1:7171/v1 aider --model openai/llama-3.3-70b:cheap` |
+| Aider | `orrery connect aider` prints `OPENAI_API_BASE=http://127.0.0.1:7171/v1 OPENAI_API_KEY=orrery aider --model openai/gpt-oss-120b` |
+| opencode | `orrery connect opencode` prints an `opencode.jsonc` with the router as an OpenAI-compatible provider |
 | Open WebUI | Admin → Connections → OpenAI API: URL `http://127.0.0.1:7171/v1`, any key |
 | LangChain | `ChatOpenAI(base_url="http://127.0.0.1:7171/v1", api_key="unused", model="qwen3-235b")` |
 </details>

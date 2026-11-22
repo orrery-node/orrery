@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codexProfile, contextFromRouter, instructions, routerNote } from '../src/connect.ts';
+import { codexProfile, contextFromRouter, instructions, opencodeConfig, routerNote } from '../src/connect.ts';
 
 describe('orrery connect', () => {
   it('writes a Codex profile that points at the router over the Responses API', () => {
@@ -19,6 +19,19 @@ describe('orrery connect', () => {
     assert.match(instructions('anthropic', 'http://127.0.0.1:7171', 'm', ''), /ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:7171\n/);
     assert.match(instructions('claude', 'http://127.0.0.1:7171', 'gpt-oss-120b', ''), /ANTHROPIC_BASE_URL=http:\/\/127\.0\.0\.1:7171 ANTHROPIC_API_KEY=orrery claude\n[\s\S]*--alias 'claude-\*=gpt-oss-120b'/);
     assert.match(instructions('codex', 'http://127.0.0.1:7171', 'm', '/h/orrery.config.toml'), /Save as \/h\/orrery\.config\.toml[\s\S]*codex --profile orrery/);
+  });
+
+  it('writes an opencode provider for the router, starting on the model, with the agent header only when asked', () => {
+    const c = JSON.parse(opencodeConfig('http://127.0.0.1:7171/', 'gpt-oss-120b'));
+    assert.equal(c.model, 'orrery/gpt-oss-120b');
+    assert.deepEqual(c.providers.orrery, { name: 'Orrery', package: '@opencode/ai/providers/openai-compatible', settings: { baseURL: 'http://127.0.0.1:7171/v1' }, models: { 'gpt-oss-120b': { name: 'gpt-oss-120b on Orrery' } } });
+    assert.deepEqual(JSON.parse(opencodeConfig('http://127.0.0.1:7171', 'm', 'coder')).providers.orrery.headers, { 'x-orrery-agent': 'coder' });
+    assert.match(instructions('opencode', 'http://127.0.0.1:7171', 'm', ''), /^Save as opencode\.jsonc[\s\S]*\n\nThen: opencode   \(it starts on orrery\/m; \/models lists it\)$/);
+  });
+
+  it('gives aider its base, a key and the openai/ model on one line', () => {
+    assert.equal(instructions('aider', 'http://127.0.0.1:7171/', 'gpt-oss-120b', '').split('\n')[0], 'OPENAI_API_BASE=http://127.0.0.1:7171/v1 OPENAI_API_KEY=orrery aider --model openai/gpt-oss-120b');
+    assert.equal(instructions('aider', 'http://127.0.0.1:7171', 'm', '', 'coder').split('\n')[0], 'OPENAI_API_BASE=http://127.0.0.1:7171/v1 OPENAI_API_KEY=agent/coder aider --model openai/m');
   });
 
   it('adds the context window when the router lists one, above the provider table', () => {

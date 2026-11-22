@@ -2,7 +2,7 @@
 // API key (the wallet is the account), so clients that insist on one can be given any value.
 import { CLI } from './brand.ts';
 
-export const CLIENTS = ['codex', 'claude', 'openai', 'anthropic', 'mcp'] as const;
+export const CLIENTS = ['codex', 'claude', 'opencode', 'aider', 'openai', 'anthropic', 'mcp'] as const;
 /** The model the settings name when none is asked for. */
 export const USUAL_MODEL = 'gpt-oss-120b';
 export type Client = (typeof CLIENTS)[number];
@@ -24,6 +24,23 @@ export function codexProfile(router: string, model: string, contextWindow?: numb
   ].join('\n');
 }
 
+/** An opencode config (opencode.jsonc) with the router as an OpenAI-compatible provider named orrery, and the model as
+ * the one it starts on. With an agent, every request carries the agent header. No key: the router has none. */
+export function opencodeConfig(router: string, model: string, agent: string | null = null): string {
+  return JSON.stringify({
+    model: `orrery/${model}`,
+    providers: {
+      orrery: {
+        name: 'Orrery',
+        package: '@opencode/ai/providers/openai-compatible',
+        settings: { baseURL: `${router.replace(/\/$/, '')}/v1` },
+        ...(agent ? { headers: { 'x-orrery-agent': agent } } : {}),
+        models: { [model]: { name: `${model} on Orrery` } },
+      },
+    },
+  }, null, 2);
+}
+
 /** What to set for a client, as text to print. With an agent, every request the client sends is made as that agent,
  * held to the limit the router gives it with --agent-cap: a header where the client can send one, else the key
  * agent/<name>, which the router reads the same way. */
@@ -37,6 +54,10 @@ export function instructions(client: Client, router: string, model: string, code
       return `Save as ${codexProfilePath} (or run ${CLI} connect codex --write${mcpAgent}):\n\n${codexProfile(base, model, undefined, agent)}\nThen: codex --profile orrery`;
     case 'claude':
       return `ANTHROPIC_BASE_URL=${base} ANTHROPIC_API_KEY=${key} claude\nRun the router with --alias 'claude-*=${model}' so Claude Code's model names are answered by ${model} on the network.${agent ? `\nEvery request goes as agent ${agent}, held to the router's --agent-cap for it.` : `\nOr let ${CLI} start it as one job with a budget and a bill at the end: ${CLI} run claude --budget 0.25`}`;
+    case 'opencode':
+      return `Save as opencode.jsonc in your project, or add its "orrery" provider to the config you have:\n\n${opencodeConfig(base, model, agent)}\n\nThen: opencode   (it starts on orrery/${model}; /models lists it)${agent ? `\nEvery request goes as agent ${agent}, held to the router's --agent-cap for it.` : ''}`;
+    case 'aider':
+      return `OPENAI_API_BASE=${base}/v1 OPENAI_API_KEY=${key} aider --model openai/${model}\n${keyNote}`;
     case 'openai':
       return `OPENAI_BASE_URL=${base}/v1\nOPENAI_API_KEY=${key}   ${keyNote}\nmodel: ${model}   (Chat Completions and Responses both work)`;
     case 'anthropic':
