@@ -4,7 +4,7 @@ import { frameMsFrom, Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.
 import { padFrame } from '../src/seal.ts';
 import { paceClause, privacySentence } from '../src/privacy.ts';
 import { appendTrip, pacedAnswers, readTrips } from '../src/spend.ts';
-import { dayLine } from '../src/provider/console.ts';
+import { dayLine, pacedSentence, providerConsolePage } from '../src/provider/console.ts';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,5 +103,15 @@ describe('a node counts the answers it sent paced', () => {
     assert.equal(dayLine({ answers: 1312, usd: '0.038912', paced: 1040 }), '  last 24 h             1,312 answers, $0.038912 billed, 1,040 sent paced');
     assert.equal(dayLine({ answers: 2, usd: '0.000002', paced: 0 }), '  last 24 h             2 answers, $0.000002 billed');
     assert.equal(dayLine({ answers: 0, usd: '0.000000' }), '  last 24 h             no answers');
+  });
+});
+
+describe('the node console says how many answers went out paced', () => {
+  it('puts the count under the day\'s earnings, in the words the page uses', () => {
+    assert.equal(pacedSentence(23, 40), '23 of the 40 answers went out on the hidden beat, one 4 KiB frame a beat, as the routers that sent them asked.');
+    assert.equal(pacedSentence(1, 1), '1 of the 1 answer went out on the hidden beat, one 4 KiB frame a beat, as the routers that sent them asked.');
+    const page = providerConsolePage();
+    assert.ok(page.includes('<p class="lede" id="paced" hidden></p>'));
+    assert.ok(page.includes('const pacedSentence='));
   });
 });

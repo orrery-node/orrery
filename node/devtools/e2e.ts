@@ -1349,6 +1349,14 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// Under the day's earnings the console says how many of the answers went out paced, from the node's own log.
+{
+  const e = (await (await fetch(`http://127.0.0.1:${providerSpecs[1].port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': ibKey } })).json()) as { paced?: number; total?: { answers?: number } };
+  const kept = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => Date.now() - t.at <= 86_400_000 && typeof (t as { paced?: number }).paced === 'number').length;
+  check('the node console says under the day’s earnings how many answers went out paced, from the node’s own log',
+    typeof e.paced === 'number' && e.paced > 0 && e.paced === kept && ibPage.includes('<p class="lede" id="paced" hidden></p>') && ibPage.includes("pc.textContent=e.paced?pacedSentence(e.paced,e.total.answers):''"),
+    `earnings say ${e.paced ?? 'nothing'} paced of ${e.total?.answers ?? '?'} · the log ${kept}`);
+}
 // The console's header names the release the node runs, from its status, so an operator sees it without a command.
 {
   const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;

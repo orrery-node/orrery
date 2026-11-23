@@ -10,6 +10,7 @@ export const UNRELEASED: Change[] = [
   { who: 'router', text: 'One request can set its own beat: `x-orrery-frame-ms: 0` turns pacing off for an agent that wants every token as it comes, and any value from 20 to 1000 sets the beat for that answer. A beat no node keeps to is refused with 400 before anything is sent, and `--frame-ms` is checked the same way at start, instead of going unpaced without a word.' },
   { who: 'provider', text: 'A node\'s log line for an answer says when it went out paced ("served llama-3.3-70b 11+16 tok  $0.000010  paid inside the seal  wire  paced 100 ms"), and its own log of answers keeps the beat as `paced`, so an operator sees which routers ask for it.' },
   { who: 'provider', text: '`orrery provider status` says on its day line how many of the day\'s answers went out paced ("last 24 h  40 answers, $0.020123 billed, 23 sent paced"), from the node\'s own log; `--json` has `day.paced`, and the console\'s earnings read carries `paced`.' },
+  { who: 'provider', text: 'The node console says under the day\'s earnings how many answers went out paced: "23 of the 40 answers went out on the hidden beat, one 4 KiB frame a beat, as the routers that sent them asked."' },
 ];
 
 export const RELEASES: Release[] = [
