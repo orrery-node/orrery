@@ -219,8 +219,7 @@ export function newer(a: string, b: string): boolean {
   return false;
 }
 
-/** Set to 1, doctor and provider check do not ask npm for the newest release: for a machine that should call nothing it
- * does not have to, or has no way out. */
+/** Set to 1, doctor and provider check skip the npm update check. */
 export const NO_UPDATE_CHECK = 'ORRERY_NO_UPDATE_CHECK';
 export const updateCheckOff = (env: NodeJS.ProcessEnv = process.env) => env[NO_UPDATE_CHECK] === '1';
 

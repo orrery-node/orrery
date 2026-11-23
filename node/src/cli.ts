@@ -13,7 +13,7 @@ import { home, loadKeypair, loadOrCreateKeypair } from './keys.ts';
 import { newWallet, walletNextSteps } from './wallet.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
-import { feesLine, FEE_FLOOR_LAMPORTS, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
+import { feesLine, FEE_FLOOR_LAMPORTS, NODE_VERSION, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/policy.ts';
 import { Registry } from './router/registry.ts';
@@ -30,7 +30,7 @@ import { quote, quoteKind, renderQuote } from './quote.ts';
 import { IMAGE_TOKENS, imageCount, kindPath, speechTokens, type ModelKind } from './manifest.ts';
 import { compare, renderCompare } from './provider/compare.ts';
 import { parseFirmware, parseSnpReport, verifySnp } from './tee/snp.ts';
-import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState } from './provider/check.ts';
+import { LISTING_BYTES, nextStep, privateAddress, providerCheck, fundKeyLamports, fundKeyNote, TOKEN_ACCOUNT_BYTES, registerProblem, renderCheck, listingLine, listingState, releaseLine } from './provider/check.ts';
 import { consoleLine, dayLine, kindsLine, monthLine, nextPayoutHint, payoutHint, readOwnDay, readOwnMonth, readOwnStatus } from './provider/console.ts';
 import { slotsLine } from './provider/slots.ts';
 import { AgentBook, parseAgentCaps, parseAgentModels } from './router/agents.ts';
@@ -489,10 +489,13 @@ async function provider(sub: string) {
     // When it last answered: a node that stopped getting work shows it here before anywhere else.
     const lastAt = s.recent?.[0]?.at ?? null;
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, payoutFailed: s.payoutFailed ?? null, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    // Which release the node runs: one started before an update keeps the old code until it is started again.
+    const behind = releaseLine(s.version, NODE_VERSION, `${CLI} provider start --config ${cfgPath}`);
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, version: s.version ?? null, installed: NODE_VERSION, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, payoutFailed: s.payoutFailed ?? null, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
-      `${s.name}  ·  listing ${s.provider}`,
+      `${s.name}  ·  listing ${s.provider}${s.version ? `  ·  orrery-node ${s.version}` : ''}`,
+      ...(behind ? [behind] : []),
       ...(listing ? [listingLine(listing, { config: cfgPath, endpoint: onChain?.endpoint })] : []),
       `  answers since start   ${s.answers}`,
       ...(day ? [dayLine(day)] : []),

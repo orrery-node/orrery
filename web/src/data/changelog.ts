@@ -8,7 +8,8 @@ export type Release = { version: string; at: string; headline: string; changes: 
 
 export const UNRELEASED: Change[] = [
   { who: 'provider', text: '`orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node\'s status carries its `version`, and the console\'s header names it ("Provider console · orrery-node 0.1.27").' },
-  { who: 'router', text: '`ORRERY_NO_UPDATE_CHECK=1` keeps `orrery doctor` and `orrery provider check` from asking npm for the newest release, for a machine that should call nothing it does not need: the version line says "0.1.27; not checked against npm (ORRERY_NO_UPDATE_CHECK=1)" instead. npm was the one call either makes that is not to your own RPC, router or node.' },
+  { who: 'router', text: '`ORRERY_NO_UPDATE_CHECK=1` turns off the npm update check in `orrery doctor` and `orrery provider check`; the version line then reads "0.1.27; not checked against npm (ORRERY_NO_UPDATE_CHECK=1)".' },
+  { who: 'provider', text: '`orrery provider status` names the release the running node runs on its first line ("Ironbridge Compute · listing … · orrery-node 0.1.27"), and when that is older than the release installed on the same machine it says so: "0.1.26 is running; 0.1.27 is installed here: stop the node and start it again to run 0.1.27". `npm install -g orrery-node@latest` changes the files, not the running process. `--json` carries `version` and `installed`.' },
 ];
 
 export const RELEASES: Release[] = [

@@ -255,7 +255,7 @@ export default function Docs() {
           <Code lang="bash" copy>{INSTALL}</Code>
           <p>Or run it once without installing:</p>
           <Code lang="bash" copy>{NPX}</Code>
-          <p>Everything the router keeps lives in <code>~/.orrery</code> (set <code>ORRERY_HOME</code> to move it; <code>ORRERY_NO_UPDATE_CHECK=1</code> keeps <code>orrery doctor</code> and <code>provider check</code> from asking npm for the newest release): the session key that signs your running totals and the list of your open channels. Updating is <code>npm install -g {PKG}@latest</code>; uninstalling is <code>npm uninstall -g {PKG}</code> after you close your channels.</p>
+          <p>Everything the router keeps lives in <code>~/.orrery</code> (set <code>ORRERY_HOME</code> to move it; <code>ORRERY_NO_UPDATE_CHECK=1</code> turns off the npm update check in <code>orrery doctor</code> and <code>provider check</code>): the session key that signs your running totals and the list of your open channels. Updating is <code>npm install -g {PKG}@latest</code>; uninstalling is <code>npm uninstall -g {PKG}</code> after you close your channels.</p>
 
           <H2 id="wallet" n={n('wallet')}>Fund a wallet</H2>
           <p>The router pays from an ordinary Solana wallet file. <code>orrery wallet new</code> makes one, and the router uses it without <code>--wallet</code>; a keypair you already have (from <code>solana-keygen</code>, say) works with <code>--wallet &lt;file&gt;</code>. Use a dedicated wallet with only what you plan to spend.</p>

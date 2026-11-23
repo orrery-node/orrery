@@ -142,6 +142,13 @@ export function freeNote(models: { id: string; kind?: string; price: { input: nu
   return free.length ? `${free.slice(0, 3).join('; ')}${free.length > 3 ? `; and ${free.length - 3} more` : ''}. Set the price in provider.json, then provider register` : null;
 }
 
+/** A running node older than the release installed where this command runs: `npm install -g orrery-node@latest`
+ * changes the files, not the process, so the node keeps the old code until it is started again. Asks npm nothing. */
+export function releaseLine(running: string | null | undefined, here: string | null, start: string): string | null {
+  if (!running || !here || !newer(running, here)) return null;
+  return `  release               ${running} is running; ${here} is installed here: stop the node and start it again to run ${here} (${start})`;
+}
+
 /** Which release the node runs, beside the newest on npm. A running node is asked for its own version (it may have been
  * started before an update); with none running, this command's own version is the one that would start. */
 export function versionLine(o: { running: string | null; here: string | null; latest: string | null | 'off' }): CheckLine {

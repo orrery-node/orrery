@@ -1099,6 +1099,13 @@ const listingStale = staleOut.split('\n').find((l) => /^\s+listing\s/.test(l)) ?
 check('orrery provider status judges the listing by what the running node serves: edited and not listed yet, routers still get the listed prices; listed and not restarted, routers refuse it', /on chain, with this node’s prices and address$/.test(listingNow) && listingEdited.includes('new prices that are not live yet, and routers still get the listed ones') && listingEdited.endsWith('then restart the node') && listingStale.includes('still serves its old prices, so a router reading them now refuses it') && listingStale.endsWith(`orrery provider start --config ${staleCfgPath}`) && (parsedStatus as { listing?: string } | null)?.listing === 'listed',
   `edited: ${listingEdited.trim().replace(/\s{2,}/g, ' ').replace(editedCfgPath, '<config>').slice(0, 90)} · not restarted: ${listingStale.trim().replace(/\s{2,}/g, ' ').replace(staleCfgPath, '<config>').slice(0, 90)}`);
 check('orrery provider status prints what the console shows, from the running node, and says plainly when no node is running', statusOut.includes(nodes[1].pda.toBase58()) && new RegExp(`answers since start\\s+${ibStatusNow.answers}\\b`).test(statusOut) && statusOut.includes(`$${ibStatusNow.signed}`) && statusOut.includes(`$${ibStatusNow.waiting}`) && new RegExp(`channels\\s+${ibStatusNow.channels.length}\\b`).test(statusOut) && /no node is answering on 127\.0\.0\.1:17998/.test(statusDown) && /provider start --config/.test(statusDown), `${statusOut ? statusOut.split('\n').slice(1).map((l) => l.trim().replace(/\s{2,}/g, ' ')).join(' · ') : 'printed nothing'} · with no node: ${statusDown.split('.')[0] || 'printed nothing'}`);
+// provider status names the release the node runs, from the node itself, and has no "release" line while that is the
+// one installed here.
+const statusRelease = (() => { try { return (JSON.parse(statusJson) as { version?: string | null; installed?: string | null }); } catch { return null; } })();
+const installedVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+check('orrery provider status names the release the running node runs, and says nothing more while it is the one installed',
+  statusOut.split('\n')[0].endsWith(`  ·  orrery-node ${installedVersion}`) && statusRelease?.version === installedVersion && statusRelease?.installed === installedVersion && !/^\s+release\s/m.test(statusOut),
+  `${statusOut.split('\n')[0].replace(/listing \S+/, 'listing <address>')} · json version ${statusRelease?.version ?? 'none'}, installed ${statusRelease?.installed ?? 'none'}`);
 check('orrery provider console prints the console’s address with its key, and that address opens the console', !!ibKey && consoleUrl === `http://127.0.0.1:${providerSpecs[1].port}/?key=${ibKey}` && consoleOpened?.status === 200 && /Your node/.test(consoleOpened.body) && (asFront[2]?.body ?? '').includes('provider console'), `${consoleUrl ? consoleUrl.replace(/key=[0-9a-f]+/, 'key=<32 hex>') : 'printed nothing'} → ${consoleOpened?.status ?? 'not opened'} · the keyless page ${(asFront[2]?.body ?? '').includes('provider console') ? 'names the command' : 'does not name the command'}`);
 check('the provider console shows what routers signed to it, and only on its own computer', ibStatus.signed === usd(ibSigned) && ibStatus.waiting === usd(ibSigned) && ibStatus.answers > 0 && relayed.status === 404, `Ironbridge: ${ibStatus.answers} answers · $${ibStatus.signed} signed · $${ibStatus.waiting} waiting · relayed request ${relayed.status}`);
 const ibBefore = channels.get(ib.pda.toBase58())!;
@@ -2698,8 +2705,8 @@ check('a node that knows its wallet only by its address sends the register step 
 // The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.
 const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
 const walkDoctorRouter = walkDoctor.text.split('\n').find((l) => /\brouter\s+not running/.test(l)) ?? '';
-// With ORRERY_NO_UPDATE_CHECK=1, doctor and provider check ask npm nothing and say so on the version line (the walk-in
-// node is stopped by now, so provider check goes by the release it would start).
+// With ORRERY_NO_UPDATE_CHECK=1, doctor and provider check skip the npm update check and say so on the version line
+// (the walk-in node is stopped by now, so provider check goes by the release it would start).
 const walkQuietDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996'], { ORRERY_NO_UPDATE_CHECK: '1' });
 const walkQuietCheck = await walkRun(['provider', 'check', '--json', '--config', walkCfg, '--rpc', RPC], { ORRERY_NO_UPDATE_CHECK: '1' });
 const walkQuietDoctorLine = walkQuietDoctor.text.split('\n').find((l) => /\bversion\s/.test(l))?.trim() ?? '';
