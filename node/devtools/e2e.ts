@@ -2639,6 +2639,20 @@ check('a provider command with a missing or broken provider.json says which and 
   walkNoCfg.code === 1 && walkNoCfg.text.includes('there is no ') && walkNoCfg.text.includes('Write one with: ') && !walkNoCfg.text.includes('ENOENT')
   && walkBadCfg.code === 1 && walkBadCfg.text.includes('broken-provider.json is not valid JSON: ') && walkBadCfg.text.includes('provider init --force') && !/\n\s+at /.test(walkNoCfg.text + walkBadCfg.text),
   `${walkNoCfg.text.trim().split('\n').at(-1)?.replace(walkHome, '<home>').slice(0, 90) ?? ''} · ${walkBadCfg.text.trim().split('\n').at(-1)?.slice(0, 100) ?? ''}`);
+// provider init given a model server's address without /v1 finds it under /v1 and writes that: a server here answers
+// only /v1/models, as vLLM and Ollama's OpenAI API do.
+{
+  const v1Only = createHttpServer((req, res) => (req.url === '/v1/models' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ id: 'llama-3.3-70b' }] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => v1Only.listen(0, '127.0.0.1', () => done()));
+  const base = `http://127.0.0.1:${(v1Only.address() as { port: number }).port}`;
+  const v1Cfg = join(walkHome, 'no-v1-provider.json');
+  const noV1 = await walkRun(['provider', 'init', '--offline', '--upstream', base, '--out', v1Cfg]);
+  v1Only.close();
+  const wrote = existsSync(v1Cfg) ? (JSON.parse(readFileSync(v1Cfg, 'utf8')) as { upstream?: { baseUrl?: string } }).upstream?.baseUrl : undefined;
+  check('provider init given a model server without /v1 finds it under /v1 and writes that address',
+    noV1.code === 0 && wrote === `${base}/v1` && noV1.text.includes(`found your server at ${base}/v1 with 1 model`),
+    `exit ${noV1.code} · wrote ${wrote?.replace(base, '<server>') ?? 'nothing'} · ${(noV1.text.split('\n').find((l) => l.startsWith('found') || l.startsWith('no model')) ?? '').replace(base, '<server>').slice(0, 90)}`);
+}
 // A wallet file that is not there, or is not a keypair, is said with what to do, and the command exits 1.
 const brokenWallet = join(walkHome, 'not-a-wallet.json');
 writeFileSync(brokenWallet, JSON.stringify({ secretKey: 'nope' }));

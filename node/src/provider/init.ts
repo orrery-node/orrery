@@ -54,7 +54,10 @@ export const CACHE_REPORTING: Record<string, string> = {
 
 /** The first server that answers /models with at least one model: the one given, or the known local ones in order. */
 export async function findUpstream(explicit: string | undefined, fetchFn: Fetch = fetch as unknown as Fetch): Promise<Found> {
-  const tries: [string, string][] = explicit ? [['your server', explicit.replace(/\/$/, '')]] : KNOWN_UPSTREAMS;
+  // An address given without /v1 (Ollama on port 11434, vLLM on port 8000) is tried as given and then with /v1,
+  // where Ollama, vLLM, SGLang and llama.cpp serve the OpenAI API: the config gets the one that answered.
+  const given = explicit?.replace(/\/$/, '');
+  const tries: [string, string][] = given ? [['your server', given], ...(/\/v1$/.test(given) ? [] : [['your server', `${given}/v1`] as [string, string]])] : KNOWN_UPSTREAMS;
   // A server that answers with no models yet (a fresh Ollama) is remembered: that is a different next step from no
   // server at all.
   let empty: [string, string] | null = null;
@@ -74,7 +77,7 @@ export async function findUpstream(explicit: string | undefined, fetchFn: Fetch 
   }
   if (empty) throw new Error(`${empty[0]} answered at ${empty[1]} but has no models yet. ${empty[0] === 'Ollama' ? `Pull one (${FIRST_MODEL})` : 'Load one in it'} and run this again`);
   throw new Error(explicit
-    ? `no model server answered at ${explicit}/models`
+    ? `no model server answered at ${given}/models${/\/v1$/.test(given!) ? '' : ` or ${given}/v1/models`}`
     : `no model server answered on this computer (looked for ${KNOWN_UPSTREAMS.map(([n, u]) => `${n} at ${u.replace(/^http:\/\/127\.0\.0\.1/, '')}`).join(', ')}). Start one and run this again: the quickest is Ollama (ollama serve, then ${FIRST_MODEL}). For a server somewhere else, pass --upstream <url>`);
 }
 
