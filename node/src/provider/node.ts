@@ -20,6 +20,7 @@ import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
 import { TICKER } from '../brand.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
+import { PACED_BLOCK, Pacer, paceFrom } from './pace.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
@@ -718,23 +719,35 @@ export class ProviderNode {
 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-sealed': sealKey ? '1' : '0', 'server-timing': nodeTimingHeader({ open: afterOpen - arrived, check: afterChecks - afterOpen, upstream: performance.now() - afterChecks }) });
     // Each sealed frame is padded to whole blocks: its length on the way says nothing about the token in it.
-    const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data)).toString('base64') : data, event));
+    // A router that asked for paced frames on a sealed request gets evenly timed frames of one size (pace.ts), the
+    // closing usage frame included.
+    const paceMs = sealKey ? paceFrom(req.headers['x-orrery-frame-ms']) : null;
+    const block = paceMs ? PACED_BLOCK : 256;
+    const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data, block)).toString('base64') : data, event));
+    const pacer = paceMs && sealKey ? new Pacer(paceMs, (frame) => send(frame)) : null;
     type Usage = { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     let usage: Usage | null = null;
     let chars = 0;
-    for await (const ev of readSse(upstream.body)) {
-      if (ev.data === '[DONE]') break;
-      let chunk: Record<string, unknown>;
-      try {
-        chunk = JSON.parse(ev.data);
-      } catch {
-        continue;
+    try {
+      for await (const ev of readSse(upstream.body)) {
+        if (ev.data === '[DONE]') break;
+        let chunk: Record<string, unknown>;
+        try {
+          chunk = JSON.parse(ev.data);
+        } catch {
+          continue;
+        }
+        if (chunk.usage) usage = chunk.usage as Usage;
+        for (const c of (chunk.choices as { delta?: { content?: string } }[] | undefined) ?? []) chars += c.delta?.content?.length ?? 0;
+        chunk.model = offer.id;
+        if (pacer) pacer.push(chunk);
+        else send(JSON.stringify(chunk));
       }
-      if (chunk.usage) usage = chunk.usage as Usage;
-      for (const c of (chunk.choices as { delta?: { content?: string } }[] | undefined) ?? []) chars += c.delta?.content?.length ?? 0;
-      chunk.model = offer.id;
-      send(JSON.stringify(chunk));
+    } catch (e) {
+      pacer?.stop();
+      throw e;
     }
+    pacer?.end();
     const inputTokens = usage?.prompt_tokens ?? estimateInputTokens(body);
     const outputTokens = Math.min(usage?.completion_tokens ?? Math.ceil(chars / 4), maxOut);
     if (price.cachedInput !== undefined && usage && !usage.prompt_tokens_details && !this.warnedNoCacheReport) {

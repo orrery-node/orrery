@@ -86,6 +86,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --agent-models <name=m|m,…>  the models each named agent may use, e.g. coder=qwen3-coder-30b|deepseek-v3; others are refused (env ORRERY_AGENT_MODELS)
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
       --patience <seconds>      how long a request waits and asks again when no node can be reached (default 8, 0 fails at once)
+      --frame-ms <ms>           sealed answers come back one 4 KiB frame per beat, so their tokens do not show on the wire (default 100, 0 off)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
@@ -150,7 +151,7 @@ async function router() {
     deposit: dollars(flag('deposit', '2')!), topUpBelow: dollars(flag('top-up-below', '0.25')!), dailyCap: dollars(flag('daily-cap', '5')!),
   });
   const port = Number(flag('port', String(ROUTER_PORT)));
-  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), patienceMs: Math.max(0, Number(flag('patience', '8'))) * 1000, holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, agentCaps: parseAgentCaps(flag('agent-cap', process.env.ORRERY_AGENT_CAPS)), agentModels: parseAgentModels(flag('agent-models', process.env.ORRERY_AGENT_MODELS)), privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1', observedPath: home('router', 'observed.json') });
+  const r = new Router({ port, route, minReputation: Number(flag('min-reputation', '0.2')), registry, channels, conn, refreshSecs: Number(flag('refresh', '60')), patienceMs: Math.max(0, Number(flag('patience', '8'))) * 1000, frameMs: Math.max(0, Number(flag('frame-ms', process.env.ORRERY_FRAME_MS ?? '100')) || 0), holders: new HolderBook(conn, 60_000, undefined, { serveStale: true }), aliases: parseAliases(flag('alias', process.env.ORRERY_ALIASES)), maxPrice: parseCeiling(flag('max-price', process.env.ORRERY_MAX_PRICE)), maxCost: flag('max-cost', process.env.ORRERY_MAX_COST) || undefined, agentCaps: parseAgentCaps(flag('agent-cap', process.env.ORRERY_AGENT_CAPS)), agentModels: parseAgentModels(flag('agent-models', process.env.ORRERY_AGENT_MODELS)), privateOnly: has('private-only') || process.env.ORRERY_PRIVATE_ONLY === '1', observedPath: home('router', 'observed.json') });
   await r.start();
   // The proxy is checked from the far side before anything is paid for: a node says what address it saw.
   const far = await r.checkProxy();

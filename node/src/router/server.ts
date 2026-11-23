@@ -54,6 +54,8 @@ export type RouterOptions = {
   /** How long a request whose nodes are all away may stay open while the router waits and goes round again (default
    * 8 seconds; 0 fails at once, as before). */
   patienceMs?: number;
+  /** Paced answer frames from nodes on sealed requests, every so many ms (pace.ts); 0 turns it off. Default 100. */
+  frameMs?: number;
   log?: (line: string) => void;
   holders?: HolderBook;
   aliases?: Alias[];
@@ -771,6 +773,9 @@ export class Router {
     const sealMs = performance.now() - beforeSeal;
     const headers: Record<string, string> = { 'content-type': 'application/json', ...(inside ? {} : { 'x-orrery-channel': ch.channel }) };
     if (ch.voucher && !inside) headers['x-orrery-voucher'] = ch.voucher;
+    // Sealed, the answer can come back in evenly timed frames of one size, so the connection does not spell out its tokens.
+    const frameMs = this.o.frameMs ?? 100;
+    if (key && frameMs > 0) headers['x-orrery-frame-ms'] = String(frameMs);
     const t0 = Date.now();
     const sent = performance.now();
     let nodeMs = 0;
@@ -833,44 +838,47 @@ export class Router {
     // answerEvents stops handing out events at [DONE] and then reads the answer to its end, so the connection it
     // came on can carry the next request.
     for await (const ev of answerEvents(r.body)) {
-      let data = ev.data;
-      if (key) data = decrypt(key, Buffer.from(data, 'base64')).toString('utf8');
+      let data0 = ev.data;
+      if (key) data0 = decrypt(key, Buffer.from(data0, 'base64')).toString('utf8');
       if (ev.event === 'orrery') {
-        const y = JSON.parse(data);
+        const y = JSON.parse(data0);
         record = { requestId: y.requestId, model: y.model, inputTokens: y.inputTokens, outputTokens: y.outputTokens, cost: BigInt(y.cost), owed: y.owed };
         claimedOff = knownOff(cand.entry.manifest?.holder?.tiers, y.off);
         continue;
       }
-      if (!ttft) {
-        ttft = Date.now() - t0;
-        nodeMs = performance.now() - sent;
-      }
-      if (wantsStream) {
-        if (!state.started) {
-          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs, ...theirs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader });
-          state.started = true;
-          const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
-          if (anth) {
-            state.stream = anth.kind === 'anthropic' ? new AnthropicStream(emit, anth.id, cand.offer.id, estimateInputTokens(body)) : new ResponsesStream(emit, anth.id, cand.offer.id);
-            state.stream.start();
+      // A paced node sends its chunks as a list, several to a frame or none (pace.ts); an unpaced one, one per frame.
+      for (const data of data0.trimStart().startsWith('[') ? (JSON.parse(data0) as unknown[]).map((c) => JSON.stringify(c)) : [data0]) {
+        if (!ttft) {
+          ttft = Date.now() - t0;
+          nodeMs = performance.now() - sent;
+        }
+        if (wantsStream) {
+          if (!state.started) {
+            res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-orrery-provider': address, 'x-orrery-provider-name': nameHeader(cand.entry.manifest?.name), ...(fellThrough ? { 'x-orrery-skipped': String(fellThrough) } : {}), 'x-orrery-route': route, 'server-timing': serverTiming({ route: state.routeMs, channel: channelMs, seal: sealMs, node: nodeMs, ...theirs }), ...(key ? enclaveHeaders : {}), ...(wired ? { 'x-orrery-wire': '1' } : {}), 'x-orrery-payment': inside ? 'inside' : 'headers', ...withheldHeader });
+            state.started = true;
+            const emit = (event: string, d: Record<string, unknown>) => res.write(`event: ${event}\ndata: ${JSON.stringify(d)}\n\n`);
+            if (anth) {
+              state.stream = anth.kind === 'anthropic' ? new AnthropicStream(emit, anth.id, cand.offer.id, estimateInputTokens(body)) : new ResponsesStream(emit, anth.id, cand.offer.id);
+              state.stream.start();
+            }
           }
+          const parsed = JSON.parse(data) as Chunk;
+          for (const ch of parsed.choices ?? []) {
+            if (ch.delta?.content) state.text += ch.delta.content;
+            if (ch.delta?.tool_calls?.length) state.tools = true;
+          }
+          if (state.stream) state.stream.chunk(parsed);
+          else {
+            // The provider's own usage numbers stay here: the client gets the billed ones at the end, and only if it asked.
+            const { usage, ...rest } = parsed as Chunk & { usage?: unknown; id?: string; created?: number };
+            state.id ??= rest.id;
+            state.created ??= rest.created;
+            if (usage === undefined) res.write(sseFrame(data));
+            else if (rest.choices?.length) res.write(sseFrame(JSON.stringify(rest)));
+          }
+        } else {
+          chunks.push(JSON.parse(data));
         }
-        const parsed = JSON.parse(data) as Chunk;
-        for (const ch of parsed.choices ?? []) {
-          if (ch.delta?.content) state.text += ch.delta.content;
-          if (ch.delta?.tool_calls?.length) state.tools = true;
-        }
-        if (state.stream) state.stream.chunk(parsed);
-        else {
-          // The provider's own usage numbers stay here: the client gets the billed ones at the end, and only if it asked.
-          const { usage, ...rest } = parsed as Chunk & { usage?: unknown; id?: string; created?: number };
-          state.id ??= rest.id;
-          state.created ??= rest.created;
-          if (usage === undefined) res.write(sseFrame(data));
-          else if (rest.choices?.length) res.write(sseFrame(JSON.stringify(rest)));
-        }
-      } else {
-        chunks.push(JSON.parse(data));
       }
     }
     if (!record) throw new Error('provider closed the stream without a usage record');

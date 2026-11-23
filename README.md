@@ -481,7 +481,7 @@ The program has **not been audited yet**. Read [SECURITY.md](SECURITY.md) for wh
 
 Task budgets: send `x-orrery-task: <name>` on every request of a job and `x-orrery-task-budget: 0.05` on the first. A tool that cannot add headers can say the same in its API key: `orrery/<task>/<budget>` (from 0.1.13). The router keeps one running total per task, answers with `x-orrery-task-spent` and `x-orrery-task-left`, and refuses the next request once the budget is gone with a 402 that carries the same two headers from 0.1.15 (`GET /orrery/tasks` lists them; over MCP, `task` and `task_budget`). Budgets are kept in `~/.orrery/router/tasks.json`, so they survive a restart, and `orrery spend --by task` adds up what each job cost from the router's own log. `orrery sealed` lists every private answer with the enclave the router had verified.
 
-Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--enclave-images`, `--alias` (`claude-*=llama-3.3-70b`: answer other model names with a network model). Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`), `ORRERY_ALIASES`, `ORRERY_NO_UPDATE_CHECK` (`1`: no npm update check in `doctor` and `provider check`).
+Router flags: `--route`, `--deposit` (2), `--top-up-below` (0.25), `--daily-cap` (5), `--min-reputation` (0.2), `--port` (7171), `--refresh` (60), `--frame-ms` (100: paced answer frames on sealed requests, `0` turns it off), `--enclave-images`, `--alias` (`claude-*=llama-3.3-70b`: answer other model names with a network model). Environment: `ORRERY_WALLET`, `ORRERY_RPC_URL`, `ORRERY_HOME` (`~/.orrery`), `ORRERY_ALIASES`, `ORRERY_NO_UPDATE_CHECK` (`1`: no npm update check in `doctor` and `provider check`).
 
 ## Router console
 
@@ -619,7 +619,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Payment inside the seal: to a node that says it reads it there, the channel and voucher travel sealed, so a hosting platform in front of the node cannot tell which wallet pays (0.1.16)
 - [x] Requests padded to a size class before sealing, so their length on the wire shows the class and not the prompt's length (0.1.16)
 - [x] Answer frames padded to whole 256-byte blocks, so their lengths do not spell out the tokens (0.1.16)
-- [ ] Hide how many frames an answer has and when they go out
+- [x] Paced answer frames: on a sealed request the router asks for one frame every 100 ms, and the node sends the first chunk at once, then a frame each beat with whatever came in (or nothing), padded to one 4 KiB block, so how many frames there are follows the time the answer took and not its tokens (`--frame-ms`, `0` turns it off)
 - [x] The proxy checked from the far side: a node answers `GET /v1/seen` with the address it saw, and `orrery doctor` asks it through your proxy and prints a `seen as` line, which fails when the node saw one of this computer's own addresses (0.1.15)
 - [x] One connection to a node carries answer after answer, with or without a proxy (0.1.15)
 - [x] A router that lost its records and cannot reach the node does not open a second channel beside the first (0.1.16)

@@ -2111,12 +2111,31 @@ const sized = async (content: string) => {
   return proxied.slice(before).filter((x) => x.url.includes('/v1/chat/completions')).map((x) => x.body.length);
 };
 for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+// These two go unpaced (--frame-ms 0): the frames below are the 256-byte blocks a node sends one chunk at a time.
+const routerOpts = (router as unknown as { o: { frameMs?: number } }).o;
+routerOpts.frameMs = 0;
 const shortSent = await sized('Say hi.');
 const longSent = await sized(`Summarize this in one line: ${'the quick brown fox jumps over the lazy dog '.repeat(14)}`);
 // The answer to the long prompt, as the proxy carried it: its sealed frames, by length.
 const answered = proxied.filter((x) => x.url.includes('/v1/chat/completions')).at(-1)?.answer ?? '';
 const frameLengths = [...answered.matchAll(/^data: ([A-Za-z0-9+/=]+)$/gm)].map((m) => Buffer.from(m[1], 'base64').length);
 check('the frames of a sealed answer are one length, so a proxy cannot read token lengths off them', frameLengths.length >= 4 && new Set(frameLengths).size === 1, `${frameLengths.length} sealed frames, ${new Set(frameLengths).size} distinct length${new Set(frameLengths).size === 1 ? '' : 's'}: ${[...new Set(frameLengths)].slice(0, 6).join(', ')} bytes`);
+// And paced: the router asks for one frame every 100 ms on a sealed request, and the node sends the first chunk at once,
+// then a frame each beat holding whatever came in, padded to one 4 KiB block. How many frames there are follows the
+// time the answer took, not its tokens, and each frame is the same size.
+{
+  const unpacedAsk = proxied.filter((x) => x.url.includes('/v1/chat/completions')).at(-1);
+  delete routerOpts.frameMs;
+  await sized(`Summarize this in one line: ${'the quick brown fox jumps over the lazy dog '.repeat(14)}`);
+  const asked = proxied.filter((x) => x.url.includes('/v1/chat/completions')).at(-1);
+  const trip = router.trips.at(-1) as { outputTokens?: number } | undefined;
+  const paced = String(asked?.headers?.['x-orrery-frame-ms'] ?? '');
+  const pacedLengths = [...(asked?.answer ?? '').matchAll(/^data: ([A-Za-z0-9+/=]+)$/gm)].map((m) => Buffer.from(m[1], 'base64').length);
+  check('a sealed answer comes back paced by default: one 4 KiB frame a 100 ms beat, fewer frames than tokens, and --frame-ms 0 turns it off',
+    paced === '100' && !unpacedAsk?.headers?.['x-orrery-frame-ms'] && pacedLengths.length >= 2 && new Set(pacedLengths).size === 1 && pacedLengths[0] >= 4096 && pacedLengths[0] < 4096 + 64
+    && (trip?.outputTokens ?? 0) > pacedLengths.length && frameLengths.length > pacedLengths.length,
+    `paced (${paced || 'not asked'} ms): ${pacedLengths.length} frames of ${[...new Set(pacedLengths)].join(', ')} bytes for ${trip?.outputTokens ?? '?'} output tokens · unpaced: ${frameLengths.length} frames of ${[...new Set(frameLengths)].join(', ')} bytes`);
+}
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
 // names no channel, in headers, in the request or in the voucher handed over after it.
 const ibChannel = channels.get(nodes[1].pda.toBase58())?.channel ?? '';
@@ -2370,7 +2389,10 @@ check('a node whose payout round failed says so on its status and console, in th
   !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
   && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,
   brokeStatus ? `${(((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? brokeStatus.said).replace(iron.node.publicKey.toBase58(), '<node key>').replace(/at \d\d:\d\d UTC/, 'at hh:mm UTC').slice(0, 150)} … then ${clearedStatus === null ? 'cleared by the next payout' : 'still shown after a payout'}` : 'nothing on the status');
-const failSaid = ((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus) ?? '';
+// The notice is sent at the first failed round and says that round's time; the status keeps the latest round's, which
+// is a minute later and can fall in the next minute. So the words are compared at the notice's own time.
+const noticeAt = ironNotices[0]?.body.payoutFailed?.at ? Date.parse(String(ironNotices[0].body.payoutFailed.at)) : brokeStatus?.at;
+const failSaid = ((await import('../src/provider/payouts.ts')) as unknown as { payoutFailedSentence?: (f: unknown) => string }).payoutFailedSentence?.(brokeStatus ? { ...brokeStatus, at: noticeAt } : brokeStatus) ?? '';
 check('a node with a notify webhook is told once when payouts start failing, in the console\'s words, not again each round',
   brokeAgain.length === 0 && ironNotices.length === 1 && ironNotices[0].body.text === `${providerSpecs[1].name}: ${failSaid}` && ironNotices[0].body.content === ironNotices[0].body.text
   && ironNotices[0].body.payoutFailed?.node === providerSpecs[1].name && ironNotices[0].body.payoutFailed?.said === brokeStatus?.said,

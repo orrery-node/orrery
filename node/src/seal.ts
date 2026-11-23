@@ -64,9 +64,9 @@ export function padRequest(plaintext: Buffer): Buffer {
  * frame, and the length of each sealed frame is what is visible on the way, so unpadded frames spell out the length
  * of every token. A frame of one token fits one block, so short and long tokens look the same. JSON ignores the
  * spaces. What still shows: how many frames, and when. */
-export function padFrame(text: string): Buffer {
+export function padFrame(text: string, block = 256): Buffer {
   const b = Buffer.from(text);
-  const size = Math.max(256, Math.ceil(b.length / 256) * 256);
+  const size = Math.max(block, Math.ceil(b.length / block) * block);
   return size === b.length ? b : Buffer.concat([b, Buffer.alloc(size - b.length, 0x20)]);
 }
 
