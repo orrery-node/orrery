@@ -2135,6 +2135,15 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     paced === '100' && !unpacedAsk?.headers?.['x-orrery-frame-ms'] && pacedLengths.length >= 2 && new Set(pacedLengths).size === 1 && pacedLengths[0] >= 4096 && pacedLengths[0] < 4096 + 64
     && (trip?.outputTokens ?? 0) > pacedLengths.length && frameLengths.length > pacedLengths.length,
     `paced (${paced || 'not asked'} ms): ${pacedLengths.length} frames of ${[...new Set(pacedLengths)].join(', ')} bytes for ${trip?.outputTokens ?? '?'} output tokens · unpaced: ${frameLengths.length} frames of ${[...new Set(frameLengths)].join(', ')} bytes`);
+  // orrery doctor's privacy line says the same, read from the running router.
+  {
+    const st = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string } | null }).privacy;
+    const clause = (st?.line ?? '').split(' · ').find((p) => p.startsWith('sealed answers ')) ?? '';
+    const docPace = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what === 'privacy')?.detail ?? '';
+    check('orrery doctor’s privacy line says how the running router’s sealed answers come back, in the router’s own words',
+      clause.startsWith('sealed answers are asked for one 4 KiB frame every 100 ms; ') && docPace.includes(` · ${clause} · `) && docPace.endsWith(' · client IDs are dropped before anything leaves'),
+      clause ? `doctor: …${docPace.slice(Math.max(0, docPace.indexOf('sealed answers')), docPace.indexOf('sealed answers') + 120)}` : 'no pace clause on the router');
+  }
   // And each node's record on the router says whether it paced the last sealed answer it was asked to pace.
   const recSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { address: string; paced?: boolean | null; record?: string[] }[] }).providers;
   const ibRec = recSt.find((p) => p.address === nodes[1].pda.toBase58());

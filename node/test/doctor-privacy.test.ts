@@ -14,4 +14,9 @@ describe('orrery doctor: one line on privacy', () => {
     const line = privacyLine([{ wire: true, inside: true, enclave: true }], true);
     assert.equal(line.detail, '1 of 1 node takes the request and the payment sealed to its own key · 1 runs in an enclave this computer verified, so :private has somewhere to go · requests leave through your proxy · client IDs are dropped before anything leaves');
   });
+
+  it('with a router running, says how its sealed answers come back, as the router does', () => {
+    const line = privacyLine([{ wire: true, inside: true, enclave: false }], true, { ms: 100, paced: 2, asked: 2 });
+    assert.ok(line.detail.endsWith(' · requests leave through your proxy · sealed answers are asked for one 4 KiB frame every 100 ms; 2 of 2 nodes that answered sealed paced their answers · client IDs are dropped before anything leaves'));
+  });
 });

@@ -14,7 +14,7 @@ import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswer
 import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
-import { privacySentence, type NodePrivacy } from './privacy.ts';
+import { privacySentence, type Pace, type NodePrivacy } from './privacy.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -33,8 +33,8 @@ export function sealCheck(e: ProviderEntry, pinned: boolean): Check {
 /** One line on how private this router's requests are right now, from what the lines above found: how many nodes take
  * the request and the payment sealed, how many run in an enclave this computer verified (where :private can go), whether
  * a proxy keeps this computer's address from the nodes and the RPC, and that client IDs never leave. */
-export function privacyLine(nodes: NodePrivacy[], proxied: boolean): Check {
-  return { ok: null, what: 'privacy', detail: privacySentence(nodes, proxied) };
+export function privacyLine(nodes: NodePrivacy[], proxied: boolean, pace?: Pace): Check {
+  return { ok: null, what: 'privacy', detail: privacySentence(nodes, proxied, pace) };
 }
 
 const ms = (t0: number) => `${Date.now() - t0} ms`;
@@ -170,8 +170,13 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
+  // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
+  if (status?.privacy?.pace && privacy.length) {
+    const at = out.findIndex((l) => l.what === 'privacy');
+    if (at >= 0) out[at] = privacyLine(privacy, !!nodeProxy(), status.privacy.pace);
+  }
   // A router started before an update keeps the old code until it is started again: npm install changes the files only.
   const behind = routerBehind(status?.version, o.installed === undefined ? PACKAGE_VERSION : o.installed);
   if (behind) out.push({ ok: null, what: '  release', detail: behind });
