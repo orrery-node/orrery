@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · One request can set its own beat: `x-orrery-frame-ms: 0` turns pacing off for an agent that wants every token as it comes, and any value from 20 to 1000 sets the beat for that answer. A beat no node keeps to is refused with 400 before anything is sent, and `--frame-ms` is checked the same way at start, instead of going unpaced without a word.
+
 ## 0.1.28 · 2026-11-23 14:26 UTC
 
 **Answers on a hidden beat: sealed answers come back one 4 KiB frame every 100 ms, so the connection no longer spells out their tokens, and the router says which nodes paced theirs; the router and the node also know which release they run and say when an update needs a restart.**

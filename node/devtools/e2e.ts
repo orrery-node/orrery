@@ -2151,6 +2151,23 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     ibRec?.paced === true && !!ibRec.record?.includes('sent its last sealed answer paced: one 4 KiB frame a beat')
     && recSt.every((p) => (p.paced === null || p.paced === undefined) === !(p.record ?? []).some((l) => l.startsWith('sent its last sealed answer'))),
     `Ironbridge: paced ${ibRec?.paced ?? 'missing'} · ${(ibRec?.record ?? []).find((l) => l.startsWith('sent its last')) ?? 'no paced line'} · ${recSt.filter((p) => p.paced === true).length} of ${recSt.length} nodes paced`);
+  // One request can turn pacing off (x-orrery-frame-ms: 0), for an agent that wants every token as it comes; a beat a
+  // node would not keep to is refused before anything is sent.
+  {
+    const ask = (h: Record<string, string>) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58(), ...h }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi in five words.' }] }) });
+    const before = proxied.length;
+    const off = await ask({ 'x-orrery-frame-ms': '0' });
+    await off.text();
+    const offAsk = proxied.slice(before).filter((x) => x.url.includes('/v1/chat/completions')).at(-1);
+    const offLengths = [...(offAsk?.answer ?? '').matchAll(/^data: ([A-Za-z0-9+/=]+)$/gm)].map((m) => Buffer.from(m[1], 'base64').length);
+    const sentBefore = proxied.length;
+    const bad = await ask({ 'x-orrery-frame-ms': '5' });
+    const badBody = (await bad.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+    check('one request can turn pacing off with x-orrery-frame-ms: 0, and a beat no node keeps to is refused before anything is sent',
+      off.status === 200 && !!offAsk && !offAsk.headers?.['x-orrery-frame-ms'] && offLengths.length > 0 && offLengths.every((n) => n < 4096)
+      && bad.status === 400 && badBody?.error?.code === 'bad_request' && /frame-ms is 0 \(off\) or whole milliseconds from 20 to 1000/.test(badBody?.error?.message ?? '') && !proxied.slice(sentBefore).some((x) => x.url.includes('/v1/chat/completions')),
+      `x-orrery-frame-ms: 0 → ${off.status}, ${offLengths.length} frames of ${[...new Set(offLengths)].join(', ')} bytes · 5 → ${bad.status} ${badBody?.error?.code ?? ''}: ${(badBody?.error?.message ?? '').slice(0, 70)}`);
+  }
   // The router's privacy line says it too, from what came back: the beat it asks for, and how many nodes paced.
   const paceSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string; pace?: { ms: number; paced: number; asked: number } } | null }).privacy;
   check('the router’s privacy line says sealed answers are asked for 100 ms frames, and how many nodes that answered sealed paced them',

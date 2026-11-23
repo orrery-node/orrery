@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'One request can set its own beat: `x-orrery-frame-ms: 0` turns pacing off for an agent that wants every token as it comes, and any value from 20 to 1000 sets the beat for that answer. A beat no node keeps to is refused with 400 before anything is sent, and `--frame-ms` is checked the same way at start, instead of going unpaced without a word.' },
+];
 
 export const RELEASES: Release[] = [
   {

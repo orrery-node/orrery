@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.ts';
+import { frameMsFrom, Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.ts';
 import { padFrame } from '../src/seal.ts';
 import { paceClause, privacySentence } from '../src/privacy.ts';
 
@@ -63,5 +63,18 @@ describe('the privacy line says how sealed answers come back', () => {
     const nodes = [{ wire: true, inside: true, enclave: false }];
     assert.ok(privacySentence(nodes, true, { ms: 100, paced: 1, asked: 1 }).endsWith(' · sealed answers are asked for one 4 KiB frame every 100 ms; 1 of 1 node that answered sealed paced its answers · client IDs are dropped before anything leaves'));
     assert.ok(!privacySentence(nodes, true).includes('frame'));
+  });
+});
+
+describe('the beat a router asks for', () => {
+  it('takes --frame-ms or x-orrery-frame-ms: 0 turns pacing off, 20 to 1000 ms paces, nothing given keeps the default', () => {
+    assert.equal(frameMsFrom(undefined, 100), 100);
+    assert.equal(frameMsFrom('0', 100), 0);
+    assert.equal(frameMsFrom('250', 100), 250);
+    assert.equal(frameMsFrom(['50'], 100), 50);
+  });
+
+  it('refuses a beat a node would not keep to, instead of letting it go unpaced without a word', () => {
+    for (const bad of ['5', '1001', 'fast', '100.5', '-1', '']) assert.throws(() => frameMsFrom(bad, 100), /frame-ms is 0 \(off\) or whole milliseconds from 20 to 1000/, bad);
   });
 });

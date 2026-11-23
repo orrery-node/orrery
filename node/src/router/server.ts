@@ -13,6 +13,7 @@ import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
+import { frameMsFrom } from '../provider/pace.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
 import { away, nextWait, patienceFrom } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
@@ -78,7 +79,7 @@ export type RouterOptions = {
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
-type StreamState = { started: boolean; stream: AnthropicStream | ResponsesStream | null; text: string; tools: boolean; id?: string; created?: number; routeMs?: number };
+type StreamState = { started: boolean; stream: AnthropicStream | ResponsesStream | null; text: string; tools: boolean; id?: string; created?: number; routeMs?: number; frameMs?: number };
 
 export type Trip = {
   at: number;
@@ -539,8 +540,11 @@ export class Router {
     const began = performance.now();
     if (typeof body.model !== 'string') throw new Unserved('model is required', 400, 'bad_request');
     let patienceMs: number;
+    let frameMs: number;
     try {
       patienceMs = patienceFrom(req.headers['x-orrery-patience'] === undefined ? undefined : String(req.headers['x-orrery-patience']), this.o.patienceMs ?? 8_000);
+      // The beat for this request's sealed answer: x-orrery-frame-ms, else the router's --frame-ms (0 turns it off).
+      frameMs = frameMsFrom(req.headers['x-orrery-frame-ms'], this.o.frameMs ?? 100);
     } catch (e) {
       throw new Unserved((e as Error).message, 400, 'bad_request');
     }
@@ -659,7 +663,7 @@ export class Router {
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 
     const tried: string[] = [];
-    const state: StreamState = { started: false, stream: null, text: '', tools: false, routeMs: performance.now() - began };
+    const state: StreamState = { started: false, stream: null, text: '', tools: false, routeMs: performance.now() - began, frameMs };
     const top = ranked.slice(0, 3);
     // On the auto and speed routes a provider already answering another request hands this one to the next of the top
     // three that is free; the price and reputation routes wait their turn.
@@ -781,7 +785,7 @@ export class Router {
     const headers: Record<string, string> = { 'content-type': 'application/json', ...(inside ? {} : { 'x-orrery-channel': ch.channel }) };
     if (ch.voucher && !inside) headers['x-orrery-voucher'] = ch.voucher;
     // Sealed, the answer can come back in evenly timed frames of one size, so the connection does not spell out its tokens.
-    const frameMs = this.o.frameMs ?? 100;
+    const frameMs = state.frameMs ?? this.o.frameMs ?? 100;
     const askedPace = !!key && frameMs > 0;
     if (askedPace) headers['x-orrery-frame-ms'] = String(frameMs);
     let sawPaced = false;
