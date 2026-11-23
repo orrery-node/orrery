@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.27 · 2026-11-23 02:03 UTC
+
+**Privacy you can check and money you can follow: one privacy line in doctor, the router console and MCP, a quote that prices :private and a bill that shows the enclave part; nodes that add up every payout, say why a payout round was refused, and tell their webhook before the fee SOL runs out; a spend tool for agents, and opencode and aider in orrery connect.**
 
 - **Router** · `orrery --help` names every argument `quote` reads (`--text` for a speech model, `--images` for an image model) and that it prices `:private` too, and that `spend` takes `--since 30d` and says what part went to an enclave. The node README says the same.
 - **Node** · A node with a `notify` webhook is told once when its key runs low on SOL for payout fees, while payouts still go through: the log's line ("about 198 more payouts. Send a little SOL to …"), with the key, its SOL and the payouts left as JSON (`lowFees`). So it can be topped up before a round is refused.
@@ -21,6 +23,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · When `:private` finds no node and none of the nodes serving the model claims an enclave, the refusal says so and says what it means: "none of the 2 nodes serving it runs in an enclave yet. Without :private, a request to them is still sealed to the node's own key, which keeps it from the node's host but not from its operator. A node offers :private by running on AMD SEV-SNP or Intel TDX ("tee" in provider.json)". Before, it named only the enclave claims the router could not verify, and said nothing when there were none.
 - **Router** · The router says the same privacy sentence as `orrery doctor`, over the nodes it would use: `/orrery/status` carries it as `privacy` (the line, how many nodes take the payment inside the seal, how many run in an enclave it verified, whether a proxy is set), the console shows it above the providers, and the `status` tool of `orrery mcp` gives it to an agent ("privacy: 4 of 4 nodes take the request and the payment sealed to their own key · 1 runs in an enclave this computer verified, so :private has somewhere to go · …").
 - **Router** · `orrery doctor` adds up how private your requests are in one line, from what it found above it: how many nodes take the request and the payment sealed to their own key, how many run in an enclave this computer verified (where `:private` can go, or that it would find no node yet), whether a proxy keeps your address from the nodes and the RPC (and the one flag that sends it all through Tor), and that client IDs are dropped before anything leaves: "privacy  3 of 3 nodes take the request and the payment sealed to their own key · none runs in an enclave this computer verified, so :private would find no node yet · no proxy, so nodes and the RPC see your address (orrery router --proxy socks5://127.0.0.1:9050 sends it all through Tor) · client IDs are dropped before anything leaves".
+
+`npx -y orrery-node@0.1.27`
 
 ## 0.1.26 · 2026-11-22 07:06 UTC
 
