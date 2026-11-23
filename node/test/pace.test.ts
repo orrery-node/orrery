@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.ts';
 import { padFrame } from '../src/seal.ts';
+import { paceClause, privacySentence } from '../src/privacy.ts';
 
 describe('paced answer frames', () => {
   it('sends the first chunk at once, then one frame a beat holding what came in, or nothing', (t) => {
@@ -47,5 +48,20 @@ describe('paced answer frames', () => {
     assert.equal(padFrame(one, PACED_BLOCK).length, PACED_BLOCK);
     assert.equal(padFrame(twelve, PACED_BLOCK).length, padFrame(one, PACED_BLOCK).length);
     assert.deepEqual(JSON.parse(padFrame(twelve, PACED_BLOCK).toString('utf8')), JSON.parse(twelve));
+  });
+});
+
+describe('the privacy line says how sealed answers come back', () => {
+  it('names the beat, and how many nodes that answered sealed paced their answers', () => {
+    assert.equal(paceClause({ ms: 100, paced: 0, asked: 0 }), 'sealed answers are asked for one 4 KiB frame every 100 ms');
+    assert.equal(paceClause({ ms: 100, paced: 3, asked: 4 }), 'sealed answers are asked for one 4 KiB frame every 100 ms; 3 of 4 nodes that answered sealed paced their answers');
+    assert.equal(paceClause({ ms: 250, paced: 1, asked: 1 }), 'sealed answers are asked for one 4 KiB frame every 250 ms; 1 of 1 node that answered sealed paced its answers');
+    assert.equal(paceClause({ ms: 0, paced: 0, asked: 0 }), 'sealed answers come back a chunk per frame (--frame-ms turns pacing on)');
+  });
+
+  it('goes before the client IDs, and only where the router passes it', () => {
+    const nodes = [{ wire: true, inside: true, enclave: false }];
+    assert.ok(privacySentence(nodes, true, { ms: 100, paced: 1, asked: 1 }).endsWith(' · sealed answers are asked for one 4 KiB frame every 100 ms; 1 of 1 node that answered sealed paced its answers · client IDs are dropped before anything leaves'));
+    assert.ok(!privacySentence(nodes, true).includes('frame'));
   });
 });

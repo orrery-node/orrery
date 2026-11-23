@@ -213,6 +213,8 @@ export class Router {
   }
   /** Nodes that said every slot was answering, and until when they are asked after the others. */
   private fullUntil = new Map<string, number>();
+  /** Per node, whether the last sealed answer it was asked to pace came back paced (pace.ts). */
+  private pacedBy = new Map<string, boolean>();
   private log: (line: string) => void;
 
   constructor(private o: RouterOptions) {
@@ -436,7 +438,10 @@ export class Router {
     const channels = this.o.channels.list().map((c) => ({ provider: c.provider, channel: c.channel, deposit: usd(c.deposit), spent: usd(c.cumulative), left: usd(c.deposit - c.cumulative) }));
     // How private requests are right now, over the nodes this router would use: the same sentence orrery doctor says.
     const usable = [...this.o.registry.entries.values()].filter((e) => e.account.active && e.manifest && !e.problem).map((e) => ({ wire: !!e.wire, inside: !!e.wire && !!e.wireInside, enclave: !!e.tee?.verified }));
-    const privacy = usable.length ? { line: privacySentence(usable, !!nodeProxy()), inside: usable.filter((x) => x.inside).length, nodes: usable.length, enclaves: usable.filter((x) => x.enclave).length, proxied: !!nodeProxy() } : null;
+    // And how sealed answers come back: the beat asked for, and how many of the nodes this router would use paced theirs.
+    const usableAt = [...this.o.registry.entries.values()].filter((e) => e.account.active && e.manifest && !e.problem).map((e) => e.address);
+    const pace = { ms: this.o.frameMs ?? 100, paced: usableAt.filter((a) => this.pacedBy.get(a) === true).length, asked: usableAt.filter((a) => this.pacedBy.has(a)).length };
+    const privacy = usable.length ? { pace, line: privacySentence(usable, !!nodeProxy(), pace), inside: usable.filter((x) => x.inside).length, nodes: usable.length, enclaves: usable.filter((x) => x.enclave).length, proxied: !!nodeProxy() } : null;
     const s = await this.standing();
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
@@ -775,7 +780,9 @@ export class Router {
     if (ch.voucher && !inside) headers['x-orrery-voucher'] = ch.voucher;
     // Sealed, the answer can come back in evenly timed frames of one size, so the connection does not spell out its tokens.
     const frameMs = this.o.frameMs ?? 100;
-    if (key && frameMs > 0) headers['x-orrery-frame-ms'] = String(frameMs);
+    const askedPace = !!key && frameMs > 0;
+    if (askedPace) headers['x-orrery-frame-ms'] = String(frameMs);
+    let sawPaced = false;
     const t0 = Date.now();
     const sent = performance.now();
     let nodeMs = 0;
@@ -847,6 +854,7 @@ export class Router {
         continue;
       }
       // A paced node sends its chunks as a list, several to a frame or none (pace.ts); an unpaced one, one per frame.
+      if (askedPace) sawPaced ||= data0.trimStart().startsWith('[');
       for (const data of data0.trimStart().startsWith('[') ? (JSON.parse(data0) as unknown[]).map((c) => JSON.stringify(c)) : [data0]) {
         if (!ttft) {
           ttft = Date.now() - t0;
@@ -882,6 +890,8 @@ export class Router {
       }
     }
     if (!record) throw new Error('provider closed the stream without a usage record');
+    // Whether this node paced the sealed answer it was asked to pace: the privacy line counts it.
+    if (askedPace) this.pacedBy.set(address, sawPaced);
     if (claimedOff < cand.off) {
       this.stats.penalize(address);
       this.log(`provider ${address.slice(0, 6)} lists a ${cand.off / 100}% holder price but applied ${claimedOff / 100}%; paying its number, counting it against its success rate`);

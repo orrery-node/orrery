@@ -2135,6 +2135,12 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     paced === '100' && !unpacedAsk?.headers?.['x-orrery-frame-ms'] && pacedLengths.length >= 2 && new Set(pacedLengths).size === 1 && pacedLengths[0] >= 4096 && pacedLengths[0] < 4096 + 64
     && (trip?.outputTokens ?? 0) > pacedLengths.length && frameLengths.length > pacedLengths.length,
     `paced (${paced || 'not asked'} ms): ${pacedLengths.length} frames of ${[...new Set(pacedLengths)].join(', ')} bytes for ${trip?.outputTokens ?? '?'} output tokens · unpaced: ${frameLengths.length} frames of ${[...new Set(frameLengths)].join(', ')} bytes`);
+  // The router's privacy line says it too, from what came back: the beat it asks for, and how many nodes paced.
+  const paceSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string; pace?: { ms: number; paced: number; asked: number } } | null }).privacy;
+  check('the router’s privacy line says sealed answers are asked for 100 ms frames, and how many nodes that answered sealed paced them',
+    !!paceSt?.pace && paceSt.pace.ms === 100 && paceSt.pace.asked >= 1 && paceSt.pace.paced === paceSt.pace.asked
+    && paceSt.line.includes(` · sealed answers are asked for one 4 KiB frame every 100 ms; ${paceSt.pace.paced} of ${paceSt.pace.asked} node${paceSt.pace.asked === 1 ? '' : 's'} that answered sealed paced`) && paceSt.line.endsWith(' · client IDs are dropped before anything leaves'),
+    paceSt ? paceSt.line.slice(paceSt.line.indexOf('sealed answers') >= 0 ? paceSt.line.indexOf('sealed answers') : 0, (paceSt.line.indexOf('sealed answers') >= 0 ? paceSt.line.indexOf('sealed answers') : 0) + 130) : 'no privacy in /orrery/status');
 }
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
 // names no channel, in headers, in the request or in the voucher handed over after it.
