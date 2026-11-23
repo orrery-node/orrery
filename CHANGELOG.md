@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.28 · 2026-11-23 14:26 UTC
+
+**Answers on a hidden beat: sealed answers come back one 4 KiB frame every 100 ms, so the connection no longer spells out their tokens, and the router says which nodes paced theirs; the router and the node also know which release they run and say when an update needs a restart.**
 
 - **Node** · `orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node's status carries its `version`, and the console's header names it ("Provider console · orrery-node 0.1.27").
 - **Router** · `ORRERY_NO_UPDATE_CHECK=1` turns off the npm update check in `orrery doctor` and `orrery provider check`; the version line then reads "0.1.27; not checked against npm (ORRERY_NO_UPDATE_CHECK=1)".
@@ -12,6 +14,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · `orrery doctor` names the release the running router runs ("running at http://127.0.0.1:7171, orrery-node 0.1.27, route auto"), and when it is older than the release installed on the same machine it says so: "0.1.26 is running; 0.1.27 is installed here: stop the router and start it again to run 0.1.27". The router's `/orrery/status` carries its `version`, and the router console's header names it ("Router console · orrery-node 0.1.27").
 - **Everyone** · Sealed answers come back paced. The router asks for one frame every 100 ms, and the node sends the first chunk at once, then one frame each beat with whatever came in since (or nothing), each padded to one 4 KiB block. A streamed answer used to go out about a token per frame, so the number of frames and their timing spelled out its length and rhythm to anything watching the connection; now the count follows the time the answer took. In the rehearsal: 16 tokens in 3 frames of 4,124 bytes, where unpaced they took 20 frames. `orrery router --frame-ms <ms>` sets the beat, `0` turns it off; a node that does not pace yet answers as before. The router's privacy line (its status, console, the MCP `status` tool, and `orrery doctor` while the router runs) says it, from what came back: "sealed answers are asked for one 4 KiB frame every 100 ms; 4 of 4 nodes that answered sealed paced their answers".
 - **Router** · The router's record of each node (its console, the MCP `status` tool and `paced` in `/orrery/status`) says whether the node paced the last sealed answer it was asked to pace: "sent its last sealed answer paced: one 4 KiB frame a beat", or "unpaced, a chunk per frame". Seen on the wire by the router itself.
+
+`npx -y orrery-node@0.1.28`
 
 ## 0.1.27 · 2026-11-23 02:03 UTC
 
