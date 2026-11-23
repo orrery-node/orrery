@@ -633,6 +633,9 @@ export class ProviderNode {
       else if (slot.passed) this.log(`holder request (−${off / 100}%) took the next free slot ahead of ${slot.passed} waiting without a holder price, after ${(slot.waitedMs / 1000).toFixed(1)} s`);
     }
 
+    // The beat a router asked for on a sealed chat answer (pace.ts): the answer goes out paced, and the log and the
+    // node's own record of the answer say so.
+    const paceMs = sealKey && kind === 'chat' ? paceFrom(req.headers['x-orrery-frame-ms']) : null;
     const settle = (send: (data: string, event?: string) => void, inputTokens: number, outputTokens: number, cachedTokens: number) => {
       const cost = costOf(price, inputTokens, outputTokens, cachedTokens);
       const record: UsageRecord = { requestId: randomUUID(), model: offer.id, inputTokens, outputTokens, cost: cost > maxCost ? maxCost : cost };
@@ -649,12 +652,12 @@ export class ProviderNode {
       // the holder price, so the operator's books say what holder pricing gave away.
       const listed = off ? costOf(offer.price, inputTokens, outputTokens, cachedTokens) : 0n;
       const given = listed > cost ? listed - cost : 0n;
-      appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost), ...(inside ? { inside: true } : {}), ...(off ? { off, saved: usd(given) } : {}) });
+      appendTrip(`${this.dir}/served.jsonl`, { at: Date.now(), model: offer.id, provider: address, providerName: address.slice(0, 8), inputTokens, outputTokens, cost: usd(record.cost), ...(inside ? { inside: true } : {}), ...(off ? { off, saved: usd(given) } : {}), ...(paceMs ? { paced: paceMs } : {}) });
       if (this.served.length > 50) this.served.splice(0, this.served.length - 50);
       // The log goes to whoever hosts the node. Paid inside the seal, the channel and its running total were kept from
       // that party on the wire, so they stay off this line too; the console (behind its key) still shows them.
       const paidBy = inside ? '  paid inside the seal' : `  channel ${address.slice(0, 6)}  owed $${usd(e.owed)}`;
-      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}${paidBy}${off ? `  holder −${off / 100}%` : ''}${wired ? '  wire' : sealKey ? '  sealed' : ''}`);
+      this.log(`served ${offer.id} ${inputTokens}+${outputTokens} tok  $${usd(record.cost)}${paidBy}${off ? `  holder −${off / 100}%` : ''}${wired ? '  wire' : sealKey ? '  sealed' : ''}${paceMs ? `  paced ${paceMs} ms` : ''}`);
     };
     const upHeaders = { 'content-type': 'application/json', ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {}), ...(this.cfg.upstream.headers ?? {}) };
 
@@ -721,7 +724,6 @@ export class ProviderNode {
     // Each sealed frame is padded to whole blocks: its length on the way says nothing about the token in it.
     // A router that asked for paced frames on a sealed request gets evenly timed frames of one size (pace.ts), the
     // closing usage frame included.
-    const paceMs = sealKey ? paceFrom(req.headers['x-orrery-frame-ms']) : null;
     const block = paceMs ? PACED_BLOCK : 256;
     const send = (data: string, event?: string) => res.write(sseFrame(sealKey ? encrypt(sealKey, padFrame(data, block)).toString('base64') : data, event));
     const pacer = paceMs && sealKey ? new Pacer(paceMs, (frame) => send(frame)) : null;

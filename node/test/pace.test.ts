@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { frameMsFrom, Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.ts';
 import { padFrame } from '../src/seal.ts';
 import { paceClause, privacySentence } from '../src/privacy.ts';
+import { appendTrip, readTrips } from '../src/spend.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('paced answer frames', () => {
   it('sends the first chunk at once, then one frame a beat holding what came in, or nothing', (t) => {
@@ -76,5 +80,15 @@ describe('the beat a router asks for', () => {
 
   it('refuses a beat a node would not keep to, instead of letting it go unpaced without a word', () => {
     for (const bad of ['5', '1001', 'fast', '100.5', '-1', '']) assert.throws(() => frameMsFrom(bad, 100), /frame-ms is 0 \(off\) or whole milliseconds from 20 to 1000/, bad);
+  });
+});
+
+describe('a node keeps the beat an answer went out on', () => {
+  it('writes paced to its log of answers, and nothing when the answer was not paced', () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'orrery-pace-')), 'served.jsonl');
+    const base = { model: 'llama-3.3-70b', provider: 'x', providerName: 'x', inputTokens: 10, outputTokens: 16, cost: '0.000010' };
+    appendTrip(log, { ...base, at: 1, paced: 100 });
+    appendTrip(log, { ...base, at: 2 });
+    assert.deepEqual(readTrips(log).map((t) => t.paced), [100, undefined]);
   });
 });

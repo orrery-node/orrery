@@ -2168,6 +2168,22 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
       && bad.status === 400 && badBody?.error?.code === 'bad_request' && /frame-ms is 0 \(off\) or whole milliseconds from 20 to 1000/.test(badBody?.error?.message ?? '') && !proxied.slice(sentBefore).some((x) => x.url.includes('/v1/chat/completions')),
       `x-orrery-frame-ms: 0 → ${off.status}, ${offLengths.length} frames of ${[...new Set(offLengths)].join(', ')} bytes · 5 → ${bad.status} ${badBody?.error?.code ?? ''}: ${(badBody?.error?.message ?? '').slice(0, 70)}`);
   }
+  // The node's log line for an answer, and its own record of it, say when the answer went out paced.
+  {
+    const lines: string[] = [];
+    const was = iron.log;
+    iron.log = (l) => { lines.push(l); was(l); };
+    const ask = (h: Record<string, string>) => fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': nodes[1].pda.toBase58(), ...h }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Name a planet.' }] }) }).then((r) => r.text());
+    await ask({});
+    await ask({ 'x-orrery-frame-ms': '0' });
+    await sleep(200);
+    iron.log = was;
+    const served = lines.filter((l) => l.startsWith('served '));
+    const kept = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).slice(-2) as { paced?: number }[];
+    check('a node’s log line and its own record of an answer say when it went out paced, and say nothing when it did not',
+      served.length === 2 && served[0].endsWith('  paced 100 ms') && !served[1].includes('paced') && kept.length === 2 && kept[0].paced === 100 && kept[1].paced === undefined,
+      `${served.map((l) => l.replace(/^served \S+ /, '…').slice(-60)).join(' | ') || 'no served lines'} · records: ${kept.map((t) => t.paced ?? 'unpaced').join(', ')}`);
+  }
   // The router's privacy line says it too, from what came back: the beat it asks for, and how many nodes paced.
   const paceSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string; pace?: { ms: number; paced: number; asked: number } } | null }).privacy;
   check('the router’s privacy line says sealed answers are asked for 100 ms frames, and how many nodes that answered sealed paced them',
