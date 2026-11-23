@@ -17,7 +17,7 @@ import { postNotice } from './payouts.ts';
 import { FEE_FLOOR_LAMPORTS, NODE_VERSION, TOKEN_ACCOUNT_BYTES, type ProviderNode } from './node.ts';
 import { readOwnStatus } from './console.ts';
 import { fetchNode } from '../proxy.ts';
-import { newer } from '../doctor.ts';
+import { latestOnNpm, newer, NO_UPDATE_CHECK } from '../doctor.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
@@ -144,9 +144,10 @@ export function freeNote(models: { id: string; kind?: string; price: { input: nu
 
 /** Which release the node runs, beside the newest on npm. A running node is asked for its own version (it may have been
  * started before an update); with none running, this command's own version is the one that would start. */
-export function versionLine(o: { running: string | null; here: string | null; latest: string | null }): CheckLine {
+export function versionLine(o: { running: string | null; here: string | null; latest: string | null | 'off' }): CheckLine {
   const v = o.running ?? o.here ?? 'unknown';
   const who = o.running ? 'the running node is ' : '';
+  if (o.latest === 'off') return { ok: null, what: 'version', detail: `${who}${v}; not checked against npm (${NO_UPDATE_CHECK}=1)` };
   if (!o.latest) return { ok: null, what: 'version', detail: `${who}${v}; npm did not answer` };
   if (v !== 'unknown' && newer(v, o.latest)) return { ok: null, what: 'version', detail: `${who}${v}; ${o.latest} is on npm: ${o.running ? 'stop it and start it again with' : 'start it with'} npx -y orrery-node@latest provider start --config …` };
   if (v !== 'unknown' && newer(o.latest, v)) return { ok: true, what: 'version', detail: `${who}${v}, ahead of npm (${o.latest})` };
@@ -251,10 +252,10 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
 
   if (cfg.burn) out.push({ ok: null, what: 'burn pledge', detail: `${cfg.burn.share / 100}% of what you redeem; orrery provider burn --config … shows what is due` });
   if (node.notifyTo) out.push(await notifyLine(node.notifyTo, cfg.name));
-  // Which release is running, beside the newest on npm: one loopback read of the node's own status, one read of npm.
+  // Which release is running, beside the newest on npm: one loopback read of the node's own status, one read of npm
+  // (none with ORRERY_NO_UPDATE_CHECK=1).
   const own = await readOwnStatus(cfg.listen, node.consoleKey()).catch(() => null);
-  const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
-  out.push(versionLine({ running: own?.version ?? null, here: NODE_VERSION, latest }));
+  out.push(versionLine({ running: own?.version ?? null, here: NODE_VERSION, latest: await latestOnNpm() }));
   return out;
 }
 

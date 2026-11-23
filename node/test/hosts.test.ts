@@ -8,7 +8,7 @@ import { join } from 'node:path';
 const MAY_NAME: Record<string, string> = {
   '127.0.0.1': 'this computer: the router, the node, the model server',
   'api.mainnet-beta.solana.com': 'the default Solana RPC (--rpc sets another)',
-  'registry.npmjs.org': 'doctor and provider check ask npm whether a newer release is out',
+  'registry.npmjs.org': 'doctor and provider check ask npm whether a newer release is out (ORRERY_NO_UPDATE_CHECK=1 turns it off)',
   'api.trustedservices.intel.com': 'Intel collateral, to verify a TDX enclave',
   'certificates.trustedservices.intel.com': 'Intel root certificate, to verify a TDX enclave',
   'kdsintf.amd.com': 'AMD key service, to verify an SEV-SNP enclave',

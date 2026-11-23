@@ -2496,7 +2496,7 @@ check('the Solana RPC goes through the same proxy: reads, and a transaction sent
 const walkHome = join(WORK, 'walk-in');
 mkdirSync(walkHome, { recursive: true });
 const walkEnv = Object.fromEntries(Object.entries({ ...process.env, ORRERY_HOME: join(walkHome, '.orrery'), HOME: walkHome }).filter(([k]) => k !== 'ORRERY_WALLET')) as NodeJS.ProcessEnv;
-const walkRun = (args: string[]) => new Promise<{ code: number | null; text: string; ms: number }>((done) => { const t0 = Date.now(); let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: walkEnv }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text: text.split('\n').filter((l) => !l.startsWith('bigint:')).join('\n'), ms: Date.now() - t0 })); });
+const walkRun = (args: string[], extraEnv: NodeJS.ProcessEnv = {}) => new Promise<{ code: number | null; text: string; ms: number }>((done) => { const t0 = Date.now(); let text = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...walkEnv, ...extraEnv } }); pc.stdout!.on('data', (c) => (text += c)); pc.stderr!.on('data', (c) => (text += c)); pc.on('exit', (code) => done({ code, text: text.split('\n').filter((l) => !l.startsWith('bigint:')).join('\n'), ms: Date.now() - t0 })); });
 const walkCfg = join(walkHome, 'provider.json');
 let walkKey: string | undefined;
 const walkKey0 = () => walkKey;
@@ -2698,6 +2698,15 @@ check('a node that knows its wallet only by its address sends the register step 
 // The same home folder, with no router running: doctor says to start one the way it starts now, without --wallet.
 const walkDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
 const walkDoctorRouter = walkDoctor.text.split('\n').find((l) => /\brouter\s+not running/.test(l)) ?? '';
+// With ORRERY_NO_UPDATE_CHECK=1, doctor and provider check ask npm nothing and say so on the version line (the walk-in
+// node is stopped by now, so provider check goes by the release it would start).
+const walkQuietDoctor = await walkRun(['doctor', '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996'], { ORRERY_NO_UPDATE_CHECK: '1' });
+const walkQuietCheck = await walkRun(['provider', 'check', '--json', '--config', walkCfg, '--rpc', RPC], { ORRERY_NO_UPDATE_CHECK: '1' });
+const walkQuietDoctorLine = walkQuietDoctor.text.split('\n').find((l) => /\bversion\s/.test(l))?.trim() ?? '';
+const walkQuietCheckLine = ((): string => { try { return (JSON.parse(walkQuietCheck.text.slice(walkQuietCheck.text.indexOf('['))) as { what: string; detail: string }[]).find((l) => l.what === 'version')?.detail ?? ''; } catch { return ''; } })();
+check('with ORRERY_NO_UPDATE_CHECK=1, doctor and provider check do not ask npm, and their version line says so',
+  /; not checked against npm \(ORRERY_NO_UPDATE_CHECK=1\)$/.test(walkQuietDoctorLine) && /^\d+\.\d+\.\d+; not checked against npm \(ORRERY_NO_UPDATE_CHECK=1\)$/.test(walkQuietCheckLine),
+  `doctor: ${walkQuietDoctorLine || 'no version line'} · provider check: ${walkQuietCheckLine || 'no version line'}`);
 check('orrery doctor, with the wallet orrery wallet new made, says to start the router without --wallet', /start it with \S+ router$/.test(walkDoctorRouter.trim()) && !walkDoctorRouter.includes('<keypair.json>'), walkDoctorRouter.trim().slice(0, 120) || 'no router line');
 check('a new node, once it is ready, is told its first payout goes out at the next round after its first answer', /^ready to earn: .*\. Its first payout goes out at the next round after its first answer \(every 5 min\)$/.test(walkSaid), walkSaid.slice(0, 160));
 check('orrery wallet new, at the default place, says what comes next without --wallet, since that is the wallet everything uses', /\nthen {2}\S+ router {3}uses this wallet\n/.test(walk1.text) && !/router --wallet|doctor --wallet|init --wallet/.test(walk1.text), (walk1.text.split('\n').find((l) => l.startsWith('then')) ?? 'no then line').trim().slice(0, 100));

@@ -84,8 +84,7 @@ export function keptLine(dir: string): Check | null {
 export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string; routerHome?: string }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
-    const latest = await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
-    out.push(versionCheck(o.version, latest));
+    out.push(versionCheck(o.version, await latestOnNpm()));
   }
   const conn = rpcConnection(o.rpc);
   let t0 = Date.now();
@@ -220,7 +219,19 @@ export function newer(a: string, b: string): boolean {
   return false;
 }
 
-export function versionCheck(current: string, latest: string | null): Check {
+/** Set to 1, doctor and provider check do not ask npm for the newest release: for a machine that should call nothing it
+ * does not have to, or has no way out. */
+export const NO_UPDATE_CHECK = 'ORRERY_NO_UPDATE_CHECK';
+export const updateCheckOff = (env: NodeJS.ProcessEnv = process.env) => env[NO_UPDATE_CHECK] === '1';
+
+/** The newest orrery-node on npm, null when npm did not answer, or 'off' when the check is turned off. */
+export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise<string | null | 'off'> {
+  if (updateCheckOff(env)) return 'off';
+  return await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
+}
+
+export function versionCheck(current: string, latest: string | null | 'off'): Check {
+  if (latest === 'off') return { ok: null, what: 'version', detail: `${current}; not checked against npm (${NO_UPDATE_CHECK}=1)` };
   if (!latest) return { ok: null, what: 'version', detail: `${current}; npm did not answer` };
   if (newer(current, latest)) return { ok: null, what: 'version', detail: `${current}; ${latest} is on npm: npx -y orrery-node@latest` };
   if (newer(latest, current)) return { ok: true, what: 'version', detail: `${current}, ahead of npm (${latest})` };

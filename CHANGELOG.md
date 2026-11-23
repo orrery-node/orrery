@@ -7,6 +7,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 ## Unreleased (in main)
 
 - **Node** · `orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node's status carries its `version`, and the console's header names it ("Provider console · orrery-node 0.1.27").
+- **Router** · `ORRERY_NO_UPDATE_CHECK=1` keeps `orrery doctor` and `orrery provider check` from asking npm for the newest release, for a machine that should call nothing it does not need: the version line says "0.1.27; not checked against npm (ORRERY_NO_UPDATE_CHECK=1)" instead. npm was the one call either makes that is not to your own RPC, router or node.
 
 ## 0.1.27 · 2026-11-23 02:03 UTC
 
