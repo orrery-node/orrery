@@ -167,6 +167,15 @@ export function feesLine(o: { lamports: number; openingRent: number | null; node
 /** The smallest amount worth a redemption's fee when the operator names none: five cents. */
 export const REDEEM_MIN_UNITS = 50_000;
 
+/** The orrery-node release this process runs, from its own package.json (the same path from src/ and from dist/). */
+export const NODE_VERSION: string | null = (() => {
+  try {
+    return (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: string }).version ?? null;
+  } catch {
+    return null;
+  }
+})();
+
 /** Whether a channel is redeemed now: it has something waiting, and either enough to be worth the fee, or the user is
  * closing it (after the grace period what was not redeemed goes back to them), or the node has never been paid out on
  * chain (its first payout goes out at once, so a new operator sees money land minutes after the first answer). */
@@ -384,6 +393,8 @@ export class ProviderNode {
       slots: this.slots ? this.slots.state : null,
       // The last payout round that failed and why, until one goes through: without it the money only looks stuck.
       payoutFailed: this.payoutFailed,
+      // Which release is running, for provider check to set beside the newest on npm.
+      version: NODE_VERSION,
     };
   }
 

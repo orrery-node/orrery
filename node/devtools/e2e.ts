@@ -2514,6 +2514,12 @@ await sleep(600); // the voucher for that answer follows it
 // Before its first payout the node says what that payout costs it: the wallet `orrery wallet new` made has no USDC account.
 const walk4 = await walkRun(['provider', 'check', '--json', '--config', walkCfg, '--rpc', RPC]);
 const walkKeyLine = ((): { ok: boolean | null; detail: string } | undefined => { try { return (JSON.parse(walk4.text.slice(walk4.text.indexOf('['))) as { what: string; ok: boolean | null; detail: string }[]).find((l) => l.what === 'node key'); } catch { return undefined; } })();
+// provider check asks the running node which release it is and sets it beside the newest on npm.
+const walkVersionLine = ((): { ok: boolean | null; detail: string } | undefined => { try { return (JSON.parse(walk4.text.slice(walk4.text.indexOf('['))) as { what: string; ok: boolean | null; detail: string }[]).find((l) => l.what === 'version'); } catch { return undefined; } })();
+const runningVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+check('provider check says which release the running node is, beside the newest on npm',
+  !!walkVersionLine && walkVersionLine.detail.startsWith(`the running node is ${runningVersion}`) && /(the latest on npm|ahead of npm|is on npm: stop it and start it again|npm did not answer)/.test(walkVersionLine.detail),
+  walkVersionLine?.detail ?? 'no version line');
 const walkUsdcBefore = walkWallet ? await conn.getAccountInfo(pda.ata(new PublicKey(walkWallet), usdc)) : null;
 // A key that holds fee money but not the rent of that account: the first payout fails, and the node says why.
 const walkNodeKey = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(join(walkHome, '.orrery', 'provider', 'node.json'), 'utf8'))));

@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Node** · `orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node's status carries its `version`.
+
 ## 0.1.27 · 2026-11-23 02:03 UTC
 
 **Privacy you can check and money you can follow: one privacy line in doctor, the router console and MCP, a quote that prices :private and a bill that shows the enclave part; nodes that add up every payout, say why a payout round was refused, and tell their webhook before the fee SOL runs out; a spend tool for agents, and opencode and aider in orrery connect.**
