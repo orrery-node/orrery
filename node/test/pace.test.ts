@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { frameMsFrom, Pacer, PACED_BLOCK, paceFrom } from '../src/provider/pace.ts';
 import { padFrame } from '../src/seal.ts';
 import { paceClause, privacySentence } from '../src/privacy.ts';
-import { appendTrip, readTrips } from '../src/spend.ts';
+import { appendTrip, pacedAnswers, readTrips } from '../src/spend.ts';
+import { dayLine } from '../src/provider/console.ts';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,5 +91,17 @@ describe('a node keeps the beat an answer went out on', () => {
     appendTrip(log, { ...base, at: 1, paced: 100 });
     appendTrip(log, { ...base, at: 2 });
     assert.deepEqual(readTrips(log).map((t) => t.paced), [100, undefined]);
+  });
+});
+
+describe('a node counts the answers it sent paced', () => {
+  it('counts paced answers in the window, and provider status says it on the day line', () => {
+    const now = 10 * 86_400_000;
+    const base = { model: 'm', provider: 'x', providerName: 'x', inputTokens: 1, outputTokens: 1, cost: '0.000001' };
+    const trips = [{ ...base, at: now - 1000, paced: 100 }, { ...base, at: now - 2000 }, { ...base, at: now - 90_000_000, paced: 100 }];
+    assert.equal(pacedAnswers(trips, 86_400_000, now), 1);
+    assert.equal(dayLine({ answers: 1312, usd: '0.038912', paced: 1040 }), '  last 24 h             1,312 answers, $0.038912 billed, 1,040 sent paced');
+    assert.equal(dayLine({ answers: 2, usd: '0.000002', paced: 0 }), '  last 24 h             2 answers, $0.000002 billed');
+    assert.equal(dayLine({ answers: 0, usd: '0.000000' }), '  last 24 h             no answers');
   });
 });

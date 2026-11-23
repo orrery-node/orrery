@@ -289,6 +289,11 @@ export function paidInside(trips: LoggedTrip[], sinceMs: number, now = Date.now(
   return { answers: recent.length, inside: recent.filter((t) => t.inside).length };
 }
 
+/** How many answers in the window went out paced (pace.ts): routers that asked for the hidden beat. */
+export function pacedAnswers(trips: LoggedTrip[], sinceMs: number, now = Date.now()): number {
+  return trips.filter((t) => now - t.at <= sinceMs && typeof t.paced === 'number').length;
+}
+
 export function sealedTrips(trips: LoggedTrip[], sinceMs: number, now = Date.now()): LoggedTrip[] {
   return trips.filter((t) => t.sealed && now - t.at <= sinceMs).sort((a, b) => b.at - a.at);
 }

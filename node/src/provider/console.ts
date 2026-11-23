@@ -71,15 +71,16 @@ export async function readOwnStatus(port: number, key: string): Promise<OwnStatu
 
 /** The node's own count of the last 24 hours, from /orrery/earnings (its log of answers), with the key; null when no
  * node answers. A restart does not reset it, as it does `answers since start`. */
-export async function readOwnDay(port: number, key: string): Promise<{ answers: number; usd: string; kinds?: { key: string; answers: number; usd: string }[] } | null> {
+export async function readOwnDay(port: number, key: string): Promise<{ answers: number; usd: string; paced?: number; kinds?: { key: string; answers: number; usd: string }[] } | null> {
   const r = await fetch(`http://127.0.0.1:${port}/orrery/earnings?since=24h`, { headers: { 'x-orrery-console-key': key } }).catch(() => null);
-  const j = r?.ok ? ((await r.json().catch(() => null)) as { total?: { answers?: number; usd?: string }; kinds?: { key: string; answers: number; usd: string }[] } | null) : null;
-  return typeof j?.total?.answers === 'number' && typeof j.total.usd === 'string' ? { answers: j.total.answers, usd: j.total.usd, ...(j.kinds ? { kinds: j.kinds } : {}) } : null;
+  const j = r?.ok ? ((await r.json().catch(() => null)) as { total?: { answers?: number; usd?: string }; paced?: number; kinds?: { key: string; answers: number; usd: string }[] } | null) : null;
+  return typeof j?.total?.answers === 'number' && typeof j.total.usd === 'string' ? { answers: j.total.answers, usd: j.total.usd, ...(typeof j.paced === 'number' ? { paced: j.paced } : {}), ...(j.kinds ? { kinds: j.kinds } : {}) } : null;
 }
 
-/** "  last 24 h             1,312 answers, $0.038912 billed", or "no answers". */
-export function dayLine(t: { answers: number; usd: string }): string {
-  return `  last 24 h             ${t.answers ? `${t.answers.toLocaleString('en-US')} answer${t.answers === 1 ? '' : 's'}, $${t.usd} billed` : 'no answers'}`;
+/** "  last 24 h             1,312 answers, $0.038912 billed, 1,040 sent paced", or "no answers". The paced count is
+ * the answers routers asked to have on the hidden beat (pace.ts); it is left out while there are none. */
+export function dayLine(t: { answers: number; usd: string; paced?: number }): string {
+  return `  last 24 h             ${t.answers ? `${t.answers.toLocaleString('en-US')} answer${t.answers === 1 ? '' : 's'}, $${t.usd} billed${t.paced ? `, ${t.paced.toLocaleString('en-US')} sent paced` : ''}` : 'no answers'}`;
 }
 
 /** "  by kind (24 h)        chat 22, $0.000418 · embeddings 6, $0.000006 · rerank 4, $0.000004"; null when the node

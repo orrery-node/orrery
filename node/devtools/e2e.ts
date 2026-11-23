@@ -1058,9 +1058,14 @@ check('orrery provider status says how much SOL the node key has for fees and ab
 // The last day from the node's own log of answers, which a restart does not reset: the count and what they billed.
 const ibDay = summarize(readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')), 'model', 86_400_000).total;
 const dayStatusLine = statusOut.split('\n').find((l) => /^\s+last 24 h\s/.test(l)) ?? '';
+// The answers in that day the node sent paced (pace.ts), counted from the same log.
+const ibPacedDay = readTrips(join(WORK, 'providers', 'ironbridge', 'served.jsonl')).filter((t) => Date.now() - t.at <= 86_400_000 && typeof (t as { paced?: number }).paced === 'number').length;
 const dayJson = (() => { try { return (JSON.parse(statusJson) as { day?: { answers: number; billed: string } | null }).day ?? null; } catch { return null; } })();
-check('orrery provider status says what the last 24 hours billed, counted from the node’s own log of answers, in words and as JSON', ibDay.answers > 0 && dayStatusLine.trim().replace(/\s{2,}/g, ' ') === `last 24 h ${ibDay.answers.toLocaleString('en-US')} answers, $${usd(ibDay.units)} billed` && dayJson?.answers === ibDay.answers && dayJson?.billed === usd(ibDay.units),
+check('orrery provider status says what the last 24 hours billed, counted from the node’s own log of answers, in words and as JSON', ibDay.answers > 0 && dayStatusLine.trim().replace(/\s{2,}/g, ' ') === `last 24 h ${ibDay.answers.toLocaleString('en-US')} answers, $${usd(ibDay.units)} billed${ibPacedDay ? `, ${ibPacedDay.toLocaleString('en-US')} sent paced` : ''}` && dayJson?.answers === ibDay.answers && dayJson?.billed === usd(ibDay.units),
   dayStatusLine.trim().replace(/\s{2,}/g, ' ') || 'no such line');
+check('orrery provider status says how many of the day’s answers went out paced, from the node’s own log, in words and as JSON',
+  ibPacedDay > 0 && dayStatusLine.includes(`, ${ibPacedDay.toLocaleString('en-US')} sent paced`) && (dayJson as { paced?: number } | null)?.paced === ibPacedDay,
+  `${ibPacedDay} paced in the log · ${dayStatusLine.trim().replace(/\s{2,}/g, ' ').slice(-40)} · json ${(dayJson as { paced?: number } | null)?.paced ?? 'none'}`);
 // Where the listing stands, in the command an operator runs most: as listed, and after editing a price in
 // provider.json without listing it again, the mistake that leaves a node with no routers and no error.
 const listingNow = statusOut.split('\n').find((l) => /^\s+listing\s/.test(l)) ?? '';
