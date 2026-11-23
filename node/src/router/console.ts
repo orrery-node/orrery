@@ -92,7 +92,7 @@ x.font="400 34px 'Instrument Sans',sans-serif";x.fillStyle=v('--fg2');x.fillText
 if(m.saved&&Number(m.saved)>0){x.font="500 44px 'Instrument Sans',sans-serif";x.fillStyle=v('--green');x.fillText('$'+m.saved+' saved by holding $OREY',P,P+400);}
 x.font="400 22px 'Geist Mono',monospace";x.fillStyle=v('--fg3');x.fillText("from my router's own log, on my machine",P,H-P);x.textAlign='right';x.fillText('0% taken in between',W-P,H-P);x.textAlign='left';}
 document.getElementById('cardsave').onclick=()=>document.getElementById('card').toBlob(b=>{if(!b)return;const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='orrery-'+(cardMonth||'month')+'.png';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);});
-async function tick(){try{const s=await (await fetch('/orrery/status')).json();
+async function tick(){try{const s=await (await fetch('/orrery/status')).json();const hv=document.querySelector('.here');if(hv&&s.version)hv.textContent='Router console · orrery-node '+s.version;
 document.getElementById('base').textContent='http://127.0.0.1:'+location.port+'/v1';
 document.getElementById('sum').innerHTML='<div><b>'+esc(s.privateOnly?'private only':s.route)+'</b><span class=cap>'+(s.privateOnly?'every request sealed':'default route')+'</span></div><div><b class=go>$'+esc(s.spentToday)+'</b><span class=cap>spent today</span></div><div><b>'+s.providers.length+'</b><span class=cap>providers</span></div><div><b>'+s.channels.length+'</b><span class=cap>open channels</span></div>';
 const st=document.getElementById('standing'),sl=s.holder&&s.holder.line?s.holder.line:'';st.textContent=sl;st.hidden=!sl;

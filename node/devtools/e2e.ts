@@ -2871,6 +2871,14 @@ check('a new operator with no Solana tools goes from nothing to a paid answer wi
   // The router says so where its user looks: /orrery/status and its console, with the seconds left.
   const fullSeen = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { address: string; full?: number | null }[] }).providers.find((p) => p.address === lanternAddr)?.full ?? null;
   const routerPageNow = await (await fetch(`${ROUTER}/`)).text();
+  // The router console's header names the release the router runs, from its status, as the node's console does.
+  {
+    const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+    const routerVersion = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { version?: string | null }).version;
+    check('the router console’s header names the release the router runs, from its status',
+      routerVersion === pkgVersion && routerPageNow.includes("hv.textContent='Router console · orrery-node '+s.version"),
+      `status says ${routerVersion ?? 'no version'}; package ${pkgVersion}`);
+  }
   check('the router’s status and console say which node said it was full and for how many seconds more it is asked after the others',
     typeof fullSeen === 'number' && fullSeen > 0 && fullSeen <= 30 && routerPageNow.includes("'<span class=sig>full · asked after the others for '+p.full+' s</span>'"),
     `Lantern One-Slot: ${fullSeen === null ? 'not shown as full' : `full, ${fullSeen} s left`}`);
