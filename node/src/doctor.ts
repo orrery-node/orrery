@@ -8,6 +8,7 @@ import { ACCOUNT, decodeChannel, decodeConfig, pda, programId, TEE_KINDS } from 
 import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
+import { PACKAGE_VERSION } from './version.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -81,7 +82,7 @@ export function keptLine(dir: string): Check | null {
   return { ok: null, what: 'kept here', detail: `${dir}: ${parts.join(', ')} · models, token counts, prices and timings, never a prompt or an answer` };
 }
 
-export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string; routerHome?: string }): Promise<Check[]> {
+export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicKey; walletFile?: boolean; session?: PublicKey; router: string; deposit: bigint; allowDev?: boolean; version?: string; pins?: string; routerHome?: string; installed?: string | null }): Promise<Check[]> {
   const out: Check[] = [];
   if (o.version) {
     out.push(versionCheck(o.version, await latestOnNpm()));
@@ -169,8 +170,11 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[]; holder?: { line?: string | null } | null } | null;
-  out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[]; holder?: { line?: string | null } | null } | null;
+  out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
+  // A router started before an update keeps the old code until it is started again: npm install changes the files only.
+  const behind = routerBehind(status?.version, o.installed === undefined ? PACKAGE_VERSION : o.installed);
+  if (behind) out.push({ ok: null, what: '  release', detail: behind });
   // Where the router's wallet stands on holder prices, as its console says it.
   if (status?.holder?.line) out.push({ ok: null, what: '  holder price', detail: status.holder.line });
   // Each agent's day on this router: its limit, what it spent and has left, and the models it is kept to.
@@ -227,6 +231,12 @@ export const updateCheckOff = (env: NodeJS.ProcessEnv = process.env) => env[NO_U
 export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise<string | null | 'off'> {
   if (updateCheckOff(env)) return 'off';
   return await fetchNode('https://registry.npmjs.org/orrery-node/latest', { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).then((j) => (j as { version?: string } | null)?.version ?? null).catch(() => null);
+}
+
+/** A running router older than the release installed where doctor runs. Asks npm nothing. */
+export function routerBehind(running: string | null | undefined, here: string | null): string | null {
+  if (!running || !here || !newer(running, here)) return null;
+  return `${running} is running; ${here} is installed here: stop the router and start it again to run ${here}`;
 }
 
 export function versionCheck(current: string, latest: string | null | 'off'): Check {

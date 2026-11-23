@@ -4,6 +4,7 @@
 import { rpcConnection } from '../chain/connect.ts';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { PACKAGE_VERSION } from '../version.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { decodeChannel, decodeProvider, ins, pda, programId, type ChannelAccount } from '../chain/program.ts';
@@ -168,13 +169,7 @@ export function feesLine(o: { lamports: number; openingRent: number | null; node
 export const REDEEM_MIN_UNITS = 50_000;
 
 /** The orrery-node release this process runs, from its own package.json (the same path from src/ and from dist/). */
-export const NODE_VERSION: string | null = (() => {
-  try {
-    return (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: string }).version ?? null;
-  } catch {
-    return null;
-  }
-})();
+export const NODE_VERSION: string | null = PACKAGE_VERSION;
 
 /** Whether a channel is redeemed now: it has something waiting, and either enough to be worth the fee, or the user is
  * closing it (after the grace period what was not redeemed goes back to them), or the node has never been paid out on

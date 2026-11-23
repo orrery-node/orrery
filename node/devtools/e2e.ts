@@ -675,6 +675,20 @@ check('orrery provider init finds a model server and writes provider.json', init
 const { doctor } = await import('../src/doctor.ts');
 const doc = await doctor({ rpc: RPC, mint: usdc, wallet: user.publicKey, router: ROUTER, deposit: USD });
 const docBad = doc.filter((l) => l.ok === false).map((l) => l.what.trim());
+// orrery doctor names the release the running router runs, from the router itself, and says when it is older than the
+// one installed where doctor runs (a stand-in router that says it is 0.1.0, beside the real one).
+{
+  const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+  const routerDoc = doc.find((l) => l.what === 'router')?.detail ?? '';
+  const oldRouter = createHttpServer((req, res) => (req.url === '/orrery/status' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ version: '0.1.0', route: 'auto', channels: [] })) : res.writeHead(404).end())).listen(0, '127.0.0.1');
+  await new Promise((r) => oldRouter.once('listening', r));
+  const oldDoc = await doctor({ rpc: RPC, mint: usdc, router: `http://127.0.0.1:${(oldRouter.address() as { port: number }).port}`, deposit: USD });
+  oldRouter.close();
+  const oldRelease = oldDoc.find((l) => l.what.trim() === 'release')?.detail ?? '';
+  check('orrery doctor names the release the running router runs, and says when it is older than the one installed here',
+    routerDoc.includes(`, orrery-node ${pkgVersion}, route `) && !doc.some((l) => l.what.trim() === 'release') && oldRelease === `0.1.0 is running; ${pkgVersion} is installed here: stop the router and start it again to run ${pkgVersion}`,
+    `${routerDoc.replace(/http:\/\/127\.0\.0\.1:\d+/, 'http://127.0.0.1:<port>')} · a 0.1.0 router: ${oldRelease || 'no release line'}`);
+}
 // orrery doctor says where the router's wallet stands on holder prices, the same line as its console.
 {
   const holderDoc = doc.find((l) => l.what.trim() === 'holder price');
