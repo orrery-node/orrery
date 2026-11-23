@@ -2337,6 +2337,14 @@ check('a node with a notify webhook is told once that its key is running low on 
   lowSaid.length === 1 && lowNotices.length === 1 && lowNotices[0].body.text === `${providerSpecs[1].name}: ${lowSaid[0]}` && lowNotices[0].body.lowFees?.nodeKey === iron.node.publicKey.toBase58()
   && (lowNotices[0].body.lowFees?.payoutsLeft ?? -1) > 0 && lowSaid[0].includes(`about ${lowNotices[0].body.lowFees?.payoutsLeft} more payouts`),
   `${lowNotices.length} notice${lowNotices.length === 1 ? '' : 's'} for 2 payouts under the line${lowNotices[0]?.body.lowFees ? `: ${lowNotices[0].body.lowFees.sol} SOL, about ${lowNotices[0].body.lowFees.payoutsLeft} payouts left` : ''}`);
+// Kept for the media folder: what Ironbridge's console reads at this point (its status and the two tables it asks for),
+// so a picture of the real console page can be drawn from real rehearsal numbers.
+{
+  const k = { headers: { 'x-orrery-console-key': ibKey } };
+  const base = `http://127.0.0.1:${providerSpecs[1].port}`;
+  const [earnings, books] = await Promise.all([fetch(`${base}/orrery/earnings?since=24h`, k).then((r) => r.json()).catch(() => null), fetch(`${base}/orrery/books?since=7d`, k).then((r) => r.json()).catch(() => null)]);
+  writeFileSync(join(WORK, 'console-iron.json'), JSON.stringify({ status: iron.status(), earnings, books }, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 1));
+}
 check('a node whose payout round failed says so on its status and console, in the chain\'s words with what to do, until a round goes through',
   !!brokeStatus && /send a little SOL/.test(brokeStatus.said) && brokeStatus.said.includes(iron.node.publicKey.toBase58()) && Date.now() - brokeStatus.at < 600_000
   && ironConsole.includes('<p class="lede" id="failed" hidden></p>') && ironConsole.includes('const payoutFailedSentence=') && clearedStatus === null,
