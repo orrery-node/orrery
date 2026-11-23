@@ -13,6 +13,7 @@ export const UNRELEASED: Change[] = [
   { who: 'provider', text: 'The node console says under the day\'s earnings how many answers went out paced: "23 of the 40 answers went out on the hidden beat, one 4 KiB frame a beat, as the routers that sent them asked."' },
   { who: 'everyone', text: 'A node or a router started on a port that is already taken (most often the same one, still running from an earlier start) says so in words and what to do, and exits 1, instead of printing a Node stack trace: "port 7288 on 0.0.0.0 is already in use, most likely by this node from an earlier start …". A node starts its payout rounds and timers only once its port is held.' },
   { who: 'provider', text: 'A provider command pointed at a provider.json that is not there says so and how to make one ("there is no provider.json here (looked at …). Write one with: orrery provider init"), and one a hand edit broke says where ("provider.json is not valid JSON: … (line 3 column 19). Fix it there, or write a fresh one with: orrery provider init --force"), instead of Node\'s ENOENT or the parser\'s message on its own.' },
+  { who: 'router', text: 'A `--wallet` file that is not there is said with how to make one ("there is no keypair file at …. Make a wallet with: orrery wallet new, or pass --wallet with a Solana keypair file you already have"), and one that is not a keypair says what one looks like ("a JSON list of 64 numbers, as solana-keygen and orrery wallet new write it"), instead of ENOENT or "bad secret key size".' },
 ];
 
 export const RELEASES: Release[] = [

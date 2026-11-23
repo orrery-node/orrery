@@ -2639,6 +2639,15 @@ check('a provider command with a missing or broken provider.json says which and 
   walkNoCfg.code === 1 && walkNoCfg.text.includes('there is no ') && walkNoCfg.text.includes('Write one with: ') && !walkNoCfg.text.includes('ENOENT')
   && walkBadCfg.code === 1 && walkBadCfg.text.includes('broken-provider.json is not valid JSON: ') && walkBadCfg.text.includes('provider init --force') && !/\n\s+at /.test(walkNoCfg.text + walkBadCfg.text),
   `${walkNoCfg.text.trim().split('\n').at(-1)?.replace(walkHome, '<home>').slice(0, 90) ?? ''} · ${walkBadCfg.text.trim().split('\n').at(-1)?.slice(0, 100) ?? ''}`);
+// A wallet file that is not there, or is not a keypair, is said with what to do, and the command exits 1.
+const brokenWallet = join(walkHome, 'not-a-wallet.json');
+writeFileSync(brokenWallet, JSON.stringify({ secretKey: 'nope' }));
+const walkNoWallet = await walkRun(['doctor', '--wallet', join(walkHome, 'no-such-wallet.json'), '--rpc', RPC, '--mint', usdc.toBase58(), '--router', 'http://127.0.0.1:17996']);
+const walkBadWallet = await walkRun(['wallet', 'address', '--wallet', brokenWallet]);
+check('a missing or malformed wallet file is said with what to do, not ENOENT or a key error, and exits 1',
+  walkNoWallet.code === 1 && walkNoWallet.text.includes('there is no keypair file at ') && walkNoWallet.text.includes('wallet new') && !walkNoWallet.text.includes('ENOENT')
+  && walkBadWallet.code === 1 && walkBadWallet.text.includes('is not a Solana keypair file: one is a JSON list of 64 numbers'),
+  `${walkNoWallet.text.trim().split('\n').at(-1)?.replace(walkHome, '<home>').slice(0, 80) ?? ''} · ${walkBadWallet.text.trim().split('\n').at(-1)?.replace(walkHome, '<home>').slice(0, 80) ?? ''}`);
 // Started a second time while the first is still running, the node says the port is taken and what to do, in words
 // and not as a stack trace, and exits.
 const walkTwice = await walkRun(['provider', 'start', '--config', walkCfg, '--rpc', RPC]);

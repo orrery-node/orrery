@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { Keypair } from '@solana/web3.js';
-import { HOME_DIR } from './brand.ts';
+import { CLI, HOME_DIR } from './brand.ts';
 
 const PKCS8_ED25519 = Buffer.from('302e020100300506032b657004220420', 'hex');
 const SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex');
@@ -17,8 +17,28 @@ export function writePrivate(path: string, body: string): void {
   writeFileSync(path, body, { mode: 0o600 });
 }
 
+/** A Solana keypair file: a JSON list of the 64 numbers of a secret key, as solana-keygen and `orrery wallet new`
+ * write it. A missing file, or one that is not such a list, is said with what to do instead of ENOENT or a parser or
+ * key error on its own. */
 export function loadKeypair(path: string): Keypair {
-  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, 'utf8'))));
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`there is no keypair file at ${path}. Make a wallet with: ${CLI} wallet new, or pass --wallet with a Solana keypair file you already have`);
+    if ((e as NodeJS.ErrnoException).code === 'EISDIR') throw new Error(`${path} is a folder; --wallet takes the keypair file itself`);
+    throw e;
+  }
+  let list: unknown;
+  try {
+    list = JSON.parse(text);
+  } catch {
+    list = null;
+  }
+  if (!Array.isArray(list) || list.length !== 64 || !list.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    throw new Error(`${path} is not a Solana keypair file: one is a JSON list of 64 numbers, as solana-keygen and ${CLI} wallet new write it`);
+  }
+  return Keypair.fromSecretKey(Uint8Array.from(list as number[]));
 }
 
 export function loadOrCreateKeypair(path: string): Keypair {

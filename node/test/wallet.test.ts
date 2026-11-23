@@ -50,4 +50,16 @@ describe('orrery wallet new', () => {
     assert.ok(!/router --wallet|doctor --wallet/.test(said), said);
     assert.match(said, /\nthen {2}orrery provider init {3}\(writes the node’s config with this wallet in it\)$/);
   });
+
+  it('a keypair file that is missing, or is not a list of 64 numbers, is said with what to do', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orrery-kp-'));
+    const gone = join(dir, 'gone.json');
+    assert.throws(() => loadKeypair(gone), (e: Error) => e.message === `there is no keypair file at ${gone}. Make a wallet with: orrery wallet new, or pass --wallet with a Solana keypair file you already have`);
+    for (const [name, text] of [['notjson.json', 'not json'], ['short.json', '[1,2,3]'], ['object.json', '{"secretKey": []}']] as const) {
+      const p = join(dir, name);
+      writeFileSync(p, text);
+      assert.throws(() => loadKeypair(p), (e: Error) => e.message === `${p} is not a Solana keypair file: one is a JSON list of 64 numbers, as solana-keygen and orrery wallet new write it`, name);
+    }
+    assert.throws(() => loadKeypair(dir), (e: Error) => e.message === `${dir} is a folder; --wallet takes the keypair file itself`);
+  });
 });
