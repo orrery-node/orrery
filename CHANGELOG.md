@@ -14,6 +14,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · A provider command pointed at a provider.json that is not there says so and how to make one ("there is no provider.json here (looked at …). Write one with: orrery provider init"), and one a hand edit broke says where ("provider.json is not valid JSON: … (line 3 column 19). Fix it there, or write a fresh one with: orrery provider init --force"), instead of Node's ENOENT or the parser's message on its own.
 - **Router** · A `--wallet` file that is not there is said with how to make one ("there is no keypair file at …. Make a wallet with: orrery wallet new, or pass --wallet with a Solana keypair file you already have"), and one that is not a keypair says what one looks like ("a JSON list of 64 numbers, as solana-keygen and orrery wallet new write it"), instead of ENOENT or "bad secret key size".
 - **Node** · `orrery provider init --upstream` given a model server's address without `/v1` (Ollama on :11434, vLLM on :8000) finds it under `/v1` and writes that address, instead of "no model server answered". When neither answers, it says both places it looked.
+- **Everyone** · `orrery --version` (and `-v`, `orrery version`) prints the release in one line ("orrery-node 0.1.28"), for a script or a bug report, instead of the whole help with exit 1.
 
 ## 0.1.28 · 2026-11-23 14:26 UTC
 

@@ -15,6 +15,7 @@ import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { frameMsFrom } from './provider/pace.ts';
 import { readProviderConfig } from './provider/config-file.ts';
+import { PACKAGE_VERSION } from './version.ts';
 import { feesLine, FEE_FLOOR_LAMPORTS, NODE_VERSION, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/policy.ts';
@@ -135,6 +136,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} provider compare --config provider.json [--json]   your prices next to every other listing of the same models
 
   --rpc <url>   Solana RPC (or ORRERY_RPC_URL)     --mint <address>  settlement mint (default USDC)
+  --version     which release this is (orrery-node 0.1.x)
 `;
 
 async function router() {
@@ -621,6 +623,8 @@ async function main() {
   // After `--` the arguments are the client's (orrery run claude -- --help asks Claude Code, not this CLI).
   const ownArgs = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv;
   if (!cmd || cmd === 'help' || ownArgs.includes('--help')) return console.log(HELP);
+  // The release this command is, one line, for a script or a bug report: what `npm install -g` put here.
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') return console.log(`orrery-node ${PACKAGE_VERSION ?? 'unknown'}`);
   // --proxy (or ORRERY_PROXY) sends every request this command makes to a node or to the RPC through that proxy,
   // never around it.
   const proxyAt = ownArgs.indexOf('--proxy');

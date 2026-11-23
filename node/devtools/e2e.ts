@@ -2653,6 +2653,14 @@ check('a provider command with a missing or broken provider.json says which and 
     noV1.code === 0 && wrote === `${base}/v1` && noV1.text.includes(`found your server at ${base}/v1 with 1 model`),
     `exit ${noV1.code} · wrote ${wrote?.replace(base, '<server>') ?? 'nothing'} · ${(noV1.text.split('\n').find((l) => l.startsWith('found') || l.startsWith('no model')) ?? '').replace(base, '<server>').slice(0, 90)}`);
 }
+// orrery --version prints the release, one line, and nothing else.
+{
+  const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+  const asked = await Promise.all([walkRun(['--version']), walkRun(['-v']), walkRun(['version'])]);
+  check('orrery --version (and -v, version) prints the release in one line, not the help',
+    asked.every((a) => a.code === 0 && a.text.trim() === `orrery-node ${pkgVersion}`),
+    asked.map((a) => `${a.code}: ${a.text.trim().split('\n')[0].slice(0, 40)}${a.text.trim().includes('\n') ? ' …' : ''}`).join(' · '));
+}
 // A wallet file that is not there, or is not a keypair, is said with what to do, and the command exits 1.
 const brokenWallet = join(walkHome, 'not-a-wallet.json');
 writeFileSync(brokenWallet, JSON.stringify({ secretKey: 'nope' }));
