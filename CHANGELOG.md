@@ -11,6 +11,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Node** · `orrery provider status` says on its day line how many of the day's answers went out paced ("last 24 h  40 answers, $0.020123 billed, 23 sent paced"), from the node's own log; `--json` has `day.paced`, and the console's earnings read carries `paced`.
 - **Node** · The node console says under the day's earnings how many answers went out paced: "23 of the 40 answers went out on the hidden beat, one 4 KiB frame a beat, as the routers that sent them asked."
 - **Everyone** · A node or a router started on a port that is already taken (most often the same one, still running from an earlier start) says so in words and what to do, and exits 1, instead of printing a Node stack trace: "port 7288 on 0.0.0.0 is already in use, most likely by this node from an earlier start …". A node starts its payout rounds and timers only once its port is held.
+- **Node** · A provider command pointed at a provider.json that is not there says so and how to make one ("there is no provider.json here (looked at …). Write one with: orrery provider init"), and one a hand edit broke says where ("provider.json is not valid JSON: … (line 3 column 19). Fix it there, or write a fresh one with: orrery provider init --force"), instead of Node's ENOENT or the parser's message on its own.
 
 ## 0.1.28 · 2026-11-23 14:26 UTC
 

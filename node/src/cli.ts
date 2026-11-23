@@ -14,6 +14,7 @@ import { newWallet, walletNextSteps } from './wallet.ts';
 import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { frameMsFrom } from './provider/pace.ts';
+import { readProviderConfig } from './provider/config-file.ts';
 import { feesLine, FEE_FLOOR_LAMPORTS, NODE_VERSION, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/policy.ts';
@@ -281,7 +282,7 @@ async function listChannels() {
 async function provider(sub: string) {
   const cfgPath = flag('config');
   if (!cfgPath) throw new Error('--config <provider.json> is required');
-  const cfg = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
+  const cfg = readProviderConfig(expand(cfgPath), cfgPath, CLI);
   cfg.rpcUrl = flag('rpc', process.env.ORRERY_RPC_URL ?? cfg.rpcUrl) ?? cfg.rpcUrl;
   cfg.listen = Number(flag('port', process.env.PORT ?? '')) || cfg.listen || PROVIDER_PORT;
   // Where the model server is, when that differs from the config: a node in a container reaches one on its host this way.
@@ -289,7 +290,7 @@ async function provider(sub: string) {
   if (sub === 'compose') {
     // A docker-compose file for this node: the official Node image running this package, nothing built or hosted by us.
     const out = flag('out', 'docker-compose.yml')!;
-    const raw = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
+    const raw = readProviderConfig(expand(cfgPath), cfgPath, CLI);
     const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string;
     // The package the container runs: this version from npm, or what --package names (a pinned version, a packed file).
     const pkg = flag('package', `orrery-node@${version}`)!;
@@ -326,7 +327,7 @@ async function provider(sub: string) {
     const write = has('write') && rows.some((r) => r.changed);
     if (write) {
       // Only the prices change in the file; everything else is written back as it was read.
-      const raw = JSON.parse(readFileSync(expand(cfgPath), 'utf8')) as ProviderConfig;
+      const raw = readProviderConfig(expand(cfgPath), cfgPath, CLI);
       for (const r of rows) if (r.changed) raw.models.find((m) => m.id === r.model)!.price = r.to;
       writeFileSync(expand(cfgPath), `${JSON.stringify(raw, null, 2)}\n`);
     }

@@ -2629,6 +2629,16 @@ walkNode.stderr!.on('data', (c) => (walkStarted += c));
 for (let i = 0; i < 150 && !/\n(next|ready)[: ]/.test(`\n${walkStarted}`); i++) await sleep(200);
 const walkStartMs = Date.now() - walkT0;
 const walkSaid = walkStarted.split('\n').find((l) => /^(next|ready)/.test(l)) ?? 'started without a word about what is left';
+// A provider command pointed at a file that is not there, or at one a hand edit broke, says so and what to do, not
+// Node's ENOENT or the JSON parser on its own, and exits 1.
+const brokenCfg = join(walkHome, 'broken-provider.json');
+writeFileSync(brokenCfg, readFileSync(walkCfg, 'utf8').replace(/"listen": (\d+)/, '"listen": $1,,'));
+const walkNoCfg = await walkRun(['provider', 'status', '--config', join(walkHome, 'no-such-provider.json')]);
+const walkBadCfg = await walkRun(['provider', 'status', '--config', brokenCfg]);
+check('a provider command with a missing or broken provider.json says which and what to do, and exits 1',
+  walkNoCfg.code === 1 && walkNoCfg.text.includes('there is no ') && walkNoCfg.text.includes('Write one with: ') && !walkNoCfg.text.includes('ENOENT')
+  && walkBadCfg.code === 1 && walkBadCfg.text.includes('broken-provider.json is not valid JSON: ') && walkBadCfg.text.includes('provider init --force') && !/\n\s+at /.test(walkNoCfg.text + walkBadCfg.text),
+  `${walkNoCfg.text.trim().split('\n').at(-1)?.replace(walkHome, '<home>').slice(0, 90) ?? ''} · ${walkBadCfg.text.trim().split('\n').at(-1)?.slice(0, 100) ?? ''}`);
 // Started a second time while the first is still running, the node says the port is taken and what to do, in words
 // and not as a stack trace, and exits.
 const walkTwice = await walkRun(['provider', 'start', '--config', walkCfg, '--rpc', RPC]);
