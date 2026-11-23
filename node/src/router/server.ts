@@ -14,6 +14,7 @@ import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
+import { listenOn } from '../ports.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
 import { away, nextWait, patienceFrom } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
@@ -245,7 +246,7 @@ export class Router {
     this.burnTimer = setInterval(() => void this.o.registry.checkBurnsFromConfig().catch(() => undefined), 5 * 60_000);
     this.healthTimer = setInterval(() => void this.o.registry.checkHealth().catch(() => undefined), (this.o.healthSecs ?? 30) * 1000);
     this.server = createServer((req, res) => void this.handle(req, res));
-    await new Promise<void>((r) => this.server!.listen(this.o.port, this.o.host ?? '127.0.0.1', () => r()));
+    await listenOn(this.server, this.o.port, this.o.host ?? '127.0.0.1', 'router');
     return this.server;
   }
 

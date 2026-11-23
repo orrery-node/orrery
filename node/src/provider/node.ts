@@ -21,6 +21,7 @@ import { TICKER } from '../brand.ts';
 import { costOf, estimateInputTokens, usd } from '../pricing.ts';
 import { encrypt, enclaveKeyFromSecret, insideMessage, newEnclaveKey, openRequest, padFrame, wireMessage, type EnclaveKey } from '../seal.ts';
 import { PACED_BLOCK, Pacer, paceFrom } from './pace.ts';
+import { listenOn } from '../ports.ts';
 import { readSse, sseFrame, fetchWithTimeout } from '../sse.ts';
 import { nodeTimingHeader } from '../router/timing.ts';
 import { nextUsageHash, ZERO_HASH, type UsageRecord } from '../usage.ts';
@@ -979,28 +980,28 @@ export class ProviderNode {
     });
   }
 
-  listen(): Promise<Server> {
-    return new Promise((resolve) => {
-      this.server = createServer((req, res) => void this.handle(req, res));
-      this.server.listen(this.cfg.listen, this.cfg.host ?? '0.0.0.0', () => resolve(this.server!));
-      // What is waiting to be redeemed exists only in the ledger file: say so once when the folder may not stay.
-      const warning = folderWarning(this.dir, this.status().waiting);
-      if (warning) this.log(warning);
-      void this.feeHeadsUp();
-      // Whether the next payout is this node's first: the status and console say when money goes out from the start.
-      void this.paidOutBefore();
-      const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
-      this.timer = setInterval(() => void this.redeemRound().then(() => this.burnDue()).catch(() => undefined), every);
-      // Three minutes in, an operator watching this log learns whether anything outside has found the node yet.
-      this.quietTimer = setTimeout(() => {
-        if (!this.reach.ever) this.log(quietNote(this.reach.read().upMs));
-      }, 180_000);
-      this.quietTimer.unref?.();
-      // Just after midnight UTC, the day that ended in one line: billed, paid out, what the wallet then held.
-      this.booksDay = utcDay(Date.now());
-      this.booksTimer = setInterval(() => this.booksTick(), 60_000);
-      this.booksTimer.unref?.();
-    });
+  async listen(): Promise<Server> {
+    this.server = createServer((req, res) => void this.handle(req, res));
+    // A port already in use is said in words (ports.ts), not as Node's stack trace, and nothing below starts.
+    await listenOn(this.server, this.cfg.listen, this.cfg.host ?? '0.0.0.0', 'node');
+    // What is waiting to be redeemed exists only in the ledger file: say so once when the folder may not stay.
+    const warning = folderWarning(this.dir, this.status().waiting);
+    if (warning) this.log(warning);
+    void this.feeHeadsUp();
+    // Whether the next payout is this node's first: the status and console say when money goes out from the start.
+    void this.paidOutBefore();
+    const every = (this.cfg.redeem?.everySecs ?? 60) * 1000;
+    this.timer = setInterval(() => void this.redeemRound().then(() => this.burnDue()).catch(() => undefined), every);
+    // Three minutes in, an operator watching this log learns whether anything outside has found the node yet.
+    this.quietTimer = setTimeout(() => {
+      if (!this.reach.ever) this.log(quietNote(this.reach.read().upMs));
+    }, 180_000);
+    this.quietTimer.unref?.();
+    // Just after midnight UTC, the day that ended in one line: billed, paid out, what the wallet then held.
+    this.booksDay = utcDay(Date.now());
+    this.booksTimer = setInterval(() => this.booksTick(), 60_000);
+    this.booksTimer.unref?.();
+    return this.server;
   }
 
   /** Whether this node's listing has been paid out on chain at least once. Read until it has, then remembered. */

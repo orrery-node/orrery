@@ -2629,6 +2629,12 @@ walkNode.stderr!.on('data', (c) => (walkStarted += c));
 for (let i = 0; i < 150 && !/\n(next|ready)[: ]/.test(`\n${walkStarted}`); i++) await sleep(200);
 const walkStartMs = Date.now() - walkT0;
 const walkSaid = walkStarted.split('\n').find((l) => /^(next|ready)/.test(l)) ?? 'started without a word about what is left';
+// Started a second time while the first is still running, the node says the port is taken and what to do, in words
+// and not as a stack trace, and exits.
+const walkTwice = await walkRun(['provider', 'start', '--config', walkCfg, '--rpc', RPC]);
+check('a node started twice says its port is already in use and what to do, not a stack trace, and exits 1',
+  walkTwice.code === 1 && walkTwice.text.includes('port 17288 on 0.0.0.0 is already in use, most likely by this node from an earlier start') && !/\n\s+at /.test(walkTwice.text),
+  `exit ${walkTwice.code} · ${walkTwice.text.trim().split('\n').at(-1)?.slice(0, 120) ?? 'nothing said'}`);
 // A router that has never heard of this node reads the chain again and is asked for a model only this node lists.
 await registry.refresh();
 const walkListing = walkWallet ? pda.provider(new PublicKey(walkWallet)).toBase58() : '';
