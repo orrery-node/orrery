@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { answeredText, loadWatched, recordLines, saveWatched, watchedText } from '../src/router/watched.ts';
+import { answeredText, loadWatched, pacedText, recordLines, saveWatched, watchedText } from '../src/router/watched.ts';
 import { Stats } from '../src/router/policy.ts';
 
 describe('a router’s record on disk', () => {
@@ -102,5 +102,14 @@ describe('the count of answered requests, kept with the record on disk', () => {
       'started answering in 731 ms (median of 5 answers in the last 24 h)',
       'every bill was within its listed prices (5 answers in the last 24 h)',
     ]);
+  });
+
+  it('says whether the node paced the last sealed answer it was asked to pace, and nothing before it was asked', () => {
+    assert.equal(pacedText(true), 'sent its last sealed answer paced: one 4 KiB frame a beat');
+    assert.equal(pacedText(false), 'sent its last sealed answer unpaced, a chunk per frame');
+    assert.equal(pacedText(null), '');
+    assert.equal(pacedText(undefined), '');
+    assert.deepEqual(recordLines({ watched: null, observed: { ok: 3, fail: 0 }, speed: null, paced: true }).at(-1), 'sent its last sealed answer paced: one 4 KiB frame a beat');
+    assert.deepEqual(recordLines({ watched: null, observed: { ok: 0, fail: 0 }, speed: null, paced: null }), []);
   });
 });

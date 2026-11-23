@@ -80,6 +80,14 @@ export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & {
 /** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when
  * this router checked, what it did with the requests it was sent (the record on disk, else the counts since start),
  * and how fast it started answering. Empty before there is anything to say. */
-export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined; bills?: { checked: number; over: number } | null }, now = Date.now()): string[] {
-  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : '', o.bills && o.bills.checked > 0 ? billsText(o.bills) : ''].filter((l) => l.length > 0);
+export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined; bills?: { checked: number; over: number } | null; paced?: boolean | null }, now = Date.now()): string[] {
+  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : '', o.bills && o.bills.checked > 0 ? billsText(o.bills) : '', pacedText(o.paced)].filter((l) => l.length > 0);
+}
+
+/** Whether the node paced the last sealed answer this router asked it to pace (pace.ts): what was on the wire, seen
+ * by this router. Empty before it has been asked. */
+export function pacedText(paced: boolean | null | undefined): string {
+  if (paced === true) return 'sent its last sealed answer paced: one 4 KiB frame a beat';
+  if (paced === false) return 'sent its last sealed answer unpaced, a chunk per frame';
+  return '';
 }

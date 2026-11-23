@@ -425,7 +425,9 @@ export class Router {
       speed: speedBy.get(e.address) ?? null,
       // Its bills in the last 24 hours against the prices it listed on chain: how many, and how many were above them.
       bills: billsBy.get(e.address) ?? null,
-      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address) }),
+      // Whether it paced the last sealed answer it was asked to pace; null before it was asked.
+      paced: this.pacedBy.get(e.address) ?? null,
+      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address), paced: this.pacedBy.get(e.address) }),
       // Whether its last health check was answered (null before the first check), and since when it has not been.
       answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
       // Seconds it is still asked after the others, having said every slot was answering; null when it has not.

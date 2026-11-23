@@ -2135,6 +2135,13 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     paced === '100' && !unpacedAsk?.headers?.['x-orrery-frame-ms'] && pacedLengths.length >= 2 && new Set(pacedLengths).size === 1 && pacedLengths[0] >= 4096 && pacedLengths[0] < 4096 + 64
     && (trip?.outputTokens ?? 0) > pacedLengths.length && frameLengths.length > pacedLengths.length,
     `paced (${paced || 'not asked'} ms): ${pacedLengths.length} frames of ${[...new Set(pacedLengths)].join(', ')} bytes for ${trip?.outputTokens ?? '?'} output tokens · unpaced: ${frameLengths.length} frames of ${[...new Set(frameLengths)].join(', ')} bytes`);
+  // And each node's record on the router says whether it paced the last sealed answer it was asked to pace.
+  const recSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { address: string; paced?: boolean | null; record?: string[] }[] }).providers;
+  const ibRec = recSt.find((p) => p.address === nodes[1].pda.toBase58());
+  check('the router’s record of a node says whether it paced the last sealed answer it was asked to pace, and says nothing of a node never asked',
+    ibRec?.paced === true && !!ibRec.record?.includes('sent its last sealed answer paced: one 4 KiB frame a beat')
+    && recSt.every((p) => (p.paced === null || p.paced === undefined) === !(p.record ?? []).some((l) => l.startsWith('sent its last sealed answer'))),
+    `Ironbridge: paced ${ibRec?.paced ?? 'missing'} · ${(ibRec?.record ?? []).find((l) => l.startsWith('sent its last')) ?? 'no paced line'} · ${recSt.filter((p) => p.paced === true).length} of ${recSt.length} nodes paced`);
   // The router's privacy line says it too, from what came back: the beat it asks for, and how many nodes paced.
   const paceSt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { privacy?: { line: string; pace?: { ms: number; paced: number; asked: number } } | null }).privacy;
   check('the router’s privacy line says sealed answers are asked for 100 ms frames, and how many nodes that answered sealed paced them',
