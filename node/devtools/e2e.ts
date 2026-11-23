@@ -1323,6 +1323,14 @@ const ibRows = payMod.payoutRows?.((nodes[1].status() as { payouts?: unknown }).
 const ibLastTx = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl')).at(-1)?.tx ?? 'no payout kept';
 check('the node’s console lists each payout to the wallet with its transaction, and the last day’s total', ibPage.includes('id="payouts"') && ibPage.includes('const payoutRows=') && ibRows.includes(`title="${ibLastTx}"`) && ibRows.includes('<td>last 24 h</td>'),
   ibRows.replace(/title="[^"]+"/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) || 'no rows');
+// The console's header names the release the node runs, from its status, so an operator sees it without a command.
+{
+  const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;
+  const ibVersion = (nodes[1].status() as { version?: string | null }).version;
+  check('a node’s console header names the release it runs, from its status',
+    ibVersion === pkgVersion && ibPage.includes("hv.textContent='Provider console · orrery-node '+s.version"),
+    `status says ${ibVersion ?? 'no version'}; package ${pkgVersion}`);
+}
 // And everything it kept, added up: what reached the wallet in all, how many payouts, since the first.
 {
   const ibKept = readPayouts(join(WORK, 'providers', 'ironbridge', 'payouts.jsonl'));

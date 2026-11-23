@@ -7,7 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
-  { who: 'provider', text: '`orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node\'s status carries its `version`.' },
+  { who: 'provider', text: '`orrery provider check` ends with which release the node runs, asked of the running node itself, beside the newest on npm: "the running node is 0.1.26; 0.1.27 is on npm: stop it and start it again with npx -y orrery-node@latest provider start --config …". A node restarted before an update otherwise misses what came since without a word. The node\'s status carries its `version`, and the console\'s header names it ("Provider console · orrery-node 0.1.27").' },
 ];
 
 export const RELEASES: Release[] = [
