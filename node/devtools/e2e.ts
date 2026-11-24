@@ -2408,6 +2408,41 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && mid?.open === 2 && mid?.perClient === 2 && after.head === ok && end?.open === 0 && end?.perClient === 16,
     `two held tunnels: ${first.head} / ${second.head} · a third: ${third.head} · a forwarded request meanwhile ${forwarded} · status ${mid?.open ?? '?'} open of ${mid?.perClient ?? '?'} · after one closes: ${after.head} · all closed: ${end?.open ?? '?'} open, limit back to ${end?.perClient ?? '?'}`);
 }
+// A peer that does not answer is said, not left out: one that never answered (a mistyped or unreachable address) shows
+// as "no answer yet" with the reads tried, and one that answered before keeps its notes, for up to an hour, with the
+// reads it has missed since.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const listen = async (srv: ReturnType<typeof createHttpServer>) => {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    return (srv.address() as { port: number }).port;
+  };
+  const closed = createHttpServer();
+  const goneUrl = `http://127.0.0.1:${await listen(closed)}`;
+  await new Promise((done) => closed.close(done));
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: unknown[] };
+  opts.shareNotes = false;
+  const live = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : res.writeHead(404).end()));
+  const quietUrl = `http://127.0.0.1:${await listen(live)}`;
+  opts.peers = [goneUrl, quietUrl];
+  await rp.readPeers?.();
+  live.closeAllConnections();
+  await new Promise((done) => live.close(done));
+  await rp.readPeers?.();
+  type Peer = { url: string; nodes: number; refused: string | null; at?: number; missed?: number };
+  const peers = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? [];
+  const gone = peers.find((p) => p.url === goneUrl);
+  const quiet = peers.find((p) => p.url === quietUrl);
+  const lines = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).filter((l) => l.what.trim() === 'peer').map((l) => l.detail);
+  opts.peers = [];
+  await rp.readPeers?.();
+  check('a peer that does not answer is said, not left out: one that never answered shows "no answer yet" with the reads tried, one that went quiet keeps its notes with the reads missed since',
+    gone?.at === 0 && gone.missed === 2 && gone.nodes === 0 && !gone.refused && !!quiet?.at && quiet.missed === 1 && quiet.nodes === ours.nodes.length && !quiet.refused
+    && lines.includes(`${goneUrl}: no answer yet (2 reads tried)`) && lines.some((l) => l.startsWith(`${quietUrl}: `) && l.endsWith('; no answer to the last read, these notes are kept for up to an hour')),
+    `never answered: ${gone ? `${gone.missed ?? '?'} reads missed, ${gone.nodes} nodes` : 'not shown'} · answered, then went quiet: ${quiet ? `${quiet.missed ?? '?'} missed, ${quiet.nodes} nodes kept` : 'not shown'} · doctor: ${lines.map((l) => l.replace(/http:\/\/127\.0\.0\.1:\d+/, '<peer>')).join(' | ') || 'no peer lines'}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

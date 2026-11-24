@@ -236,7 +236,7 @@ export class Router {
   /** What each peer router said about the nodes, by the peer's address, as last read. */
   private peerNotes = new Map<string, Note[]>();
   /** Who signed each peer's notes, and whether they were refused, for the status page. */
-  private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number }>();
+  private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }>();
   /** The relay other routers reach nodes through, when one was opened. */
   private relay: Relay | null = null;
   private log: (line: string) => void;
@@ -293,8 +293,10 @@ export class Router {
   }
 
   /** Reads every peer's notes on nodes (through the proxy when one is set). A peer that does not answer keeps what it
-   * said last time; one that answers with something that is not notes is dropped. Nothing here changes routing: the
-   * notes are shown beside this router's own record, and each router decides for itself. */
+   * said last time and counts the reads it missed (`missed`); one that has never answered is shown with `at` 0, so a
+   * mistyped or unreachable peer is said and not left out. One that answers with something that is not notes is
+   * dropped. Nothing here changes routing: the notes are shown beside this router's own record, and each router
+   * decides for itself. */
   async readPeers(): Promise<void> {
     // A peer no longer given is forgotten, notes and all.
     const given = new Set(this.o.peers ?? []);
@@ -304,19 +306,23 @@ export class Router {
       // A peer given as url#<key> is pinned to that router: its notes must be signed by that key.
       const [peer, pinned] = given.split('#');
       const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
-      if (j === undefined) return;
+      if (j === undefined) {
+        const was = this.peerSaid.get(given);
+        this.peerSaid.set(given, was ? { ...was, missed: was.missed + 1 } : { by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 1 });
+        return;
+      }
       const read = readPeerNotes(j, pinned || undefined);
       if ('refused' in read) {
         this.peerNotes.delete(given);
-        this.peerSaid.set(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now() });
+        this.peerSaid.set(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now(), missed: 0 });
         return;
       }
       this.peerNotes.set(given, read.nodes);
-      this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now() });
+      this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now(), missed: 0 });
     }));
     // A peer that has not answered for over an hour: what it said last is let go of.
     for (const [given, said] of this.peerSaid) {
-      if (said.refused === null && Date.now() - said.at > NOTES_MAX_AGE_MS) {
+      if (said.refused === null && said.at > 0 && Date.now() - said.at > NOTES_MAX_AGE_MS) {
         this.peerNotes.delete(given);
         this.peerSaid.set(given, { ...said, nodes: 0, refused: 'no answer for over an hour; its last notes are let go of' });
       }

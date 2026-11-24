@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · A peer router that does not answer is said, not left out. One that has never answered (a mistyped or unreachable `--peer`) shows in the router status, the console and `orrery doctor` as "no answer yet (2 reads tried)"; one that answered before keeps its notes for up to an hour with the reads it has missed since ("no answer to the last read, these notes are kept for up to an hour").
 - **Router** · A relay is shared, so no one address takes all of it: it carries up to 16 connections at a time for one address (`--relay-per-client <n>`) and answers the next with 429, "this relay carries up to 16 connections at a time for one address; wait for one to finish", tunnels and forwarded requests alike. The router status, its console and `orrery doctor` say how many are open now and the limit.
 
 ## 0.1.29 · 2026-11-24 09:47 UTC

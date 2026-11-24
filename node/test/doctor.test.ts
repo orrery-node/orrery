@@ -106,4 +106,12 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, open: 3, perClient: 16 }), 'open on port 7272: carried 31, refused 4, 3 open now (up to 16 at a time for one address) (listed nodes only)');
     assert.equal(relayLine({ port: 7272, relayed: 2, refused: 0 }), 'open on port 7272: carried 2, refused 0 (listed nodes only)');
   });
+
+  it('says a peer that does not answer: one that never has, with the reads tried, and one that went quiet, with its notes kept', () => {
+    const by = '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab';
+    assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 3 }), 'http://10.0.0.5:7171: no answer yet (3 reads tried)');
+    assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 1 }), 'http://10.0.0.5:7171: no answer yet (1 read tried)');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null, at: 1, missed: 2 }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes; no answer to the last 2 reads, these notes are kept for up to an hour');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null, at: 1, missed: 0 }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes');
+  });
 });
