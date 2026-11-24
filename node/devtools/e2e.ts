@@ -2582,6 +2582,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     near(metOnly, 0.3) && near(bothSay, 0),
     `only the met router saw it: starts at ${metOnly?.toFixed(3) ?? 'none'} · the given peer saw it too: ${bothSay?.toFixed(3) ?? 'none'} (a never-asked node with no notes starts at 0.600)`);
 }
+// Routers find relays through their peers: a router running a relay says so at /orrery/peers, and a router reading it
+// shows which of its peers relay, and on which port, so the operator can use one as --proxy.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  const ownPeers = (await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { relay?: { port: number | null } | null };
+  opts.shareNotes = false;
+  const ownRelay = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null } | null }).relay;
+  const relaying = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => relaying.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(relaying.address() as { port: number }).port}`;
+  opts.peers = [peerUrl];
+  await rp.readPeers?.();
+  type Peer = { url: string; relayPort?: number | null };
+  const peer = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? []).find((p) => p.url === peerUrl);
+  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  relaying.closeAllConnections();
+  relaying.close();
+  check('routers find relays through their peers: a router running a relay says so at /orrery/peers, and a router reading it shows the port to use as --proxy',
+    !!ownRelay?.port && ownPeers.relay?.port === ownRelay.port && peer?.relayPort === 7272 && line.endsWith('; relays on port 7272, usable as --proxy http://<its host>:7272'),
+    `this router's /orrery/peers: relay ${ownPeers.relay?.port === ownRelay?.port ? 'on its relay port' : JSON.stringify(ownPeers.relay ?? null)} · a peer that relays: ${peer ? `port ${peer.relayPort ?? 'none'}` : 'not shown'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

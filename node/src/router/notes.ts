@@ -102,7 +102,13 @@ export const MEET_MAX = 8;
 
 /** What a router serves at /orrery/peers when it shares notes: the routers it reads whose notes it could check, each
  * with the key that signed them, so a router that meets them through it can pin them to that key. */
-export type Introductions = { peers: { url: string; by: string }[] };
+export type Introductions = { peers: { url: string; by: string }[]; relay?: { port: number } | null };
+
+/** The relay port a peer says it runs (in its /orrery/peers), or null when it runs none or says nothing readable. */
+export function readRelayPort(j: unknown): number | null {
+  const port = (j as Partial<Introductions> | null)?.relay?.port;
+  return typeof port === 'number' && Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+}
 
 /** A peer's introductions, read as data: http(s) addresses without a key part, each with a well-formed key; anything
  * else is dropped, and at most 32 are kept. Each comes back as `url#key`, the form --peer pins a peer with. */

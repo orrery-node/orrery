@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -100,5 +100,14 @@ describe('signed notes', () => {
     assert.ok(near(peerPrior([{ weight: 0.5, sent: 40, answered: 0 }]), 0.3));
     assert.ok(near(peerPrior([{ weight: 0.5, sent: 40, answered: 40 }]), 0.8));
     assert.ok(near(peerPrior([{ weight: 1, sent: 40, answered: 0 }, { weight: 0.5, sent: 40, answered: 40 }]), 1 / 3));
+  });
+
+  it('reads the relay port a peer says it runs, and nothing from a port that is not one', () => {
+    assert.equal(readRelayPort({ peers: [], relay: { port: 7272 } }), 7272);
+    assert.equal(readRelayPort({ peers: [], relay: null }), null);
+    assert.equal(readRelayPort({ peers: [] }), null);
+    assert.equal(readRelayPort({ relay: { port: 70000 } }), null);
+    assert.equal(readRelayPort({ relay: { port: '7272' } }), null);
+    assert.equal(readRelayPort(null), null);
   });
 });

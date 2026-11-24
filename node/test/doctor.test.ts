@@ -126,4 +126,8 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 4, retryAt: now + 110_000 }, now), 'http://10.0.0.5:7171: no answer yet (4 reads tried; next read in 2 min)');
     assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 3, retryAt: now - 1 }, now), 'http://10.0.0.5:7171: no answer yet (3 reads tried)');
   });
+
+  it('says when a peer runs a relay this router could use as its proxy', () => {
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272 }), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272, usable as --proxy http://<its host>:7272');
+  });
 });
