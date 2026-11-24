@@ -12,6 +12,7 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transa
 import { rpcConnection } from '../src/chain/connect.ts';
 import { sendOne } from '../src/chain/send.ts';
 import { parseProxy, setNodeProxy } from '../src/proxy.ts';
+import { connect as netConnect } from 'node:net';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo, getAccount, createTransferInstruction } from '@solana/spl-token';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
@@ -2231,6 +2232,39 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && ibSt?.peers?.routers === 1 && ibSt.peers.up === 58 && ibSt.peers.answered === 40 && !!ibSt.record?.includes('1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests')
     && peerDoc === 'Ironbridge Compute: 1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests',
     `without --share-notes ${closed.status} · shared ${shared.nodes?.length ?? 0} nodes, Ironbridge up ${ib?.up ?? '?'}/${ib?.checks ?? '?'}, answered ${ib?.answered ?? '?'}/${ib?.sent ?? '?'} · ${ibSt?.record?.find((l) => l.includes('peer router')) ?? 'no peer line'}`);
+}
+// Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
+// chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
+// relay port never answers as the router itself.
+{
+  const r = router as unknown as { startRelay?: (port: number, host?: string) => Promise<number> };
+  const relayPort = r.startRelay ? await r.startRelay(0, '127.0.0.1') : 0;
+  const { viaProxy } = await import('../src/proxy.ts');
+  const relayProxy = parseProxy(`http://127.0.0.1:${relayPort}`);
+  const ibUrl = `http://127.0.0.1:${providerSpecs[1].port}`;
+  const viaRelay = relayPort ? await viaProxy(relayProxy, `${ibUrl}/health`, { timeoutMs: 5_000 }).then(async (x) => ({ status: x.status, body: await x.text() })).catch((e) => ({ status: 0, body: String(e) })) : { status: 0, body: 'no relay' };
+  const notNode = relayPort ? await viaProxy(relayProxy, 'http://127.0.0.1:19102/v1/models', { timeoutMs: 5_000 }).then(async (x) => ({ status: x.status, body: await x.text() })).catch((e) => ({ status: 0, body: String(e) })) : { status: 0, body: 'no relay' };
+  const raw = (line: string) => new Promise<string>((done) => {
+    if (!relayPort) return done('no relay');
+    let got = '';
+    const sock = netConnect(relayPort, '127.0.0.1', () => sock.write(line));
+    sock.on('data', (c) => {
+      got += c.toString('latin1');
+      if (got.startsWith('HTTP/1.1 200 Connection Established\r\n\r\n') && !got.includes('\r\n\r\nHTTP/1.1')) sock.write(`GET /health HTTP/1.1\r\nhost: 127.0.0.1:${providerSpecs[1].port}\r\nconnection: close\r\n\r\n`);
+    });
+    sock.on('close', () => done(got));
+    sock.on('error', () => done(got || 'error'));
+    setTimeout(() => sock.destroy(), 4_000);
+  });
+  const tunnel = await raw(`CONNECT 127.0.0.1:${providerSpecs[1].port} HTTP/1.1\r\nhost: 127.0.0.1:${providerSpecs[1].port}\r\n\r\n`);
+  const tunnelNotNode = await raw('CONNECT 127.0.0.1:19102 HTTP/1.1\r\nhost: 127.0.0.1:19102\r\n\r\n');
+  const asRouter = relayPort ? await fetch(`http://127.0.0.1:${relayPort}/orrery/status`).then((x) => x.status).catch(() => 0) : 0;
+  const relaySt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null; relayed: number; refused: number } | null }).relay;
+  check('a router opened with --relay passes other routers\' traffic on to listed nodes only, forwarded or tunnelled, and never answers as the router',
+    viaRelay.status === 200 && notNode.status === 403 && /relay_refused/.test(notNode.body)
+    && tunnel.startsWith('HTTP/1.1 200 Connection Established') && /\r\n\r\nHTTP\/1\.1 200/.test(tunnel) && tunnelNotNode.startsWith('HTTP/1.1 403')
+    && asRouter === 403 && !!relaySt && relaySt.relayed >= 2 && relaySt.refused >= 3,
+    `node /health through the relay ${viaRelay.status} · a non-node address ${notNode.status} · CONNECT to the node ${tunnel.split('\r\n')[0] || 'nothing'}, then ${(/\r\n\r\n(HTTP\/1\.1 \d+)/.exec(tunnel) ?? [])[1] ?? 'nothing'} · CONNECT elsewhere ${tunnelNotNode.split('\r\n')[0] || 'nothing'} · the router API on the relay port ${asRouter} · relayed ${relaySt?.relayed ?? '?'}, refused ${relaySt?.refused ?? '?'}`);
 }
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
 // names no channel, in headers, in the request or in the voucher handed over after it.
