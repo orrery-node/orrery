@@ -2233,6 +2233,27 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && peerDoc === 'Ironbridge Compute: 1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests',
     `without --share-notes ${closed.status} · shared ${shared.nodes?.length ?? 0} nodes, Ironbridge up ${ib?.up ?? '?'}/${ib?.checks ?? '?'}, answered ${ib?.answered ?? '?'}/${ib?.sent ?? '?'} · ${ibSt?.record?.find((l) => l.includes('peer router')) ?? 'no peer line'}`);
 }
+// Peer exchange: an RPC that refuses getProgramAccounts (as many public ones do) still serves accounts by address, so a
+// router that cannot list the program finds the network from the listing addresses its peers named, each read and
+// checked on chain. A peer can point at listings, never make one up: an address the program does not own is dropped.
+{
+  const refusing = Object.assign(Object.create(conn) as object, { getProgramAccounts: () => Promise.reject(new Error('403 getProgramAccounts is not served on this RPC')) }) as unknown as typeof conn;
+  const fresh = new Registry(refusing, { allowDev: true, measurements: [] });
+  const named = [...registry.entries.keys()];
+  const alone = await fresh.refresh().then(() => 'listed', (e) => (e as Error).message);
+  (fresh as unknown as { peerListings?: () => string[] }).peerListings = () => [...named, Keypair.generate().publicKey.toBase58(), admin.publicKey.toBase58()];
+  const viaPeers = await fresh.refresh().then(() => 'listed', (e) => (e as Error).message);
+  const found = [...fresh.entries.keys()].sort();
+  const ready = fresh.usable().map((e) => e.address).sort();
+  // Compared with a router that listed the program itself at the same moment, read just as fresh.
+  const listed = new Registry(conn, { allowDev: true, measurements: [] });
+  await listed.refresh();
+  const listedReady = listed.usable().map((e) => e.address).sort();
+  check('peer exchange: a router whose RPC will not list the program finds the listings its peers named, each checked on chain, and nothing they made up',
+    /getProgramAccounts/.test(alone) && viaPeers === 'listed' && (fresh as unknown as { discovery?: string }).discovery === 'peers'
+    && JSON.stringify(found) === JSON.stringify([...listed.entries.keys()].sort()) && JSON.stringify(ready) === JSON.stringify(listedReady),
+    `with no peers: ${alone.slice(0, 50)} · with ${named.length} named + 2 made up: ${found.length} listings found, ${ready.length} ready (a router listing the program itself: ${listed.entries.size} and ${listedReady.length})`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

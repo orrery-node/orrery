@@ -69,6 +69,11 @@ export function readPins(path?: string): Set<string> {
 
 export class Registry {
   entries = new Map<string, ProviderEntry>();
+  /** Listing addresses peer routers named (their notes), for an RPC that will not list the program's accounts. */
+  peerListings?: () => string[];
+  /** How the last refresh found the listings: the program's accounts listed by the RPC, or the peers' addresses read
+   * one by one and checked on chain. */
+  discovery: 'chain' | 'peers' | null = null;
   refreshedAt = 0;
   /** Node keys that have shown this router a signed wire key that reads payment inside. A router keeps to that: when the
    * flag or the wire key later goes missing (as a hosting platform in front of the node could make it), it keeps
@@ -96,7 +101,7 @@ export class Registry {
   }
 
   async refresh(): Promise<void> {
-    const accounts = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
+    const accounts = await this.listings();
     const seen = new Set<string>();
     await Promise.all(
       accounts.map(async ({ pubkey, account }) => {
@@ -144,6 +149,31 @@ export class Registry {
     );
     for (const k of [...this.entries.keys()]) if (!seen.has(k)) this.entries.delete(k);
     this.refreshedAt = Date.now();
+  }
+
+  /** Every listing on chain. Many RPCs refuse getProgramAccounts (it reads the whole program); when this one does and
+   * peer routers have named listings, those addresses are read one by one (getMultipleAccountsInfo, which every RPC
+   * serves) and each is kept only if the program owns it and it reads as a listing: a peer can point at listings,
+   * never make one up. */
+  private async listings(): Promise<readonly { pubkey: PublicKey; account: { data: Buffer } }[]> {
+    try {
+      const all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
+      this.discovery = 'chain';
+      return all;
+    } catch (e) {
+      const named = [...new Set(this.peerListings?.() ?? [])].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+      if (!named.length) throw e;
+      const out: { pubkey: PublicKey; account: { data: Buffer } }[] = [];
+      for (let i = 0; i < named.length; i += 100) {
+        const keys = named.slice(i, i + 100);
+        const infos = await this.conn.getMultipleAccountsInfo(keys);
+        infos.forEach((info, j) => {
+          if (info && info.owner.equals(programId()) && Buffer.from(info.data).subarray(0, ACCOUNT.Provider.length).equals(Buffer.from(ACCOUNT.Provider))) out.push({ pubkey: keys[j], account: { data: Buffer.from(info.data) } });
+        });
+      }
+      this.discovery = 'peers';
+      return out;
+    }
   }
 
   /** The key a node wants requests encrypted to, accepted only with a signature from the node key on its listing. */

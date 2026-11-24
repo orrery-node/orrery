@@ -647,7 +647,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Answers on a hidden beat: sealed answers come back one 4 KiB frame every 100 ms (`--frame-ms`), the router says which nodes paced theirs, and the router and the node say which release they run and when an update needs a restart (0.1.28)
 - [x] Routers share notes on nodes: with `--share-notes` a router serves what it saw of each node (up in so many checks, answering so many requests, nothing about its wallet or spending) and with `--peer` it reads other routers' notes and shows them beside its own; no judge, each router decides
 - [x] Routers relay for each other: a router opened with `--relay <port>` passes other routers' traffic on to the nodes listed on chain, forwarded or tunnelled, and to nothing else; another router uses it as `--proxy http://<that router>:<port>`, so the node sees the relay and not you, and what it carries is already sealed to the node
-- [ ] Peer exchange: nodes hand routers the listings they know, checked against the chain, so finding the network needs no single RPC
+- [x] Peer exchange: many RPCs refuse getProgramAccounts; a router on one of them finds the network from the listing addresses its peer routers named, reads each one by address (which every RPC serves) and keeps only what the program owns, so a peer can point at listings but never make one up
 - [ ] Nodes on your own network, found without the chain: the GPU in the next room serves your laptop
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet
