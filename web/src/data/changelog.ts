@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A relay is shared, so no one address takes all of it: it carries up to 16 connections at a time for one address (`--relay-per-client <n>`) and answers the next with 429, "this relay carries up to 16 connections at a time for one address; wait for one to finish", tunnels and forwarded requests alike. The router status, its console and `orrery doctor` say how many are open now and the limit.' },
+];
 
 export const RELEASES: Release[] = [
   {

@@ -2368,6 +2368,46 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && asRouter === 403 && !!relaySt && relaySt.relayed >= 2 && relaySt.refused >= 3,
     `node /health through the relay ${viaRelay.status} · a non-node address ${notNode.status} · CONNECT to the node ${tunnel.split('\r\n')[0] || 'nothing'}, then ${(/\r\n\r\n(HTTP\/1\.1 \d+)/.exec(tunnel) ?? [])[1] ?? 'nothing'} · CONNECT elsewhere ${tunnelNotNode.split('\r\n')[0] || 'nothing'} · the router API on the relay port ${asRouter} · relayed ${relaySt?.relayed ?? '?'}, refused ${relaySt?.refused ?? '?'}`);
 }
+// A relay is shared, so one address cannot take it over: it carries up to --relay-per-client connections at a time for
+// one address (16 unless told) and turns the next away with 429 until one finishes, tunnels and forwarded requests alike.
+{
+  const opts = routerOpts as { relayPerClient?: number };
+  type RelaySt = { port?: number | null; open?: number; perClient?: number } | null | undefined;
+  const relayNow = async () => ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: RelaySt }).relay;
+  const port = (await relayNow())?.port ?? 0;
+  const nodePort = providerSpecs[1].port;
+  opts.relayPerClient = 2;
+  const hold = () => new Promise<{ sock: ReturnType<typeof netConnect> | null; head: string }>((done) => {
+    if (!port) return done({ sock: null, head: 'no relay' });
+    let got = '';
+    const sock = netConnect(port, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePort} HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\n\r\n`));
+    sock.on('data', (c) => {
+      got += c.toString('latin1');
+      if (got.includes('\r\n\r\n')) done({ sock, head: got.split('\r\n')[0] });
+    });
+    sock.on('error', () => done({ sock: null, head: got.split('\r\n')[0] || 'error' }));
+    sock.on('close', () => done({ sock: null, head: got.split('\r\n')[0] || 'closed' }));
+    setTimeout(() => done({ sock, head: got.split('\r\n')[0] || 'nothing' }), 4_000);
+  });
+  const first = await hold();
+  const second = await hold();
+  const third = await hold();
+  const mid = await relayNow();
+  const { viaProxy } = await import('../src/proxy.ts');
+  const forwarded = port ? await viaProxy(parseProxy(`http://127.0.0.1:${port}`), `http://127.0.0.1:${nodePort}/health`, { timeoutMs: 5_000 }).then((x) => x.status).catch(() => 0) : 0;
+  first.sock?.destroy();
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await hold();
+  for (const h of [second, third, after]) h.sock?.destroy();
+  opts.relayPerClient = undefined;
+  await new Promise((r) => setTimeout(r, 300));
+  const end = await relayNow();
+  const ok = 'HTTP/1.1 200 Connection Established';
+  check('a relay carries up to --relay-per-client connections at a time for one address and turns the next away with 429 until one finishes, tunnels and forwarded requests alike',
+    first.head === ok && second.head === ok && third.head === 'HTTP/1.1 429 Too Many Requests' && forwarded === 429
+    && mid?.open === 2 && mid?.perClient === 2 && after.head === ok && end?.open === 0 && end?.perClient === 16,
+    `two held tunnels: ${first.head} / ${second.head} · a third: ${third.head} · a forwarded request meanwhile ${forwarded} · status ${mid?.open ?? '?'} open of ${mid?.perClient ?? '?'} · after one closes: ${after.head} · all closed: ${end?.open ?? '?'} open, limit back to ${end?.perClient ?? '?'}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

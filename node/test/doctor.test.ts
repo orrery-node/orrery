@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { newer, peerLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { newer, peerLine, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -100,5 +100,10 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes');
     assert.equal(peerLine({ url: 'http://10.0.0.3:7171', pinned: false, by: null, signed: false, nodes: 1, refused: null }), 'http://10.0.0.3:7171: unsigned, notes on 1 node');
     assert.equal(peerLine({ url: 'http://10.0.0.4:7171', pinned: false, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes' }), 'http://10.0.0.4:7171: refused, the signature does not match the notes');
+  });
+
+  it('says the relay: what it carried and refused, and the connections open now against the limit for one address', () => {
+    assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, open: 3, perClient: 16 }), 'open on port 7272: carried 31, refused 4, 3 open now (up to 16 at a time for one address) (listed nodes only)');
+    assert.equal(relayLine({ port: 7272, relayed: 2, refused: 0 }), 'open on port 7272: carried 2, refused 0 (listed nodes only)');
   });
 });

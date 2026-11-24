@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · A relay is shared, so no one address takes all of it: it carries up to 16 connections at a time for one address (`--relay-per-client <n>`) and answers the next with 429, "this relay carries up to 16 connections at a time for one address; wait for one to finish", tunnels and forwarded requests alike. The router status, its console and `orrery doctor` say how many are open now and the limit.
+
 ## 0.1.29 · 2026-11-24 09:47 UTC
 
 **The P2P release: routers share signed, dated notes on the nodes they use, a new router can start from what its peers saw, routers relay for each other so a node learns only the carrier's address, and a router whose RPC will not list the program finds the network from its peers, every listing checked on chain; plus a first run that explains itself and a per-request beat for sealed answers.**
