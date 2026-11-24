@@ -2512,10 +2512,10 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     srv.close();
   }
   const short = (k: string) => `${k.slice(0, 4)}\u2026${k.slice(-4)}`;
-  check('routers introduce each other: with --meet-peers a router also reads the routers its peers read, each pinned to the key the peer saw sign their notes, and an impostor is refused',
+  check('routers introduce each other, first-hand only: with --meet-peers a router also reads the routers its peers read, each pinned to the key the peer saw sign their notes, an impostor is refused, and a met router is not passed on',
     alone.length === 1 && peers.length === 3 && metB?.via === aUrl && metB.pinned && metB.signed && metB.by === someone.publicKey.toBase58() && metB.nodes === ours.nodes.length && !metB.refused
     && metC?.via === aUrl && /not the router pinned for this peer$/.test(metC.refused ?? '') && !peers.some((p) => p.url === 'http://127.0.0.1:9')
-    && JSON.stringify(introduced.peers?.map((p) => p.url).sort()) === JSON.stringify([aUrl, bUrl].sort())
+    && JSON.stringify(introduced.peers?.map((p) => p.url)) === JSON.stringify([aUrl])
     && lines.includes(`${bUrl}: signed by ${short(someone.publicKey.toBase58())} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}, met through ${aUrl}`),
     `without --meet-peers: ${alone.length} peer · with it: ${peers.length} (${[metB, metC].map((p) => (p ? (p.refused ? 'refused' : `signed, ${p.nodes} nodes`) : 'missing')).join(', ')}; an introduction of this router itself ${peers.some((p) => p.url === 'http://127.0.0.1:9') ? 'read' : 'left out'}) · /orrery/peers names ${introduced.peers?.length ?? '?'} · doctor: ${lines.find((l) => l.startsWith(bUrl))?.replace(bUrl, '<b>').replace(aUrl, '<a>') ?? 'no line'}`);
 }

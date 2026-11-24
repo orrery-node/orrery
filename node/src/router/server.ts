@@ -470,11 +470,12 @@ export class Router {
         const notes = notesFrom([...this.o.registry.entries.values()].map((e) => ({ address: e.address, watched: this.o.registry.watched(e.address) })));
         return send(res, 200, signNotes(notes, this.o.channels.session.publicKey.toBase58(), signerOf(this.o.channels.session)));
       }
-      // The routers this one reads whose notes it could check, each with the key that signed them: for routers that meet
-      // their peers' peers (--meet-peers). Only when it shares notes.
+      // The routers this one was given and whose notes it could check, each with the key that signed them: for routers
+      // that meet their peers' peers (--meet-peers). First-hand only: a router this one met through a peer is not passed
+      // on, so a router met this way is always two steps away and counts half (MET_WEIGHT). Only when it shares notes.
       if (req.method === 'GET' && url.pathname === '/orrery/peers') {
         if (!this.o.shareNotes) return send(res, 404, { error: { code: 'not_found', message: 'this router does not share notes (start it with --share-notes)' } });
-        return send(res, 200, { peers: [...this.peerSaid].filter(([, p]) => p.signed && p.by && !p.refused && p.at > 0).map(([g, p]) => ({ url: g.split('#')[0], by: p.by })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null } : null });
+        return send(res, 200, { peers: [...this.peerSaid].filter(([g, p]) => !this.met.has(g) && p.signed && p.by && !p.refused && p.at > 0).map(([g, p]) => ({ url: g.split('#')[0], by: p.by })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null } : null });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {

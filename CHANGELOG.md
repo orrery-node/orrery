@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · Introductions are first-hand. `/orrery/peers` names only the routers this one was given (and could check), not the ones it met through a peer, so a router met with `--meet-peers` is always two steps away and its word counts half under `--trust-peers`, as it should; a friend of a friend of a friend never comes in at a friend's weight.
 - **Router** · A peer cannot add nodes, and now the router says so: notes on an address that is not listed on chain are read but never used, and each peer's line in `orrery peers`, `orrery doctor`, the MCP `peers` tool and the console counts them ("notes on 5 nodes, 1 of them not listed on chain (not used)").
 - **Router** · The router console's Peers line says which peers relay ("1 peer relays: point --proxy at it and the nodes see that router, not this computer") and how many peers were met through another ("1 of the 3 peer routers met through a peer"); each peer's row already shows its relay port.
 - **Router** · `orrery mcp` has a `peers` tool: an agent reads its router's P2P side, the same lines as `orrery peers` (peer routers, who signed and introduced them, the relay port each offers for `--proxy`, the router's own relay), from the local router only.
