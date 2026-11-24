@@ -2625,6 +2625,23 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const { handle: peersMcpHandle } = await import('../src/mcp.ts');
   const peersMcp = await (peersMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   const peersCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  // --watch draws it again every few seconds until stopped: two frames in a little over a second at --every 1.
+  const watched = await new Promise<string>((done) => {
+    let out = '';
+    const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER, '--watch', '--every', '1'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    pc.stdout!.on('data', (c) => (out += c));
+    const stop = setInterval(() => {
+      if ((out.match(/^1 peer router: /gm) ?? []).length >= 2) pc.kill();
+    }, 100);
+    const giveUp = setTimeout(() => pc.kill(), 20_000);
+    pc.on('exit', () => {
+      clearInterval(stop);
+      clearTimeout(giveUp);
+      done(out);
+    });
+  });
+  const frames = (watched.match(/^1 peer router: /gm) ?? []).length;
+  const stamps = (watched.match(/^\d\d:\d\d:\d\d UTC, every 1 s \(Ctrl-C to stop\)$/gm) ?? []).length;
   opts.peers = [];
   await rp.readPeers?.();
   relaying.closeAllConnections();
@@ -2633,6 +2650,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('an agent reads the router\u2019s P2P side through orrery mcp: the peers tool gives the same lines as orrery peers, relay ports included',
     peersMcp !== '' && peersMcp === peersCli && peersMcp.includes('; relays on port 7272, usable as --proxy http://<its host>:7272'),
     peersMcp.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').slice(0, 2).join(' | ').slice(0, 240) || 'no answer from the peers tool');
+  check('orrery peers --watch draws the router\u2019s P2P side again every few seconds, each frame under the time it was drawn',
+    frames >= 2 && stamps >= 2,
+    `${frames} frame${frames === 1 ? '' : 's'}, ${stamps} time line${stamps === 1 ? '' : 's'} before it was stopped`);
   check('orrery peers shows the P2P side of a running router: a count of its peer routers, a line for each with who signed and the relay port, and its own relay',
     lines[0] === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying'
     && lines[1] === `  ${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}; relays on port 7272, usable as --proxy http://<its host>:7272`

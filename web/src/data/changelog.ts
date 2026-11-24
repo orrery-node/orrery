@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers --watch` draws the router\'s P2P side again every 5 seconds (`--every <s>`) until Ctrl-C, on a cleared screen under the time it was drawn, so peers answering, going quiet or being met show as they happen.' },
   { who: 'router', text: 'Introductions are first-hand. `/orrery/peers` names only the routers this one was given (and could check), not the ones it met through a peer, so a router met with `--meet-peers` is always two steps away and its word counts half under `--trust-peers`, as it should; a friend of a friend of a friend never comes in at a friend\'s weight.' },
   { who: 'router', text: 'A peer cannot add nodes, and now the router says so: notes on an address that is not listed on chain are read but never used, and each peer\'s line in `orrery peers`, `orrery doctor`, the MCP `peers` tool and the console counts them ("notes on 5 nodes, 1 of them not listed on chain (not used)").' },
   { who: 'router', text: 'The router console\'s Peers line says which peers relay ("1 peer relays: point --proxy at it and the nodes see that router, not this computer") and how many peers were met through another ("1 of the 3 peer routers met through a peer"); each peer\'s row already shows its relay port.' },

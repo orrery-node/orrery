@@ -78,7 +78,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} wallet new               makes a wallet file and says what to send it (skip this if you have a Solana keypair file)
   ${CLI} router                   uses that wallet; then point any OpenAI-compatible tool at http://127.0.0.1:${ROUTER_PORT}/v1
   ${CLI} doctor                   reads the chain, the nodes, your wallet and your router, and says what is ready
-  ${CLI} peers                    the P2P side of your running router: its peer routers, who signed and introduced them, which relay, and its own relay (--json)
+  ${CLI} peers                    the P2P side of your running router: its peer routers, who signed and introduced them, which relay, and its own relay (--json; --watch redraws it every 5 s, --every <s>)
   (--wallet <file> on either picks another wallet, such as a Solana keypair file you already have)
 
   ${CLI} router                 run the router on http://127.0.0.1:${ROUTER_PORT}/v1
@@ -785,14 +785,29 @@ async function main() {
   if (cmd === 'peers') {
     // Asks only the router on this computer (or the one --router names) for its status: nothing goes to a peer or a node.
     const routerUrl = flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!.replace(/\/$/, '');
-    const status = await fetchWithTimeout(`${routerUrl}/orrery/status`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    if (!status) {
-      process.exitCode = 1;
-      return console.log(`No router answers at ${routerUrl}. Start one with: ${CLI} router --peer <url>#<key>`);
+    const draw = async (): Promise<boolean> => {
+      const status = await fetchWithTimeout(`${routerUrl}/orrery/status`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (!status) {
+        console.log(`No router answers at ${routerUrl}. Start one with: ${CLI} router --peer <url>#<key>`);
+        return false;
+      }
+      const st = status as Parameters<typeof peersReport>[0];
+      console.log(has('json') ? JSON.stringify({ peers: st.peers ?? [], relay: st.relay ?? null, discovery: st.discovery ?? null }, null, 2) : peersReport(st).join('\n'));
+      return true;
+    };
+    if (!has('watch')) {
+      if (!(await draw())) process.exitCode = 1;
+      return;
     }
-    const st = status as Parameters<typeof peersReport>[0];
-    if (has('json')) return console.log(JSON.stringify({ peers: st.peers ?? [], relay: st.relay ?? null, discovery: st.discovery ?? null }, null, 2));
-    return console.log(peersReport(st).join('\n'));
+    // --watch: drawn again every few seconds until Ctrl-C, on a cleared screen in a terminal and under a time line
+    // otherwise, so peers answering, going quiet or being met show as they happen.
+    const every = Math.min(300, Math.max(1, Number(flag('every', '5')) || 5));
+    for (;;) {
+      if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
+      console.log(`${new Date().toISOString().slice(11, 19)} UTC, every ${every} s (Ctrl-C to stop)`);
+      await draw();
+      await new Promise((r) => setTimeout(r, every * 1000));
+    }
   }
   if (cmd === 'doctor') {
     const walletPath = walletFlag();
