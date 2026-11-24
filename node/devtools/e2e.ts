@@ -586,10 +586,13 @@ check('embeddings are routed and paid like any answer, priced on input tokens', 
     && (imgQuote.text ?? '').split('\n')[0] === `flux-schnell · image · 2 images (1,000 output tokens each), ${imTokens} tokens of prompt · listed prices on Solana, before any holder discount`,
     `chat to it: ${chatToPainter.status} ${chatToPainter.j.error?.message ?? ''} · bench ${painterBench[0]?.answered ?? 0}/2 ${painterBench[0]?.error ?? ''} · quote: ${(imgQuote.text ?? '').split('\n')[0]}`);
   // An agent prices pictures before it draws them: the quote tool of orrery mcp takes how many, and says what the router says.
+  // The prices and the bill are compared line for line; what the router saw of each node (its health checks) is left
+  // out, since a check can land between the two quotes.
+  const withoutSaw = (t: string) => { const out: string[] = []; let skip = false; for (const l of t.split('\n')) { if (l === 'what your router saw of them:') { skip = true; continue; } if (skip && l.startsWith('  ')) continue; skip = false; out.push(l); } return out.join('\n'); };
   const { handle: quoteMcpHandle } = await import('../src/mcp.ts');
   const mcpImgQuote = await (quoteMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[]; isError?: boolean } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'quote', arguments: { model: 'flux-schnell', prompt: draw, images: 2 } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch((e) => String(e));
   check('an agent asks orrery mcp what two images would cost before it draws them, and gets the router\'s own quote for two',
-    !!imgQuote.text && mcpImgQuote === imgQuote.text && mcpImgQuote.split('\n')[0].includes('· 2 images (1,000 output tokens each)'),
+    !!imgQuote.text && withoutSaw(mcpImgQuote) === withoutSaw(imgQuote.text) && mcpImgQuote.split('\n')[0].includes('· 2 images (1,000 output tokens each)'),
     mcpImgQuote.split('\n')[0].slice(0, 160) || 'no quote');
   // The catalog says what a picture and a page of speech cost, worked out from the listing the way a node bills them.
   const priced = ((await (await fetch(`${ROUTER}/v1/models`)).json()) as { data: { id: string; pricing: { per_image?: number; per_million_characters?: number; completion_per_million: number } }[] }).data;
@@ -2251,6 +2254,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     return ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null }[] }).peers?.[0];
   };
   const pinnedOk = await readOnce(`${peerUrl}#${ourKey}`);
+  const doctorPeer = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
   served = { ...genuine, nodes: genuine.nodes.map((n, i) => (i === 0 ? { ...n, checks: n.checks + 1 } : n)) };
   const changed = await readOnce(peerUrl);
   served = genuine;
@@ -2261,8 +2265,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('a router signs the notes it shares; passed on unchanged they check, changed they are refused, and a pinned peer must sign with its key',
     genuine.by === ourKey && typeof genuine.sig === 'string' && genuine.nodes.length > 0
     && pinnedOk?.signed === true && pinnedOk.by === ourKey && pinnedOk.pinned === true && pinnedOk.refused === null
-    && changed?.refused === 'the signature does not match the notes' && /not the router pinned for this peer$/.test(wrongPin?.refused ?? ''),
-    `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'}`);
+    && changed?.refused === 'the signature does not match the notes' && /not the router pinned for this peer$/.test(wrongPin?.refused ?? '')
+    && doctorPeer === `${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${genuine.nodes.length} node${genuine.nodes.length === 1 ? '' : 's'}`,
+    `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · doctor: ${doctorPeer.replace(peerUrl, '<peer>').replace(ourKey.slice(0, 4), '<key>') || 'no peer line'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'}`);
 }
 // --trust-peers: a router that never asked a node starts from what its peers saw it answer, in place of the neutral
 // guess; off, the peers' notes are only shown. Here a stand-in peer says Ironbridge answered 0 of 40.

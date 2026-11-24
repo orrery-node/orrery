@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { newer, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { newer, peerLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -93,5 +93,12 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(routerBehind('0.1.28', '0.1.27'), null);
     assert.equal(routerBehind(null, '0.1.27'), null);
     assert.equal(routerBehind('0.1.26', null), null);
+  });
+
+  it('says each peer router: who signed its notes and on how many nodes, or why they were refused', () => {
+    const by = '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab';
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes');
+    assert.equal(peerLine({ url: 'http://10.0.0.3:7171', pinned: false, by: null, signed: false, nodes: 1, refused: null }), 'http://10.0.0.3:7171: unsigned, notes on 1 node');
+    assert.equal(peerLine({ url: 'http://10.0.0.4:7171', pinned: false, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes' }), 'http://10.0.0.4:7171: refused, the signature does not match the notes');
   });
 });
