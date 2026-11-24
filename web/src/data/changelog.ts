@@ -6,7 +6,14 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
+export const UNRELEASED: Change[] = [];
+
+export const RELEASES: Release[] = [
+  {
+    version: '0.1.29',
+    at: '2026-11-24T09:47:53Z',
+    headline: "The P2P release: routers share signed, dated notes on the nodes they use, a new router can start from what its peers saw, routers relay for each other so a node learns only the carrier's address, and a router whose RPC will not list the program finds the network from its peers, every listing checked on chain; plus a first run that explains itself and a per-request beat for sealed answers.",
+    changes: [
   { who: 'router', text: 'One request can set its own beat: `x-orrery-frame-ms: 0` turns pacing off for an agent that wants every token as it comes, and any value from 20 to 1000 sets the beat for that answer. A beat no node keeps to is refused with 400 before anything is sent, and `--frame-ms` is checked the same way at start, instead of going unpaced without a word.' },
   { who: 'provider', text: 'A node\'s log line for an answer says when it went out paced ("served llama-3.3-70b 11+16 tok  $0.000010  paid inside the seal  wire  paced 100 ms"), and its own log of answers keeps the beat as `paced`, so an operator sees which routers ask for it.' },
   { who: 'provider', text: '`orrery provider status` says on its day line how many of the day\'s answers went out paced ("last 24 h  40 answers, $0.020123 billed, 23 sent paced"), from the node\'s own log; `--json` has `day.paced`, and the console\'s earnings read carries `paced`.' },
@@ -25,9 +32,8 @@ export const UNRELEASED: Change[] = [
   { who: 'router', text: 'The router console has a Peers section: each peer router with who signed its notes (or why they were refused), whether it is pinned, how many nodes it named; the relay with what it carried and refused; and whether this router found the listings from its peers\' notes. A peer whose notes were refused shows no signer, rather than "unsigned".' },
   { who: 'router', text: '`orrery doctor` says the P2P side of a running router: a line for each peer router ("signed by 4nLc…Jqdu (pinned), notes on 4 nodes", or why its notes were refused), the relay with what it carried and refused, and whether the listings came from the peers\' notes.' },
   { who: 'router', text: 'Notes have a shelf life. A signature says who wrote notes, not that they are current, and anyone can pass old signed notes on again: notes over an hour old when they arrive, or dated ahead, are refused ("the notes are 120 min old; older than an hour is not used"), and a peer that has not answered for over an hour has its last notes let go of.' },
-];
-
-export const RELEASES: Release[] = [
+    ],
+  },
   {
     version: '0.1.28',
     at: '2026-11-23T14:26:35Z',

@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.29 · 2026-11-24 09:47 UTC
+
+**The P2P release: routers share signed, dated notes on the nodes they use, a new router can start from what its peers saw, routers relay for each other so a node learns only the carrier's address, and a router whose RPC will not list the program finds the network from its peers, every listing checked on chain; plus a first run that explains itself and a per-request beat for sealed answers.**
 
 - **Router** · One request can set its own beat: `x-orrery-frame-ms: 0` turns pacing off for an agent that wants every token as it comes, and any value from 20 to 1000 sets the beat for that answer. A beat no node keeps to is refused with 400 before anything is sent, and `--frame-ms` is checked the same way at start, instead of going unpaced without a word.
 - **Node** · A node's log line for an answer says when it went out paced ("served llama-3.3-70b 11+16 tok  $0.000010  paid inside the seal  wire  paced 100 ms"), and its own log of answers keeps the beat as `paced`, so an operator sees which routers ask for it.
@@ -24,6 +26,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · The router console has a Peers section: each peer router with who signed its notes (or why they were refused), whether it is pinned, how many nodes it named; the relay with what it carried and refused; and whether this router found the listings from its peers' notes. A peer whose notes were refused shows no signer, rather than "unsigned".
 - **Router** · `orrery doctor` says the P2P side of a running router: a line for each peer router ("signed by 4nLc…Jqdu (pinned), notes on 4 nodes", or why its notes were refused), the relay with what it carried and refused, and whether the listings came from the peers' notes.
 - **Router** · Notes have a shelf life. A signature says who wrote notes, not that they are current, and anyone can pass old signed notes on again: notes over an hour old when they arrive, or dated ahead, are refused ("the notes are 120 min old; older than an hour is not used"), and a peer that has not answered for over an hour has its last notes let go of.
+
+`npx -y orrery-node@0.1.29`
 
 ## 0.1.28 · 2026-11-23 14:26 UTC
 
