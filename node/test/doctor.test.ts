@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { newer, peerLine, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { newer, peerLine, peersReport, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -129,5 +129,29 @@ describe('orrery doctor, what the running router paid', () => {
 
   it('says when a peer runs a relay this router could use as its proxy', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272 }), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272, usable as --proxy http://<its host>:7272');
+  });
+
+  it('orrery peers: counts the peer routers, a line for each, the router\'s own relay, and how to start when there are none', () => {
+    const by = '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab';
+    assert.deepEqual(peersReport({ peers: [], relay: null }), [
+      'This router reads no peer routers. Start it with --peer <url>#<key> to read another router\u2019s notes on nodes, and --meet-peers to meet the routers that one reads.',
+      'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)',
+    ]);
+    assert.deepEqual(peersReport({
+      peers: [
+        { url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null, at: 1, missed: 0, relayPort: 7272 },
+        { url: 'http://10.0.0.6:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: 1, missed: 0, via: 'http://10.0.0.2:7171' },
+        { url: 'http://10.0.0.7:7171', pinned: true, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes', via: 'http://10.0.0.2:7171' },
+      ],
+      relay: { port: 7272, relayed: 9, refused: 1, open: 2, perClient: 16 },
+      discovery: 'peers',
+    }), [
+      '3 peer routers: 2 signed, 2 met through a peer, 1 refused, 1 relaying',
+      '  http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes; relays on port 7272, usable as --proxy http://<its host>:7272',
+      '  http://10.0.0.6:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes, met through http://10.0.0.2:7171',
+      '  http://10.0.0.7:7171: refused, the signature does not match the notes, met through http://10.0.0.2:7171',
+      'this router\'s relay: open on port 7272: carried 9, refused 1, 2 open now (up to 16 at a time for one address) (listed nodes only)',
+      'the listings came from the peers\u2019 notes, each checked on chain',
+    ]);
   });
 });

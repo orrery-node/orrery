@@ -1,5 +1,5 @@
 /** The commands this CLI has, so a mistyped one is answered with the nearest instead of the whole help. */
-export const COMMANDS = ['router', 'mcp', 'connect', 'run', 'bench', 'spend', 'sealed', 'doctor', 'models', 'wallet', 'quote', 'enclave', 'providers', 'channels', 'close', 'provider', 'help', 'version'];
+export const COMMANDS = ['router', 'mcp', 'connect', 'run', 'bench', 'spend', 'sealed', 'doctor', 'peers', 'models', 'wallet', 'quote', 'enclave', 'providers', 'channels', 'close', 'provider', 'help', 'version'];
 export const PROVIDER_COMMANDS = ['init', 'burn', 'check', 'start', 'compose', 'console', 'status', 'register', 'attest', 'redeem', 'earnings', 'vouchers', 'payouts', 'price', 'compare', 'show'];
 
 function distance(a: string, b: string): number {

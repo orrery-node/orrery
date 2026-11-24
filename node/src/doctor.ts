@@ -283,3 +283,26 @@ export function versionCheck(current: string, latest: string | null | 'off'): Ch
 export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
+
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null };
+
+/** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
+ * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
+ * came from. A router that reads no peers is told how to start. */
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number } | null; discovery?: string | null }, now = Date.now()): string[] {
+  const peers = status.peers ?? [];
+  const out: string[] = [];
+  if (!peers.length) {
+    out.push('This router reads no peer routers. Start it with --peer <url>#<key> to read another router\u2019s notes on nodes, and --meet-peers to meet the routers that one reads.');
+  } else {
+    const signed = peers.filter((p) => p.signed && !p.refused).length;
+    const met = peers.filter((p) => p.via).length;
+    const refused = peers.filter((p) => p.refused).length;
+    const relaying = peers.filter((p) => p.relayPort).length;
+    out.push(`${peers.length} peer router${peers.length === 1 ? '' : 's'}: ${signed} signed, ${met} met through a peer, ${refused} refused, ${relaying} relaying`);
+    for (const p of peers) out.push(`  ${peerLine(p, now)}`);
+  }
+  out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
+  if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');
+  return out;
+}

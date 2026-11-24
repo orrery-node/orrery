@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery peers` shows the P2P side of a running router in one place: how many peer routers it reads ("3 peer routers: 2 signed, 2 met through a peer, 1 refused, 1 relaying"), a line for each with who signed its notes, which peer introduced it and the relay port it offers, and the router's own relay. It asks only that router (`--router`, `--json`).
 - **Router** · Routers find relays through their peers. A router sharing notes that runs a relay says so at `/orrery/peers` (its port), and a router reading it shows which of its peers relay and on which port, in the status (`relayPort`), the console and `orrery doctor` ("relays on port 7272, usable as --proxy http://<its host>:7272").
 - **Router** · Trust falls off with distance. Under `--trust-peers`, a peer this router was given counts in full and a router met through one (`--meet-peers`) counts half: a node only a met router saw answer 0 of 40 starts at 0.3, halfway between the neutral 0.6 and what it saw, instead of at 0; once a given peer says the same, it starts at 0.
 - **Router** · A peer router that keeps not answering is read less often: after three missed reads in a row, a minute before the next try, doubling up to ten, so an address that is gone does not cost a timeout on every refresh. The status (`retryAt`), the console and `orrery doctor` say when it is read next ("no answer yet (3 reads tried; next read in 1 min)").

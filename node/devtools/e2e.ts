@@ -2608,6 +2608,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     !!ownRelay?.port && ownPeers.relay?.port === ownRelay.port && peer?.relayPort === 7272 && line.endsWith('; relays on port 7272, usable as --proxy http://<its host>:7272'),
     `this router's /orrery/peers: relay ${ownPeers.relay?.port === ownRelay?.port ? 'on its relay port' : JSON.stringify(ownPeers.relay ?? null)} · a peer that relays: ${peer ? `port ${peer.relayPort ?? 'none'}` : 'not shown'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// `orrery peers` shows the P2P side of a running router in one place: a count of its peer routers, a line for each
+// (who signed, which relays and on which port), and its own relay. It asks only that router.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  opts.shareNotes = false;
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  const relaying = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => relaying.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(relaying.address() as { port: number }).port}`;
+  opts.peers = [`${peerUrl}#${ourKey}`];
+  await rp.readPeers?.();
+  const peersCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  opts.peers = [];
+  await rp.readPeers?.();
+  relaying.closeAllConnections();
+  relaying.close();
+  const lines = peersCli.split('\n');
+  check('orrery peers shows the P2P side of a running router: a count of its peer routers, a line for each with who signed and the relay port, and its own relay',
+    lines[0] === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying'
+    && lines[1] === `  ${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}; relays on port 7272, usable as --proxy http://<its host>:7272`
+    && /^this router's relay: open on port \d+: carried \d+, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
+    peersCli.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {
