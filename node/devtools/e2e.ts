@@ -2468,6 +2468,57 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     r.status === 502 && said.includes(`the relay at ${relayAt} does not list this node yet (403 relay_refused)`) && failsAfter === failsBefore && cooling === 0 && shut.refused >= 1,
     `${r.status} "${said.replaceAll(relayAt, '<relay>').slice(0, 150)}" · failures counted ${failsBefore} → ${failsAfter} · nodes cooling down ${cooling} · relay refused ${shut.refused}`);
 }
+// Routers introduce each other: a router started with --meet-peers also reads the routers its peers read (their
+// /orrery/peers), each pinned to the key the peer saw sign their notes, so one that signs with another key is refused;
+// a router sharing notes says at /orrery/peers which routers it reads and checked.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean; meetPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: never[] };
+  const someone = Keypair.generate();
+  const impostor = Keypair.generate();
+  const serve = (routes: Record<string, unknown>) => createHttpServer((req, res) => (req.url && req.url in routes ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(routes[req.url])) : res.writeHead(404).end()));
+  const listen = async (srv: ReturnType<typeof createHttpServer>) => {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    return `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  };
+  const b = serve({ '/orrery/notes': signAs({ notes: 1, at: Date.now(), nodes: ours.nodes }, someone.publicKey.toBase58(), signerFor(someone)) });
+  const c = serve({ '/orrery/notes': signAs({ notes: 1, at: Date.now(), nodes: ours.nodes }, impostor.publicKey.toBase58(), signerFor(impostor)) });
+  const bUrl = await listen(b);
+  const cUrl = await listen(c);
+  const a = serve({ '/orrery/notes': ours, '/orrery/peers': { peers: [{ url: bUrl, by: someone.publicKey.toBase58() }, { url: cUrl, by: someone.publicKey.toBase58() }, { url: 'http://127.0.0.1:9', by: ourKey }] } });
+  const aUrl = await listen(a);
+  opts.peers = [`${aUrl}#${ourKey}`];
+  await rp.readPeers?.();
+  type Peer = { url: string; via?: string | null; pinned: boolean; signed: boolean; by: string | null; nodes: number; refused: string | null };
+  const alone = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? [];
+  opts.meetPeers = true;
+  await rp.readPeers?.();
+  const peers = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? [];
+  const introduced = (await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { peers?: { url: string; by: string }[] };
+  const lines = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).filter((l) => l.what.trim() === 'peer').map((l) => l.detail);
+  const metB = peers.find((p) => p.url === bUrl);
+  const metC = peers.find((p) => p.url === cUrl);
+  opts.meetPeers = false;
+  opts.shareNotes = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [a, b, c]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  const short = (k: string) => `${k.slice(0, 4)}\u2026${k.slice(-4)}`;
+  check('routers introduce each other: with --meet-peers a router also reads the routers its peers read, each pinned to the key the peer saw sign their notes, and an impostor is refused',
+    alone.length === 1 && peers.length === 3 && metB?.via === aUrl && metB.pinned && metB.signed && metB.by === someone.publicKey.toBase58() && metB.nodes === ours.nodes.length && !metB.refused
+    && metC?.via === aUrl && /not the router pinned for this peer$/.test(metC.refused ?? '') && !peers.some((p) => p.url === 'http://127.0.0.1:9')
+    && JSON.stringify(introduced.peers?.map((p) => p.url).sort()) === JSON.stringify([aUrl, bUrl].sort())
+    && lines.includes(`${bUrl}: signed by ${short(someone.publicKey.toBase58())} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}, met through ${aUrl}`),
+    `without --meet-peers: ${alone.length} peer · with it: ${peers.length} (${[metB, metC].map((p) => (p ? (p.refused ? 'refused' : `signed, ${p.nodes} nodes`) : 'missing')).join(', ')}; an introduction of this router itself ${peers.some((p) => p.url === 'http://127.0.0.1:9') ? 'read' : 'left out'}) · /orrery/peers names ${introduced.peers?.length ?? '?'} · doctor: ${lines.find((l) => l.startsWith(bUrl))?.replace(bUrl, '<b>').replace(aUrl, '<a>') ?? 'no line'}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

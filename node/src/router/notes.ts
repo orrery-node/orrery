@@ -96,3 +96,26 @@ export function readPeerNotes(j: unknown, pinned?: string, now = Date.now()): Pe
   if (now - n.at > NOTES_MAX_AGE_MS) return { refused: `the notes are ${Math.round((now - n.at) / 60_000)} min old; older than an hour is not used` };
   return { by: signed ? (n.by as string) : null, signed, nodes: wellFormed(asSent) };
 }
+
+/** How many routers one router reads on its peers' word (--meet-peers), on top of the ones it was given. */
+export const MEET_MAX = 8;
+
+/** What a router serves at /orrery/peers when it shares notes: the routers it reads whose notes it could check, each
+ * with the key that signed them, so a router that meets them through it can pin them to that key. */
+export type Introductions = { peers: { url: string; by: string }[] };
+
+/** A peer's introductions, read as data: http(s) addresses without a key part, each with a well-formed key; anything
+ * else is dropped, and at most 32 are kept. Each comes back as `url#key`, the form --peer pins a peer with. */
+export function readIntroductions(j: unknown): string[] {
+  const list = (j as Partial<Introductions> | null)?.peers;
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const p of list as { url?: unknown; by?: unknown }[]) {
+    if (!p || typeof p.url !== 'string' || typeof p.by !== 'string' || !base58.test(p.by)) continue;
+    if (!/^https?:\/\/[^\s#]{1,200}$/.test(p.url)) continue;
+    const key = `${p.url.replace(/\/$/, '')}#${p.by}`;
+    if (!out.includes(key)) out.push(key);
+    if (out.length === 32) break;
+  }
+  return out;
+}

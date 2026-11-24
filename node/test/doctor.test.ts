@@ -114,4 +114,10 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null, at: 1, missed: 2 }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes; no answer to the last 2 reads, these notes are kept for up to an hour');
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 4, refused: null, at: 1, missed: 0 }), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 4 nodes');
   });
+
+  it('says a router met through a peer, and which peer introduced it', () => {
+    const by = '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab';
+    assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: 1, missed: 0, via: 'http://10.0.0.2:7171' }), 'http://10.0.0.6:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes, met through http://10.0.0.2:7171');
+    assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes', via: 'http://10.0.0.2:7171' }), 'http://10.0.0.6:7171: refused, the signature does not match the notes, met through http://10.0.0.2:7171');
+  });
 });

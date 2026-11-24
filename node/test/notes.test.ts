@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { notesFrom, parseNotes, peerText, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, notesFrom, parseNotes, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -69,5 +69,21 @@ describe('signed notes', () => {
     assert.deepEqual(readPeerNotes(ahead, undefined, now), { refused: 'the notes are dated in the future' });
     const fresh = signNotes({ notes: 1, at: now - 60_000, nodes: notes.nodes }, by, signerOf(router));
     assert.equal((readPeerNotes(fresh, by, now) as { signed: boolean }).signed, true);
+  });
+
+  it('reads a peer\'s introductions as url#key, keeping only http(s) addresses with a well-formed key', () => {
+    const k = Keypair.generate().publicKey.toBase58();
+    assert.equal(MEET_MAX, 8);
+    assert.deepEqual(readIntroductions({ peers: [
+      { url: 'http://10.0.0.7:7171/', by: k },
+      { url: 'http://10.0.0.7:7171', by: k },
+      { url: 'ftp://10.0.0.8', by: k },
+      { url: 'http://10.0.0.9:7171#other', by: k },
+      { url: 'http://10.0.0.10:7171', by: 'not a key' },
+      { url: 'https://router.example', by: k },
+      null,
+    ] }), [`http://10.0.0.7:7171#${k}`, `https://router.example#${k}`]);
+    assert.deepEqual(readIntroductions({ nope: 1 }), []);
+    assert.equal(readIntroductions({ peers: Array.from({ length: 40 }, (_, i) => ({ url: `http://10.0.1.${i}:7171`, by: k })) }).length, 32);
   });
 });
