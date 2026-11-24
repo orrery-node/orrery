@@ -17,6 +17,7 @@ export const UNRELEASED: Change[] = [
   { who: 'provider', text: '`orrery provider init --upstream` given a model server\'s address without `/v1` (Ollama on :11434, vLLM on :8000) finds it under `/v1` and writes that address, instead of "no model server answered". When neither answers, it says both places it looked.' },
   { who: 'everyone', text: '`orrery --version` (and `-v`, `orrery version`) prints the release in one line ("orrery-node 0.1.28"), for a script or a bug report, instead of the whole help with exit 1.' },
   { who: 'everyone', text: 'A mistyped command is answered with the nearest one and exit 1 ("there is no orrery provder. Did you mean orrery provider?"), instead of the whole help; a mistyped provider command ("provider strat") is said before provider.json is read.' },
+  { who: 'router', text: 'Routers share notes on nodes. Started with `--share-notes`, a router serves at `/orrery/notes` what it saw of each node with its own checks and requests (up in so many checks, answering so many requests) and nothing about its wallet, channels or spending. Started with `--peer <url,…>`, it reads other routers\' notes and shows them beside its own record, added up and apart: "1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests", on the console, in `orrery doctor` and through MCP. Nothing changes routing: each router decides for itself.' },
 ];
 
 export const RELEASES: Release[] = [

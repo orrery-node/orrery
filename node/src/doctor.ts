@@ -9,6 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
+import { peerText, type PeerSum } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -170,7 +171,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -191,6 +192,9 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
     // And what the node did with the requests this router sent it.
     const asked = answeredText(p.watched) || answeredText(p.observed);
     if (asked) out.push({ ok: null, what: '  asked', detail: `${p.name ?? `${p.address.slice(0, 6)}…`} ${asked}` });
+    // And what peer routers saw of it, when this router reads any.
+    const peers = peerText(p.peers);
+    if (peers) out.push({ ok: null, what: '  peers', detail: `${p.name ?? `${p.address.slice(0, 6)}…`}: ${peers}` });
   }
   // What it paid in the last day, by its own log, and what it did not pay for.
   if (status) {

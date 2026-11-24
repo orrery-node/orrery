@@ -15,6 +15,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
+import { notesFrom, parseNotes, sumPeers, type Note } from './notes.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
 import { away, nextWait, patienceFrom } from './patience.ts';
 import { nodeSaid, roundMs, serverTiming, type Timing } from './timing.ts';
@@ -58,6 +59,10 @@ export type RouterOptions = {
   patienceMs?: number;
   /** Paced answer frames from nodes on sealed requests, every so many ms (pace.ts); 0 turns it off. Default 100. */
   frameMs?: number;
+  /** Other routers whose notes on nodes this router reads (GET <peer>/orrery/notes) and shows beside its own record. */
+  peers?: string[];
+  /** Serve this router's own notes on nodes at /orrery/notes, for other routers to read. Off unless asked. */
+  shareNotes?: boolean;
   log?: (line: string) => void;
   holders?: HolderBook;
   aliases?: Alias[];
@@ -217,6 +222,8 @@ export class Router {
   private fullUntil = new Map<string, number>();
   /** Per node, whether the last sealed answer it was asked to pace came back paced (pace.ts). */
   private pacedBy = new Map<string, boolean>();
+  /** What each peer router said about the nodes, by the peer's address, as last read. */
+  private peerNotes = new Map<string, Note[]>();
   private log: (line: string) => void;
 
   constructor(private o: RouterOptions) {
@@ -240,7 +247,10 @@ export class Router {
       void this.standing(true);
       // The proxy is asked about again on the same tick: what it does to a request can change while the router runs.
       if (nodeProxy()) void this.checkProxy().catch(() => undefined);
+      // And what the peer routers saw since the last tick.
+      void this.readPeers();
     }, (this.o.refreshSecs ?? 60) * 1000);
+    void this.readPeers();
     void this.o.registry.checkHealth().catch(() => undefined);
     void this.o.registry.checkBurnsFromConfig().catch(() => undefined);
     this.burnTimer = setInterval(() => void this.o.registry.checkBurnsFromConfig().catch(() => undefined), 5 * 60_000);
@@ -248,6 +258,19 @@ export class Router {
     this.server = createServer((req, res) => void this.handle(req, res));
     await listenOn(this.server, this.o.port, this.o.host ?? '127.0.0.1', 'router');
     return this.server;
+  }
+
+  /** Reads every peer's notes on nodes (through the proxy when one is set). A peer that does not answer keeps what it
+   * said last time; one that answers with something that is not notes is dropped. Nothing here changes routing: the
+   * notes are shown beside this router's own record, and each router decides for itself. */
+  async readPeers(): Promise<void> {
+    await Promise.all((this.o.peers ?? []).map(async (peer) => {
+      const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
+      if (j === undefined) return;
+      const notes = parseNotes(j);
+      if (notes) this.peerNotes.set(peer, notes);
+      else this.peerNotes.delete(peer);
+    }));
   }
 
   /** With a proxy set, asks a node what address it sees of this router and keeps the answer for the status page.
@@ -327,6 +350,11 @@ export class Router {
       if (req.method === 'POST' && (url.pathname === '/v1/images/generations' || url.pathname === '/images/generations')) return await this.images(req, res);
       if (req.method === 'POST' && url.pathname === '/v1/messages/count_tokens') return send(res, 200, { input_tokens: estimateInputTokens(toOpenAI(await readJson(req))) });
       if (req.method === 'GET' && url.pathname === '/orrery/status') return await this.status(res);
+      // This router's own notes on nodes, for other routers: only when it was started to share them.
+      if (req.method === 'GET' && url.pathname === '/orrery/notes') {
+        if (!this.o.shareNotes) return send(res, 404, { error: { code: 'not_found', message: 'this router does not share notes (start it with --share-notes)' } });
+        return send(res, 200, notesFrom([...this.o.registry.entries.values()].map((e) => ({ address: e.address, watched: this.o.registry.watched(e.address) }))));
+      }
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {
         // What one request would cost at every provider of a model, from the lists on chain; nothing is sent or paid.
@@ -429,7 +457,9 @@ export class Router {
       bills: billsBy.get(e.address) ?? null,
       // Whether it paced the last sealed answer it was asked to pace; null before it was asked.
       paced: this.pacedBy.get(e.address) ?? null,
-      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address), paced: this.pacedBy.get(e.address) }),
+      // What the peer routers this router reads saw of it, added up; null when none has a note on it.
+      peers: sumPeers(this.peerNotes, e.address),
+      record: recordLines({ watched: this.o.registry.watched(e.address), observed: this.stats.get(e.address), speed: speedBy.get(e.address), bills: billsBy.get(e.address), paced: this.pacedBy.get(e.address), peers: sumPeers(this.peerNotes, e.address) }),
       // Whether its last health check was answered (null before the first check), and since when it has not been.
       answering: e.unansweredAt ? false : e.healthAt ? true : null, unansweredSince: e.unansweredAt ?? null,
       // Seconds it is still asked after the others, having said every slot was answering; null when it has not.

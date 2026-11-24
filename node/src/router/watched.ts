@@ -1,6 +1,7 @@
 // A router's own record of a node: how many health checks it made since it started watching, and how many found the
 // node answering with its model server up. Nobody vouches for it; each router keeps and shows its own.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { peerText, type PeerSum } from './notes.ts';
 import { dirname } from 'node:path';
 import { billsText, speedText } from '../spend.ts';
 import type { Observed } from './policy.ts';
@@ -80,8 +81,8 @@ export function sawLine(w: Watched | null | undefined, o: (Partial<Observed> & {
 /** The whole record of a node as lines a person reads, for the console and for an agent: how often it was up when
  * this router checked, what it did with the requests it was sent (the record on disk, else the counts since start),
  * and how fast it started answering. Empty before there is anything to say. */
-export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined; bills?: { checked: number; over: number } | null; paced?: boolean | null }, now = Date.now()): string[] {
-  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : '', o.bills && o.bills.checked > 0 ? billsText(o.bills) : '', pacedText(o.paced)].filter((l) => l.length > 0);
+export function recordLines(o: { watched: Watched | null | undefined; observed: { ok: number; fail: number; broke?: number } | null | undefined; speed: { answers: number; medianTtftMs: number } | null | undefined; bills?: { checked: number; over: number } | null; paced?: boolean | null; peers?: PeerSum | null }, now = Date.now()): string[] {
+  return [watchedText(o.watched, now), answeredText(o.watched, now) || answeredText(o.observed, now), o.speed && o.speed.answers > 0 ? speedText(o.speed) : '', o.bills && o.bills.checked > 0 ? billsText(o.bills) : '', pacedText(o.paced), peerText(o.peers)].filter((l) => l.length > 0);
 }
 
 /** Whether the node paced the last sealed answer this router asked it to pace (pace.ts): what was on the wire, seen

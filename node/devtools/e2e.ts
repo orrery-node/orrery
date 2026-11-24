@@ -2204,6 +2204,34 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && paceSt.line.includes(` · sealed answers are asked for one 4 KiB frame every 100 ms; ${paceSt.pace.paced} of ${paceSt.pace.asked} node${paceSt.pace.asked === 1 ? '' : 's'} that answered sealed paced`) && paceSt.line.endsWith(' · client IDs are dropped before anything leaves'),
     paceSt ? paceSt.line.slice(paceSt.line.indexOf('sealed answers') >= 0 ? paceSt.line.indexOf('sealed answers') : 0, (paceSt.line.indexOf('sealed answers') >= 0 ? paceSt.line.indexOf('sealed answers') : 0) + 130) : 'no privacy in /orrery/status');
 }
+// Routers share what they saw of the nodes. With --share-notes a router serves its own record of each node at
+// /orrery/notes (up in so many checks, answered so many of the requests it sent) and nothing about its wallet,
+// channels or spending; without it, nothing. With --peer it reads other routers' notes and shows them beside its own,
+// added up and apart: a stand-in peer here says it saw Ironbridge up in 58 of 60 checks and answering 40 of 41.
+{
+  const opts = routerOpts as { shareNotes?: boolean; peers?: string[] };
+  const closed = await fetch(`${ROUTER}/orrery/notes`);
+  opts.shareNotes = true;
+  const shared = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { notes?: number; nodes?: { address: string; checks: number; up: number; sent: number; answered: number }[] };
+  const sharedText = JSON.stringify(shared);
+  const ib = shared.nodes?.find((n) => n.address === nodes[1].pda.toBase58());
+  const peerSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [{ address: nodes[1].pda.toBase58(), checks: 60, up: 58, sent: 41, answered: 40 }, { address: nodes[1].pda.toBase58().slice(0, 10), checks: 1, up: 1, sent: 1, answered: 1 }] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => peerSrv.listen(0, '127.0.0.1', () => done()));
+  opts.peers = [`http://127.0.0.1:${(peerSrv.address() as { port: number }).port}`];
+  await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
+  const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: { address: string; peers?: { routers: number; checks: number; up: number; sent: number; answered: number } | null; record?: string[] }[] };
+  const ibSt = st.providers.find((p) => p.address === nodes[1].pda.toBase58());
+  const peerDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peers' && l.detail.includes('Ironbridge'))?.detail ?? '';
+  peerSrv.close();
+  opts.peers = [];
+  opts.shareNotes = false;
+  await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
+  check('routers share notes on nodes: --share-notes serves this router’s own record (no wallet, channels or spending), --peer shows what other routers saw beside it',
+    closed.status === 404 && shared.notes === 1 && !!ib && ib.checks > 0 && ib.sent > 0 && !/channel|deposit|spent|wallet|session|cost/i.test(sharedText)
+    && ibSt?.peers?.routers === 1 && ibSt.peers.up === 58 && ibSt.peers.answered === 40 && !!ibSt.record?.includes('1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests')
+    && peerDoc === 'Ironbridge Compute: 1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests',
+    `without --share-notes ${closed.status} · shared ${shared.nodes?.length ?? 0} nodes, Ironbridge up ${ib?.up ?? '?'}/${ib?.checks ?? '?'}, answered ${ib?.answered ?? '?'}/${ib?.sent ?? '?'} · ${ibSt?.record?.find((l) => l.includes('peer router')) ?? 'no peer line'}`);
+}
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
 // names no channel, in headers, in the request or in the voucher handed over after it.
 const ibChannel = channels.get(nodes[1].pda.toBase58())?.channel ?? '';
