@@ -2302,7 +2302,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const page = await (await fetch(`${ROUTER}/`)).text();
   const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: unknown[]; relay?: unknown; discovery?: string };
   check('the router console has a Peers section that shows each peer\u2019s signer or why its notes were refused, the relay\u2019s counts and how the listings were found',
-    page.includes('<section id="p2psec" hidden><h2>Peers</h2>') && page.includes("(p.signed?'signed, checks':'read, unsigned')") && page.includes("'relay open on port '+rl.port") && page.includes("s.discovery==='peers'")
+    page.includes('<section id="p2psec" hidden><h2>Peers</h2>') && page.includes("(p.signed?'signed, checks':'read, unsigned')") && page.includes("p.refused?'\u2014':'<span class=cap>unsigned</span>'") && page.includes("'relay open on port '+rl.port") && page.includes("s.discovery==='peers'")
     && Array.isArray(st.peers) && 'relay' in st && 'discovery' in st,
     `section ${page.includes('id="p2psec"') ? 'present' : 'missing'} · status peers ${Array.isArray(st.peers) ? st.peers.length : 'missing'}, relay ${st.relay ? 'open' : 'closed'}, discovery ${st.discovery ?? 'missing'}`);
 }
@@ -2359,6 +2359,28 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && tunnel.startsWith('HTTP/1.1 200 Connection Established') && /\r\n\r\nHTTP\/1\.1 200/.test(tunnel) && tunnelNotNode.startsWith('HTTP/1.1 403')
     && asRouter === 403 && !!relaySt && relaySt.relayed >= 2 && relaySt.refused >= 3,
     `node /health through the relay ${viaRelay.status} · a non-node address ${notNode.status} · CONNECT to the node ${tunnel.split('\r\n')[0] || 'nothing'}, then ${(/\r\n\r\n(HTTP\/1\.1 \d+)/.exec(tunnel) ?? [])[1] ?? 'nothing'} · CONNECT elsewhere ${tunnelNotNode.split('\r\n')[0] || 'nothing'} · the router API on the relay port ${asRouter} · relayed ${relaySt?.relayed ?? '?'}, refused ${relaySt?.refused ?? '?'}`);
+}
+// Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
+// routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
+{
+  const opts = routerOpts as { shareNotes?: boolean; peers?: string[] };
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const genuine = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: { checks: number }[] };
+  opts.shareNotes = false;
+  const changed = { ...genuine, nodes: genuine.nodes.map((n, i) => (i === 0 ? { ...n, checks: n.checks + 1 } : n)) };
+  const serve = (body: unknown) => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body)) : res.writeHead(404).end()));
+  const a = serve(genuine), b = serve(changed);
+  await Promise.all([a, b].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
+  opts.peers = [`http://127.0.0.1:${(a.address() as { port: number }).port}#${ourKey}`, `http://127.0.0.1:${(b.address() as { port: number }).port}`];
+  await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
+  const status = await (await fetch(`${ROUTER}/orrery/status`)).json();
+  const spend = await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=model`)).json();
+  writeFileSync(join(WORK, 'router-p2p.json'), JSON.stringify({ status, spend }, null, 1));
+  a.close();
+  b.close();
+  opts.peers = [];
+  await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
 }
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
 // names no channel, in headers, in the request or in the voucher handed over after it.
