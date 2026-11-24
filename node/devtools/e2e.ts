@@ -2264,6 +2264,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && changed?.refused === 'the signature does not match the notes' && /not the router pinned for this peer$/.test(wrongPin?.refused ?? ''),
     `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'}`);
 }
+// --trust-peers: a router that never asked a node starts from what its peers saw it answer, in place of the neutral
+// guess; off, the peers' notes are only shown. Here a stand-in peer says Ironbridge answered 0 of 40.
+{
+  const opts = routerOpts as { peers?: string[]; trustPeers?: boolean };
+  const ibAddress = nodes[1].pda.toBase58();
+  const peerSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [{ address: ibAddress, checks: 40, up: 40, sent: 40, answered: 0 }] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => peerSrv.listen(0, '127.0.0.1', () => done()));
+  opts.peers = [`http://127.0.0.1:${(peerSrv.address() as { port: number }).port}`];
+  const r = router as unknown as { readPeers?: () => Promise<void>; priorOf?: (e: unknown) => number | null };
+  await r.readPeers?.();
+  const ibEntry = registry.entries.get(ibAddress)!;
+  const priorOff = r.priorOf ? r.priorOf(ibEntry) : 'none';
+  opts.trustPeers = true;
+  const priorOn = r.priorOf ? r.priorOf(ibEntry) : 'none';
+  const { rank: rankAll, Stats: FreshStats } = await import('../src/router/policy.ts');
+  const offers = registry.offers('llama-3.3-70b');
+  const repOf = (withPeers: boolean) => rankAll(offers, 'reputation', 1000, 200, new FreshStats(), 0, () => 0, () => 0, (e) => (withPeers && r.priorOf ? r.priorOf(e) : null)).find((c) => c.entry.address === ibAddress)?.reputation ?? NaN;
+  const without = repOf(false), withPeers = repOf(true);
+  opts.trustPeers = false;
+  opts.peers = [];
+  await r.readPeers?.();
+  peerSrv.close();
+  check('--trust-peers: a router that never asked a node starts from what its peers saw it answer; without it, the notes are only shown',
+    priorOff === null && priorOn === 0 && Number.isFinite(without) && Math.abs(without - withPeers - 0.15) < 1e-9,
+    `prior without the flag ${priorOff} · with it ${priorOn} · Ironbridge's reputation for a router that never asked it: ${without.toFixed(3)} → ${withPeers.toFixed(3)}`);
+}
 // Peer exchange: an RPC that refuses getProgramAccounts (as many public ones do) still serves accounts by address, so a
 // router that cannot list the program finds the network from the listing addresses its peers named, each read and
 // checked on chain. A peer can point at listings, never make one up: an address the program does not own is dropped.

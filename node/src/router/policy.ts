@@ -126,7 +126,9 @@ const log01 = (x: number, cap: number) => Math.min(1, Math.log10(1 + Math.max(0,
 
 /** 0..1 from what the chain proves (money actually settled, how often, for how long, what is bonded) and what this
  * router saw itself. Settled volume is weighted most because it is the only input that cost someone real USDC. */
-export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): number {
+/** `prior`: for a node this router has not asked yet, what its peers saw it answer (answered / sent), used in place of
+ * the 0.6 a never-asked node otherwise gets, and only until this router has a record of its own (--trust-peers). */
+export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint, prior: number | null = null): number {
   const a = e.account;
   const settled = log01(Number(a.settled) / 1e6, 1_000);
   const redeems = log01(Number(a.redeems), 1_000);
@@ -134,7 +136,7 @@ export function reputation(e: ProviderEntry, o: Observed, maxBond: bigint): numb
   const age = Math.min(1, Math.max(0, days) / 90);
   const bond = maxBond > 0n ? Math.sqrt(Number((a.bonded * 1_000_000n) / maxBond) / 1_000_000) : 0;
   const seen = o.ok + o.fail;
-  const local = seen === 0 ? 0.6 : o.ok / seen;
+  const local = seen === 0 ? (prior ?? 0.6) : o.ok / seen;
   return Math.min(1, 0.35 * settled + 0.15 * redeems + 0.15 * age + 0.1 * bond + 0.25 * local + 0.1 * burnScore(e));
 }
 
@@ -159,7 +161,7 @@ export function openTo<T extends { entry: ProviderEntry; offer: ModelOffer }>(of
 
 /** `offOf` is the holder discount this router's wallet earns at each provider (basis points), 0 when none. `cachedOf` is
  * how much of this prompt a provider likely still has in its prompt cache (see affinity.ts), priced at its cached rate. */
-export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0, cachedOf: (e: ProviderEntry) => number = () => 0): Candidate[] {
+export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], route: Route, estIn: number, estOut: number, stats: Stats, minReputation = 0, offOf: (e: ProviderEntry) => number = () => 0, cachedOf: (e: ProviderEntry) => number = () => 0, priorOf: (e: ProviderEntry) => number | null = () => null): Candidate[] {
   const now = Date.now();
   const maxBond = offers.reduce((m, o) => (o.entry.account.bonded > m ? o.entry.account.bonded : m), 0n);
   // A cooldown sends requests to the other nodes of a model. When every one of them is cooling down there is no
@@ -177,7 +179,7 @@ export function rank(offers: { entry: ProviderEntry; offer: ModelOffer }[], rout
         cached,
         expected: costOf(discounted(offer.price, off), estIn, Math.min(estOut, offer.maxOutput), cached),
         ttftMs: o.ttftMs,
-        reputation: reputation(entry, o, maxBond),
+        reputation: reputation(entry, o, maxBond, priorOf(entry)),
         sealed: route === 'privacy',
       };
     });

@@ -65,6 +65,9 @@ export type RouterOptions = {
   peers?: string[];
   /** Serve this router's own notes on nodes at /orrery/notes, for other routers to read. Off unless asked. */
   shareNotes?: boolean;
+  /** For a node this router has not asked yet, start from what its peers saw it answer (notes.ts) instead of the neutral
+   * guess. This router's own record replaces it as soon as there is one. Off unless asked: each router decides. */
+  trustPeers?: boolean;
   /** Open a relay on this port (relay.ts): other routers reach listed nodes through it as their --proxy. Off unless asked. */
   relayPort?: number;
   /** Where the relay listens; every interface unless told otherwise. */
@@ -309,6 +312,13 @@ export class Router {
       this.peerNotes.set(given, read.nodes);
       this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now() });
     }));
+  }
+
+  /** With --trust-peers, what the peers saw a node answer (answered / sent), for a node this router has no record of. */
+  priorOf(e: ProviderEntry): number | null {
+    if (!this.o.trustPeers) return null;
+    const p = sumPeers(this.peerNotes, e.address);
+    return p && p.sent > 0 ? p.answered / p.sent : null;
   }
 
   /** With a proxy set, asks a node what address it sees of this router and keeps the answer for the status page.
@@ -730,7 +740,7 @@ export class Router {
     }
     const keys = prefixes(model, body.messages);
     const sticky = this.affinity.find(keys);
-    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, offOf, (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0));
+    const ranked = rank(offers, route, estIn, estOut, this.stats, this.o.minReputation, offOf, (e) => (sticky && e.address === sticky.address ? sticky.tokens : 0), (e) => this.priorOf(e));
     if (!ranked.length) throw new Unserved(route === 'privacy' ? `no provider with a verified enclave serves ${model}${whyNotPrivate(offers)}` : route === 'burn' ? `no provider of ${model} has a burn pledge this router has verified on chain` : `every provider for ${model} is cooling down`, 503, 'no_provider');
     if (this.o.channels.overBudget(ranked[0].expected)) throw new Unserved('daily spending cap reached (orrery router --daily-cap)', 429, 'budget');
 

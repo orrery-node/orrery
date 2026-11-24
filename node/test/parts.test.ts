@@ -158,6 +158,19 @@ describe('routing', () => {
     const paid = reputation(entry('paid', { settled: 500_000_000n, redeems: 300n }).entry, s.get('x'), 0n);
     assert.ok(paid > old);
   });
+
+  it('with --trust-peers, a node this router never asked starts from what its peers saw, until its own record exists', () => {
+    const s = new Stats();
+    const e = entry('new', {}).entry;
+    const neutral = reputation(e, s.get('new'), 0n);
+    assert.ok(Math.abs(neutral - reputation(e, s.get('new'), 0n, 0) - 0.25 * 0.6) < 1e-9, 'peers saw it answer nothing');
+    assert.ok(Math.abs(reputation(e, s.get('new'), 0n, 1) - neutral - 0.25 * 0.4) < 1e-9, 'peers saw it answer everything');
+    s.ok('new', 500);
+    assert.equal(reputation(e, s.get('new'), 0n, 0), reputation(e, s.get('new'), 0n), 'its own record replaces the peers\' once it has one');
+    const offers = [entry('a', {}), entry('b', {})];
+    const r = rank(offers, 'reputation', 100, 100, new Stats(), 0, () => 0, () => 0, (x) => (x.address === 'a' ? 0 : null));
+    assert.deepEqual(r.map((c) => c.entry.address), ['b', 'a']);
+  });
 });
 
 describe('provider upstream', () => {
