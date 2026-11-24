@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { notesFrom, parseNotes, peerText, sumPeers, type Note } from '../src/router/notes.ts';
+import { notesFrom, parseNotes, peerText, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { Keypair } from '@solana/web3.js';
+import { signerOf } from '../src/keys.ts';
 
 const A = '76UdbaSy69DdFv2ciRNQCbyz7ARVZvH4aVJwqBnszDE8';
 const B = '7UHevY47LgbJv9hz4iymecR8FURy27jX55KYb1sxytZS';
@@ -33,5 +35,29 @@ describe('routers sharing notes on nodes', () => {
     assert.equal(peerText(sumPeers(peers, B)), '1 peer router saw it answering 1 of 3 requests');
     assert.equal(sumPeers(peers, 'nobody'), null);
     assert.equal(peerText(null), '');
+  });
+});
+
+describe('signed notes', () => {
+  const router = Keypair.generate();
+  const by = router.publicKey.toBase58();
+  const notes = signNotes({ notes: 1, at: 7, nodes: [{ address: A, checks: 60, up: 58, sent: 41, answered: 40 }] }, by, signerOf(router));
+
+  it('a router signs its notes with its session key, and a reader checks who said them', () => {
+    assert.deepEqual(readPeerNotes(notes), { by, signed: true, nodes: notes.nodes });
+    assert.deepEqual(readPeerNotes(notes, by), { by, signed: true, nodes: notes.nodes });
+  });
+
+  it('notes changed on the way are refused, whoever passes them on', () => {
+    const changed = { ...notes, nodes: [{ ...notes.nodes[0], up: 59 }] };
+    assert.deepEqual(readPeerNotes(changed), { refused: 'the signature does not match the notes' });
+  });
+
+  it('a peer pinned to a key must sign with that key', () => {
+    const other = Keypair.generate().publicKey.toBase58();
+    assert.deepEqual(readPeerNotes(notes, other), { refused: `signed by ${by}, not the router pinned for this peer` });
+    const unsigned = { notes: 1, at: 7, nodes: notes.nodes };
+    assert.deepEqual(readPeerNotes(unsigned, by), { refused: 'not signed, and this peer is pinned to a key' });
+    assert.deepEqual(readPeerNotes(unsigned), { by: null, signed: false, nodes: notes.nodes });
   });
 });

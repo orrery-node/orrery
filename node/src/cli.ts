@@ -91,7 +91,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --private-only            seal every request to a verified enclave or refuse it; no suffix or header can turn it off
       --patience <seconds>      how long a request waits and asks again when no node can be reached (default 8, 0 fails at once)
       --frame-ms <ms>           sealed answers come back one 4 KiB frame per beat, so their tokens do not show on the wire (default 100, 0 off)
-      --peer <url,…>            other routers whose notes on nodes (up, answered) this one reads and shows beside its own (env ORRERY_PEERS)
+      --peer <url,…>            other routers whose notes on nodes (up, answered) this one reads and shows beside its own; url#<key> pins a peer to the router key that must sign them (env ORRERY_PEERS)
       --share-notes             serve this router's own notes on nodes at /orrery/notes for other routers (no wallet, channels or spending in them)
       --relay <port>            open a relay on this port: other routers reach the listed nodes through it (their --proxy http://<this computer>:<port>), so nodes see this computer and not them; only listed nodes, never this router's own API (--relay-host to pick the interface)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)

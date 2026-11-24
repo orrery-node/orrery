@@ -15,7 +15,8 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { notesFrom, parseNotes, sumPeers, type Note } from './notes.ts';
+import { notesFrom, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
+import { signerOf } from '../keys.ts';
 import { allowedTargets, Relay } from './relay.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
 import { away, nextWait, patienceFrom } from './patience.ts';
@@ -229,6 +230,8 @@ export class Router {
   private pacedBy = new Map<string, boolean>();
   /** What each peer router said about the nodes, by the peer's address, as last read. */
   private peerNotes = new Map<string, Note[]>();
+  /** Who signed each peer's notes, and whether they were refused, for the status page. */
+  private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number }>();
   /** The relay other routers reach nodes through, when one was opened. */
   private relay: Relay | null = null;
   private log: (line: string) => void;
@@ -288,12 +291,23 @@ export class Router {
    * said last time; one that answers with something that is not notes is dropped. Nothing here changes routing: the
    * notes are shown beside this router's own record, and each router decides for itself. */
   async readPeers(): Promise<void> {
-    await Promise.all((this.o.peers ?? []).map(async (peer) => {
+    // A peer no longer given is forgotten, notes and all.
+    const given = new Set(this.o.peers ?? []);
+    for (const k of [...this.peerNotes.keys()]) if (!given.has(k)) this.peerNotes.delete(k);
+    for (const k of [...this.peerSaid.keys()]) if (!given.has(k)) this.peerSaid.delete(k);
+    await Promise.all((this.o.peers ?? []).map(async (given) => {
+      // A peer given as url#<key> is pinned to that router: its notes must be signed by that key.
+      const [peer, pinned] = given.split('#');
       const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
       if (j === undefined) return;
-      const notes = parseNotes(j);
-      if (notes) this.peerNotes.set(peer, notes);
-      else this.peerNotes.delete(peer);
+      const read = readPeerNotes(j, pinned || undefined);
+      if ('refused' in read) {
+        this.peerNotes.delete(given);
+        this.peerSaid.set(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now() });
+        return;
+      }
+      this.peerNotes.set(given, read.nodes);
+      this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now() });
     }));
   }
 
@@ -378,7 +392,9 @@ export class Router {
       // This router's own notes on nodes, for other routers: only when it was started to share them.
       if (req.method === 'GET' && url.pathname === '/orrery/notes') {
         if (!this.o.shareNotes) return send(res, 404, { error: { code: 'not_found', message: 'this router does not share notes (start it with --share-notes)' } });
-        return send(res, 200, notesFrom([...this.o.registry.entries.values()].map((e) => ({ address: e.address, watched: this.o.registry.watched(e.address) }))));
+        // Signed with this router's session key: a reader knows which router said it, and that nothing changed on the way.
+        const notes = notesFrom([...this.o.registry.entries.values()].map((e) => ({ address: e.address, watched: this.o.registry.watched(e.address) })));
+        return send(res, 200, signNotes(notes, this.o.channels.session.publicKey.toBase58(), signerOf(this.o.channels.session)));
       }
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {
@@ -505,7 +521,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER) } : null;
-    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), ...p })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {

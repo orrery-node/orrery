@@ -1,3 +1,5 @@
+import bs58 from 'bs58';
+import { ed25519Verify, type Sign } from '../keys.ts';
 import type { Watched } from './watched.ts';
 
 /** One node as a router saw it with its own checks and requests: how often the node was up when the router checked,
@@ -5,8 +7,20 @@ import type { Watched } from './watched.ts';
  * spending is in it, and nothing about what was asked. */
 export type Note = { address: string; checks: number; up: number; sent: number; answered: number };
 
-/** What a router shares with other routers when it is started with --share-notes (GET /orrery/notes). */
-export type Notes = { notes: 1; at: number; nodes: Note[] };
+/** What a router shares with other routers when it is started with --share-notes (GET /orrery/notes): signed with
+ * the router's session key (`by`), so a reader knows which router said it and that nothing was changed on the way. */
+export type Notes = { notes: 1; at: number; nodes: Note[]; by?: string; sig?: string };
+
+/** The bytes a router signs: a fixed prefix and the notes in a fixed key order. */
+export function notesMessage(at: number, nodes: Note[]): Uint8Array {
+  const body = JSON.stringify({ at, nodes: nodes.map((n) => ({ address: n.address, checks: n.checks, up: n.up, sent: n.sent, answered: n.answered })) });
+  return Buffer.concat([Buffer.from('orrery/notes/1'), Buffer.from(body)]);
+}
+
+/** Notes signed by a router: `by` is its session key, `sig` the ed25519 signature over notesMessage. */
+export function signNotes(n: Notes, by: string, sign: Sign): Notes {
+  return { ...n, by, sig: Buffer.from(sign(notesMessage(n.at, n.nodes))).toString('base64') };
+}
 
 /** The nodes a router has a record of, as notes. A node it has never checked or asked is left out. */
 export function notesFrom(entries: { address: string; watched: Watched | null | undefined }[], now = Date.now()): Notes {
@@ -24,7 +38,11 @@ const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 export function parseNotes(j: unknown): Note[] | null {
   const n = j as Partial<Notes> | null;
   if (!n || typeof n !== 'object' || n.notes !== 1 || !Array.isArray(n.nodes)) return null;
-  return n.nodes
+  return wellFormed(n.nodes);
+}
+
+function wellFormed(nodes: unknown[]): Note[] {
+  return (nodes as Partial<Note>[])
     .filter((x): x is Note => !!x && typeof x === 'object' && typeof x.address === 'string' && base58.test(x.address)
       && count(x.checks) && count(x.up) && count(x.sent) && count(x.answered) && x.up <= x.checks && x.answered <= x.sent)
     .slice(0, 1000)
@@ -49,4 +67,26 @@ export function peerText(p: PeerSum | null | undefined): string {
     p.sent ? `answering ${p.answered.toLocaleString('en-US')} of ${p.sent.toLocaleString('en-US')} request${p.sent === 1 ? '' : 's'}` : '',
   ].filter(Boolean);
   return parts.length ? `${p.routers} peer router${p.routers === 1 ? '' : 's'} saw it ${parts.join(' and ')}` : '';
+}
+
+/** A peer's notes with who signed them. `signed` is true only when the signature checks against `by` over the notes as
+ * they arrived (before anything was dropped); with a key pinned for the peer (`--peer url#<key>`), notes signed by any
+ * other key, or not signed, are refused outright. Unsigned notes from an unpinned peer are read, and said to be. */
+export type PeerNotes = { by: string | null; signed: boolean; nodes: Note[] };
+
+export function readPeerNotes(j: unknown, pinned?: string): PeerNotes | { refused: string } {
+  const n = j as Partial<Notes> | null;
+  if (!n || typeof n !== 'object' || n.notes !== 1 || !Array.isArray(n.nodes) || typeof n.at !== 'number') return { refused: 'not notes' };
+  const asSent = n.nodes as Note[];
+  let signed = false;
+  if (typeof n.by === 'string' && typeof n.sig === 'string') {
+    try {
+      signed = ed25519Verify(bs58.decode(n.by), notesMessage(n.at, asSent), Buffer.from(n.sig, 'base64'));
+    } catch {
+      signed = false;
+    }
+    if (!signed) return { refused: 'the signature does not match the notes' };
+  }
+  if (pinned && (!signed || n.by !== pinned)) return { refused: signed ? `signed by ${n.by}, not the router pinned for this peer` : 'not signed, and this peer is pinned to a key' };
+  return { by: signed ? (n.by as string) : null, signed, nodes: wellFormed(asSent) };
 }

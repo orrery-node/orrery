@@ -2233,6 +2233,37 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && peerDoc === 'Ironbridge Compute: 1 peer router saw it up in 58 of 60 checks and answering 40 of 41 requests',
     `without --share-notes ${closed.status} · shared ${shared.nodes?.length ?? 0} nodes, Ironbridge up ${ib?.up ?? '?'}/${ib?.checks ?? '?'}, answered ${ib?.answered ?? '?'}/${ib?.sent ?? '?'} · ${ibSt?.record?.find((l) => l.includes('peer router')) ?? 'no peer line'}`);
 }
+// Signed notes: a router signs the notes it shares with its session key. Passed on unchanged by any peer they still
+// check; with one number changed they are refused; a peer pinned to a key (--peer url#<key>) must sign with that key.
+{
+  const opts = routerOpts as { shareNotes?: boolean; peers?: string[] };
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const genuine = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { by?: string; sig?: string; nodes: { address: string; checks: number; up: number; sent: number; answered: number }[] };
+  opts.shareNotes = false;
+  let served: unknown = genuine;
+  const peerSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(served)) : res.writeHead(404).end()));
+  await new Promise<void>((done) => peerSrv.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(peerSrv.address() as { port: number }).port}`;
+  const readOnce = async (peer: string) => {
+    opts.peers = [peer];
+    await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
+    return ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null }[] }).peers?.[0];
+  };
+  const pinnedOk = await readOnce(`${peerUrl}#${ourKey}`);
+  served = { ...genuine, nodes: genuine.nodes.map((n, i) => (i === 0 ? { ...n, checks: n.checks + 1 } : n)) };
+  const changed = await readOnce(peerUrl);
+  served = genuine;
+  const wrongPin = await readOnce(`${peerUrl}#${Keypair.generate().publicKey.toBase58()}`);
+  peerSrv.close();
+  opts.peers = [];
+  await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
+  check('a router signs the notes it shares; passed on unchanged they check, changed they are refused, and a pinned peer must sign with its key',
+    genuine.by === ourKey && typeof genuine.sig === 'string' && genuine.nodes.length > 0
+    && pinnedOk?.signed === true && pinnedOk.by === ourKey && pinnedOk.pinned === true && pinnedOk.refused === null
+    && changed?.refused === 'the signature does not match the notes' && /not the router pinned for this peer$/.test(wrongPin?.refused ?? ''),
+    `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'}`);
+}
 // Peer exchange: an RPC that refuses getProgramAccounts (as many public ones do) still serves accounts by address, so a
 // router that cannot list the program finds the network from the listing addresses its peers named, each read and
 // checked on chain. A peer can point at listings, never make one up: an address the program does not own is dropped.
