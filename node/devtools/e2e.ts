@@ -2639,6 +2639,36 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && /^this router's relay: open on port \d+: carried \d+, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
     peersCli.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
+// A peer cannot add nodes: notes on an address that is not listed on chain are read but never used, and the router
+// says how many of a peer's nodes it left out ("1 of them not listed on chain (not used)").
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: { address: string; checks: number; up: number; sent: number; answered: number }[] };
+  opts.shareNotes = false;
+  const stranger = Keypair.generate().publicKey.toBase58();
+  const someone = Keypair.generate();
+  const padded = signAs({ notes: 1, at: Date.now(), nodes: [...ours.nodes, { address: stranger, checks: 9, up: 9, sent: 9, answered: 9 }] }, someone.publicKey.toBase58(), signerFor(someone));
+  const srv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(padded)) : res.writeHead(404).end()));
+  await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  opts.peers = [peerUrl];
+  await rp.readPeers?.();
+  type Peer = { url: string; nodes: number; unlisted?: number };
+  const peer = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? []).find((p) => p.url === peerUrl);
+  const used = registry.entries.has(stranger);
+  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  srv.closeAllConnections();
+  srv.close();
+  check('a peer cannot add nodes: notes on an address not listed on chain are left out, and the router says how many',
+    peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
+    `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
+}
 // The router console says which peers relay: its Peers line tells the operator that a peer offers a relay and that
 // pointing --proxy at it means the nodes see that router, not this computer, and how many peers were met through one.
 {

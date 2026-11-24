@@ -154,4 +154,9 @@ describe('orrery doctor, what the running router paid', () => {
       'the listings came from the peers\u2019 notes, each checked on chain',
     ]);
   });
+
+  it('says how many of a peer\'s nodes are not listed on chain, which this router does not use', () => {
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 5, refused: null, at: 1, missed: 0, unlisted: 1 }), 'http://10.0.0.2:7171: unsigned, notes on 5 nodes, 1 of them not listed on chain (not used)');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 5, refused: null, at: 1, missed: 0, unlisted: 0 }), 'http://10.0.0.2:7171: unsigned, notes on 5 nodes');
+  });
 });
