@@ -12,7 +12,7 @@ import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
-import { fetchNode, nodeProxy } from '../proxy.ts';
+import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
 import { NOTES_MAX_AGE_MS, notesFrom, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
@@ -145,6 +145,10 @@ class Unserved extends Error {
 /** A node whose every slot was answering turned the request away (503 busy) before anything was owed. Nothing went
  * wrong at that node: it is full for now, so the router asks the next one and counts nothing against it. */
 class NodeFull extends Error {}
+
+/** The relay this router reaches nodes through (--proxy) turned the request away before any node saw it: busy, or not
+ * listing that node yet. Nothing the node did, so nothing is counted against it and it is not cooled down. */
+class RelayRefused extends Error {}
 
 /** How long a node that said it was full is asked after the others, on every route. */
 export const FULL_MS = 30_000;
@@ -791,6 +795,12 @@ export class Router {
             continue;
           }
           if (round === 0) tried.push(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}`);
+          // The relay or proxy in front turned the request away before the node saw it: nothing is counted against the
+          // node and it is not cooled down. The round still waits, as for a node that is away: a busy relay frees up.
+          if (err instanceof RelayRefused || err instanceof ProxyRefused) {
+            this.log(`${cand.entry.manifest?.name ?? cand.entry.address.slice(0, 6)}: ${(err as Error).message}; nothing counted against the node`);
+            continue;
+          }
           // A full node is there and honest about it: the next node is asked, and this one is not counted against.
           if (err instanceof NodeFull) {
             allAway = false;
@@ -937,6 +947,9 @@ export class Router {
       const code = r.ok ? null : ((await r.json().catch(() => null)) as { error?: { code?: unknown } } | null)?.error?.code;
       if (r.ok) drop(r);
       if (r.status === 503 && code === 'busy') throw new NodeFull('provider answered 503 (busy): every slot was answering');
+      if (nodeProxy() && ((r.status === 429 && code === 'relay_busy') || (r.status === 403 && code === 'relay_refused'))) {
+        throw new RelayRefused(`the relay at ${nodeProxy()!.label} ${code === 'relay_busy' ? 'is busy' : 'does not list this node yet'} (${r.status} ${code})`);
+      }
       throw new Error(`provider answered ${r.status}${typeof code === 'string' && /^[a-z_]{1,40}$/.test(code) ? ` (${code})` : ''}`);
     }
     const theirs = nodeSaid(r.headers.get('server-timing'));

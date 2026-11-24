@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
 import { allowedTargets, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
+import { httpTunnel, parseProxy, ProxyRefused } from '../src/proxy.ts';
 
 describe('a relay only reaches listed nodes', () => {
   it('keys each node endpoint by host and port, with the default port when none is written', () => {
@@ -59,5 +60,17 @@ describe('a relay only reaches listed nodes', () => {
     up.closeAllConnections();
     await new Promise((d) => relay.server.close(d));
     await new Promise((d) => up.close(d));
+  });
+
+  it('a tunnel the relay will not open fails as the proxy refusing, with its status, not as the node failing', async () => {
+    const relay = new Relay({ allowed: () => new Set() });
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const port = (relay.server.address() as AddressInfo).port;
+    const err = await httpTunnel(parseProxy(`http://127.0.0.1:${port}`), '127.0.0.1', 9).then(() => null, (e: unknown) => e);
+    assert.ok(err instanceof ProxyRefused);
+    assert.equal((err as ProxyRefused).status, 403);
+    assert.equal((err as Error).message, `the proxy at 127.0.0.1:${port} refused a tunnel to 127.0.0.1:9 (403)`);
+    relay.server.closeAllConnections();
+    await new Promise((d) => relay.server.close(d));
   });
 });

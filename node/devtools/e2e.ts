@@ -2443,6 +2443,31 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && lines.includes(`${goneUrl}: no answer yet (2 reads tried)`) && lines.some((l) => l.startsWith(`${quietUrl}: `) && l.endsWith('; no answer to the last read, these notes are kept for up to an hour')),
     `never answered: ${gone ? `${gone.missed ?? '?'} reads missed, ${gone.nodes} nodes` : 'not shown'} · answered, then went quiet: ${quiet ? `${quiet.missed ?? '?'} missed, ${quiet.nodes} nodes kept` : 'not shown'} · doctor: ${lines.map((l) => l.replace(/http:\/\/127\.0\.0\.1:\d+/, '<peer>')).join(' | ') || 'no peer lines'}`);
 }
+// A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
+// relay counts nothing against the node and cools nothing down, and its error says the relay refused.
+{
+  const { nodeProxy } = await import('../src/proxy.ts');
+  const { Relay } = await import('../src/router/relay.ts');
+  const before = nodeProxy();
+  const shut = new Relay({ allowed: () => new Set() });
+  await new Promise<void>((done) => shut.server.listen(0, '127.0.0.1', () => done()));
+  const relayAt = `127.0.0.1:${(shut.server.address() as { port: number }).port}`;
+  setNodeProxy(parseProxy(relayAt));
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const failed = () => [...router.stats.all().values()].reduce((sum, o) => sum + o.fail, 0);
+  const failsBefore = failed();
+  const r = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+  const j = (await r.json().catch(() => ({}))) as { error?: { message?: string } };
+  const failsAfter = failed();
+  const cooling = [...router.stats.all().values()].filter((o) => o.cooldownUntil > Date.now()).length;
+  setNodeProxy(before);
+  shut.server.closeAllConnections();
+  await new Promise((done) => shut.server.close(done));
+  const said = j.error?.message ?? '';
+  check('a relay that turns a request away is not the node: nothing is counted against the node, nothing cools down, and the error says the relay refused',
+    r.status === 502 && said.includes(`the relay at ${relayAt} does not list this node yet (403 relay_refused)`) && failsAfter === failsBefore && cooling === 0 && shut.refused >= 1,
+    `${r.status} "${said.replaceAll(relayAt, '<relay>').slice(0, 150)}" · failures counted ${failsBefore} → ${failsAfter} · nodes cooling down ${cooling} · relay refused ${shut.refused}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

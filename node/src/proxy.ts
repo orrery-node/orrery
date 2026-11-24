@@ -116,6 +116,14 @@ export function socksTunnel(proxy: Proxy, host: string, port: number, onSocket?:
   });
 }
 
+/** A proxy that answered and would not open a tunnel (a relay that is busy, or does not list the node): the proxy's
+ * doing, not the node's. */
+export class ProxyRefused extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 /** Asks an HTTP proxy for a tunnel (CONNECT) to host:port. The proxy resolves the name. */
 export function httpTunnel(proxy: Proxy, host: string, port: number): Promise<Socket> {
   return new Promise((done, fail) => {
@@ -124,7 +132,7 @@ export function httpTunnel(proxy: Proxy, host: string, port: number): Promise<So
     ask.once('connect', (res, socket) => {
       if (res.statusCode !== 200) {
         socket.destroy();
-        return fail(new Error(`the proxy at ${proxy.label} refused a tunnel to ${authority(host, port)} (${res.statusCode})`));
+        return fail(new ProxyRefused(`the proxy at ${proxy.label} refused a tunnel to ${authority(host, port)} (${res.statusCode})`, res.statusCode ?? 0));
       }
       done(socket as Socket);
     });

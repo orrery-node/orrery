@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A relay that turns a request away is not the node. A router whose `--proxy` is a relay (or any HTTP proxy) that answers busy (429 relay_busy), does not list the node yet (403 relay_refused) or will not open a tunnel counts nothing against the node and puts it in no cooldown; the error says the relay refused ("the relay at … does not list this node yet"), and the request still waits a round for a busy relay to free up.' },
   { who: 'router', text: 'A peer router that does not answer is said, not left out. One that has never answered (a mistyped or unreachable `--peer`) shows in the router status, the console and `orrery doctor` as "no answer yet (2 reads tried)"; one that answered before keeps its notes for up to an hour with the reads it has missed since ("no answer to the last read, these notes are kept for up to an hour").' },
   { who: 'router', text: 'A relay is shared, so no one address takes all of it: it carries up to 16 connections at a time for one address (`--relay-per-client <n>`) and answers the next with 429, "this relay carries up to 16 connections at a time for one address; wait for one to finish", tunnels and forwarded requests alike. The router status, its console and `orrery doctor` say how many are open now and the limit.' },
 ];
