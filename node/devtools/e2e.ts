@@ -321,7 +321,7 @@ const mcpTasks = mcpOut[10]?.result?.content?.[0]?.text ?? '';
 check('an agent working under a task through orrery mcp is told what the task has spent and has left, after each answer and in status', /— task rehearsal-mcp: \$0\.0000\d\d spent, \$0\.000\d{3} left$/.test(mcpTask) && /\ntasks:\n[\s\S]*rehearsal-mcp: \$0\.0000\d\d of \$0\.001000 spent, \$0\.000\d{3} left, 1 answer/.test(mcpTasks), `${mcpTask.split('\n').pop()} · ${mcpTasks.split('\n').find((l) => l.startsWith('rehearsal-mcp')) ?? 'no tasks in status'}`);
 const mcpAnswer = mcpOut[3]?.result?.content?.[0]?.text ?? '';
 check('an agent is told through orrery mcp how what it paid compares with the prices the node listed on chain', /paid \$\d\.\d{6} for this answer(, what its listed prices come to|, under its listed \$\d\.\d{6}| \(it asked)/.test(mcpAnswer), (mcpAnswer.split('\n').find((l) => l.includes('paid $')) ?? 'no paid line').replace(/\(([1-9A-HJ-NP-Za-km-z]{6})…\)/, '($1…)').slice(0, 150));
-check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,image,quote,models,status,spend' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
+check('an agent asks the network through orrery mcp and the answer is paid', (mcpOut[2]?.result?.tools ?? []).map((t) => t.name).join(',') === 'ask,embed,rerank,image,quote,models,status,spend,peers' && !mcpOut[3]?.result?.isError && mcpAnswer.startsWith('Requests travel') && /paid \$0\.0000\d+ for this answer/.test(mcpAnswer), mcpAnswer.split('\n').pop() ?? '');
 const mcpModels = mcpOut[4]?.result?.content?.[0]?.text ?? '';
 const mcpCapped = mcpOut[5]?.result?.content?.[0]?.text ?? '';
 const mcpStatus = mcpOut[6]?.result?.content?.[0]?.text ?? '';
@@ -2622,12 +2622,17 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const peerUrl = `http://127.0.0.1:${(relaying.address() as { port: number }).port}`;
   opts.peers = [`${peerUrl}#${ourKey}`];
   await rp.readPeers?.();
+  const { handle: peersMcpHandle } = await import('../src/mcp.ts');
+  const peersMcp = await (peersMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   const peersCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
   opts.peers = [];
   await rp.readPeers?.();
   relaying.closeAllConnections();
   relaying.close();
   const lines = peersCli.split('\n');
+  check('an agent reads the router\u2019s P2P side through orrery mcp: the peers tool gives the same lines as orrery peers, relay ports included',
+    peersMcp !== '' && peersMcp === peersCli && peersMcp.includes('; relays on port 7272, usable as --proxy http://<its host>:7272'),
+    peersMcp.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').slice(0, 2).join(' | ').slice(0, 240) || 'no answer from the peers tool');
   check('orrery peers shows the P2P side of a running router: a count of its peer routers, a line for each with who signed and the relay port, and its own relay',
     lines[0] === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying'
     && lines[1] === `  ${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}; relays on port 7272, usable as --proxy http://<its host>:7272`

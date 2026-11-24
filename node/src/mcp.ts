@@ -3,6 +3,7 @@
 // exactly like a request from any other tool.
 import { answeredText, span, watchedText } from './router/watched.ts';
 import { billsText, skipNote, speedText, unansweredNote } from './spend.ts';
+import { peersReport } from './doctor.ts';
 import { createInterface } from 'node:readline';
 
 type Json = Record<string, unknown>;
@@ -122,6 +123,11 @@ const TOOLS = [
         by: { type: 'string', enum: ['model', 'provider', 'task', 'agent', 'kind', 'day'], description: 'how to group it (default model)' },
       },
     },
+  },
+  {
+    name: 'peers',
+    description: 'The local router\u2019s P2P side: how many peer routers it reads, each with who signed its notes on nodes, which peer introduced it, and the relay port it offers (usable as the router\u2019s --proxy, so nodes see that router and not this computer), and the router\u2019s own relay. Read from the local router; nothing is sent to a peer or a node.',
+    inputSchema: { type: 'object', properties: {} },
   },
 ];
 
@@ -251,6 +257,11 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const rows = (j.data ?? []).map((m) => `${m.id}  ·  ${m.providers} provider${m.providers === 1 ? '' : 's'}  ·  from ${usd(m.pricing.prompt_per_million)} in / ${usd(m.pricing.completion_per_million)} out per million${m.pricing.cached_prompt_per_million !== undefined ? ` · cached in from ${usd(m.pricing.cached_prompt_per_million)}` : ''}${m.context_length ? `  ·  ${m.context_length.toLocaleString('en-US')} context` : ''}${m.private_providers ? `  ·  ${m.private_providers} in an enclave this router verified: add :private to send only there` : ''}${m.pricing.per_image !== undefined ? `  ·  from ${usd(m.pricing.per_image)} an image` : ''}${m.pricing.per_million_characters !== undefined ? `  ·  from ${usd(m.pricing.per_million_characters)} per million characters` : ''}${m.kind ? `  ·  ${m.kind}: ${m.kind === 'speech' ? 'send it to /v1/audio/speech on your router; its answer is audio' : m.kind === 'image' ? 'use the image tool' : `use the ${m.kind === 'rerank' ? 'rerank' : 'embed'} tool`}` : ''}`);
       const noEnclave = rows.length && !(j.data ?? []).some((m) => m.private_providers) ? "\n:private: no node serving these runs in an enclave this router verified yet, so a :private ask would be refused. Without :private, each request still goes sealed to the node's own key." : '';
       return text(rows.length ? rows.join('\n') + noEnclave : 'no models on the network right now');
+    }
+    if (name === 'peers') {
+      const r = await fetchFn(`${router}/orrery/status`);
+      if (!r.ok) return text(`the router could not say who its peers are: ${r.status}`, true);
+      return text(peersReport((await r.json()) as Parameters<typeof peersReport>[0]).join('\n'));
     }
     if (name === 'spend') {
       const by = typeof a.by === 'string' && ['model', 'provider', 'task', 'agent', 'kind', 'day'].includes(a.by) ? a.by : 'model';

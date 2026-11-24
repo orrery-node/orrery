@@ -324,4 +324,14 @@ describe('orrery mcp and task budgets', () => {
     assert.equal(missing.result.isError, true);
     assert.equal(missing.result.content[0].text, 'rerank needs a model, a query and a list of documents');
   });
+
+  it('the peers tool says the router\u2019s peer routers and the relays it could use, from the router\u2019s own status', async () => {
+    const status = { peers: [{ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272 }], relay: null };
+    const out = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, 'http://r', (async () => reply(status)) as never, '0')) as { result: { content: { text: string }[] } };
+    assert.equal(out.result.content[0].text, [
+      '1 peer router: 0 signed, 0 met through a peer, 0 refused, 1 relaying',
+      '  http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272, usable as --proxy http://<its host>:7272',
+      'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)',
+    ].join('\n'));
+  });
 });
