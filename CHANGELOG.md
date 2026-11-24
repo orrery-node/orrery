@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The router console's Peers line says which peers relay ("1 peer relays: point --proxy at it and the nodes see that router, not this computer") and how many peers were met through another ("1 of the 3 peer routers met through a peer"); each peer's row already shows its relay port.
 - **Router** · `orrery mcp` has a `peers` tool: an agent reads its router's P2P side, the same lines as `orrery peers` (peer routers, who signed and introduced them, the relay port each offers for `--proxy`, the router's own relay), from the local router only.
 - **Router** · `orrery peers` shows the P2P side of a running router in one place: how many peer routers it reads ("3 peer routers: 2 signed, 2 met through a peer, 1 refused, 1 relaying"), a line for each with who signed its notes, which peer introduced it and the relay port it offers, and the router's own relay. It asks only that router (`--router`, `--json`).
 - **Router** · Routers find relays through their peers. A router sharing notes that runs a relay says so at `/orrery/peers` (its port), and a router reading it shows which of its peers relay and on which port, in the status (`relayPort`), the console and `orrery doctor` ("relays on port 7272, usable as --proxy http://<its host>:7272").

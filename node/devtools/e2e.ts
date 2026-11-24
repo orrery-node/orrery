@@ -2639,25 +2639,46 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && /^this router's relay: open on port \d+: carried \d+, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
     peersCli.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
-// Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
-// routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
+// The router console says which peers relay: its Peers line tells the operator that a peer offers a relay and that
+// pointing --proxy at it means the nodes see that router, not this computer, and how many peers were met through one.
 {
-  const opts = routerOpts as { shareNotes?: boolean; peers?: string[] };
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  check('the router console says which peers relay and how many were met through a peer: point --proxy at one and the nodes see that router',
+    page.includes("': point --proxy at '+(rpe.length===1?'it':'one')+' and the nodes see that router, not this computer'") && page.includes("' peer routers met through a peer'") && page.includes('p.relayPort&&!p.refused'),
+    page.includes('rpe.length') ? 'the Peers line names relaying peers and met ones' : 'the Peers line says nothing of relays among the peers');
+}
+// Kept for the media folder: the router's status and spend as its console reads them, with the relay open and three
+// peer routers read: one passing on this router's own signed notes (pinned to its key) that also runs a relay, one
+// with a number changed, and one met through the first, signed by its own key.
+{
+  const opts = routerOpts as { shareNotes?: boolean; peers?: string[]; meetPeers?: boolean };
   const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
   opts.shareNotes = true;
   const genuine = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: { checks: number }[] };
   opts.shareNotes = false;
   const changed = { ...genuine, nodes: genuine.nodes.map((n, i) => (i === 0 ? { ...n, checks: n.checks + 1 } : n)) };
-  const serve = (body: unknown) => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body)) : res.writeHead(404).end()));
-  const a = serve(genuine), b = serve(changed);
+  const other = Keypair.generate();
+  const metNotes = signAs({ notes: 1, at: Date.now(), nodes: genuine.nodes as never }, other.publicKey.toBase58(), signerFor(other));
+  const serve = (routes: Record<string, unknown>) => createHttpServer((req, res) => (req.url && req.url in routes ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(routes[req.url])) : res.writeHead(404).end()));
+  const c = serve({ '/orrery/notes': metNotes });
+  await new Promise<void>((done) => c.listen(0, '127.0.0.1', () => done()));
+  const cUrl = `http://127.0.0.1:${(c.address() as { port: number }).port}`;
+  const a = serve({ '/orrery/notes': genuine, '/orrery/peers': { peers: [{ url: cUrl, by: other.publicKey.toBase58() }], relay: { port: 7272 } } });
+  const b = serve({ '/orrery/notes': changed });
   await Promise.all([a, b].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
   opts.peers = [`http://127.0.0.1:${(a.address() as { port: number }).port}#${ourKey}`, `http://127.0.0.1:${(b.address() as { port: number }).port}`];
+  opts.meetPeers = true;
   await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
   const status = await (await fetch(`${ROUTER}/orrery/status`)).json();
   const spend = await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=model`)).json();
   writeFileSync(join(WORK, 'router-p2p.json'), JSON.stringify({ status, spend }, null, 1));
-  a.close();
-  b.close();
+  for (const srv of [a, b, c]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  opts.meetPeers = false;
   opts.peers = [];
   await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
 }
