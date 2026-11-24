@@ -41,7 +41,7 @@ describe('routers sharing notes on nodes', () => {
 describe('signed notes', () => {
   const router = Keypair.generate();
   const by = router.publicKey.toBase58();
-  const notes = signNotes({ notes: 1, at: 7, nodes: [{ address: A, checks: 60, up: 58, sent: 41, answered: 40 }] }, by, signerOf(router));
+  const notes = signNotes({ notes: 1, at: Date.now(), nodes: [{ address: A, checks: 60, up: 58, sent: 41, answered: 40 }] }, by, signerOf(router));
 
   it('a router signs its notes with its session key, and a reader checks who said them', () => {
     assert.deepEqual(readPeerNotes(notes), { by, signed: true, nodes: notes.nodes });
@@ -56,8 +56,18 @@ describe('signed notes', () => {
   it('a peer pinned to a key must sign with that key', () => {
     const other = Keypair.generate().publicKey.toBase58();
     assert.deepEqual(readPeerNotes(notes, other), { refused: `signed by ${by}, not the router pinned for this peer` });
-    const unsigned = { notes: 1, at: 7, nodes: notes.nodes };
+    const unsigned = { notes: 1, at: Date.now(), nodes: notes.nodes };
     assert.deepEqual(readPeerNotes(unsigned, by), { refused: 'not signed, and this peer is pinned to a key' });
     assert.deepEqual(readPeerNotes(unsigned), { by: null, signed: false, nodes: notes.nodes });
+  });
+
+  it('signed notes from over an hour ago, or dated ahead, are refused: anyone can pass old signed notes on again', () => {
+    const now = 10_000_000_000;
+    const old = signNotes({ notes: 1, at: now - 2 * 3_600_000, nodes: notes.nodes }, by, signerOf(router));
+    assert.deepEqual(readPeerNotes(old, undefined, now), { refused: 'the notes are 120 min old; older than an hour is not used' });
+    const ahead = signNotes({ notes: 1, at: now + 5 * 60_000, nodes: notes.nodes }, by, signerOf(router));
+    assert.deepEqual(readPeerNotes(ahead, undefined, now), { refused: 'the notes are dated in the future' });
+    const fresh = signNotes({ notes: 1, at: now - 60_000, nodes: notes.nodes }, by, signerOf(router));
+    assert.equal((readPeerNotes(fresh, by, now) as { signed: boolean }).signed, true);
   });
 });

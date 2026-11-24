@@ -15,7 +15,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { notesFrom, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
+import { NOTES_MAX_AGE_MS, notesFrom, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, Relay } from './relay.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
@@ -312,6 +312,13 @@ export class Router {
       this.peerNotes.set(given, read.nodes);
       this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now() });
     }));
+    // A peer that has not answered for over an hour: what it said last is let go of.
+    for (const [given, said] of this.peerSaid) {
+      if (said.refused === null && Date.now() - said.at > NOTES_MAX_AGE_MS) {
+        this.peerNotes.delete(given);
+        this.peerSaid.set(given, { ...said, nodes: 0, refused: 'no answer for over an hour; its last notes are let go of' });
+      }
+    }
   }
 
   /** With --trust-peers, what the peers saw a node answer (answered / sent), for a node this router has no record of. */

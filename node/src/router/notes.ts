@@ -74,7 +74,11 @@ export function peerText(p: PeerSum | null | undefined): string {
  * other key, or not signed, are refused outright. Unsigned notes from an unpinned peer are read, and said to be. */
 export type PeerNotes = { by: string | null; signed: boolean; nodes: Note[] };
 
-export function readPeerNotes(j: unknown, pinned?: string): PeerNotes | { refused: string } {
+/** Notes older than this when they arrive are not used: a signature says who wrote them, not that they are current,
+ * and anyone can pass old signed notes on again. */
+export const NOTES_MAX_AGE_MS = 3_600_000;
+
+export function readPeerNotes(j: unknown, pinned?: string, now = Date.now()): PeerNotes | { refused: string } {
   const n = j as Partial<Notes> | null;
   if (!n || typeof n !== 'object' || n.notes !== 1 || !Array.isArray(n.nodes) || typeof n.at !== 'number') return { refused: 'not notes' };
   const asSent = n.nodes as Note[];
@@ -88,5 +92,7 @@ export function readPeerNotes(j: unknown, pinned?: string): PeerNotes | { refuse
     if (!signed) return { refused: 'the signature does not match the notes' };
   }
   if (pinned && (!signed || n.by !== pinned)) return { refused: signed ? `signed by ${n.by}, not the router pinned for this peer` : 'not signed, and this peer is pinned to a key' };
+  if (n.at > now + 60_000) return { refused: 'the notes are dated in the future' };
+  if (now - n.at > NOTES_MAX_AGE_MS) return { refused: `the notes are ${Math.round((now - n.at) / 60_000)} min old; older than an hour is not used` };
   return { by: signed ? (n.by as string) : null, signed, nodes: wellFormed(asSent) };
 }

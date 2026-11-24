@@ -2259,6 +2259,13 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const changed = await readOnce(peerUrl);
   served = genuine;
   const wrongPin = await readOnce(`${peerUrl}#${Keypair.generate().publicKey.toBase58()}`);
+  // Old signed notes passed on again: signed by some router two hours ago, so the signature checks, and still refused.
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const someone = Keypair.generate();
+  served = signAs({ notes: 1, at: Date.now() - 2 * 3_600_000, nodes: genuine.nodes } as never, someone.publicKey.toBase58(), signerFor(someone));
+  const replayed = await readOnce(peerUrl);
+  served = genuine;
   peerSrv.close();
   opts.peers = [];
   await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
@@ -2266,8 +2273,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     genuine.by === ourKey && typeof genuine.sig === 'string' && genuine.nodes.length > 0
     && pinnedOk?.signed === true && pinnedOk.by === ourKey && pinnedOk.pinned === true && pinnedOk.refused === null
     && changed?.refused === 'the signature does not match the notes' && /not the router pinned for this peer$/.test(wrongPin?.refused ?? '')
+    && /^the notes are 1\d\d min old; older than an hour is not used$/.test(replayed?.refused ?? '')
     && doctorPeer === `${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${genuine.nodes.length} node${genuine.nodes.length === 1 ? '' : 's'}`,
-    `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · doctor: ${doctorPeer.replace(peerUrl, '<peer>').replace(ourKey.slice(0, 4), '<key>') || 'no peer line'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'}`);
+    `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · doctor: ${doctorPeer.replace(peerUrl, '<peer>').replace(ourKey.slice(0, 4), '<key>') || 'no peer line'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'} · two-hour-old signed notes: ${replayed?.refused ?? 'accepted'}`);
 }
 // --trust-peers: a router that never asked a node starts from what its peers saw it answer, in place of the neutral
 // guess; off, the peers' notes are only shown. Here a stand-in peer says Ironbridge answered 0 of 40.
