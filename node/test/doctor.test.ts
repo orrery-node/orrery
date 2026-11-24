@@ -120,4 +120,10 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: 1, missed: 0, via: 'http://10.0.0.2:7171' }), 'http://10.0.0.6:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes, met through http://10.0.0.2:7171');
     assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes', via: 'http://10.0.0.2:7171' }), 'http://10.0.0.6:7171: refused, the signature does not match the notes, met through http://10.0.0.2:7171');
   });
+
+  it('says when a peer that keeps missing is read next', () => {
+    const now = 1_000_000;
+    assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 4, retryAt: now + 110_000 }, now), 'http://10.0.0.5:7171: no answer yet (4 reads tried; next read in 2 min)');
+    assert.equal(peerLine({ url: 'http://10.0.0.5:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 3, retryAt: now - 1 }, now), 'http://10.0.0.5:7171: no answer yet (3 reads tried)');
+  });
 });

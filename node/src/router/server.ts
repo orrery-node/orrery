@@ -15,7 +15,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { MEET_MAX, NOTES_MAX_AGE_MS, notesFrom, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
+import { MEET_MAX, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
@@ -244,6 +244,8 @@ export class Router {
   private peerNotes = new Map<string, Note[]>();
   /** Routers met through a peer (--meet-peers), as `url#key`, with the peer that introduced each. */
   private met = new Map<string, string>();
+  /** When each peer was last tried, for the wait after missed reads (peerBackoffMs). */
+  private peerTried = new Map<string, number>();
   /** Who signed each peer's notes, and whether they were refused, for the status page. */
   private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }>();
   /** The relay other routers reach nodes through, when one was opened. */
@@ -314,7 +316,12 @@ export class Router {
     const given = new Set(all);
     for (const k of [...this.peerNotes.keys()]) if (!given.has(k)) this.peerNotes.delete(k);
     for (const k of [...this.peerSaid.keys()]) if (!given.has(k)) this.peerSaid.delete(k);
+    for (const k of [...this.peerTried.keys()]) if (!given.has(k)) this.peerTried.delete(k);
     await Promise.all(all.map(async (given) => {
+      // A peer that has missed three reads in a row is tried again only after a wait that grows with each miss.
+      const wait = peerBackoffMs(this.peerSaid.get(given)?.missed ?? 0);
+      if (wait && Date.now() - (this.peerTried.get(given) ?? 0) < wait) return;
+      this.peerTried.set(given, Date.now());
       // A peer given as url#<key> is pinned to that router: its notes must be signed by that key.
       const [peer, pinned] = given.split('#');
       const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
@@ -585,7 +592,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER) } : null;
-    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, ...p })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {

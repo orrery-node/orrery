@@ -119,3 +119,9 @@ export function readIntroductions(j: unknown): string[] {
   }
   return out;
 }
+
+/** How long to wait before reading a peer again after it missed so many reads in a row: nothing for the first three,
+ * then a minute, doubling up to ten, so an address that is gone does not cost a timeout on every refresh. */
+export function peerBackoffMs(missed: number): number {
+  return missed < 3 ? 0 : Math.min(60_000 * 2 ** (missed - 3), 600_000);
+}

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, notesFrom, parseNotes, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, notesFrom, parseNotes, peerBackoffMs, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -85,5 +85,9 @@ describe('signed notes', () => {
     ] }), [`http://10.0.0.7:7171#${k}`, `https://router.example#${k}`]);
     assert.deepEqual(readIntroductions({ nope: 1 }), []);
     assert.equal(readIntroductions({ peers: Array.from({ length: 40 }, (_, i) => ({ url: `http://10.0.1.${i}:7171`, by: k })) }).length, 32);
+  });
+
+  it('waits longer before reading a peer that keeps missing: nothing for three misses, then a minute, doubling up to ten', () => {
+    assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 12].map(peerBackoffMs), [0, 0, 0, 60_000, 120_000, 240_000, 480_000, 600_000, 600_000]);
   });
 });

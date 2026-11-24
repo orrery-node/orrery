@@ -171,7 +171,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -254,13 +254,14 @@ export function relayLine(r: { port: number | null; relayed: number; refused: nu
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
-export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null }): string {
+export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null }, now = Date.now()): string {
   const via = p.via ? `, met through ${p.via}` : '';
   if (p.refused) return `${p.url}: refused, ${p.refused}${via}`;
   const missed = p.missed ?? 0;
-  if (p.at === 0) return `${p.url}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried)${via}`;
+  const later = p.retryAt && p.retryAt > now ? `; next read in ${Math.max(1, Math.ceil((p.retryAt - now) / 60_000))} min` : '';
+  if (p.at === 0) return `${p.url}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried${later})${via}`;
   const who = p.signed && p.by ? `signed by ${p.by.slice(0, 4)}\u2026${p.by.slice(-4)}${p.pinned ? ' (pinned)' : ''}` : 'unsigned';
-  const quiet = missed ? `; no answer to the last ${missed === 1 ? 'read' : `${missed} reads`}, these notes are kept for up to an hour` : '';
+  const quiet = missed ? `; no answer to the last ${missed === 1 ? 'read' : `${missed} reads`}, these notes are kept for up to an hour${later}` : '';
   return `${p.url}: ${who}, notes on ${p.nodes} node${p.nodes === 1 ? '' : 's'}${via}${quiet}`;
 }
 

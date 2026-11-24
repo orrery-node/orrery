@@ -2519,6 +2519,26 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && lines.includes(`${bUrl}: signed by ${short(someone.publicKey.toBase58())} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}, met through ${aUrl}`),
     `without --meet-peers: ${alone.length} peer · with it: ${peers.length} (${[metB, metC].map((p) => (p ? (p.refused ? 'refused' : `signed, ${p.nodes} nodes`) : 'missing')).join(', ')}; an introduction of this router itself ${peers.some((p) => p.url === 'http://127.0.0.1:9') ? 'read' : 'left out'}) · /orrery/peers names ${introduced.peers?.length ?? '?'} · doctor: ${lines.find((l) => l.startsWith(bUrl))?.replace(bUrl, '<b>').replace(aUrl, '<a>') ?? 'no line'}`);
 }
+// A peer that keeps not answering is read less often: after three missed reads in a row, a minute before the next try,
+// doubling up to ten, so an address that is gone does not cost a timeout on every refresh; doctor says when it is next.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const closed = createHttpServer();
+  await new Promise<void>((done) => closed.listen(0, '127.0.0.1', () => done()));
+  const goneUrl = `http://127.0.0.1:${(closed.address() as { port: number }).port}`;
+  await new Promise((done) => closed.close(done));
+  opts.peers = [goneUrl];
+  for (let i = 0; i < 5; i++) await rp.readPeers?.();
+  type Peer = { url: string; missed?: number; retryAt?: number | null };
+  const peer = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? []).find((p) => p.url === goneUrl);
+  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  check('a peer that keeps not answering is read less often: after three missed reads a minute passes before the next try, and doctor says when',
+    peer?.missed === 3 && typeof peer.retryAt === 'number' && peer.retryAt > Date.now() && peer.retryAt <= Date.now() + 60_000 && line === `${goneUrl}: no answer yet (3 reads tried; next read in 1 min)`,
+    `after 5 refreshes: ${peer ? `${peer.missed ?? '?'} reads tried, next ${typeof peer.retryAt === 'number' ? `in ${Math.round((peer.retryAt - Date.now()) / 1000)} s` : 'whenever'}` : 'not shown'} · doctor: ${line.replace(goneUrl, '<peer>') || 'no line'}`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {
