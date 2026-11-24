@@ -2539,6 +2539,49 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.missed === 3 && typeof peer.retryAt === 'number' && peer.retryAt > Date.now() && peer.retryAt <= Date.now() + 60_000 && line === `${goneUrl}: no answer yet (3 reads tried; next read in 1 min)`,
     `after 5 refreshes: ${peer ? `${peer.missed ?? '?'} reads tried, next ${typeof peer.retryAt === 'number' ? `in ${Math.round((peer.retryAt - Date.now()) / 1000)} s` : 'whenever'}` : 'not shown'} · doctor: ${line.replace(goneUrl, '<peer>') || 'no line'}`);
 }
+// Trust falls off with distance: under --trust-peers a peer this router was given counts in full, and a router met
+// through it (--meet-peers) counts half. A node only a met router saw answer 0 of 40 starts at 0.3, halfway between
+// the neutral 0.6 and what that router saw; once the given peer says the same, it starts at 0.
+{
+  const opts = routerOpts as { peers?: string[]; meetPeers?: boolean; trustPeers?: boolean };
+  const r = router as unknown as { readPeers?: () => Promise<void>; priorOf?: (e: unknown) => number | null };
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const ib = nodes[1].pda.toBase58();
+  const zeroOf40 = [{ address: ib, checks: 40, up: 40, sent: 40, answered: 0 }];
+  const someone = Keypair.generate();
+  const routes: Record<string, unknown> = { '/orrery/notes': { notes: 1, at: Date.now(), nodes: [] } };
+  const listen = async (srv: ReturnType<typeof createHttpServer>) => {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    return `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  };
+  const met = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signAs({ notes: 1, at: Date.now(), nodes: zeroOf40 }, someone.publicKey.toBase58(), signerFor(someone)))) : res.writeHead(404).end()));
+  const metUrl = await listen(met);
+  routes['/orrery/peers'] = { peers: [{ url: metUrl, by: someone.publicKey.toBase58() }] };
+  const given = createHttpServer((req, res) => (req.url && req.url in routes ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(routes[req.url])) : res.writeHead(404).end()));
+  const givenUrl = await listen(given);
+  opts.peers = [givenUrl];
+  opts.meetPeers = true;
+  opts.trustPeers = true;
+  await r.readPeers?.();
+  const ibEntry = registry.entries.get(ib)!;
+  const metOnly = r.priorOf ? r.priorOf(ibEntry) : null;
+  routes['/orrery/notes'] = { notes: 1, at: Date.now(), nodes: zeroOf40 };
+  await r.readPeers?.();
+  const bothSay = r.priorOf ? r.priorOf(ibEntry) : null;
+  opts.trustPeers = false;
+  opts.meetPeers = false;
+  opts.peers = [];
+  await r.readPeers?.();
+  for (const srv of [met, given]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-9;
+  check('trust falls off with distance: a node only a router met through a peer saw answer 0 of 40 starts at 0.3, halfway to what it saw; once a given peer says so too, at 0',
+    near(metOnly, 0.3) && near(bothSay, 0),
+    `only the met router saw it: starts at ${metOnly?.toFixed(3) ?? 'none'} · the given peer saw it too: ${bothSay?.toFixed(3) ?? 'none'} (a never-asked node with no notes starts at 0.600)`);
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and two peer
 // routers read, one passing on this router's own signed notes (pinned to its key) and one with a number changed.
 {

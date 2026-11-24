@@ -15,7 +15,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { MEET_MAX, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
+import { MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerPrior, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
@@ -369,11 +369,12 @@ export class Router {
     this.met = next;
   }
 
-  /** With --trust-peers, what the peers saw a node answer (answered / sent), for a node this router has no record of. */
+  /** With --trust-peers, where a node this router has no record of starts: what the peers saw it answer, a peer this
+   * router was given counting in full and a router met through one counting half (peerPrior). */
   priorOf(e: ProviderEntry): number | null {
     if (!this.o.trustPeers) return null;
-    const p = sumPeers(this.peerNotes, e.address);
-    return p && p.sent > 0 ? p.answered / p.sent : null;
+    const seen = [...this.peerNotes].flatMap(([given, list]) => list.filter((n) => n.address === e.address).map((n) => ({ weight: this.met.has(given) ? MET_WEIGHT : 1, sent: n.sent, answered: n.answered })));
+    return peerPrior(seen);
   }
 
   /** With a proxy set, asks a node what address it sees of this router and keeps the answer for the status page.

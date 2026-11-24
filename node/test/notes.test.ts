@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, notesFrom, parseNotes, peerBackoffMs, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -89,5 +89,16 @@ describe('signed notes', () => {
 
   it('waits longer before reading a peer that keeps missing: nothing for three misses, then a minute, doubling up to ten', () => {
     assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7, 12].map(peerBackoffMs), [0, 0, 0, 60_000, 120_000, 240_000, 480_000, 600_000, 600_000]);
+  });
+
+  it('starts a never-asked node from what the peers saw, a given peer in full and a met router at half the distance', () => {
+    const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-9;
+    assert.equal(MET_WEIGHT, 0.5);
+    assert.equal(peerPrior([]), null);
+    assert.equal(peerPrior([{ weight: 1, sent: 0, answered: 0 }]), null);
+    assert.ok(near(peerPrior([{ weight: 1, sent: 40, answered: 0 }]), 0));
+    assert.ok(near(peerPrior([{ weight: 0.5, sent: 40, answered: 0 }]), 0.3));
+    assert.ok(near(peerPrior([{ weight: 0.5, sent: 40, answered: 40 }]), 0.8));
+    assert.ok(near(peerPrior([{ weight: 1, sent: 40, answered: 0 }, { weight: 0.5, sent: 40, answered: 40 }]), 1 / 3));
   });
 });

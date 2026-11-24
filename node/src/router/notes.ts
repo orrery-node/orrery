@@ -125,3 +125,20 @@ export function readIntroductions(j: unknown): string[] {
 export function peerBackoffMs(missed: number): number {
   return missed < 3 ? 0 : Math.min(60_000 * 2 ** (missed - 3), 600_000);
 }
+
+/** How much the word of a router met through a peer (--meet-peers) counts next to a peer this router was given: half. */
+export const MET_WEIGHT = 0.5;
+
+/** Where --trust-peers starts a node this router has never asked: what the peers saw it answer, each peer weighted by
+ * how close it is (a peer this router was given counts in full, a router met through one at MET_WEIGHT), and moved
+ * away from the neutral guess only as far as the closest peer that saw it is trusted. A node only met routers saw
+ * answer 0 of 40 starts at 0.3, halfway between 0.6 and 0; one a given peer saw do that starts at 0. Null when no
+ * peer sent it anything. */
+export function peerPrior(seen: { weight: number; sent: number; answered: number }[], neutral = 0.6): number | null {
+  const used = seen.filter((s) => s.sent > 0 && s.weight > 0);
+  if (!used.length) return null;
+  const sent = used.reduce((t, s) => t + s.weight * s.sent, 0);
+  const answered = used.reduce((t, s) => t + s.weight * s.answered, 0);
+  const closest = Math.max(...used.map((s) => s.weight));
+  return neutral + closest * (answered / sent - neutral);
+}
