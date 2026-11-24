@@ -2290,6 +2290,17 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     priorOff === null && priorOn === 0 && Number.isFinite(without) && Math.abs(without - withPeers - 0.15) < 1e-9,
     `prior without the flag ${priorOff} · with it ${priorOn} · Ironbridge's reputation for a router that never asked it: ${without.toFixed(3)} → ${withPeers.toFixed(3)}`);
 }
+// The router console shows the P2P side on a Peers section: each peer with who signed its notes (or why they were
+// refused), the relay with what it carried and refused, and whether the listings came from the peers. Drawn in a
+// browser from the router's own status, the way an operator sees it.
+{
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: unknown[]; relay?: unknown; discovery?: string };
+  check('the router console has a Peers section that shows each peer\u2019s signer or why its notes were refused, the relay\u2019s counts and how the listings were found',
+    page.includes('<section id="p2psec" hidden><h2>Peers</h2>') && page.includes("(p.signed?'signed, checks':'read, unsigned')") && page.includes("'relay open on port '+rl.port") && page.includes("s.discovery==='peers'")
+    && Array.isArray(st.peers) && 'relay' in st && 'discovery' in st,
+    `section ${page.includes('id="p2psec"') ? 'present' : 'missing'} · status peers ${Array.isArray(st.peers) ? st.peers.length : 'missing'}, relay ${st.relay ? 'open' : 'closed'}, discovery ${st.discovery ?? 'missing'}`);
+}
 // Peer exchange: an RPC that refuses getProgramAccounts (as many public ones do) still serves accounts by address, so a
 // router that cannot list the program finds the network from the listing addresses its peers named, each read and
 // checked on chain. A peer can point at listings, never make one up: an address the program does not own is dropped.
