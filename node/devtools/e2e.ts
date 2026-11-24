@@ -2653,6 +2653,16 @@ check('a provider command with a missing or broken provider.json says which and 
     noV1.code === 0 && wrote === `${base}/v1` && noV1.text.includes(`found your server at ${base}/v1 with 1 model`),
     `exit ${noV1.code} · wrote ${wrote?.replace(base, '<server>') ?? 'nothing'} · ${(noV1.text.split('\n').find((l) => l.startsWith('found') || l.startsWith('no model')) ?? '').replace(base, '<server>').slice(0, 90)}`);
 }
+// A mistyped command is answered with the nearest one and exit 1, not the whole help; a mistyped provider command
+// is said before provider.json is read.
+{
+  const typo = await walkRun(['provder', 'status']);
+  const subTypo = await walkRun(['provider', 'strat', '--config', join(walkHome, 'no-such-provider.json')]);
+  check('a mistyped command is answered with the nearest command, before anything else, and exits 1',
+    typo.code === 1 && typo.text.trim() === 'there is no orrery provder. Did you mean orrery provider? orrery --help lists every command'
+    && subTypo.code === 1 && subTypo.text.trim() === 'there is no orrery provider strat. Did you mean orrery provider start? orrery --help lists every command',
+    `${typo.code}: ${typo.text.trim().split('\n')[0].slice(0, 70)} · ${subTypo.code}: ${subTypo.text.trim().split('\n')[0].slice(0, 70)}`);
+}
 // orrery --version prints the release, one line, and nothing else.
 {
   const pkgVersion = (JSON.parse(readFileSync(join(ROOT, 'node/package.json'), 'utf8')) as { version: string }).version;

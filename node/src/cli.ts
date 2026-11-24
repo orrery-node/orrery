@@ -16,6 +16,7 @@ import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { frameMsFrom } from './provider/pace.ts';
 import { readProviderConfig } from './provider/config-file.ts';
 import { PACKAGE_VERSION } from './version.ts';
+import { COMMANDS, PROVIDER_COMMANDS, unknownCommand } from './suggest.ts';
 import { feesLine, FEE_FLOOR_LAMPORTS, NODE_VERSION, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
 import { Channels } from './router/channels.ts';
 import { parseAliases, parseCeiling, ROUTES, Stats, type Route } from './router/policy.ts';
@@ -282,6 +283,8 @@ async function listChannels() {
 }
 
 async function provider(sub: string) {
+  // A mistyped command is said before anything else, with the nearest one: not after reading provider.json.
+  if (!PROVIDER_COMMANDS.includes(sub)) throw new Error(unknownCommand(sub, CLI, 'provider'));
   const cfgPath = flag('config');
   if (!cfgPath) throw new Error('--config <provider.json> is required');
   const cfg = readProviderConfig(expand(cfgPath), cfgPath, CLI);
@@ -892,6 +895,8 @@ async function main() {
     const sig = await sendOne(conn, new Transaction().add(ins.closeChannel(w.publicKey, prov.authority, ch, w.publicKey, c.mint)), [w]);
     return console.log(`closed ${ch.toBase58()}; $${usd(c.deposit - c.redeemed)} and the account rent are back in your wallet  tx ${sig}`);
   }
+  // A command this CLI does not have: the nearest one, not the whole help.
+  if (!COMMANDS.includes(cmd)) throw new Error(unknownCommand(cmd, CLI));
   console.log(HELP);
   process.exitCode = 1;
 }

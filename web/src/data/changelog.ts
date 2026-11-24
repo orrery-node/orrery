@@ -16,6 +16,7 @@ export const UNRELEASED: Change[] = [
   { who: 'router', text: 'A `--wallet` file that is not there is said with how to make one ("there is no keypair file at …. Make a wallet with: orrery wallet new, or pass --wallet with a Solana keypair file you already have"), and one that is not a keypair says what one looks like ("a JSON list of 64 numbers, as solana-keygen and orrery wallet new write it"), instead of ENOENT or "bad secret key size".' },
   { who: 'provider', text: '`orrery provider init --upstream` given a model server\'s address without `/v1` (Ollama on :11434, vLLM on :8000) finds it under `/v1` and writes that address, instead of "no model server answered". When neither answers, it says both places it looked.' },
   { who: 'everyone', text: '`orrery --version` (and `-v`, `orrery version`) prints the release in one line ("orrery-node 0.1.28"), for a script or a bug report, instead of the whole help with exit 1.' },
+  { who: 'everyone', text: 'A mistyped command is answered with the nearest one and exit 1 ("there is no orrery provder. Did you mean orrery provider?"), instead of the whole help; a mistyped provider command ("provider strat") is said before provider.json is read.' },
 ];
 
 export const RELEASES: Release[] = [
