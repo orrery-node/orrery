@@ -2815,6 +2815,46 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     saved === by && after?.signed === true && after.nodes === ours.nodes.length && after.nodes > 0 && after.missed === 1 && stale?.nodes === 0 && stale.at === 0,
     `kept: ${saved ? 'signed notes' : 'nothing'} · after a restart, peer down: ${after ? `${after.signed ? 'signed' : 'unsigned'}, ${after.nodes} nodes, missed ${after.missed}` : 'not shown'} · notes 2 h old: ${stale ? `${stale.nodes} nodes` : 'not shown'}`);
 }
+// A peer counted with notes kept from before the restart is said to be, in the status and in orrery doctor (with how old
+// the notes are), until it answers again.
+{
+  const { signNotes: signAgain } = await import('../src/router/notes.ts');
+  const { signerOf: signerAgain } = await import('../src/keys.ts');
+  const opts = routerOpts as { peers?: string[]; peerNotesPath?: string };
+  const rp = router as unknown as { readPeers?: () => Promise<void>; peerNotes?: Map<string, unknown>; peerSaid?: Map<string, unknown>; peerTried?: Map<string, unknown>; peerMs?: Map<string, unknown>; peerRaw?: Map<string, unknown>; peerKept?: Set<string>; notesKept?: boolean };
+  const key = Keypair.generate();
+  const by = key.publicKey.toBase58();
+  let down = false;
+  const peerServer = createHttpServer((req, res) => {
+    if (down) return void req.socket.destroy();
+    return req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signAgain({ notes: 1, at: Date.now(), nodes: [] }, by, signerAgain(key)))) : res.writeHead(404).end();
+  });
+  await new Promise<void>((done) => peerServer.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(peerServer.address() as { port: number }).port}`;
+  const keptFile = join(WORK, 'home/router/peer-notes.json');
+  opts.peerNotesPath = keptFile;
+  opts.peers = [`${peerUrl}#${by}`];
+  await rp.readPeers?.();
+  down = true;
+  for (const m of [rp.peerNotes, rp.peerSaid, rp.peerTried, rp.peerMs, rp.peerRaw, rp.peerKept]) m?.clear();
+  rp.notesKept = false;
+  await rp.readPeers?.();
+  const shown = async () => (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; kept?: boolean }[] }).peers ?? []).find((p) => p.url === peerUrl)?.kept ?? null;
+  const keptNow = await shown();
+  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer' && l.detail.includes(peerUrl))?.detail ?? '';
+  down = false;
+  await rp.readPeers?.();
+  const keptAfter = await shown();
+  opts.peers = [];
+  opts.peerNotesPath = undefined;
+  await rp.readPeers?.();
+  peerServer.closeAllConnections();
+  await new Promise((done) => peerServer.close(done));
+  rmSync(keptFile, { force: true });
+  check('a peer counted with notes kept from before the restart is said to be (status, orrery doctor with their age) until it answers again',
+    keptNow === true && /, kept from before the restart \(written \d+ min ago\)/.test(line) && keptAfter === false,
+    `after the restart: kept ${keptNow} · doctor: ${line.replace(peerUrl, '<peer>').replace(by.slice(0, 4), '<k>').slice(0, 160) || 'no line'} · after it answers: kept ${keptAfter}`);
+}
 // The router times each peer: how long its notes took to come back the last time it answered, in the status and on
 // the console, so a slow peer stands out. A peer that never answered has no time.
 {

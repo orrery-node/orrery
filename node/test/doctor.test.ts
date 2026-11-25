@@ -201,4 +201,11 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, name: 'alice' }), 'alice (http://10.0.0.2:7171): unsigned, notes on 2 nodes');
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes', name: 'alice' }), 'alice (http://10.0.0.2:7171): refused, the signature does not match the notes');
   });
+
+  it('says when a peer is counted with the notes kept from before the restart, and how old they are', () => {
+    const now = 10_000_000_000;
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: now - 12 * 60_000, missed: 1, kept: true }, now),
+      'http://10.0.0.2:7171: unsigned, notes on 2 nodes, kept from before the restart (written 12 min ago); no answer to the last read, these notes are kept for up to an hour');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: now, missed: 0, kept: false }, now), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes');
+  });
 });
