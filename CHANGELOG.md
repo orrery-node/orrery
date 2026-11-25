@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The router console's relay line says when the relay is for peer routers only (`--relay-peers-only`).
 - **Router** · `--relay-peers-only`: the relay carries traffic only from the addresses of this router's peers (`--peer`, `--peers-file`, looked up on each refresh) and turns anyone else away with "this relay carries traffic only for its peer routers". `orrery doctor` and the status say so.
 - **Router** · The router console heads its Peers section with the same summary as `orrery peers` and `orrery doctor` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying"), so the three say it the same way.
 - **Router** · Name your peers: a line in `--peers-file` can end with a name (`http://10.0.0.2:7171#<key> alice`), and the router status, its console, `orrery peers` and `orrery doctor` show it before the address ("alice (http://10.0.0.2:7171): signed by …").

@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The router console\'s relay line says when the relay is for peer routers only (`--relay-peers-only`).' },
   { who: 'router', text: '`--relay-peers-only`: the relay carries traffic only from the addresses of this router\'s peers (`--peer`, `--peers-file`, looked up on each refresh) and turns anyone else away with "this relay carries traffic only for its peer routers". `orrery doctor` and the status say so.' },
   { who: 'router', text: 'The router console heads its Peers section with the same summary as `orrery peers` and `orrery doctor` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying"), so the three say it the same way.' },
   { who: 'router', text: 'Name your peers: a line in `--peers-file` can end with a name (`http://10.0.0.2:7171#<key> alice`), and the router status, its console, `orrery peers` and `orrery doctor` show it before the address ("alice (http://10.0.0.2:7171): signed by …").' },

@@ -2990,6 +2990,13 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     page.includes("bits.unshift(ps.length+' peer router'+(ps.length===1?'':'s')+': '+ps.filter(p=>p.signed&&!p.refused).length+' signed, '"),
     page.includes("bits.unshift(ps.length+' peer router'") ? 'the summary heads the Peers line' : 'no summary on the console');
 }
+// The console's relay line says when the relay is for peer routers only.
+{
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  check('the router console says when its relay carries traffic for peer routers only',
+    page.includes("(rl.peersOnly?', for peer routers only':'')"),
+    page.includes('rl.peersOnly') ? 'the relay line says peer routers only' : 'the relay line does not say');
+}
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and three
 // peer routers read: one passing on this router's own signed notes (pinned to its key) that also runs a relay, one
 // with a number changed, and one met through the first, signed by its own key.
@@ -3011,8 +3018,12 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const a = serve({ '/orrery/notes': genuine, '/orrery/peers': { peers: [{ url: cUrl, by: other.publicKey.toBase58() }], relay: { port: 7272 } } });
   const b = serve({ '/orrery/notes': changed });
   await Promise.all([a, b].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
-  opts.peers = [`http://127.0.0.1:${(a.address() as { port: number }).port}#${ourKey}`, `http://127.0.0.1:${(b.address() as { port: number }).port}`];
+  const namedFile = join(WORK, 'peers-named.txt');
+  writeFileSync(namedFile, `# the routers this one reads\nhttp://127.0.0.1:${(a.address() as { port: number }).port}#${ourKey}  alice\nhttp://127.0.0.1:${(b.address() as { port: number }).port}  bob\n`);
+  (opts as { peersFile?: string }).peersFile = namedFile;
+  opts.peers = [];
   opts.meetPeers = true;
+  (opts as { relayPeersOnly?: boolean }).relayPeersOnly = true;
   await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
   const status = await (await fetch(`${ROUTER}/orrery/status`)).json();
   const spend = await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=model`)).json();
@@ -3023,6 +3034,8 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   }
   opts.meetPeers = false;
   opts.peers = [];
+  (opts as { peersFile?: string }).peersFile = undefined;
+  (opts as { relayPeersOnly?: boolean }).relayPeersOnly = false;
   await (router as unknown as { readPeers?: () => Promise<void> }).readPeers?.();
 }
 // Which channel a request pays from is between the router and the node process: what the proxy carried to the node
