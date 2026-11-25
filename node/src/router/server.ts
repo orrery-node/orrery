@@ -75,6 +75,8 @@ export type RouterOptions = {
   /** Also read the routers its peers read (their /orrery/peers, up to MEET_MAX), each pinned to the key the peer saw
    * sign their notes. Off unless asked. */
   meetPeers?: boolean;
+  /** How many routers --meet-peers may add (MEET_MAX unless told, 0 to 32). */
+  meetMax?: number;
   /** Open a relay on this port (relay.ts): other routers reach listed nodes through it as their --proxy. Off unless asked. */
   relayPort?: number;
   /** Where the relay listens; every interface unless told otherwise. */
@@ -355,6 +357,12 @@ export class Router {
     }
   }
 
+  /** How many routers --meet-peers may add: --meet-max, or MEET_MAX, kept between 0 and 32. */
+  private meetMax(): number {
+    const n = this.o.meetMax;
+    return n === undefined || !Number.isFinite(n) ? MEET_MAX : Math.max(0, Math.min(32, Math.floor(n)));
+  }
+
   /** The peers this router was given: --peer, and the lines of --peers-file as the file reads now (a file that cannot be
    * read gives none, and the router says so once). */
   private givenPeers(): string[] {
@@ -392,7 +400,7 @@ export class Router {
       const named = j === undefined ? [...this.met].filter(([, via]) => via === base).map(([k]) => k) : readIntroductions(j);
       for (const k of named) {
         const [url, by] = k.split('#');
-        if (known.has(url) || by === own || next.has(k) || next.size >= MEET_MAX) continue;
+        if (known.has(url) || by === own || next.has(k) || next.size >= this.meetMax()) continue;
         next.set(k, base);
       }
     }

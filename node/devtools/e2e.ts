@@ -2689,6 +2689,49 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// --meet-max: how many routers --meet-peers may add. A peer introducing two routers adds both by default, one at
+// --meet-max 1, none at 0.
+{
+  const opts = routerOpts as { peers?: string[]; meetPeers?: boolean; meetMax?: number; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: never[] };
+  opts.shareNotes = false;
+  const listen = async (srv: ReturnType<typeof createHttpServer>) => {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    return `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  };
+  const signer = () => Keypair.generate();
+  const k1 = signer(), k2 = signer();
+  const notesBy = (k: Keypair) => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signAs({ notes: 1, at: Date.now(), nodes: ours.nodes }, k.publicKey.toBase58(), signerFor(k)))) : res.writeHead(404).end()));
+  const m1 = notesBy(k1), m2 = notesBy(k2);
+  const u1 = await listen(m1), u2 = await listen(m2);
+  const intro = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [{ url: u1, by: k1.publicKey.toBase58() }, { url: u2, by: k2.publicKey.toBase58() }] })) : res.writeHead(404).end()));
+  const introUrl = await listen(intro);
+  const metCount = async (max: number | undefined) => {
+    opts.meetMax = max;
+    await rp.readPeers?.();
+    return ((((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { via?: string | null }[] }).peers ?? []).filter((p) => p.via)).length;
+  };
+  opts.peers = [introUrl];
+  opts.meetPeers = true;
+  const byDefault = await metCount(undefined);
+  const capped = await metCount(1);
+  const none = await metCount(0);
+  opts.meetPeers = false;
+  opts.meetMax = undefined;
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [m1, m2, intro]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  check('--meet-max sets how many routers --meet-peers may add: both by default, one at 1, none at 0',
+    byDefault === 2 && capped === 1 && none === 0,
+    `met by default ${byDefault} · at --meet-max 1: ${capped} · at 0: ${none}`);
+}
 // --peers-file: the peers in a file, one a line, read again on every refresh, so a peer is added or dropped by editing
 // the file and not by restarting the router.
 {
