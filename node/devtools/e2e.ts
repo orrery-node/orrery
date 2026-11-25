@@ -2924,6 +2924,10 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   writeFileSync(file, `# my peers\n${u1}\n${u2}\n`);
   await rp.readPeers?.();
   const added = await urls();
+  writeFileSync(file, `# my peers\n${u1}\n${u2}  bob's router\n`);
+  await rp.readPeers?.();
+  const named = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; name?: string | null }[] }).peers ?? []).find((p) => p.url === u2)?.name ?? null;
+  const namedLine = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer' && l.detail.includes(u2))?.detail ?? '';
   writeFileSync(file, `${u2}\n`);
   await rp.readPeers?.();
   const dropped = await urls();
@@ -2933,6 +2937,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     srv.closeAllConnections();
     srv.close();
   }
+  check('a name after a peer\'s address in the peers file is shown before it, in the status and in orrery doctor',
+    named === "bob's router" && namedLine.startsWith(`bob's router (${u2}): `),
+    `name ${JSON.stringify(named)} · doctor: ${namedLine.replace(u2, '<peer>') || 'no line'}`);
   check('--peers-file: peers in a file are read again on every refresh, so editing it adds or drops a peer without a restart',
     JSON.stringify(first) === JSON.stringify([u1]) && JSON.stringify([...added].sort()) === JSON.stringify([u1, u2].sort()) && JSON.stringify(dropped) === JSON.stringify([u2]),
     `the file with one peer: ${first.length} read · a second line added: ${added.length} · the first taken out: ${dropped.length === 1 && dropped[0] === u2 ? 'only the second left' : JSON.stringify(dropped.length)}`);

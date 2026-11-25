@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -123,5 +123,15 @@ describe('signed notes', () => {
     assert.equal(readRelayOpen({ relay: { port: 7272, open: -1 } }), null);
     assert.equal(readRelayOpen({ relay: { open: 3 } }), null);
     assert.equal(readRelayOpen(null), null);
+  });
+
+  it('reads a name after a peer\'s address in the peers file, printable and at most 40 characters', () => {
+    const k = Keypair.generate().publicKey.toBase58();
+    assert.deepEqual([...peersFileNames(`http://10.0.0.2:7171#${k}   alice's GPU box\nhttp://10.0.0.3:7171\n# notes\nhttp://10.0.0.4:7171 ${'x'.repeat(60)}`)], [
+      [`http://10.0.0.2:7171#${k}`, "alice's GPU box"],
+      ['http://10.0.0.3:7171', null],
+      ['http://10.0.0.4:7171', 'x'.repeat(40)],
+    ]);
+    assert.deepEqual(parsePeersFile('http://10.0.0.2:7171 alice'), ['http://10.0.0.2:7171']);
   });
 });

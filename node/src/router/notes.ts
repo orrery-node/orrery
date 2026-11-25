@@ -156,16 +156,24 @@ export function peerPrior(seen: { weight: number; sent: number; answered: number
   return neutral + closest * (answered / sent - neutral);
 }
 
-/** The peers in a --peers-file: one router address a line (url, or url#<key> to pin it), blank lines and lines starting
- * with # left out, anything that is not an http(s) address dropped. At most 64 are kept. */
+/** The peers in a --peers-file: one router address a line (url, or url#<key> to pin it), optionally followed by a name
+ * for it ("http://<host>:7171#<key> alice"), blank lines and lines starting with # left out, anything that is not an
+ * http(s) address dropped. At most 64 are kept. */
 export function parsePeersFile(text: string): string[] {
-  const out: string[] = [];
+  return [...peersFileNames(text).keys()];
+}
+
+/** The same lines as address -> name (null when the line gives none). A name is at most 40 printable characters. */
+export function peersFileNames(text: string): Map<string, string | null> {
+  const out = new Map<string, string | null>();
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-    if (!/^https?:\/\/\S+$/.test(line) || out.includes(line)) continue;
-    out.push(line);
-    if (out.length === 64) break;
+    const [address, ...rest] = line.split(/\s+/);
+    if (!/^https?:\/\/\S+$/.test(address) || out.has(address)) continue;
+    const name = rest.join(' ').replace(/[^\x20-\x7e]/g, '').slice(0, 40).trim();
+    out.set(address, name || null);
+    if (out.size === 64) break;
   }
   return out;
 }

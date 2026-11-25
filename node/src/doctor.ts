@@ -259,18 +259,19 @@ export function relayLine(r: { port: number | null; relayed: number; refused: nu
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
-export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number }, now = Date.now()): string {
+export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null }, now = Date.now()): string {
+  const at = p.name ? `${p.name} (${p.url})` : p.url;
   const via = p.via ? `, met through ${p.via}` : '';
-  if (p.refused) return `${p.url}: refused, ${p.refused}${via}`;
+  if (p.refused) return `${at}: refused, ${p.refused}${via}`;
   const missed = p.missed ?? 0;
   const later = p.retryAt && p.retryAt > now ? `; next read in ${Math.max(1, Math.ceil((p.retryAt - now) / 60_000))} min` : '';
-  if (p.at === 0) return `${p.url}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried${later})${via}`;
+  if (p.at === 0) return `${at}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried${later})${via}`;
   const who = p.signed && p.by ? `signed by ${p.by.slice(0, 4)}\u2026${p.by.slice(-4)}${p.pinned ? ' (pinned)' : ''}` : 'unsigned';
   const quiet = missed ? `; no answer to the last ${missed === 1 ? 'read' : `${missed} reads`}, these notes are kept for up to an hour${later}` : '';
   const load = typeof p.relayOpen === 'number' ? ` (${p.relayOpen} open now)` : '';
   const relays = p.relayPort ? `; relays on port ${p.relayPort}${load}, usable as --proxy http://<its host>:${p.relayPort}` : '';
   const unlisted = p.unlisted ? `, ${p.unlisted} of them not listed on chain (not used)` : '';
-  return `${p.url}: ${who}, notes on ${p.nodes} node${p.nodes === 1 ? '' : 's'}${unlisted}${via}${relays}${quiet}`;
+  return `${at}: ${who}, notes on ${p.nodes} node${p.nodes === 1 ? '' : 's'}${unlisted}${via}${relays}${quiet}`;
 }
 
 /** A running router older than the release installed where doctor runs. Asks npm nothing. */

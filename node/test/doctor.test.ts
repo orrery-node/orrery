@@ -196,4 +196,9 @@ describe('orrery doctor, what the running router paid', () => {
     const rows = [{ url: 'http://10.0.0.2:7171', pinned: true, by: '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab', signed: true, nodes: 4, refused: null, at: 1, missed: 0, relayPort: 7272 }];
     assert.equal(peersReport({ peers: rows, relay: null })[0], '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying');
   });
+
+  it('puts a peer\'s name from the peers file before its address', () => {
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, name: 'alice' }), 'alice (http://10.0.0.2:7171): unsigned, notes on 2 nodes');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 0, refused: 'the signature does not match the notes', name: 'alice' }), 'alice (http://10.0.0.2:7171): refused, the signature does not match the notes');
+  });
 });
