@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `--relay-max-mb <n>`: a relay stops taking new connections once it has carried that much for other routers in a day, and says when it carries again ("this relay has carried its 500.0 MB for today; it carries again in about 7 h"); connections already open are carried to their end. The status, console and `orrery doctor` say how much of the day's limit is used.
 - **Router** · A relay counts the bytes it carries for other routers, both ways: the status has `bytes`, and the console, `orrery peers` and `orrery doctor` say it beside the count ("carried 31 (3.4 MB), refused 4").
 - **Router** · With `--trust-peers` on, each peer says how much its notes count right now when it is less than in full: the status has `say`, the console marks "counts 50% under --trust-peers", and `orrery peers` and `orrery doctor` add the reason ("; counts 50% under --trust-peers (notes 35 min old)"), a router met through a peer counting half.
 - **Router** · Under `--trust-peers`, a peer's notes count by their age: in full for ten minutes after the peer wrote them, then less each minute, down to nothing at an hour. A peer that went quiet half an hour ago, or notes picked up from before a restart, move a node's start less than notes written a minute ago.

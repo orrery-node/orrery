@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
-import { allowedTargets, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
+import { allowedTargets, bytesText, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
 import { httpTunnel, parseProxy, ProxyRefused } from '../src/proxy.ts';
 
 describe('a relay only reaches listed nodes', () => {
@@ -89,6 +89,24 @@ describe('a relay only reaches listed nodes', () => {
     });
     assert.equal(JSON.parse(body).error.message, 'this relay carries traffic only for its peer routers');
     assert.equal(relay.refused, 2);
+    relay.server.closeAllConnections();
+    await new Promise((d) => relay.server.close(d));
+  });
+
+  it('with a daily limit, turns new connections away once the day\'s bytes are carried, and says when it carries again', async () => {
+    assert.equal(bytesText(1536), '1.5 KB');
+    const relay = new Relay({ allowed: () => new Set(['127.0.0.1:9']), maxBytes: () => 10 });
+    (relay as unknown as { count: (n: number) => void }).count(12);
+    assert.equal(relay.today, 12);
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const port = (relay.server.address() as AddressInfo).port;
+    const body = await new Promise<string>((done) => {
+      const q = request({ host: '127.0.0.1', port, path: 'http://127.0.0.1:9/x', agent: false }, (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => done(b)); });
+      q.end();
+    });
+    const err = JSON.parse(body).error;
+    assert.equal(err.code, 'relay_full');
+    assert.equal(err.message, 'this relay has carried its 10 B for today; it carries again in about 24 h');
     relay.server.closeAllConnections();
     await new Promise((d) => relay.server.close(d));
   });

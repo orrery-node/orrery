@@ -16,6 +16,7 @@ import { startRouter } from './connect.ts';
 import { fetchNode, nodeProxy, type Proxy } from './proxy.ts';
 import { askSeen, ownAddresses, seenSays, type Seen } from './seen.ts';
 import { privacySentence, type Pace, type NodePrivacy } from './privacy.ts';
+import { bytesText } from './router/relay.ts';
 
 export type Check = { ok: boolean | null; what: string; detail: string };
 
@@ -171,7 +172,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -253,18 +254,13 @@ export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise
 
 /** The relay as `orrery doctor` says it: what it carried and refused, and, from a router that says them, the connections
  * open now and the limit for one address. */
-/** A byte count as people read it: 512 B, 3.4 KB, 12.0 MB, 1.25 GB. */
-export function bytesText(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
-}
+export { bytesText };
 
-export function relayLine(r: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number }): string {
+export function relayLine(r: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null }): string {
   const now = r.open !== undefined && r.perClient !== undefined ? `, ${r.open} open now (up to ${r.perClient} at a time for one address)` : '';
   const size = typeof r.bytes === 'number' && r.bytes > 0 ? ` (${bytesText(r.bytes)})` : '';
-  return `open on port ${r.port ?? '?'}: carried ${r.relayed}${size}, refused ${r.refused}${now} (listed nodes only${r.peersOnly ? ', for peer routers only' : ''})`;
+  const cap = r.maxBytes ? `, ${bytesText(r.today ?? 0)} of ${bytesText(r.maxBytes)} today` : '';
+  return `open on port ${r.port ?? '?'}: carried ${r.relayed}${size}, refused ${r.refused}${now}${cap} (listed nodes only${r.peersOnly ? ', for peer routers only' : ''})`;
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
@@ -327,7 +323,7 @@ export function byTrust<T extends PeerRow>(peers: T[]): T[] {
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number } | null; discovery?: string | null }, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null }, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {

@@ -8,7 +8,17 @@ import { connect as netConnect, type Socket } from 'node:net';
  * API, so nothing that spends this router's wallet is reachable through it. What it carries to a node is already
  * sealed to that node's key, payment included for nodes that read it inside the seal: the relay sees a host and a
  * port, never a prompt. */
-export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; log?: (line: string) => void };
+export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; maxBytes?: () => number; log?: (line: string) => void };
+
+/** A byte count as people read it: 512 B, 3.4 KB, 12.0 MB, 1.25 GB. */
+export function bytesText(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+}
+
+const DAY_MS = 86_400_000;
 
 /** An address as a relay compares it: an IPv4 address that came in as IPv6 (::ffff:10.0.0.2) is the IPv4 one. */
 export function plainAddress(address: string): string {
@@ -47,6 +57,8 @@ export class Relay {
   refused = 0;
   /** Bytes carried for other routers, both ways: what they sent the nodes and what came back. */
   bytes = 0;
+  /** The bytes carried in the relay's current day, which starts with the first byte after the last day ended. */
+  private day = { start: 0, bytes: 0 };
   readonly server: Server;
   /** Connections open through the relay right now, by the address they came from. */
   private readonly openBy = new Map<string, number>();
@@ -66,6 +78,32 @@ export class Relay {
   /** How many connections one address may have open at once. */
   get perClient(): number {
     return Math.max(1, Math.floor(this.o.perClient?.() ?? RELAY_PER_CLIENT));
+  }
+
+  /** Bytes carried in the current day. */
+  get today(): number {
+    return Date.now() - this.day.start >= DAY_MS ? 0 : this.day.bytes;
+  }
+
+  /** How many bytes a day the relay carries before it turns new connections away; 0 for no limit. */
+  get maxBytes(): number {
+    return Math.max(0, Math.floor(this.o.maxBytes?.() ?? 0));
+  }
+
+  private count(n: number): void {
+    this.bytes += n;
+    const now = Date.now();
+    if (now - this.day.start >= DAY_MS) this.day = { start: now, bytes: 0 };
+    this.day.bytes += n;
+  }
+
+  /** Why a new connection is turned away when the day's bytes are used up, or null while there is room. Connections
+   * already open are carried to their end. */
+  private fullLine(): string | null {
+    const max = this.maxBytes;
+    if (!max || this.today < max) return null;
+    const hours = Math.max(1, Math.ceil((this.day.start + DAY_MS - Date.now()) / 3_600_000));
+    return `this relay has carried its ${bytesText(max)} for today; it carries again in about ${hours} h`;
   }
 
   private busyLine(): string {
@@ -106,6 +144,12 @@ export class Relay {
     if (target.protocol !== 'http:' || !this.o.allowed().has(targetKey(target.hostname, target.port, 'http:'))) {
       return this.refuse(res, `a relay only passes requests on to nodes listed on chain; ${target.host || 'this address'} is not one`);
     }
+    const full = this.fullLine();
+    if (full) {
+      this.refused += 1;
+      res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'relay_full', message: full } }));
+      return;
+    }
     const release = this.take(req.socket.remoteAddress ?? '?');
     if (!release) {
       this.refused += 1;
@@ -113,13 +157,13 @@ export class Relay {
       return;
     }
     res.on('close', release);
-    req.on('data', (c: Buffer) => (this.bytes += c.length));
+    req.on('data', (c: Buffer) => this.count(c.length));
     const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
     const up = httpRequest({ host: target.hostname, port: Number(target.port || 80), method: req.method, path: `${target.pathname}${target.search}`, headers, agent: false }, (r) => {
       this.relayed += 1;
       const back = Object.fromEntries(Object.entries(r.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
       res.writeHead(r.statusCode ?? 502, back);
-      r.on('data', (c: Buffer) => (this.bytes += c.length));
+      r.on('data', (c: Buffer) => this.count(c.length));
       r.pipe(res);
     });
     up.setTimeout(120_000, () => up.destroy(new Error('the node sent nothing for 120 seconds')));
@@ -143,6 +187,12 @@ export class Relay {
       socket.end('HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\na relay only opens tunnels to nodes listed on chain\n');
       return;
     }
+    const full = this.fullLine();
+    if (full) {
+      this.refused += 1;
+      socket.end(`HTTP/1.1 429 Too Many Requests\r\ncontent-type: text/plain\r\n\r\n${full}\n`);
+      return;
+    }
     const release = this.take(socket.remoteAddress ?? '?');
     if (!release) {
       this.refused += 1;
@@ -154,9 +204,9 @@ export class Relay {
       this.relayed += 1;
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length) far.write(head);
-      this.bytes += head.length;
-      far.on('data', (c: Buffer) => (this.bytes += c.length));
-      socket.on('data', (c: Buffer) => (this.bytes += c.length));
+      this.count(head.length);
+      far.on('data', (c: Buffer) => this.count(c.length));
+      socket.on('data', (c: Buffer) => this.count(c.length));
       far.pipe(socket);
       socket.pipe(far);
     });

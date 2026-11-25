@@ -224,4 +224,8 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, open: 3, perClient: 16, bytes: 3_565_158 }), 'open on port 7272: carried 31 (3.4 MB), refused 4, 3 open now (up to 16 at a time for one address) (listed nodes only)');
     assert.equal(relayLine({ port: 7272, relayed: 0, refused: 0, bytes: 0 }), 'open on port 7272: carried 0, refused 0 (listed nodes only)');
   });
+
+  it('says how much of the relay\'s daily limit it has carried today, when it has one', () => {
+    assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, bytes: 3_565_158, today: 3_565_158, maxBytes: 500 * 1024 ** 2 }), 'open on port 7272: carried 31 (3.4 MB), refused 4, 3.4 MB of 500.0 MB today (listed nodes only)');
+  });
 });

@@ -2555,6 +2555,42 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     answer.length > 0 && added === want && /^open on port \d+: carried \d+ \([\d.]+ (K|M|G)?B\), /.test(relayDoctor),
     `sent ${Buffer.byteLength(ask)} B, got back ${answer.length} B · the relay counted ${Number.isFinite(added) ? `${added} B` : 'nothing'} · doctor: ${relayDoctor.slice(0, 120) || 'no relay line'}`);
 }
+// --relay-max-mb: once the relay has carried its limit for the day it turns new connections away (429, saying when it
+// carries again), and the status and orrery doctor say how much of it is used. Without the limit it carries again.
+{
+  const opts = routerOpts as { relayMaxBytes?: number };
+  const relayStatus = async () => ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null; today?: number; maxBytes?: number | null } | null }).relay ?? null;
+  const at = (await relayStatus())?.port ?? 0;
+  const nodePort = providerSpecs[1].port;
+  const through = (send: boolean) => new Promise<string>((done) => {
+    if (!at) return done('no relay');
+    let got = '';
+    let sent = false;
+    const sock = netConnect(at, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePort} HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\n\r\n`));
+    sock.on('data', (c: Buffer) => {
+      got += c.toString('latin1');
+      if (!sent && got.includes('\r\n\r\n')) {
+        sent = true;
+        if (send && got.startsWith('HTTP/1.1 200')) sock.write(`GET /orrery/notes HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\nconnection: close\r\n\r\n`);
+        else sock.end();
+      }
+    });
+    sock.on('close', () => done(got));
+    sock.on('error', () => done(got || 'error'));
+  });
+  opts.relayMaxBytes = ((await relayStatus())?.today ?? 0) + 1;
+  const first = (await through(true)).split('\r\n')[0];
+  await new Promise((done) => setTimeout(done, 50));
+  const full = await through(false);
+  const st = await relayStatus();
+  const capLine = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'relay')?.detail ?? '';
+  opts.relayMaxBytes = undefined;
+  const again = (await through(false)).split('\r\n')[0];
+  check('--relay-max-mb: once the relay has carried its limit for the day, new connections get 429 and when it carries again; the status and orrery doctor say how much is used; without the limit it carries again',
+    first === 'HTTP/1.1 200 Connection Established' && full.startsWith('HTTP/1.1 429') && /this relay has carried its [\d.]+ [KMG]?B for today; it carries again in about \d+ h/.test(full)
+    && typeof st?.maxBytes === 'number' && (st?.today ?? 0) > st.maxBytes && / of [\d.]+ [KMG]?B today \(listed nodes only\)$/.test(capLine) && again === 'HTTP/1.1 200 Connection Established',
+    `under the limit: ${first} · over it: ${full.split('\r\n').filter(Boolean).pop() ?? full.split('\r\n')[0]} · doctor: …${capLine.slice(-60)} · limit lifted: ${again}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
