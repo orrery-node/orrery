@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -115,5 +115,13 @@ describe('signed notes', () => {
     const k = Keypair.generate().publicKey.toBase58();
     assert.deepEqual(parsePeersFile(`# friends\nhttp://10.0.0.2:7171\n\n  https://router.example#${k}  \nnot a url\nftp://x\nhttp://10.0.0.2:7171\r\n`), ['http://10.0.0.2:7171', `https://router.example#${k}`]);
     assert.equal(parsePeersFile(Array.from({ length: 70 }, (_, i) => `http://10.0.1.${i}:7171`).join('\n')).length, 64);
+  });
+
+  it('reads how many connections a peer\'s relay has open, only alongside a relay port', () => {
+    assert.equal(readRelayOpen({ relay: { port: 7272, open: 3 } }), 3);
+    assert.equal(readRelayOpen({ relay: { port: 7272 } }), null);
+    assert.equal(readRelayOpen({ relay: { port: 7272, open: -1 } }), null);
+    assert.equal(readRelayOpen({ relay: { open: 3 } }), null);
+    assert.equal(readRelayOpen(null), null);
   });
 });

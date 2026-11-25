@@ -2689,6 +2689,31 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// A relay says how busy it is: a router sharing notes gives its relay's open connections at /orrery/peers, and a router
+// reading it shows them beside the port, so an operator picking a peer to --proxy through can see which is quieter.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  const ownPeers = (await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { relay?: { port: number | null; open?: number } | null };
+  opts.shareNotes = false;
+  const busy = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272, open: 3 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => busy.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(busy.address() as { port: number }).port}`;
+  opts.peers = [peerUrl];
+  await rp.readPeers?.();
+  type Peer = { url: string; relayPort?: number | null; relayOpen?: number | null };
+  const peer = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? []).find((p) => p.url === peerUrl);
+  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  busy.closeAllConnections();
+  busy.close();
+  check('a relay says how busy it is: open connections at /orrery/peers, shown beside the port on the router that reads it',
+    typeof ownPeers.relay?.open === 'number' && peer?.relayPort === 7272 && peer.relayOpen === 3 && line.endsWith('; relays on port 7272 (3 open now), usable as --proxy http://<its host>:7272'),
+    `this router's own relay says ${typeof ownPeers.relay?.open === 'number' ? `${ownPeers.relay.open} open` : 'nothing of its load'} · the peer: port ${peer?.relayPort ?? 'none'}, ${peer?.relayOpen ?? '?'} open · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
+}
 // --meet-max: how many routers --meet-peers may add. A peer introducing two routers adds both by default, one at
 // --meet-max 1, none at 0.
 {

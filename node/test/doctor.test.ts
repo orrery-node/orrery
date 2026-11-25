@@ -159,4 +159,8 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 5, refused: null, at: 1, missed: 0, unlisted: 1 }), 'http://10.0.0.2:7171: unsigned, notes on 5 nodes, 1 of them not listed on chain (not used)');
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 5, refused: null, at: 1, missed: 0, unlisted: 0 }), 'http://10.0.0.2:7171: unsigned, notes on 5 nodes');
   });
+
+  it('says how many connections a peer\'s relay has open, when it says', () => {
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 3 }), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272 (3 open now), usable as --proxy http://<its host>:7272');
+  });
 });

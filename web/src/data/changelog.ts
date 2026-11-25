@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A relay says how busy it is: a router sharing notes gives its relay\'s open connections at `/orrery/peers`, and a router reading it shows them beside the port ("relays on port 7272 (3 open now), usable as --proxy …"), so an operator picking a peer to go through can see which is quieter.' },
   { who: 'router', text: '`--meet-max <n>` sets how many routers `--meet-peers` may add (8 unless told, 0 to 32; 0 meets none while still reading the relays peers offer).' },
   { who: 'router', text: '`--peers-file <path>`: the peer routers in a file, one address a line (`url` or `url#<key>`, `#` for notes), read again on every refresh, so a peer is added or dropped by editing the file and not by restarting the router. Read beside `--peer`; a file that cannot be read is said once in the log.' },
   { who: 'router', text: '`orrery peers --watch` draws the router\'s P2P side again every 5 seconds (`--every <s>`) until Ctrl-C, on a cleared screen under the time it was drawn, so peers answering, going quiet or being met show as they happen.' },

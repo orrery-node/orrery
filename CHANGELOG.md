@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · A relay says how busy it is: a router sharing notes gives its relay's open connections at `/orrery/peers`, and a router reading it shows them beside the port ("relays on port 7272 (3 open now), usable as --proxy …"), so an operator picking a peer to go through can see which is quieter.
 - **Router** · `--meet-max <n>` sets how many routers `--meet-peers` may add (8 unless told, 0 to 32; 0 meets none while still reading the relays peers offer).
 - **Router** · `--peers-file <path>`: the peer routers in a file, one address a line (`url` or `url#<key>`, `#` for notes), read again on every refresh, so a peer is added or dropped by editing the file and not by restarting the router. Read beside `--peer`; a file that cannot be read is said once in the log.
 - **Router** · `orrery peers --watch` draws the router's P2P side again every 5 seconds (`--every <s>`) until Ctrl-C, on a cleared screen under the time it was drawn, so peers answering, going quiet or being met show as they happen.
