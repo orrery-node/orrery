@@ -2522,6 +2522,39 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     stranger === 'HTTP/1.1 403 Forbidden (peer routers only)' && peer === 'HTTP/1.1 200 Connection Established' && st?.peersOnly === true,
     `not a peer: ${stranger} · a peer at that address: ${peer} · status peersOnly ${st?.peersOnly ?? '?'}`);
 }
+// The relay counts the bytes it carries for other routers, both ways, and the status and orrery doctor say them: a
+// request sent through a tunnel to a listed node and its answer add exactly their own length.
+{
+  const relayStatus = async () => ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null; bytes?: number } | null }).relay ?? null;
+  const before = await relayStatus();
+  const nodePort = providerSpecs[1].port;
+  const ask = `GET /orrery/notes HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\nconnection: close\r\n\r\n`;
+  const answer = await new Promise<Buffer>((done) => {
+    if (!before?.port) return done(Buffer.alloc(0));
+    let got = Buffer.alloc(0);
+    let open = false;
+    const sock = netConnect(before.port, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePort} HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\n\r\n`));
+    sock.on('data', (c: Buffer) => {
+      if (open) return void (got = Buffer.concat([got, c]));
+      const all = Buffer.concat([got, c]);
+      const end = all.indexOf('\r\n\r\n');
+      if (end < 0) return void (got = all);
+      open = true;
+      got = all.subarray(end + 4);
+      sock.write(ask);
+    });
+    sock.on('close', () => done(got));
+    sock.on('error', () => done(got));
+  });
+  await new Promise((done) => setTimeout(done, 50));
+  const after = await relayStatus();
+  const added = (after?.bytes ?? NaN) - (before?.bytes ?? NaN);
+  const want = Buffer.byteLength(ask) + answer.length;
+  const relayDoctor = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'relay')?.detail ?? '';
+  check('the relay counts the bytes it carries for other routers, both ways: a request through it and the answer add exactly their length, and orrery doctor says the total',
+    answer.length > 0 && added === want && /^open on port \d+: carried \d+ \([\d.]+ (K|M|G)?B\), /.test(relayDoctor),
+    `sent ${Buffer.byteLength(ask)} B, got back ${answer.length} B · the relay counted ${Number.isFinite(added) ? `${added} B` : 'nothing'} · doctor: ${relayDoctor.slice(0, 120) || 'no relay line'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
@@ -2741,7 +2774,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('orrery peers shows the P2P side of a running router: a count of its peer routers, a line for each with who signed and the relay port, and its own relay',
     lines[0] === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying'
     && lines[1] === `  ${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}; relays on port 7272, usable as --proxy http://<its host>:7272`
-    && /^this router's relay: open on port \d+: carried \d+, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
+    && /^this router's relay: open on port \d+: carried \d+(?: \([\d.]+ [KMG]?B\))?, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
     peersCli.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
 // A peer cannot add nodes: notes on an address that is not listed on chain are read but never used, and the router

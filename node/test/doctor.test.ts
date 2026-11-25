@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { byTrust, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -217,5 +217,11 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: now, missed: 0, via: 'http://10.0.0.2:7171', say: 0.5, written: now - 60_000 }, now),
       'http://10.0.0.6:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes, met through http://10.0.0.2:7171; counts 50% under --trust-peers');
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: now, missed: 0, say: 1, written: now }, now), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes');
+  });
+
+  it('says how many bytes the relay carried for other routers, when it carried any', () => {
+    assert.deepEqual([bytesText(0), bytesText(1023), bytesText(1536), bytesText(12 * 1024 ** 2), bytesText(1.25 * 1024 ** 3)], ['0 B', '1023 B', '1.5 KB', '12.0 MB', '1.25 GB']);
+    assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, open: 3, perClient: 16, bytes: 3_565_158 }), 'open on port 7272: carried 31 (3.4 MB), refused 4, 3 open now (up to 16 at a time for one address) (listed nodes only)');
+    assert.equal(relayLine({ port: 7272, relayed: 0, refused: 0, bytes: 0 }), 'open on port 7272: carried 0, refused 0 (listed nodes only)');
   });
 });

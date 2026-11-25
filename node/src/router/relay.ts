@@ -45,6 +45,8 @@ const HOP = new Set(['connection', 'keep-alive', 'proxy-authorization', 'proxy-c
 export class Relay {
   relayed = 0;
   refused = 0;
+  /** Bytes carried for other routers, both ways: what they sent the nodes and what came back. */
+  bytes = 0;
   readonly server: Server;
   /** Connections open through the relay right now, by the address they came from. */
   private readonly openBy = new Map<string, number>();
@@ -111,11 +113,13 @@ export class Relay {
       return;
     }
     res.on('close', release);
+    req.on('data', (c: Buffer) => (this.bytes += c.length));
     const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
     const up = httpRequest({ host: target.hostname, port: Number(target.port || 80), method: req.method, path: `${target.pathname}${target.search}`, headers, agent: false }, (r) => {
       this.relayed += 1;
       const back = Object.fromEntries(Object.entries(r.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
       res.writeHead(r.statusCode ?? 502, back);
+      r.on('data', (c: Buffer) => (this.bytes += c.length));
       r.pipe(res);
     });
     up.setTimeout(120_000, () => up.destroy(new Error('the node sent nothing for 120 seconds')));
@@ -150,6 +154,9 @@ export class Relay {
       this.relayed += 1;
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length) far.write(head);
+      this.bytes += head.length;
+      far.on('data', (c: Buffer) => (this.bytes += c.length));
+      socket.on('data', (c: Buffer) => (this.bytes += c.length));
       far.pipe(socket);
       socket.pipe(far);
     });
