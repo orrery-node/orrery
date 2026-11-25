@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers` lists peers in the order an operator reads them (given and answering first, then met through a peer, gone quiet, never answered, refused last; signed before unsigned), and `--json` now opens with the counts the list is headed with (`summary`: peers, signed, met, refused, relaying).' },
   { who: 'router', text: '`--trust-peers` counts only signed notes. Unsigned notes from an unpinned peer are still shown beside the router\'s own record, but anyone on the way could have written them, so they no longer move where a never-asked node starts.' },
   { who: 'router', text: 'The router times each peer: how long its notes took to come back the last time it answered (`readMs` in the status, "312 ms" beside it on the console), so a slow peer stands out. A peer that never answered has no time.' },
   { who: 'router', text: 'The router log says each change in its peers once: a peer that starts answering ("peer … answers: signed by 4nLc…Jqdu, notes on 4 nodes"), one that is refused and why, a router met through a peer ("met … through …, pinned to …"), and one that goes quiet or comes back. A refresh that changes nothing adds no line.' },

@@ -27,7 +27,7 @@ import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALL
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
-import { doctor, peersReport, render } from './doctor.ts';
+import { byTrust, doctor, peersReport, peersSummary, render } from './doctor.ts';
 import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, privateSpend, privateSpendLine, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, quoteKind, renderQuote } from './quote.ts';
@@ -794,7 +794,7 @@ async function main() {
         return false;
       }
       const st = status as Parameters<typeof peersReport>[0];
-      console.log(has('json') ? JSON.stringify({ peers: st.peers ?? [], relay: st.relay ?? null, discovery: st.discovery ?? null }, null, 2) : peersReport(st).join('\n'));
+      console.log(has('json') ? JSON.stringify({ summary: peersSummary(st.peers ?? []), peers: byTrust(st.peers ?? []), relay: st.relay ?? null, discovery: st.discovery ?? null }, null, 2) : peersReport(st).join('\n'));
       return true;
     };
     if (!has('watch')) {

@@ -2653,6 +2653,8 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
       done(out);
     });
   });
+  const asJson = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER, '--json'], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const parsedJson = (() => { try { return JSON.parse(asJson) as { summary?: { peers: number; signed: number; met: number; refused: number; relaying: number }; peers?: unknown[] }; } catch { return null; } })();
   const frames = (watched.match(/^1 peer router: /gm) ?? []).length;
   const stamps = (watched.match(/^\d\d:\d\d:\d\d UTC, every 1 s \(Ctrl-C to stop\)$/gm) ?? []).length;
   opts.peers = [];
@@ -2663,6 +2665,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('an agent reads the router\u2019s P2P side through orrery mcp: the peers tool gives the same lines as orrery peers, relay ports included',
     peersMcp !== '' && peersMcp === peersCli && peersMcp.includes('; relays on port 7272, usable as --proxy http://<its host>:7272'),
     peersMcp.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').slice(0, 2).join(' | ').slice(0, 240) || 'no answer from the peers tool');
+  check('orrery peers --json gives the counts the list is headed with: peers, signed, met through a peer, refused, relaying',
+    JSON.stringify(parsedJson?.summary) === JSON.stringify({ peers: 1, signed: 1, met: 0, refused: 0, relaying: 1 }) && parsedJson?.peers?.length === 1,
+    `summary ${JSON.stringify(parsedJson?.summary ?? null)}`);
   check('orrery peers --watch draws the router\u2019s P2P side again every few seconds, each frame under the time it was drawn',
     frames >= 2 && stamps >= 2,
     `${frames} frame${frames === 1 ? '' : 's'}, ${stamps} time line${stamps === 1 ? '' : 's'} before it was stopped`);

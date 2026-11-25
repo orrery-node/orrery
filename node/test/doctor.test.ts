@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { newer, peerLine, peersReport, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { byTrust, newer, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -162,5 +162,19 @@ describe('orrery doctor, what the running router paid', () => {
 
   it('says how many connections a peer\'s relay has open, when it says', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 3 }), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272 (3 open now), usable as --proxy http://<its host>:7272');
+  });
+
+  it('orrery peers puts the given and answering first and the refused last, and counts them for --json', () => {
+    const base = { pinned: false, by: null, signed: false, nodes: 1, refused: null as string | null, at: 1, missed: 0 };
+    const rows = [
+      { ...base, url: 'refused', refused: 'the signature does not match the notes' },
+      { ...base, url: 'never', at: 0, missed: 2 },
+      { ...base, url: 'met', signed: true, via: 'given' },
+      { ...base, url: 'quiet', signed: true, missed: 1 },
+      { ...base, url: 'unsigned' },
+      { ...base, url: 'given', signed: true, relayPort: 7272 },
+    ];
+    assert.deepEqual(byTrust(rows).map((p) => p.url), ['given', 'unsigned', 'met', 'quiet', 'never', 'refused']);
+    assert.deepEqual(peersSummary(rows), { peers: 6, signed: 3, met: 1, refused: 1, relaying: 1 });
   });
 });
