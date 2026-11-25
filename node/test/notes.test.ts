@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { keptPeerNotes, MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { keptPeerNotes, MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -151,5 +151,15 @@ describe('signed notes', () => {
     assert.equal(got.read.nodes.length, 1);
     assert.equal(keptPeerNotes('not json', ['http://10.0.0.2:7171'], now).size, 0);
     assert.equal(keptPeerNotes('[1]', ['0'], now).size, 0);
+  });
+
+  it('counts a peer\'s notes in full for ten minutes, then less each minute, and not at all at an hour', () => {
+    assert.equal(peerFreshness(0), 1);
+    assert.equal(peerFreshness(600_000), 1);
+    assert.equal(peerFreshness(2_100_000), 0.5);
+    assert.equal(peerFreshness(3_600_000), 0);
+    assert.equal(peerFreshness(9_000_000), 0);
+    assert.equal(peerFreshness(-5_000), 1);
+    assert.equal(peerPrior([{ weight: peerFreshness(2_100_000), sent: 40, answered: 0 }]), 0.3);
   });
 });

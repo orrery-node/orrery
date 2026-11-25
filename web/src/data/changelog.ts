@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'Under `--trust-peers`, a peer\'s notes count by their age: in full for ten minutes after the peer wrote them, then less each minute, down to nothing at an hour. A peer that went quiet half an hour ago, or notes picked up from before a restart, move a node\'s start less than notes written a minute ago.' },
   { who: 'router', text: 'A peer counted with notes kept from before a restart is said to be until it answers again: the status has `kept`, the console marks it "from before the restart", and `orrery peers` and `orrery doctor` say "kept from before the restart (written 12 min ago)".' },
   { who: 'router', text: 'A restart no longer forgets what peers said: the router keeps each peer\'s notes as they arrived (`~/.orrery/router/peer-notes.json`), and after a start a peer that does not answer yet still counts with what it signed, the signature and pinned key checked again, until those notes are an hour old.' },
   { who: 'router', text: 'The router console\'s relay line says when the relay is for peer routers only (`--relay-peers-only`).' },

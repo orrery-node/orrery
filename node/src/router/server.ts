@@ -17,7 +17,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { keptPeerNotes, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
+import { keptPeerNotes, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, plainAddress, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { lookup } from 'node:dns/promises';
@@ -523,12 +523,20 @@ export class Router {
   }
 
   /** With --trust-peers, where a node this router has no record of starts: what the peers saw it answer, a peer this
-   * router was given counting in full and a router met through one counting half (peerPrior). Only signed notes count:
+   * router was given counting in full and a router met through one counting half, each less as its notes age past ten
+   * minutes (peerPrior, peerFreshness). Only signed notes count:
    * unsigned ones are shown beside the record, but anyone on the way could have written them, so they steer nothing. */
   priorOf(e: ProviderEntry): number | null {
     if (!this.o.trustPeers) return null;
-    const seen = [...this.peerNotes].filter(([given]) => this.peerSaid.get(given)?.signed === true).flatMap(([given, list]) => list.filter((n) => n.address === e.address).map((n) => ({ weight: this.met.has(given) ? MET_WEIGHT : 1, sent: n.sent, answered: n.answered })));
+    const now = Date.now();
+    const seen = [...this.peerNotes].filter(([given]) => this.peerSaid.get(given)?.signed === true).flatMap(([given, list]) => list.filter((n) => n.address === e.address).map((n) => ({ weight: (this.met.has(given) ? MET_WEIGHT : 1) * peerFreshness(now - this.notesWritten(given)), sent: n.sent, answered: n.answered })));
     return peerPrior(seen);
+  }
+
+  /** When a peer wrote the notes this router holds of it: the time in the notes, or when they were read. */
+  private notesWritten(given: string): number {
+    const at = (this.peerRaw.get(given) as { at?: unknown } | undefined)?.at;
+    return typeof at === 'number' ? at : this.peerSaid.get(given)?.at ?? 0;
   }
 
   /** With a proxy set, asks a node what address it sees of this router and keeps the answer for the status page.

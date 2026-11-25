@@ -2315,6 +2315,37 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     priorOn === 0 && priorUnsigned === null,
     `signed notes: starts at ${priorOn} · the same notes unsigned: ${priorUnsigned === null ? 'no prior, the neutral 0.6 stands' : priorUnsigned}`);
 }
+// --trust-peers weighs a peer's notes by their age: in full for ten minutes, then less each minute until they are let
+// go of at an hour. The same signed 0 of 40 starts Ironbridge at 0 when written just now, and halfway to the neutral 0.6
+// when written 35 minutes ago.
+{
+  const opts = routerOpts as { peers?: string[]; trustPeers?: boolean };
+  const ibAddress = nodes[1].pda.toBase58();
+  const { signNotes: signAged } = await import('../src/router/notes.ts');
+  const { signerOf: signerAged } = await import('../src/keys.ts');
+  const aged = Keypair.generate();
+  const notesAt = (at: number) => signAged({ notes: 1 as const, at, nodes: [{ address: ibAddress, checks: 40, up: 40, sent: 40, answered: 0 }] }, aged.publicKey.toBase58(), signerAged(aged));
+  let served: unknown = notesAt(Date.now());
+  const agedSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(served)) : res.writeHead(404).end()));
+  await new Promise<void>((done) => agedSrv.listen(0, '127.0.0.1', () => done()));
+  opts.peers = [`http://127.0.0.1:${(agedSrv.address() as { port: number }).port}`];
+  opts.trustPeers = true;
+  const r = router as unknown as { readPeers?: () => Promise<void>; priorOf?: (e: unknown) => number | null };
+  const ibEntry = registry.entries.get(ibAddress)!;
+  await r.readPeers?.();
+  const fresh = r.priorOf ? r.priorOf(ibEntry) : null;
+  served = notesAt(Date.now() - 35 * 60_000);
+  await r.readPeers?.();
+  const older = r.priorOf ? r.priorOf(ibEntry) : null;
+  opts.trustPeers = false;
+  opts.peers = [];
+  await r.readPeers?.();
+  agedSrv.closeAllConnections();
+  await new Promise((done) => agedSrv.close(done));
+  check('--trust-peers weighs a peer\u2019s notes by their age: the same signed 0 of 40 starts a node at 0 when just written, about halfway to the neutral 0.6 when 35 minutes old',
+    fresh === 0 && typeof older === 'number' && Math.abs(older - 0.3) < 0.005,
+    `written just now: starts at ${fresh} · written 35 min ago: starts at ${typeof older === 'number' ? older.toFixed(3) : older}`);
+}
 // The router console shows the P2P side on a Peers section: each peer with who signed its notes (or why they were
 // refused), the relay with what it carried and refused, and whether the listings came from the peers. Drawn in a
 // browser from the router's own status, the way an operator sees it.

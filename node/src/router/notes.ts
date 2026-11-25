@@ -164,8 +164,21 @@ export function peerBackoffMs(missed: number): number {
 /** How much the word of a router met through a peer (--meet-peers) counts next to a peer this router was given: half. */
 export const MET_WEIGHT = 0.5;
 
+/** Notes count in full for this long after their peer wrote them. */
+export const NOTES_FRESH_MS = 600_000;
+
+/** How much a peer's notes still count by their age: in full for NOTES_FRESH_MS, then less each minute, down to nothing
+ * at NOTES_MAX_AGE_MS, when they are let go of anyway. A peer that went quiet half an hour ago, or notes picked up from
+ * before a restart, steer a node's start less than notes written a minute ago. */
+export function peerFreshness(ageMs: number): number {
+  if (!(ageMs > NOTES_FRESH_MS)) return 1;
+  if (ageMs >= NOTES_MAX_AGE_MS) return 0;
+  return (NOTES_MAX_AGE_MS - ageMs) / (NOTES_MAX_AGE_MS - NOTES_FRESH_MS);
+}
+
 /** Where --trust-peers starts a node this router has never asked: what the peers saw it answer, each peer weighted by
- * how close it is (a peer this router was given counts in full, a router met through one at MET_WEIGHT), and moved
+ * how close it is (a peer this router was given counts in full, a router met through one at MET_WEIGHT) and by how
+ * fresh its notes are (peerFreshness), and moved
  * away from the neutral guess only as far as the closest peer that saw it is trusted. A node only met routers saw
  * answer 0 of 40 starts at 0.3, halfway between 0.6 and 0; one a given peer saw do that starts at 0. Null when no
  * peer sent it anything. */
