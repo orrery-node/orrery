@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The router console heads its Peers section with the same summary as `orrery peers` and `orrery doctor` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying"), so the three say it the same way.
 - **Router** · Name your peers: a line in `--peers-file` can end with a name (`http://10.0.0.2:7171#<key> alice`), and the router status, its console, `orrery peers` and `orrery doctor` show it before the address ("alice (http://10.0.0.2:7171): signed by …").
 - **Router** · The `peers` tool in `orrery mcp` takes `check`: an agent reads a router before it is added as a peer and gets the same lines as `orrery peers --check` (signed and by which key, how fresh, whether it relays, what it introduces, the `--peer` line), through the proxy when one is set.
 - **Router** · `orrery doctor` heads its peer lines with the same one-line summary as `orrery peers` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying") and lists the peers in the same order.

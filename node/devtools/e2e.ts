@@ -2949,8 +2949,16 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
 {
   const page = await (await fetch(`${ROUTER}/`)).text();
   check('the router console says which peers relay and how many were met through a peer: point --proxy at one and the nodes see that router',
-    page.includes("': point --proxy at '+(rpe.length===1?'it':'one')+' and the nodes see that router, not this computer'") && page.includes("' peer routers met through a peer'") && page.includes('p.relayPort&&!p.refused'),
+    page.includes("': point --proxy at '+(rpe.length===1?'it':'one')+' and the nodes see that router, not this computer'") && page.includes("' met through a peer, '") && page.includes('p.relayPort&&!p.refused'),
     page.includes('rpe.length') ? 'the Peers line names relaying peers and met ones' : 'the Peers line says nothing of relays among the peers');
+}
+// The router console heads its Peers section with the same summary as orrery peers and orrery doctor: how many peer
+// routers, how many signed, met through a peer, refused and relaying.
+{
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  check('the router console heads its Peers section with the same summary line as orrery peers and orrery doctor',
+    page.includes("bits.unshift(ps.length+' peer router'+(ps.length===1?'':'s')+': '+ps.filter(p=>p.signed&&!p.refused).length+' signed, '"),
+    page.includes("bits.unshift(ps.length+' peer router'") ? 'the summary heads the Peers line' : 'no summary on the console');
 }
 // Kept for the media folder: the router's status and spend as its console reads them, with the relay open and three
 // peer routers read: one passing on this router's own signed notes (pinned to its key) that also runs a relay, one
