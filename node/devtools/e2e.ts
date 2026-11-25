@@ -2689,6 +2689,63 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// The router's log says each change in its peers once: a peer that starts answering, one that is refused, a router
+// met through a peer, and a peer that goes quiet; a refresh that changes nothing adds no line.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean; meetPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void>; log: (l: string) => void };
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: { checks: number }[] };
+  opts.shareNotes = false;
+  const changed = { ...ours, nodes: ours.nodes.map((n, i) => (i === 0 ? { ...n, checks: n.checks + 1 } : n)) };
+  const someone = Keypair.generate();
+  const serve = (routes: Record<string, unknown>) => createHttpServer((req, res) => (req.url && req.url in routes ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(typeof routes[req.url] === 'function' ? (routes[req.url] as () => unknown)() : routes[req.url])) : res.writeHead(404).end()));
+  const listen = async (srv: ReturnType<typeof createHttpServer>) => {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    return `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+  };
+  const c = serve({ '/orrery/notes': () => signAs({ notes: 1, at: Date.now(), nodes: ours.nodes as never }, someone.publicKey.toBase58(), signerFor(someone)) });
+  const cUrl = await listen(c);
+  const a = serve({ '/orrery/notes': ours, '/orrery/peers': { peers: [{ url: cUrl, by: someone.publicKey.toBase58() }] } });
+  const b = serve({ '/orrery/notes': changed });
+  const aUrl = await listen(a), bUrl = await listen(b);
+  const said: string[] = [];
+  const keep = rp.log;
+  rp.log = (l) => { said.push(l); keep(l); };
+  opts.peers = [`${aUrl}#${ourKey}`, bUrl];
+  opts.meetPeers = true;
+  await rp.readPeers?.();
+  await rp.readPeers?.();
+  a.closeAllConnections();
+  await new Promise((done) => a.close(done));
+  await rp.readPeers?.();
+  await rp.readPeers?.();
+  rp.log = keep;
+  opts.meetPeers = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [b, c]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  const short = (k: string) => `${k.slice(0, 4)}\u2026${k.slice(-4)}`;
+  const n = ours.nodes.length;
+  const once = (line: string) => said.filter((l) => l === line).length === 1;
+  const expected = [
+    `met ${cUrl} through ${aUrl}, pinned to ${short(someone.publicKey.toBase58())}`,
+    `peer ${aUrl} answers: signed by ${short(ourKey)}, notes on ${n} node${n === 1 ? '' : 's'}`,
+    `peer ${bUrl} refused: the signature does not match the notes`,
+    `peer ${cUrl} (met through ${aUrl}) answers: signed by ${short(someone.publicKey.toBase58())}, notes on ${n} node${n === 1 ? '' : 's'}`,
+    `peer ${aUrl} did not answer; its last notes are kept for up to an hour`,
+  ];
+  const peerLines = said.filter((l) => /^(peer|met) /.test(l));
+  check('the router logs each change in its peers once: answering, refused, met through a peer, gone quiet; a refresh that changes nothing adds no line',
+    expected.every(once) && peerLines.length === expected.length,
+    `${peerLines.length} peer lines over 4 refreshes: ${peerLines.map((l) => l.replaceAll(aUrl, '<a>').replaceAll(bUrl, '<b>').replaceAll(cUrl, '<c>').replace(/[1-9A-HJ-NP-Za-km-z]{4}\u2026[1-9A-HJ-NP-Za-km-z]{4}/g, '<key>')).join(' | ').slice(0, 400)}`);
+}
 // A relay says how busy it is: a router sharing notes gives its relay's open connections at /orrery/peers, and a router
 // reading it shows them beside the port, so an operator picking a peer to --proxy through can see which is quieter.
 {

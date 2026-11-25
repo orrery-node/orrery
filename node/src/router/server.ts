@@ -260,6 +260,21 @@ export class Router {
   private peerTried = new Map<string, number>();
   /** Who signed each peer's notes, and whether they were refused, for the status page. */
   private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }>();
+  /** Sets what a peer said and logs the change when it is a different kind of answer from before (answering, refused,
+   * not answering): one line when a peer starts answering, is refused, goes quiet or comes back, not one a refresh. */
+  private setPeer(given: string, now: { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }): void {
+    const was = this.peerSaid.get(given);
+    this.peerSaid.set(given, now);
+    const kind = (p: typeof now | undefined) => (!p ? 'none' : p.refused ? `refused:${p.refused}` : p.at === 0 ? 'never' : p.missed > 0 ? 'quiet' : `ok:${p.by ?? ''}`);
+    if (kind(was) === kind(now)) return;
+    const url = given.split('#')[0];
+    const via = this.met.get(given);
+    const who = via ? `peer ${url} (met through ${via})` : `peer ${url}`;
+    if (now.refused) this.log(`${who} refused: ${now.refused}`);
+    else if (now.at === 0) this.log(`${who} has not answered yet`);
+    else if (now.missed > 0) this.log(`${who} did not answer; its last notes are kept for up to an hour`);
+    else this.log(`${who} answers: ${now.signed && now.by ? `signed by ${now.by.slice(0, 4)}\u2026${now.by.slice(-4)}` : 'unsigned'}, notes on ${now.nodes} node${now.nodes === 1 ? '' : 's'}`);
+  }
   /** The relay other routers reach nodes through, when one was opened. */
   private relay: Relay | null = null;
   private log: (line: string) => void;
@@ -338,23 +353,23 @@ export class Router {
       const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
       if (j === undefined) {
         const was = this.peerSaid.get(given);
-        this.peerSaid.set(given, was ? { ...was, missed: was.missed + 1 } : { by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 1 });
+        this.setPeer(given, was ? { ...was, missed: was.missed + 1 } : { by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 1 });
         return;
       }
       const read = readPeerNotes(j, pinned || undefined);
       if ('refused' in read) {
         this.peerNotes.delete(given);
-        this.peerSaid.set(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now(), missed: 0 });
+        this.setPeer(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now(), missed: 0 });
         return;
       }
       this.peerNotes.set(given, read.nodes);
-      this.peerSaid.set(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now(), missed: 0 });
+      this.setPeer(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now(), missed: 0 });
     }));
     // A peer that has not answered for over an hour: what it said last is let go of.
     for (const [given, said] of this.peerSaid) {
       if (said.refused === null && said.at > 0 && Date.now() - said.at > NOTES_MAX_AGE_MS) {
         this.peerNotes.delete(given);
-        this.peerSaid.set(given, { ...said, nodes: 0, refused: 'no answer for over an hour; its last notes are let go of' });
+        this.setPeer(given, { ...said, nodes: 0, refused: 'no answer for over an hour; its last notes are let go of' });
       }
     }
   }
@@ -410,6 +425,11 @@ export class Router {
         if (known.has(url) || by === own || next.has(k) || next.size >= this.meetMax()) continue;
         next.set(k, base);
       }
+    }
+    for (const [k, via] of next) {
+      if (this.met.has(k)) continue;
+      const [url, by] = k.split('#');
+      this.log(`met ${url} through ${via}, pinned to ${by.slice(0, 4)}\u2026${by.slice(-4)}`);
     }
     this.met = next;
   }
