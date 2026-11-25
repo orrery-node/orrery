@@ -2278,11 +2278,17 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     `signed by ${genuine.by ? `${genuine.by.slice(0, 6)}…` : 'nobody'} · pinned, unchanged: ${pinnedOk?.signed ? 'checks' : pinnedOk?.refused ?? 'nothing read'} · doctor: ${doctorPeer.replace(peerUrl, '<peer>').replace(ourKey.slice(0, 4), '<key>') || 'no peer line'} · one number changed: ${changed?.refused ?? 'accepted'} · pinned to another key: ${wrongPin?.refused?.replace(ourKey, '<key>') ?? 'accepted'} · two-hour-old signed notes: ${replayed?.refused ?? 'accepted'}`);
 }
 // --trust-peers: a router that never asked a node starts from what its peers saw it answer, in place of the neutral
-// guess; off, the peers' notes are only shown. Here a stand-in peer says Ironbridge answered 0 of 40.
+// guess; off, the peers' notes are only shown. Here a stand-in peer says, in signed notes, that Ironbridge answered 0 of
+// 40. The same notes unsigned are shown and steer nothing: anyone on the way could have written them.
 {
   const opts = routerOpts as { peers?: string[]; trustPeers?: boolean };
   const ibAddress = nodes[1].pda.toBase58();
-  const peerSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [{ address: ibAddress, checks: 40, up: 40, sent: 40, answered: 0 }] })) : res.writeHead(404).end()));
+  const { signNotes: signStandIn } = await import('../src/router/notes.ts');
+  const { signerOf: signerOfStandIn } = await import('../src/keys.ts');
+  const standIn = Keypair.generate();
+  const zeroOf40 = { notes: 1 as const, at: Date.now(), nodes: [{ address: ibAddress, checks: 40, up: 40, sent: 40, answered: 0 }] };
+  let served: unknown = signStandIn(zeroOf40, standIn.publicKey.toBase58(), signerOfStandIn(standIn));
+  const peerSrv = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(served)) : res.writeHead(404).end()));
   await new Promise<void>((done) => peerSrv.listen(0, '127.0.0.1', () => done()));
   opts.peers = [`http://127.0.0.1:${(peerSrv.address() as { port: number }).port}`];
   const r = router as unknown as { readPeers?: () => Promise<void>; priorOf?: (e: unknown) => number | null };
@@ -2295,6 +2301,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const offers = registry.offers('llama-3.3-70b');
   const repOf = (withPeers: boolean) => rankAll(offers, 'reputation', 1000, 200, new FreshStats(), 0, () => 0, () => 0, (e) => (withPeers && r.priorOf ? r.priorOf(e) : null)).find((c) => c.entry.address === ibAddress)?.reputation ?? NaN;
   const without = repOf(false), withPeers = repOf(true);
+  served = zeroOf40;
+  await r.readPeers?.();
+  const priorUnsigned = r.priorOf ? r.priorOf(ibEntry) : 'none';
   opts.trustPeers = false;
   opts.peers = [];
   await r.readPeers?.();
@@ -2302,6 +2311,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('--trust-peers: a router that never asked a node starts from what its peers saw it answer; without it, the notes are only shown',
     priorOff === null && priorOn === 0 && Number.isFinite(without) && Math.abs(without - withPeers - 0.15) < 1e-9,
     `prior without the flag ${priorOff} · with it ${priorOn} · Ironbridge's reputation for a router that never asked it: ${without.toFixed(3)} → ${withPeers.toFixed(3)}`);
+  check('--trust-peers counts only signed notes: the same 0 of 40 unsigned is shown and steers nothing',
+    priorOn === 0 && priorUnsigned === null,
+    `signed notes: starts at ${priorOn} · the same notes unsigned: ${priorUnsigned === null ? 'no prior, the neutral 0.6 stands' : priorUnsigned}`);
 }
 // The router console shows the P2P side on a Peers section: each peer with who signed its notes (or why they were
 // refused), the relay with what it carried and refused, and whether the listings came from the peers. Drawn in a
@@ -2550,7 +2562,8 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const ib = nodes[1].pda.toBase58();
   const zeroOf40 = [{ address: ib, checks: 40, up: 40, sent: 40, answered: 0 }];
   const someone = Keypair.generate();
-  const routes: Record<string, unknown> = { '/orrery/notes': { notes: 1, at: Date.now(), nodes: [] } };
+  const givenKey = Keypair.generate();
+  const routes: Record<string, unknown> = { '/orrery/notes': signAs({ notes: 1, at: Date.now(), nodes: [] }, givenKey.publicKey.toBase58(), signerFor(givenKey)) };
   const listen = async (srv: ReturnType<typeof createHttpServer>) => {
     await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
     return `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
@@ -2566,7 +2579,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   await r.readPeers?.();
   const ibEntry = registry.entries.get(ib)!;
   const metOnly = r.priorOf ? r.priorOf(ibEntry) : null;
-  routes['/orrery/notes'] = { notes: 1, at: Date.now(), nodes: zeroOf40 };
+  routes['/orrery/notes'] = signAs({ notes: 1, at: Date.now(), nodes: zeroOf40 }, givenKey.publicKey.toBase58(), signerFor(givenKey));
   await r.readPeers?.();
   const bothSay = r.priorOf ? r.priorOf(ibEntry) : null;
   opts.trustPeers = false;

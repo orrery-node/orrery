@@ -440,10 +440,11 @@ export class Router {
   }
 
   /** With --trust-peers, where a node this router has no record of starts: what the peers saw it answer, a peer this
-   * router was given counting in full and a router met through one counting half (peerPrior). */
+   * router was given counting in full and a router met through one counting half (peerPrior). Only signed notes count:
+   * unsigned ones are shown beside the record, but anyone on the way could have written them, so they steer nothing. */
   priorOf(e: ProviderEntry): number | null {
     if (!this.o.trustPeers) return null;
-    const seen = [...this.peerNotes].flatMap(([given, list]) => list.filter((n) => n.address === e.address).map((n) => ({ weight: this.met.has(given) ? MET_WEIGHT : 1, sent: n.sent, answered: n.answered })));
+    const seen = [...this.peerNotes].filter(([given]) => this.peerSaid.get(given)?.signed === true).flatMap(([given, list]) => list.filter((n) => n.address === e.address).map((n) => ({ weight: this.met.has(given) ? MET_WEIGHT : 1, sent: n.sent, answered: n.answered })));
     return peerPrior(seen);
   }
 

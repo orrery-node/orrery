@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `--trust-peers` counts only signed notes. Unsigned notes from an unpinned peer are still shown beside the router's own record, but anyone on the way could have written them, so they no longer move where a never-asked node starts.
 - **Router** · The router times each peer: how long its notes took to come back the last time it answered (`readMs` in the status, "312 ms" beside it on the console), so a slow peer stands out. A peer that never answered has no time.
 - **Router** · The router log says each change in its peers once: a peer that starts answering ("peer … answers: signed by 4nLc…Jqdu, notes on 4 nodes"), one that is refused and why, a router met through a peer ("met … through …, pinned to …"), and one that goes quiet or comes back. A refresh that changes nothing adds no line.
 - **Router** · A relay says how busy it is: a router sharing notes gives its relay's open connections at `/orrery/peers`, and a router reading it shows them beside the port ("relays on port 7272 (3 open now), usable as --proxy …"), so an operator picking a peer to go through can see which is quieter.
