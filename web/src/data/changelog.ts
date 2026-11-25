@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The peers\' summary line in `orrery peers`, `orrery doctor` and the console says how many of their relays are full for today ("2 relaying (1 full for today)"); `--json` keeps the same counts as before.' },
   { who: 'router', text: 'The router log says once when its relay reaches the `--relay-max-mb` limit for the day ("relay: carried its 500.0 MB for today; new connections are turned away for about 7 h, the ones open now finish"), and not again for what comes after it.' },
   { who: 'router', text: 'A relay at its `--relay-max-mb` limit says so to other routers at `/orrery/peers`, and a router reading that peer says its relay is "full for today" (status `relayFull`, the console, `orrery peers`, `orrery peers --check` and `orrery doctor`), so nobody points `--proxy` at a relay that will turn them away.' },
   { who: 'router', text: '`--relay-max-mb <n>`: a relay stops taking new connections once it has carried that much for other routers in a day, and says when it carries again ("this relay has carried its 500.0 MB for today; it carries again in about 7 h"); connections already open are carried to their end. The status, console and `orrery doctor` say how much of the day\'s limit is used.' },

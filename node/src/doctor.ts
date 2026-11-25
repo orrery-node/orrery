@@ -186,7 +186,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   // The peers in one line first, then a line for each in the order orrery peers lists them.
   if (status?.peers?.length) {
     const c = peersSummary(status.peers);
-    out.push({ ok: null, what: '  peer routers', detail: `${c.peers} peer router${c.peers === 1 ? '' : 's'}: ${c.signed} signed, ${c.met} met through a peer, ${c.refused} refused, ${c.relaying} relaying` });
+    out.push({ ok: null, what: '  peer routers', detail: `${c.peers} peer router${c.peers === 1 ? '' : 's'}: ${c.signed} signed, ${c.met} met through a peer, ${c.refused} refused, ${c.relaying} relaying${fullRelaysText(status.peers)}` });
   }
   for (const p of byTrust(status?.peers ?? [])) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
@@ -314,6 +314,12 @@ export function peersSummary(peers: PeerRow[]): { peers: number; signed: number;
   };
 }
 
+/** How many of the peers' relays say they are full for today, for the summary line: " (1 full for today)", or nothing. */
+export function fullRelaysText(peers: PeerRow[]): string {
+  const n = peers.filter((p) => p.relayPort && p.relayFull).length;
+  return n ? ` (${n} full for today)` : '';
+}
+
 /** Peers in the order an operator reads them: the ones given and answering first, then those met through a peer, those
  * gone quiet, those that never answered, and the refused last; signed before unsigned within each. */
 export function byTrust<T extends PeerRow>(peers: T[]): T[] {
@@ -331,7 +337,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
     out.push('This router reads no peer routers. Start it with --peer <url>#<key> to read another router\u2019s notes on nodes, and --meet-peers to meet the routers that one reads.');
   } else {
     const c = peersSummary(peers);
-    out.push(`${c.peers} peer router${c.peers === 1 ? '' : 's'}: ${c.signed} signed, ${c.met} met through a peer, ${c.refused} refused, ${c.relaying} relaying`);
+    out.push(`${c.peers} peer router${c.peers === 1 ? '' : 's'}: ${c.signed} signed, ${c.met} met through a peer, ${c.refused} refused, ${c.relaying} relaying${fullRelaysText(peers)}`);
     for (const p of byTrust(peers)) out.push(`  ${peerLine(p, now)}`);
   }
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');

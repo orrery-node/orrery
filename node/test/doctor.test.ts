@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -234,5 +234,12 @@ describe('orrery doctor, what the running router paid', () => {
       'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272 (0 open now, full for today), usable as --proxy http://<its host>:7272');
     const now = 10_000_000_000;
     assert.equal(peerCheck('http://10.0.0.9:7171', { notes: 1, at: now, nodes: [] }, { peers: [], relay: { port: 7272, full: true } }, now).lines[2], 'relays on port 7272 (full for today), usable as --proxy http://<its host>:7272');
+  });
+
+  it('heads the peers with how many of their relays are full for today, when any is', () => {
+    const row = { url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 0, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 0 };
+    assert.equal(fullRelaysText([row]), '');
+    assert.equal(fullRelaysText([{ ...row, relayFull: true }, { ...row, url: 'http://10.0.0.3:7171', relayFull: true }]), ' (2 full for today)');
+    assert.equal(peersReport({ peers: [{ ...row, relayFull: true }], relay: null })[0], '1 peer router: 0 signed, 0 met through a peer, 0 refused, 1 relaying (1 full for today)');
   });
 });

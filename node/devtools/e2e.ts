@@ -2654,6 +2654,24 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     crossing === 'HTTP/1.1 200 Connection Established' && after.startsWith('HTTP/1.1 429') && lines.length === 1 && /^relay: carried its [\d.]+ [KMG]?B for today; new connections are turned away for about \d+ h, the ones open now finish$/.test(lines[0]),
     `${lines.length} line${lines.length === 1 ? '' : 's'}: ${lines[0] ?? 'none'} · then: ${after}`);
 }
+// The peers' summary line says how many of their relays are full for today, so an operator sees it before reading
+// each peer: "1 relaying (1 full for today)".
+{
+  const opts = routerOpts as { peers?: string[] };
+  const fullPeer = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272, open: 0, full: true } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => fullPeer.listen(0, '127.0.0.1', () => done()));
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.peers = [`http://127.0.0.1:${(fullPeer.address() as { port: number }).port}`];
+  await rp.readPeers?.();
+  const summary = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer routers')?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  fullPeer.closeAllConnections();
+  await new Promise((done) => fullPeer.close(done));
+  check('the peers\u2019 summary line in orrery doctor says how many of their relays are full for today',
+    summary === '1 peer router: 0 signed, 0 met through a peer, 0 refused, 1 relaying (1 full for today)',
+    summary || 'no summary line');
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
