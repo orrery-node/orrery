@@ -2774,6 +2774,47 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && gone.code === 1 && gone.out.startsWith(`${candUrl}: no notes (`),
     `${good.out.replaceAll(candUrl, '<peer>').replaceAll(by, '<key>').replaceAll(short, '<k>').split('\n').join(' | ').slice(0, 300)} · wrong key: exit ${wrongKey.code} · gone: exit ${gone.code}`);
 }
+// A restart does not forget what peers said: the router keeps each peer's notes as they arrived in peer-notes.json, and
+// on its first read after a start a peer that does not answer still counts with the notes it signed, checked again;
+// notes over an hour old are not picked up.
+{
+  const { signNotes: signKept } = await import('../src/router/notes.ts');
+  const { signerOf: signerKept } = await import('../src/keys.ts');
+  const opts = routerOpts as { shareNotes?: boolean; peers?: string[]; peerNotesPath?: string };
+  const rp = router as unknown as { readPeers?: () => Promise<void>; peerNotes?: Map<string, unknown>; peerSaid?: Map<string, unknown>; peerTried?: Map<string, unknown>; peerMs?: Map<string, unknown>; peerRaw?: Map<string, unknown>; notesKept?: boolean };
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: never[] };
+  opts.shareNotes = false;
+  const key = Keypair.generate();
+  const by = key.publicKey.toBase58();
+  const peerServer = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signKept({ notes: 1, at: Date.now(), nodes: ours.nodes }, by, signerKept(key)))) : res.writeHead(404).end()));
+  await new Promise<void>((done) => peerServer.listen(0, '127.0.0.1', () => done()));
+  const peerUrl = `http://127.0.0.1:${(peerServer.address() as { port: number }).port}`;
+  const given = `${peerUrl}#${by}`;
+  const keptFile = join(WORK, 'home/router/peer-notes.json');
+  opts.peerNotesPath = keptFile;
+  opts.peers = [given];
+  await rp.readPeers?.();
+  const saved = existsSync(keptFile) ? ((JSON.parse(readFileSync(keptFile, 'utf8')) as Record<string, { by?: string }>)[given]?.by ?? null) : null;
+  peerServer.closeAllConnections();
+  await new Promise((done) => peerServer.close(done));
+  const restart = async () => {
+    for (const m of [rp.peerNotes, rp.peerSaid, rp.peerTried, rp.peerMs, rp.peerRaw]) m?.clear();
+    rp.notesKept = false;
+    await rp.readPeers?.();
+    return (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; signed: boolean; nodes: number; missed?: number; at?: number }[] }).peers ?? []).find((p) => p.url === peerUrl);
+  };
+  const after = await restart();
+  writeFileSync(keptFile, JSON.stringify({ [given]: signKept({ notes: 1, at: Date.now() - 2 * 3_600_000, nodes: ours.nodes }, by, signerKept(key)) }));
+  const stale = await restart();
+  opts.peers = [];
+  opts.peerNotesPath = undefined;
+  await rp.readPeers?.();
+  rmSync(keptFile, { force: true });
+  check('after a restart, a peer that does not answer still counts with the notes it signed before (kept in peer-notes.json, checked again); notes over an hour old are not picked up',
+    saved === by && after?.signed === true && after.nodes === ours.nodes.length && after.nodes > 0 && after.missed === 1 && stale?.nodes === 0 && stale.at === 0,
+    `kept: ${saved ? 'signed notes' : 'nothing'} · after a restart, peer down: ${after ? `${after.signed ? 'signed' : 'unsigned'}, ${after.nodes} nodes, missed ${after.missed}` : 'not shown'} · notes 2 h old: ${stale ? `${stale.nodes} nodes` : 'not shown'}`);
+}
 // The router times each peer: how long its notes took to come back the last time it answered, in the status and on
 // the console, so a slow peer stands out. A peer that never answered has no time.
 {

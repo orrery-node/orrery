@@ -97,6 +97,28 @@ export function readPeerNotes(j: unknown, pinned?: string, now = Date.now()): Pe
   return { by: signed ? (n.by as string) : null, signed, nodes: wellFormed(asSent) };
 }
 
+/** What a router kept of its peers' notes before a restart (peer -> the notes as they arrived), read again as if they had
+ * just arrived: only for peers it is still given, each checked again (the signature, the pinned key) and dropped once it
+ * is over an hour old. A file that does not read as that keeps nothing. */
+export function keptPeerNotes(text: string, given: Iterable<string>, now = Date.now()): Map<string, { raw: unknown; at: number; read: PeerNotes }> {
+  const out = new Map<string, { raw: unknown; at: number; read: PeerNotes }>();
+  let saved: Record<string, unknown>;
+  try {
+    saved = JSON.parse(text);
+  } catch {
+    return out;
+  }
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return out;
+  for (const g of given) {
+    if (!Object.hasOwn(saved, g)) continue;
+    const raw = saved[g];
+    const read = readPeerNotes(raw, g.split('#')[1] || undefined, now);
+    if ('refused' in read) continue;
+    out.set(g, { raw, at: (raw as { at: number }).at, read });
+  }
+  return out;
+}
+
 /** How many routers one router reads on its peers' word (--meet-peers), on top of the ones it was given. */
 export const MEET_MAX = 8;
 

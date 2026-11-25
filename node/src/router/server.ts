@@ -1,6 +1,7 @@
 // The router: an OpenAI-compatible endpoint on 127.0.0.1. Point any tool at http://127.0.0.1:7171/v1 and it picks a
 // provider per request, pays it through a channel, and falls back to the next provider if one fails.
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fitting, textTokensAtLeast, tooLong } from './context.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Connection } from '@solana/web3.js';
@@ -16,7 +17,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
+import { keptPeerNotes, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, plainAddress, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { lookup } from 'node:dns/promises';
@@ -107,6 +108,9 @@ export type RouterOptions = {
   privateOnly?: boolean;
   /** Where the router keeps its own count of each node (router/observed.json in its home), so a restart goes on from it. */
   observedPath?: string;
+  /** Where the router keeps the notes its peers sent last (peer-notes.json), so that after a restart a peer that does not
+   * answer at once still counts with what it signed, until those notes are an hour old. */
+  peerNotesPath?: string;
 };
 
 /** What one client stream has seen so far, kept across providers so a dropped stream can be resumed. */
@@ -269,6 +273,10 @@ export class Router {
   private peerTried = new Map<string, number>();
   /** How long each peer took to answer its notes the last time it answered, in ms. */
   private peerMs = new Map<string, number>();
+  /** Each peer's notes as they arrived, kept in --peerNotesPath so a restart picks them up again. */
+  private peerRaw = new Map<string, unknown>();
+  private peerRawSaved = '';
+  private notesKept = false;
   /** Who signed each peer's notes, and whether they were refused, for the status page. */
   private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }>();
   /** Sets what a peer said and logs the change when it is a different kind of answer from before (answering, refused,
@@ -356,6 +364,11 @@ export class Router {
     for (const k of [...this.peerSaid.keys()]) if (!given.has(k)) this.peerSaid.delete(k);
     for (const k of [...this.peerTried.keys()]) if (!given.has(k)) this.peerTried.delete(k);
     for (const k of [...this.peerMs.keys()]) if (!given.has(k)) this.peerMs.delete(k);
+    for (const k of [...this.peerRaw.keys()]) if (!given.has(k)) this.peerRaw.delete(k);
+    if (!this.notesKept) {
+      this.notesKept = true;
+      this.keepFromBefore(all);
+    }
     await Promise.all(all.map(async (given) => {
       // A peer that has missed three reads in a row is tried again only after a wait that grows with each miss.
       const wait = peerBackoffMs(this.peerSaid.get(given)?.missed ?? 0);
@@ -374,18 +387,58 @@ export class Router {
       const read = readPeerNotes(j, pinned || undefined);
       if ('refused' in read) {
         this.peerNotes.delete(given);
+        this.peerRaw.delete(given);
         this.setPeer(given, { by: null, signed: false, nodes: 0, refused: read.refused, at: Date.now(), missed: 0 });
         return;
       }
       this.peerNotes.set(given, read.nodes);
+      this.peerRaw.set(given, j);
       this.setPeer(given, { by: read.by, signed: read.signed, nodes: read.nodes.length, refused: null, at: Date.now(), missed: 0 });
     }));
     // A peer that has not answered for over an hour: what it said last is let go of.
     for (const [given, said] of this.peerSaid) {
       if (said.refused === null && said.at > 0 && Date.now() - said.at > NOTES_MAX_AGE_MS) {
         this.peerNotes.delete(given);
+        this.peerRaw.delete(given);
         this.setPeer(given, { ...said, nodes: 0, refused: 'no answer for over an hour; its last notes are let go of' });
       }
+    }
+    this.savePeerNotes();
+  }
+
+  /** On the first read after a start: the notes each peer sent before the restart, from --peerNotesPath, checked again
+   * and used while under an hour old, so a peer that is down right now still counts with what it signed. */
+  private keepFromBefore(all: string[]): void {
+    const path = this.o.peerNotesPath;
+    if (!path || !existsSync(path)) return;
+    let text: string;
+    try {
+      text = readFileSync(path, 'utf8');
+    } catch {
+      return;
+    }
+    const kept = keptPeerNotes(text, all);
+    for (const [given, k] of kept) {
+      this.peerRaw.set(given, k.raw);
+      this.peerNotes.set(given, k.read.nodes);
+      this.setPeer(given, { by: k.read.by, signed: k.read.signed, nodes: k.read.nodes.length, refused: null, at: k.at, missed: 0 });
+    }
+    if (kept.size) this.log(`peers: picked up the notes of ${kept.size} peer${kept.size === 1 ? '' : 's'} from before the restart, signatures checked again; each is let go of an hour after its peer wrote it`);
+  }
+
+  /** Keeps each peer's notes as they arrived in --peerNotesPath, written only when they changed. */
+  private savePeerNotes(): void {
+    const path = this.o.peerNotesPath;
+    if (!path) return;
+    const text = JSON.stringify(Object.fromEntries(this.peerRaw));
+    if (text === this.peerRawSaved || (!this.peerRaw.size && !existsSync(path))) return;
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(`${path}.tmp`, text);
+      renameSync(`${path}.tmp`, path);
+      this.peerRawSaved = text;
+    } catch (e) {
+      this.log(`peers: could not keep their notes in ${path}: ${(e as Error).message}`);
     }
   }
 

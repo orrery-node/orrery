@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { keptPeerNotes, MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -133,5 +133,23 @@ describe('signed notes', () => {
       ['http://10.0.0.4:7171', 'x'.repeat(40)],
     ]);
     assert.deepEqual(parsePeersFile('http://10.0.0.2:7171 alice'), ['http://10.0.0.2:7171']);
+  });
+
+  it('reads back the notes kept from before a restart only for peers still given, signed as pinned and under an hour old', () => {
+    const k = Keypair.generate();
+    const by = k.publicKey.toBase58();
+    const now = 10_000_000_000;
+    const nodes = [{ address: A, checks: 4, up: 4, sent: 2, answered: 2 }];
+    const fresh = signNotes({ notes: 1, at: now - 600_000, nodes }, by, signerOf(k));
+    const old = signNotes({ notes: 1, at: now - 2 * 3_600_000, nodes }, by, signerOf(k));
+    const file = JSON.stringify({ [`http://10.0.0.2:7171#${by}`]: fresh, 'http://10.0.0.3:7171': old, [`http://10.0.0.4:7171#${B}`]: fresh, 'http://10.0.0.5:7171': fresh });
+    const kept = keptPeerNotes(file, [`http://10.0.0.2:7171#${by}`, 'http://10.0.0.3:7171', `http://10.0.0.4:7171#${B}`], now);
+    assert.deepEqual([...kept.keys()], [`http://10.0.0.2:7171#${by}`]);
+    const got = kept.get(`http://10.0.0.2:7171#${by}`)!;
+    assert.equal(got.at, now - 600_000);
+    assert.equal(got.read.by, by);
+    assert.equal(got.read.nodes.length, 1);
+    assert.equal(keptPeerNotes('not json', ['http://10.0.0.2:7171'], now).size, 0);
+    assert.equal(keptPeerNotes('[1]', ['0'], now).size, 0);
   });
 });
