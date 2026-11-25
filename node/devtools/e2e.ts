@@ -2689,6 +2689,35 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// The router times each peer: how long its notes took to come back the last time it answered, in the status and on
+// the console, so a slow peer stands out. A peer that never answered has no time.
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  opts.shareNotes = false;
+  const slow = createHttpServer((req, res) => (req.url === '/orrery/notes' ? void setTimeout(() => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)), 300) : res.writeHead(404).end()));
+  await new Promise<void>((done) => slow.listen(0, '127.0.0.1', () => done()));
+  const slowUrl = `http://127.0.0.1:${(slow.address() as { port: number }).port}`;
+  const closed = createHttpServer();
+  await new Promise<void>((done) => closed.listen(0, '127.0.0.1', () => done()));
+  const goneUrl = `http://127.0.0.1:${(closed.address() as { port: number }).port}`;
+  await new Promise((done) => closed.close(done));
+  opts.peers = [slowUrl, goneUrl];
+  await rp.readPeers?.();
+  type Peer = { url: string; readMs?: number | null };
+  const peers = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? [];
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  opts.peers = [];
+  await rp.readPeers?.();
+  slow.closeAllConnections();
+  slow.close();
+  const s = peers.find((p) => p.url === slowUrl), g = peers.find((p) => p.url === goneUrl);
+  check('the router times each peer: a peer that answered in about 300 ms shows it in the status and on the console; one that never answered has no time',
+    typeof s?.readMs === 'number' && s.readMs >= 280 && s.readMs < 3_000 && g?.readMs === null && page.includes("(p.readMs!=null?' <span class=cap>'+p.readMs+' ms</span>':'')"),
+    `slow peer ${typeof s?.readMs === 'number' ? `${s.readMs} ms` : String(s?.readMs)} · never answered ${g ? String(g.readMs) : 'not shown'} · console ${page.includes('p.readMs') ? 'shows it' : 'does not'}`);
+}
 // The router's log says each change in its peers once: a peer that starts answering, one that is refused, a router
 // met through a peer, and a peer that goes quiet; a refresh that changes nothing adds no line.
 {

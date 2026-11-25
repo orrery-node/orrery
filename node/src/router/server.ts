@@ -258,6 +258,8 @@ export class Router {
   private peerRelayOpen = new Map<string, number | null>();
   /** When each peer was last tried, for the wait after missed reads (peerBackoffMs). */
   private peerTried = new Map<string, number>();
+  /** How long each peer took to answer its notes the last time it answered, in ms. */
+  private peerMs = new Map<string, number>();
   /** Who signed each peer's notes, and whether they were refused, for the status page. */
   private peerSaid = new Map<string, { by: string | null; signed: boolean; nodes: number; refused: string | null; at: number; missed: number }>();
   /** Sets what a peer said and logs the change when it is a different kind of answer from before (answering, refused,
@@ -343,6 +345,7 @@ export class Router {
     for (const k of [...this.peerNotes.keys()]) if (!given.has(k)) this.peerNotes.delete(k);
     for (const k of [...this.peerSaid.keys()]) if (!given.has(k)) this.peerSaid.delete(k);
     for (const k of [...this.peerTried.keys()]) if (!given.has(k)) this.peerTried.delete(k);
+    for (const k of [...this.peerMs.keys()]) if (!given.has(k)) this.peerMs.delete(k);
     await Promise.all(all.map(async (given) => {
       // A peer that has missed three reads in a row is tried again only after a wait that grows with each miss.
       const wait = peerBackoffMs(this.peerSaid.get(given)?.missed ?? 0);
@@ -350,7 +353,9 @@ export class Router {
       this.peerTried.set(given, Date.now());
       // A peer given as url#<key> is pinned to that router: its notes must be signed by that key.
       const [peer, pinned] = given.split('#');
+      const t0 = performance.now();
       const j = await fetchNode(`${peer.replace(/\/$/, '')}/orrery/notes`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : undefined)).catch(() => undefined);
+      if (j !== undefined) this.peerMs.set(given, Math.round(performance.now() - t0));
       if (j === undefined) {
         const was = this.peerSaid.get(given);
         this.setPeer(given, was ? { ...was, missed: was.missed + 1 } : { by: null, signed: false, nodes: 0, refused: null, at: 0, missed: 1 });
@@ -659,7 +664,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER) } : null;
-    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, readMs: this.peerMs.get(url) ?? null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {
