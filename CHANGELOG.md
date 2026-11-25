@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.30 · 2026-11-25 07:21 UTC
+
+**Routers meet and choose: a router reads the routers its peers read, each pinned to the key its peer saw sign, first-hand only and at half the say; only signed notes steer --trust-peers; relays cap each address, say how busy they are and never cost a node its reputation; peers from a file without a restart; and orrery peers (with --watch, --json and an MCP tool) to see all of it.**
 
 - **Router** · `orrery peers` lists peers in the order an operator reads them (given and answering first, then met through a peer, gone quiet, never answered, refused last; signed before unsigned), and `--json` now opens with the counts the list is headed with (`summary`: peers, signed, met, refused, relaying).
 - **Router** · `--trust-peers` counts only signed notes. Unsigned notes from an unpinned peer are still shown beside the router's own record, but anyone on the way could have written them, so they no longer move where a never-asked node starts.
@@ -26,6 +28,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · A relay that turns a request away is not the node. A router whose `--proxy` is a relay (or any HTTP proxy) that answers busy (429 relay_busy), does not list the node yet (403 relay_refused) or will not open a tunnel counts nothing against the node and puts it in no cooldown; the error says the relay refused ("the relay at … does not list this node yet"), and the request still waits a round for a busy relay to free up.
 - **Router** · A peer router that does not answer is said, not left out. One that has never answered (a mistyped or unreachable `--peer`) shows in the router status, the console and `orrery doctor` as "no answer yet (2 reads tried)"; one that answered before keeps its notes for up to an hour with the reads it has missed since ("no answer to the last read, these notes are kept for up to an hour").
 - **Router** · A relay is shared, so no one address takes all of it: it carries up to 16 connections at a time for one address (`--relay-per-client <n>`) and answers the next with 429, "this relay carries up to 16 connections at a time for one address; wait for one to finish", tunnels and forwarded requests alike. The router status, its console and `orrery doctor` say how many are open now and the limit.
+
+`npx -y orrery-node@0.1.30`
 
 ## 0.1.29 · 2026-11-24 09:47 UTC
 
