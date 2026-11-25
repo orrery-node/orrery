@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { byTrust, newer, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { byTrust, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -176,5 +176,19 @@ describe('orrery doctor, what the running router paid', () => {
     ];
     assert.deepEqual(byTrust(rows).map((p) => p.url), ['given', 'unsigned', 'met', 'quiet', 'never', 'refused']);
     assert.deepEqual(peersSummary(rows), { peers: 6, signed: 3, met: 1, refused: 1, relaying: 1 });
+  });
+
+  it('orrery peers --check says what this router would make of a router before it is added', () => {
+    assert.deepEqual(peerCheck('http://10.0.0.9:7171', 'connect ECONNREFUSED'), { ok: false, lines: ['http://10.0.0.9:7171: no notes (connect ECONNREFUSED); a router shares them only when started with --share-notes'] });
+    const now = 10_000_000_000;
+    const unsigned = { notes: 1, at: now - 12_000, nodes: [] };
+    assert.deepEqual(peerCheck('http://10.0.0.9:7171/', unsigned, null, now), { ok: true, lines: [
+      'http://10.0.0.9:7171: answers, unsigned, notes on 0 nodes, written 12 s ago',
+      'unsigned: shown beside your record, but --trust-peers will not count them',
+      'runs no relay',
+      'introduces no routers (no /orrery/peers)',
+      'add it with: --peer http://10.0.0.9:7171 (unsigned, so it cannot be pinned)',
+    ] });
+    assert.deepEqual(peerCheck('http://10.0.0.9:7171', { notes: 1, at: now - 3 * 3_600_000, nodes: [] }, null, now), { ok: false, lines: ['http://10.0.0.9:7171: its notes would be refused: the notes are 180 min old; older than an hour is not used'] });
   });
 });

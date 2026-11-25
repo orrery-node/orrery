@@ -2707,6 +2707,37 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// orrery peers --check reads a router before it is added: whether its notes are signed (and by the pinned key), how
+// fresh, whether it relays and how many routers it introduces, and the --peer line to add it with. A router whose notes
+// would be refused, or that does not answer, exits 1.
+{
+  const { signNotes: signAs } = await import('../src/router/notes.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const opts = routerOpts as { shareNotes?: boolean };
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: never[] };
+  opts.shareNotes = false;
+  const key = Keypair.generate();
+  const by = key.publicKey.toBase58();
+  const cand = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signAs({ notes: 1, at: Date.now(), nodes: ours.nodes }, by, signerFor(key)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [{ url: 'http://127.0.0.1:9', by }], relay: { port: 7272, open: 2 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => cand.listen(0, '127.0.0.1', () => done()));
+  const candUrl = `http://127.0.0.1:${(cand.address() as { port: number }).port}`;
+  const runCheck = (target: string) => new Promise<{ code: number | null; out: string }>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', target], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', (code) => done({ code, out: out.trim() })); });
+  const good = await runCheck(`${candUrl}#${by}`);
+  const wrongKey = await runCheck(`${candUrl}#${Keypair.generate().publicKey.toBase58()}`);
+  cand.closeAllConnections();
+  await new Promise((done) => cand.close(done));
+  const gone = await runCheck(candUrl);
+  const short = `${by.slice(0, 4)}\u2026${by.slice(-4)}`;
+  const lines = good.out.split('\n');
+  check('orrery peers --check reads a router before it is added: signed and pinned, fresh, relaying, what it introduces, the --peer line; a wrong key or no answer exits 1',
+    good.code === 0 && new RegExp(`^${candUrl.replace(/[.]/g, '\\.')}: answers, signed by ${short}, notes on ${ours.nodes.length} nodes?, written \\d+ s ago$`).test(lines[0] ?? '')
+    && lines[1] === `pinned to ${short}: its notes are signed by that key` && lines[2] === 'relays on port 7272 (2 open now), usable as --proxy http://<its host>:7272'
+    && lines[3] === 'introduces 1 router, read with --meet-peers' && lines[4] === `add it with: --peer ${candUrl}#${by}`
+    && wrongKey.code === 1 && /its notes would be refused: signed by \S+, not the router pinned for this peer$/.test(wrongKey.out)
+    && gone.code === 1 && gone.out.startsWith(`${candUrl}: no notes (`),
+    `${good.out.replaceAll(candUrl, '<peer>').replaceAll(by, '<key>').replaceAll(short, '<k>').split('\n').join(' | ').slice(0, 300)} · wrong key: exit ${wrongKey.code} · gone: exit ${gone.code}`);
+}
 // The router times each peer: how long its notes took to come back the last time it answered, in the status and on
 // the console, so a slow peer stands out. A peer that never answered has no time.
 {

@@ -9,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
-import { peerText, type PeerSum } from './router/notes.ts';
+import { type PeerSum, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -322,4 +322,28 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');
   return out;
+}
+
+/** `orrery peers --check <url[#key]>`: what this router would make of a router before it is added as a peer, from its
+ * notes and its /orrery/peers as they came back (or why nothing did). Ok is false when its notes would be refused or it
+ * did not answer. Nothing is kept. */
+export function peerCheck(target: string, notes: unknown, intros: unknown = null, now = Date.now()): { ok: boolean; lines: string[] } {
+  const [base, pinned] = target.split('#');
+  const url = base.replace(/\/$/, '');
+  if (typeof notes === 'string') return { ok: false, lines: [`${url}: no notes (${notes}); a router shares them only when started with --share-notes`] };
+  const read = readPeerNotes(notes, pinned || undefined, now);
+  if ('refused' in read) return { ok: false, lines: [`${url}: its notes would be refused: ${read.refused}`] };
+  const at = (notes as { at?: number }).at ?? now;
+  const ago = Math.max(0, Math.round((now - at) / 1000));
+  const who = read.signed && read.by ? `signed by ${read.by.slice(0, 4)}\u2026${read.by.slice(-4)}` : 'unsigned';
+  const lines = [`${url}: answers, ${who}, notes on ${read.nodes.length} node${read.nodes.length === 1 ? '' : 's'}, written ${ago} s ago`];
+  if (pinned) lines.push(`pinned to ${pinned.slice(0, 4)}\u2026${pinned.slice(-4)}: its notes are signed by that key`);
+  else if (!read.signed) lines.push('unsigned: shown beside your record, but --trust-peers will not count them');
+  const port = readRelayPort(intros);
+  const open = readRelayOpen(intros);
+  lines.push(port ? `relays on port ${port}${open !== null ? ` (${open} open now)` : ''}, usable as --proxy http://<its host>:${port}` : 'runs no relay');
+  const named = readIntroductions(intros);
+  lines.push(intros === null ? 'introduces no routers (no /orrery/peers)' : `introduces ${named.length} router${named.length === 1 ? '' : 's'}${named.length ? ', read with --meet-peers' : ''}`);
+  lines.push(read.signed && read.by ? `add it with: --peer ${url}#${read.by}` : `add it with: --peer ${url} (unsigned, so it cannot be pinned)`);
+  return { ok: true, lines };
 }

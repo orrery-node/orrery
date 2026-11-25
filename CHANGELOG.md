@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · `orrery peers --check <url[#key]>` reads a router before you add it as a peer: whether its notes are signed (and by the key you pinned), how fresh they are, whether it relays and how busy, how many routers it introduces, and the `--peer url#<key>` line to add it with. Notes that would be refused, or no answer, exit 1.
+
 ## 0.1.30 · 2026-11-25 07:21 UTC
 
 **Routers meet and choose: a router reads the routers its peers read, each pinned to the key its peer saw sign, first-hand only and at half the say; only signed notes steer --trust-peers; relays cap each address, say how busy they are and never cost a node its reputation; peers from a file without a restart; and orrery peers (with --watch, --json and an MCP tool) to see all of it.**
