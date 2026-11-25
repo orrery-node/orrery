@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -109,5 +109,11 @@ describe('signed notes', () => {
     assert.equal(readRelayPort({ relay: { port: 70000 } }), null);
     assert.equal(readRelayPort({ relay: { port: '7272' } }), null);
     assert.equal(readRelayPort(null), null);
+  });
+
+  it('reads a peers file: one address a line, notes and blank lines left out, a pinned key kept, anything else dropped', () => {
+    const k = Keypair.generate().publicKey.toBase58();
+    assert.deepEqual(parsePeersFile(`# friends\nhttp://10.0.0.2:7171\n\n  https://router.example#${k}  \nnot a url\nftp://x\nhttp://10.0.0.2:7171\r\n`), ['http://10.0.0.2:7171', `https://router.example#${k}`]);
+    assert.equal(parsePeersFile(Array.from({ length: 70 }, (_, i) => `http://10.0.1.${i}:7171`).join('\n')).length, 64);
   });
 });

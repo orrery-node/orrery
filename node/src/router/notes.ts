@@ -148,3 +148,17 @@ export function peerPrior(seen: { weight: number; sent: number; answered: number
   const closest = Math.max(...used.map((s) => s.weight));
   return neutral + closest * (answered / sent - neutral);
 }
+
+/** The peers in a --peers-file: one router address a line (url, or url#<key> to pin it), blank lines and lines starting
+ * with # left out, anything that is not an http(s) address dropped. At most 64 are kept. */
+export function parsePeersFile(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (!/^https?:\/\/\S+$/.test(line) || out.includes(line)) continue;
+    out.push(line);
+    if (out.length === 64) break;
+  }
+  return out;
+}

@@ -1,5 +1,6 @@
 // The router: an OpenAI-compatible endpoint on 127.0.0.1. Point any tool at http://127.0.0.1:7171/v1 and it picks a
 // provider per request, pays it through a channel, and falls back to the next provider if one fails.
+import { readFileSync } from 'node:fs';
 import { fitting, textTokensAtLeast, tooLong } from './context.ts';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Connection } from '@solana/web3.js';
@@ -15,7 +16,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, nodeProxy } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerPrior, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
+import { MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, parsePeersFile, peerBackoffMs, peerPrior, readIntroductions, readPeerNotes, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { signerOf } from '../keys.ts';
 import { allowedTargets, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { askSeen, givenAway, isPublic, ownAddresses, seenAddresses, seenSays } from '../seen.ts';
@@ -63,6 +64,9 @@ export type RouterOptions = {
   frameMs?: number;
   /** Other routers whose notes on nodes this router reads (GET <peer>/orrery/notes) and shows beside its own record. */
   peers?: string[];
+  /** A file of peer routers, one address a line (url or url#<key>), read again on every refresh: peers are added or
+   * dropped by editing it, without a restart. Read beside `peers`. */
+  peersFile?: string;
   /** Serve this router's own notes on nodes at /orrery/notes, for other routers to read. Off unless asked. */
   shareNotes?: boolean;
   /** For a node this router has not asked yet, start from what its peers saw it answer (notes.ts) instead of the neutral
@@ -244,6 +248,8 @@ export class Router {
   private peerNotes = new Map<string, Note[]>();
   /** Routers met through a peer (--meet-peers), as `url#key`, with the peer that introduced each. */
   private met = new Map<string, string>();
+  /** Whether the last read of --peers-file failed, so the failure is said once and not on every refresh. */
+  private peersFileUnread = false;
   /** The relay port each given peer says it runs (its /orrery/peers), by the peer's address. */
   private peerRelay = new Map<string, number | null>();
   /** When each peer was last tried, for the wait after missed reads (peerBackoffMs). */
@@ -312,7 +318,7 @@ export class Router {
    * decides for itself. */
   async readPeers(): Promise<void> {
     await this.askPeers();
-    const all = [...(this.o.peers ?? []), ...this.met.keys()];
+    const all = [...new Set([...this.givenPeers(), ...this.met.keys()])];
     // A peer no longer given (or no longer introduced) is forgotten, notes and all.
     const given = new Set(all);
     for (const k of [...this.peerNotes.keys()]) if (!given.has(k)) this.peerNotes.delete(k);
@@ -349,13 +355,29 @@ export class Router {
     }
   }
 
+  /** The peers this router was given: --peer, and the lines of --peers-file as the file reads now (a file that cannot be
+   * read gives none, and the router says so once). */
+  private givenPeers(): string[] {
+    let fromFile: string[] = [];
+    if (this.o.peersFile) {
+      try {
+        fromFile = parsePeersFile(readFileSync(this.o.peersFile, 'utf8'));
+        this.peersFileUnread = false;
+      } catch (e) {
+        if (!this.peersFileUnread) this.log(`the peers file ${this.o.peersFile} could not be read (${(e as Error).message}); reading only the --peer list until it can`);
+        this.peersFileUnread = true;
+      }
+    }
+    return [...new Set([...(this.o.peers ?? []), ...fromFile])];
+  }
+
   /** Asks each given peer what it says at /orrery/peers: the relay it runs, if any (kept per peer, so the status can say
    * which peers this router could use as its --proxy), and, with --meet-peers, which routers it reads. Of those, up to
    * MEET_MAX are kept, each pinned to the key that peer saw sign their notes, so a router met this way is read only if
    * that same router signs. A peer that does not answer keeps what it said before; routers already given, and
    * introductions of this router itself (its own key), are left out. */
   private async askPeers(): Promise<void> {
-    const bases = (this.o.peers ?? []).map((g) => g.split('#')[0].replace(/\/$/, ''));
+    const bases = [...new Set(this.givenPeers().map((g) => g.split('#')[0].replace(/\/$/, '')))];
     const known = new Set(bases);
     for (const k of [...this.peerRelay.keys()]) if (!known.has(k)) this.peerRelay.delete(k);
     const own = this.o.channels.session.publicKey.toBase58();

@@ -2689,6 +2689,40 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     peer?.nodes === ours.nodes.length + 1 && peer.unlisted === 1 && !used && line.includes(`notes on ${ours.nodes.length + 1} nodes, 1 of them not listed on chain (not used)`),
     `${peer ? `notes on ${peer.nodes} nodes, ${peer.unlisted ?? '?'} not listed` : 'not shown'} · the made-up address ${used ? 'joined the registry' : 'stayed out of the registry'} · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);
 }
+// --peers-file: the peers in a file, one a line, read again on every refresh, so a peer is added or dropped by editing
+// the file and not by restarting the router.
+{
+  const opts = routerOpts as { peers?: string[]; peersFile?: string; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  opts.shareNotes = false;
+  const serve = () => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : res.writeHead(404).end()));
+  const p1 = serve(), p2 = serve();
+  await Promise.all([p1, p2].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
+  const u1 = `http://127.0.0.1:${(p1.address() as { port: number }).port}`, u2 = `http://127.0.0.1:${(p2.address() as { port: number }).port}`;
+  const file = join(WORK, 'peers.txt');
+  writeFileSync(file, `# my peers\n${u1}\n`);
+  opts.peersFile = file;
+  const urls = async () => ((((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string }[] }).peers ?? []).map((p) => p.url));
+  await rp.readPeers?.();
+  const first = await urls();
+  writeFileSync(file, `# my peers\n${u1}\n${u2}\n`);
+  await rp.readPeers?.();
+  const added = await urls();
+  writeFileSync(file, `${u2}\n`);
+  await rp.readPeers?.();
+  const dropped = await urls();
+  opts.peersFile = undefined;
+  await rp.readPeers?.();
+  for (const srv of [p1, p2]) {
+    srv.closeAllConnections();
+    srv.close();
+  }
+  check('--peers-file: peers in a file are read again on every refresh, so editing it adds or drops a peer without a restart',
+    JSON.stringify(first) === JSON.stringify([u1]) && JSON.stringify([...added].sort()) === JSON.stringify([u1, u2].sort()) && JSON.stringify(dropped) === JSON.stringify([u2]),
+    `the file with one peer: ${first.length} read · a second line added: ${added.length} · the first taken out: ${dropped.length === 1 && dropped[0] === u2 ? 'only the second left' : JSON.stringify(dropped.length)}`);
+}
 // The router console says which peers relay: its Peers line tells the operator that a peer offers a relay and that
 // pointing --proxy at it means the nodes see that router, not this computer, and how many peers were met through one.
 {
