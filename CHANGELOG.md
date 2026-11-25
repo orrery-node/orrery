@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery doctor` heads its peer lines with the same one-line summary as `orrery peers` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying") and lists the peers in the same order.
 - **Router** · `orrery peers --check <url[#key]>` reads a router before you add it as a peer: whether its notes are signed (and by the key you pinned), how fresh they are, whether it relays and how busy, how many routers it introduces, and the `--peer url#<key>` line to add it with. Notes that would be refused, or no answer, exit 1.
 
 ## 0.1.30 · 2026-11-25 07:21 UTC

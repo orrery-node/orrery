@@ -2840,11 +2840,16 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   await rp.readPeers?.();
   type Peer = { url: string; relayPort?: number | null; relayOpen?: number | null };
   const peer = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: Peer[] }).peers ?? []).find((p) => p.url === peerUrl);
-  const line = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  const doctorLines = await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD });
+  const line = doctorLines.find((l) => l.what.trim() === 'peer')?.detail ?? '';
+  const summaryLine = doctorLines.find((l) => l.what.trim() === 'peer routers')?.detail ?? '';
   opts.peers = [];
   await rp.readPeers?.();
   busy.closeAllConnections();
   busy.close();
+  check('orrery doctor heads its peer lines with one summary line, the same as orrery peers',
+    summaryLine === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying',
+    summaryLine || 'no summary line');
   check('a relay says how busy it is: open connections at /orrery/peers, shown beside the port on the router that reads it',
     typeof ownPeers.relay?.open === 'number' && peer?.relayPort === 7272 && peer.relayOpen === 3 && line.endsWith('; relays on port 7272 (3 open now), usable as --proxy http://<its host>:7272'),
     `this router's own relay says ${typeof ownPeers.relay?.open === 'number' ? `${ownPeers.relay.open} open` : 'nothing of its load'} · the peer: port ${peer?.relayPort ?? 'none'}, ${peer?.relayOpen ?? '?'} open · doctor: ${line.replace(peerUrl, '<peer>') || 'no line'}`);

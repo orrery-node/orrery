@@ -182,7 +182,12 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   const behind = routerBehind(status?.version, o.installed === undefined ? PACKAGE_VERSION : o.installed);
   if (behind) out.push({ ok: null, what: '  release', detail: behind });
   // The peer routers it reads, the relay it runs and how it found the listings: the console's Peers section, in lines.
-  for (const p of status?.peers ?? []) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
+  // The peers in one line first, then a line for each in the order orrery peers lists them.
+  if (status?.peers?.length) {
+    const c = peersSummary(status.peers);
+    out.push({ ok: null, what: '  peer routers', detail: `${c.peers} peer router${c.peers === 1 ? '' : 's'}: ${c.signed} signed, ${c.met} met through a peer, ${c.refused} refused, ${c.relaying} relaying` });
+  }
+  for (const p of byTrust(status?.peers ?? [])) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
   // Where the router's wallet stands on holder prices, as its console says it.

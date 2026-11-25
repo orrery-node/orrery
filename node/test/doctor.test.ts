@@ -191,4 +191,9 @@ describe('orrery doctor, what the running router paid', () => {
     ] });
     assert.deepEqual(peerCheck('http://10.0.0.9:7171', { notes: 1, at: now - 3 * 3_600_000, nodes: [] }, null, now), { ok: false, lines: ['http://10.0.0.9:7171: its notes would be refused: the notes are 180 min old; older than an hour is not used'] });
   });
+
+  it('peersReport and doctor share one summary line', () => {
+    const rows = [{ url: 'http://10.0.0.2:7171', pinned: true, by: '5dKxViAbCdEfGhJkLmNoPqRsTuVwXyZ123456789ab', signed: true, nodes: 4, refused: null, at: 1, missed: 0, relayPort: 7272 }];
+    assert.equal(peersReport({ peers: rows, relay: null })[0], '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying');
+  });
 });

@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery doctor` heads its peer lines with the same one-line summary as `orrery peers` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying") and lists the peers in the same order.' },
   { who: 'router', text: '`orrery peers --check <url[#key]>` reads a router before you add it as a peer: whether its notes are signed (and by the key you pinned), how fresh they are, whether it relays and how busy, how many routers it introduces, and the `--peer url#<key>` line to add it with. Notes that would be refused, or no answer, exit 1.' },
 ];
 
