@@ -8,7 +8,14 @@ import { connect as netConnect, type Socket } from 'node:net';
  * API, so nothing that spends this router's wallet is reachable through it. What it carries to a node is already
  * sealed to that node's key, payment included for nodes that read it inside the seal: the relay sees a host and a
  * port, never a prompt. */
-export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; log?: (line: string) => void };
+export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; log?: (line: string) => void };
+
+/** An address as a relay compares it: an IPv4 address that came in as IPv6 (::ffff:10.0.0.2) is the IPv4 one. */
+export function plainAddress(address: string): string {
+  return address.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, '$1').toLowerCase();
+}
+
+const PEERS_ONLY = 'this relay carries traffic only for its peer routers';
 
 /** How many connections one address may have open through a relay at once, unless the router says otherwise: a relay
  * is shared, so no one address takes all of it. */
@@ -87,6 +94,7 @@ export class Relay {
   /** A plain-http request in absolute form (the node's whole address in the request line, as a proxy is asked), passed
    * on to a listed node with nothing added that names the router it came from. */
   private forward(req: IncomingMessage, res: ServerResponse): void {
+    if (this.o.clientAllowed && !this.o.clientAllowed(plainAddress(req.socket.remoteAddress ?? ''))) return this.refuse(res, PEERS_ONLY);
     let target: URL;
     try {
       target = new URL(req.url ?? '');
@@ -120,6 +128,11 @@ export class Relay {
 
   /** CONNECT host:port: a tunnel to a listed node, for an https endpoint (TLS runs inside it, end to end). */
   private tunnel(req: IncomingMessage, socket: Socket, head: Buffer): void {
+    if (this.o.clientAllowed && !this.o.clientAllowed(plainAddress(socket.remoteAddress ?? ''))) {
+      this.refused += 1;
+      socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\n${PEERS_ONLY}\n`);
+      return;
+    }
     const m = /^\[?([^\]]+?)\]?:(\d+)$/.exec(req.url ?? '');
     if (!m || !this.o.allowed().has(targetKey(m[1], m[2], 'https:'))) {
       this.refused += 1;

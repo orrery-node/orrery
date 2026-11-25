@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
-import { allowedTargets, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
+import { allowedTargets, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
 import { httpTunnel, parseProxy, ProxyRefused } from '../src/proxy.ts';
 
 describe('a relay only reaches listed nodes', () => {
@@ -70,6 +70,25 @@ describe('a relay only reaches listed nodes', () => {
     assert.ok(err instanceof ProxyRefused);
     assert.equal((err as ProxyRefused).status, 403);
     assert.equal((err as Error).message, `the proxy at 127.0.0.1:${port} refused a tunnel to 127.0.0.1:9 (403)`);
+    relay.server.closeAllConnections();
+    await new Promise((d) => relay.server.close(d));
+  });
+
+  it('with clientAllowed, carries nothing for an address it does not allow, tunnels and forwarded requests alike', async () => {
+    assert.equal(plainAddress('::ffff:127.0.0.1'), '127.0.0.1');
+    assert.equal(plainAddress('::1'), '::1');
+    const relay = new Relay({ allowed: () => new Set(['127.0.0.1:9']), clientAllowed: () => false });
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const port = (relay.server.address() as AddressInfo).port;
+    const err = await httpTunnel(parseProxy(`http://127.0.0.1:${port}`), '127.0.0.1', 9).then(() => null, (e: unknown) => e);
+    assert.ok(err instanceof ProxyRefused);
+    assert.equal((err as ProxyRefused).status, 403);
+    const body = await new Promise<string>((done) => {
+      const q = request({ host: '127.0.0.1', port, path: 'http://127.0.0.1:9/x', agent: false }, (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => done(b)); });
+      q.end();
+    });
+    assert.equal(JSON.parse(body).error.message, 'this relay carries traffic only for its peer routers');
+    assert.equal(relay.refused, 2);
     relay.server.closeAllConnections();
     await new Promise((d) => relay.server.close(d));
   });

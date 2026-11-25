@@ -2455,6 +2455,36 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && lines.includes(`${goneUrl}: no answer yet (2 reads tried)`) && lines.some((l) => l.startsWith(`${quietUrl}: `) && l.endsWith('; no answer to the last read, these notes are kept for up to an hour')),
     `never answered: ${gone ? `${gone.missed ?? '?'} reads missed, ${gone.nodes} nodes` : 'not shown'} · answered, then went quiet: ${quiet ? `${quiet.missed ?? '?'} missed, ${quiet.nodes} nodes kept` : 'not shown'} · doctor: ${lines.map((l) => l.replace(/http:\/\/127\.0\.0\.1:\d+/, '<peer>')).join(' | ') || 'no peer lines'}`);
 }
+// --relay-peers-only: the relay carries traffic only from the addresses of this router's peers. A client whose address
+// is not a peer's is turned away; once a peer at that address is given, it is carried.
+{
+  const opts = routerOpts as { peers?: string[]; relayPeersOnly?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const relayAt = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null } | null }).relay?.port ?? 0;
+  const nodePort = providerSpecs[1].port;
+  const tunnelHead = () => new Promise<string>((done) => {
+    if (!relayAt) return done('no relay');
+    let got = '';
+    const sock = netConnect(relayAt, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePort} HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\n\r\n`));
+    sock.on('data', (c) => { got += c.toString('latin1'); if (got.includes('\r\n\r\n')) { done(got.split('\r\n\r\n')[0].split('\r\n')[0] + (got.includes('peer routers') ? ' (peer routers only)' : '')); sock.destroy(); } });
+    sock.on('error', () => done(got || 'error'));
+    sock.on('close', () => done(got.split('\r\n')[0] || 'closed'));
+  });
+  opts.relayPeersOnly = true;
+  opts.peers = ['http://127.0.0.2:9'];
+  await rp.readPeers?.();
+  const stranger = await tunnelHead();
+  const st = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { peersOnly?: boolean } | null }).relay;
+  opts.peers = ['http://127.0.0.1:9'];
+  await rp.readPeers?.();
+  const peer = await tunnelHead();
+  opts.relayPeersOnly = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  check('--relay-peers-only carries traffic only for the router\u2019s peers: an address that is not a peer\u2019s is turned away, a peer\u2019s is carried',
+    stranger === 'HTTP/1.1 403 Forbidden (peer routers only)' && peer === 'HTTP/1.1 200 Connection Established' && st?.peersOnly === true,
+    `not a peer: ${stranger} · a peer at that address: ${peer} · status peersOnly ${st?.peersOnly ?? '?'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
