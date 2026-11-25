@@ -2724,12 +2724,18 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const candUrl = `http://127.0.0.1:${(cand.address() as { port: number }).port}`;
   const runCheck = (target: string) => new Promise<{ code: number | null; out: string }>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', target], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', (code) => done({ code, out: out.trim() })); });
   const good = await runCheck(`${candUrl}#${by}`);
+  const { handle: checkMcpHandle } = await import('../src/mcp.ts');
+  const viaMcp = await (checkMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[]; isError?: boolean } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { check: `${candUrl}#${by}` } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   const wrongKey = await runCheck(`${candUrl}#${Keypair.generate().publicKey.toBase58()}`);
   cand.closeAllConnections();
   await new Promise((done) => cand.close(done));
   const gone = await runCheck(candUrl);
   const short = `${by.slice(0, 4)}\u2026${by.slice(-4)}`;
   const lines = good.out.split('\n');
+  const sameLines = (x: string) => x.split('\n').map((l) => l.replace(/written \d+ s ago$/, 'written <n> s ago')).join('\n');
+  check('an agent checks a router before peering through orrery mcp: the peers tool with check gives the same lines as orrery peers --check',
+    viaMcp !== '' && sameLines(viaMcp) === sameLines(good.out),
+    sameLines(viaMcp).replaceAll(candUrl, '<peer>').replaceAll(by, '<key>').split('\n').slice(0, 2).join(' | ').slice(0, 200) || 'no answer from the peers tool');
   check('orrery peers --check reads a router before it is added: signed and pinned, fresh, relaying, what it introduces, the --peer line; a wrong key or no answer exits 1',
     good.code === 0 && new RegExp(`^${candUrl.replace(/[.]/g, '\\.')}: answers, signed by ${short}, notes on ${ours.nodes.length} nodes?, written \\d+ s ago$`).test(lines[0] ?? '')
     && lines[1] === `pinned to ${short}: its notes are signed by that key` && lines[2] === 'relays on port 7272 (2 open now), usable as --proxy http://<its host>:7272'

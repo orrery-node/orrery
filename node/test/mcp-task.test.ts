@@ -334,4 +334,12 @@ describe('orrery mcp and task budgets', () => {
       'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)',
     ].join('\n'));
   });
+
+  it('the peers tool takes a router to check before peering, and refuses something that is not a router address', async () => {
+    const listed = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'http://r', (async () => reply({})) as never, '0')) as { result: { tools: { name: string; inputSchema: { properties: Record<string, unknown> } }[] } };
+    assert.ok('check' in listed.result.tools.find((t) => t.name === 'peers')!.inputSchema.properties);
+    const bad = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { check: 'not a url' } } }, 'http://r', (async () => reply({})) as never, '0')) as { result: { content: { text: string }[]; isError?: boolean } };
+    assert.equal(bad.result.isError, true);
+    assert.equal(bad.result.content[0].text, 'check needs a router address: http(s)://host:port, optionally #<key>');
+  });
 });

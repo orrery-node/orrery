@@ -3,7 +3,8 @@
 // exactly like a request from any other tool.
 import { answeredText, span, watchedText } from './router/watched.ts';
 import { billsText, skipNote, speedText, unansweredNote } from './spend.ts';
-import { peersReport } from './doctor.ts';
+import { peerCheck, peersReport } from './doctor.ts';
+import { fetchNode } from './proxy.ts';
 import { createInterface } from 'node:readline';
 
 type Json = Record<string, unknown>;
@@ -126,8 +127,8 @@ const TOOLS = [
   },
   {
     name: 'peers',
-    description: 'The local router\u2019s P2P side: how many peer routers it reads, each with who signed its notes on nodes, which peer introduced it, and the relay port it offers (usable as the router\u2019s --proxy, so nodes see that router and not this computer), and the router\u2019s own relay. Read from the local router; nothing is sent to a peer or a node.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'The local router\u2019s P2P side: how many peer routers it reads, each with who signed its notes on nodes, which peer introduced it, and the relay port it offers (usable as the router\u2019s --proxy, so nodes see that router and not this computer), and the router\u2019s own relay. Read from the local router; nothing is sent to a peer or a node. With check, it reads that one router instead, before it is added as a peer: whether its notes are signed (and by the key given after #), how fresh, whether it relays, how many routers it introduces, and the --peer line to add it with.',
+    inputSchema: { type: 'object', properties: { check: { type: 'string', description: 'a router to read before adding it as a peer: http(s)://host:port, optionally #<key> to pin it' } } },
   },
 ];
 
@@ -259,6 +260,15 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       return text(rows.length ? rows.join('\n') + noEnclave : 'no models on the network right now');
     }
     if (name === 'peers') {
+      if (typeof a.check === 'string' && a.check) {
+        if (!/^https?:\/\/\S+$/.test(a.check)) return text('check needs a router address: http(s)://host:port, optionally #<key>', true);
+        // That router read once, through the proxy when one is set, as orrery peers --check does.
+        const base = a.check.split('#')[0].replace(/\/$/, '');
+        const notes = await fetchNode(`${base}/orrery/notes`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? r.json() : `${r.status}`)).catch((e: Error) => e.message);
+        const intros = await fetchNode(`${base}/orrery/peers`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        const out = peerCheck(a.check, notes, intros);
+        return text(out.lines.join('\n'), !out.ok);
+      }
       const r = await fetchFn(`${router}/orrery/status`);
       if (!r.ok) return text(`the router could not say who its peers are: ${r.status}`, true);
       return text(peersReport((await r.json()) as Parameters<typeof peersReport>[0]).join('\n'));
