@@ -259,7 +259,7 @@ export function relayLine(r: { port: number | null; relayed: number; refused: nu
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
-export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean }, now = Date.now()): string {
+export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null }, now = Date.now()): string {
   const at = p.name ? `${p.name} (${p.url})` : p.url;
   const via = p.via ? `, met through ${p.via}` : '';
   if (p.refused) return `${at}: refused, ${p.refused}${via}`;
@@ -272,7 +272,9 @@ export function peerLine(p: { url: string; pinned: boolean; by: string | null; s
   const relays = p.relayPort ? `; relays on port ${p.relayPort}${load}, usable as --proxy http://<its host>:${p.relayPort}` : '';
   const unlisted = p.unlisted ? `, ${p.unlisted} of them not listed on chain (not used)` : '';
   const kept = p.kept && p.at ? `, kept from before the restart (written ${Math.max(1, Math.round((now - p.at) / 60_000))} min ago)` : '';
-  return `${at}: ${who}, notes on ${p.nodes} node${p.nodes === 1 ? '' : 's'}${unlisted}${kept}${via}${relays}${quiet}`;
+  const age = p.written && now - p.written > 600_000 ? ` (notes ${Math.round((now - p.written) / 60_000)} min old)` : '';
+  const say = typeof p.say === 'number' && p.say < 1 ? `; counts ${Math.round(p.say * 100)}% under --trust-peers${age}` : '';
+  return `${at}: ${who}, notes on ${p.nodes} node${p.nodes === 1 ? '' : 's'}${unlisted}${kept}${via}${say}${relays}${quiet}`;
 }
 
 /** A running router older than the release installed where doctor runs. Asks npm nothing. */
@@ -293,7 +295,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {

@@ -208,4 +208,14 @@ describe('orrery doctor, what the running router paid', () => {
       'http://10.0.0.2:7171: unsigned, notes on 2 nodes, kept from before the restart (written 12 min ago); no answer to the last read, these notes are kept for up to an hour');
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: now, missed: 0, kept: false }, now), 'http://10.0.0.2:7171: unsigned, notes on 2 nodes');
   });
+
+  it('says how much a peer counts under --trust-peers when it is less than in full, and how old its notes are', () => {
+    const now = 10_000_000_000;
+    const by = '5dKxQ9vT2m8sJ3hP7nL4wR6yB1cF0aE89ab';
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: now, missed: 0, say: 0.5, written: now - 35 * 60_000 }, now),
+      'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes; counts 50% under --trust-peers (notes 35 min old)');
+    assert.equal(peerLine({ url: 'http://10.0.0.6:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: now, missed: 0, via: 'http://10.0.0.2:7171', say: 0.5, written: now - 60_000 }, now),
+      'http://10.0.0.6:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes, met through http://10.0.0.2:7171; counts 50% under --trust-peers');
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: true, by, signed: true, nodes: 3, refused: null, at: now, missed: 0, say: 1, written: now }, now), 'http://10.0.0.2:7171: signed by 5dKx\u202689ab (pinned), notes on 3 nodes');
+  });
 });

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · With `--trust-peers` on, each peer says how much its notes count right now when it is less than in full: the status has `say`, the console marks "counts 50% under --trust-peers", and `orrery peers` and `orrery doctor` add the reason ("; counts 50% under --trust-peers (notes 35 min old)"), a router met through a peer counting half.
 - **Router** · Under `--trust-peers`, a peer's notes count by their age: in full for ten minutes after the peer wrote them, then less each minute, down to nothing at an hour. A peer that went quiet half an hour ago, or notes picked up from before a restart, move a node's start less than notes written a minute ago.
 - **Router** · A peer counted with notes kept from before a restart is said to be until it answers again: the status has `kept`, the console marks it "from before the restart", and `orrery peers` and `orrery doctor` say "kept from before the restart (written 12 min ago)".
 - **Router** · A restart no longer forgets what peers said: the router keeps each peer's notes as they arrived (`~/.orrery/router/peer-notes.json`), and after a start a peer that does not answer yet still counts with what it signed, the signature and pinned key checked again, until those notes are an hour old.

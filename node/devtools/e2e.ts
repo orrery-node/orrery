@@ -2337,6 +2337,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   served = notesAt(Date.now() - 35 * 60_000);
   await r.readPeers?.();
   const older = r.priorOf ? r.priorOf(ibEntry) : null;
+  const agedUrl = opts.peers![0];
+  const agedSay = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; say?: number | null }[] }).peers ?? []).find((p) => p.url === agedUrl)?.say ?? null;
+  const agedLine = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer' && l.detail.includes(agedUrl))?.detail ?? '';
   opts.trustPeers = false;
   opts.peers = [];
   await r.readPeers?.();
@@ -2345,6 +2348,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('--trust-peers weighs a peer\u2019s notes by their age: the same signed 0 of 40 starts a node at 0 when just written, about halfway to the neutral 0.6 when 35 minutes old',
     fresh === 0 && typeof older === 'number' && Math.abs(older - 0.3) < 0.005,
     `written just now: starts at ${fresh} · written 35 min ago: starts at ${typeof older === 'number' ? older.toFixed(3) : older}`);
+  check('with --trust-peers on, the status and orrery doctor say how much a peer counts when it is less than in full, and why: notes 35 minutes old count 50%',
+    agedSay === 0.5 && agedLine.endsWith('; counts 50% under --trust-peers (notes 35 min old)'),
+    `status say ${agedSay} · doctor: ${agedLine.replace(agedUrl, '<peer>').replace(/signed by \S+/, 'signed by <k>') || 'no line'}`);
 }
 // The router console shows the P2P side on a Peers section: each peer with who signed its notes (or why they were
 // refused), the relay with what it carried and refused, and whether the listings came from the peers. Drawn in a
