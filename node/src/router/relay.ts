@@ -95,11 +95,20 @@ export class Relay {
     return Math.max(0, Math.floor(this.o.maxBytes?.() ?? 0));
   }
 
+  /** Hours until the relay's day turns, at least 1. */
+  private hoursLeft(): number {
+    return Math.max(1, Math.ceil((this.day.start + DAY_MS - Date.now()) / 3_600_000));
+  }
+
+  /** Counts bytes carried, and logs once, as the day's limit is reached, that new connections are turned away. */
   private count(n: number): void {
     this.bytes += n;
     const now = Date.now();
     if (now - this.day.start >= DAY_MS) this.day = { start: now, bytes: 0 };
+    const was = this.day.bytes;
     this.day.bytes += n;
+    const max = this.maxBytes;
+    if (max && was < max && this.day.bytes >= max) this.o.log?.(`relay: carried its ${bytesText(max)} for today; new connections are turned away for about ${this.hoursLeft()} h, the ones open now finish`);
   }
 
   /** Why a new connection is turned away when the day's bytes are used up, or null while there is room. Connections
@@ -107,8 +116,7 @@ export class Relay {
   private fullLine(): string | null {
     const max = this.maxBytes;
     if (!max || this.today < max) return null;
-    const hours = Math.max(1, Math.ceil((this.day.start + DAY_MS - Date.now()) / 3_600_000));
-    return `this relay has carried its ${bytesText(max)} for today; it carries again in about ${hours} h`;
+    return `this relay has carried its ${bytesText(max)} for today; it carries again in about ${this.hoursLeft()} h`;
   }
 
   private busyLine(): string {

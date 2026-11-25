@@ -110,4 +110,15 @@ describe('a relay only reaches listed nodes', () => {
     relay.server.closeAllConnections();
     await new Promise((d) => relay.server.close(d));
   });
+
+  it('logs once when the day\'s limit is reached, not again for the bytes after it', () => {
+    const said: string[] = [];
+    const relay = new Relay({ allowed: () => new Set(), maxBytes: () => 10, log: (l) => said.push(l) });
+    const count = (relay as unknown as { count: (n: number) => void }).count.bind(relay);
+    count(6);
+    assert.deepEqual(said, []);
+    count(6);
+    count(6);
+    assert.deepEqual(said, ['relay: carried its 10 B for today; new connections are turned away for about 24 h, the ones open now finish']);
+  });
 });

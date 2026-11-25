@@ -2617,6 +2617,43 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     ownFull === true && ownOpen === false && shown === true && fullLine.endsWith('; relays on port 7272 (0 open now, full for today), usable as --proxy http://<its host>:7272'),
     `own relay over its limit: full ${ownFull}, without one: full ${ownOpen} · a full peer: status relayFull ${shown}, doctor: …${fullLine.slice(-90)}`);
 }
+// The router log says once when the relay reaches its daily limit, so an operator sees why peers are turned away; the
+// bytes and the refusals after it add no further line.
+{
+  const opts = routerOpts as { relayMaxBytes?: number };
+  const relayNow = async () => ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null; today?: number } | null }).relay ?? null;
+  const at = (await relayNow())?.port ?? 0;
+  const nodePort = providerSpecs[1].port;
+  const once = (send: boolean) => new Promise<string>((done) => {
+    if (!at) return done('no relay');
+    let got = '';
+    let sent = false;
+    const sock = netConnect(at, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePort} HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\n\r\n`));
+    sock.on('data', (c: Buffer) => {
+      got += c.toString('latin1');
+      if (!sent && got.includes('\r\n\r\n')) {
+        sent = true;
+        if (send && got.startsWith('HTTP/1.1 200')) sock.write(`GET /orrery/notes HTTP/1.1\r\nhost: 127.0.0.1:${nodePort}\r\nconnection: close\r\n\r\n`);
+        else sock.end();
+      }
+    });
+    sock.on('close', () => done(got.split('\r\n')[0]));
+    sock.on('error', () => done(got.split('\r\n')[0] || 'error'));
+  });
+  const heard: string[] = [];
+  const keepLog = (router as unknown as { log: (l: string) => void }).log;
+  (router as unknown as { log: (l: string) => void }).log = (l) => { heard.push(l); keepLog(l); };
+  opts.relayMaxBytes = ((await relayNow())?.today ?? 0) + 1;
+  const crossing = await once(true);
+  await new Promise((done) => setTimeout(done, 50));
+  const after = await once(false);
+  (router as unknown as { log: (l: string) => void }).log = keepLog;
+  opts.relayMaxBytes = undefined;
+  const lines = heard.filter((l) => l.startsWith('relay: carried its '));
+  check('the router log says once when the relay reaches its daily limit, and not again for what comes after it',
+    crossing === 'HTTP/1.1 200 Connection Established' && after.startsWith('HTTP/1.1 429') && lines.length === 1 && /^relay: carried its [\d.]+ [KMG]?B for today; new connections are turned away for about \d+ h, the ones open now finish$/.test(lines[0]),
+    `${lines.length} line${lines.length === 1 ? '' : 's'}: ${lines[0] ?? 'none'} · then: ${after}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
