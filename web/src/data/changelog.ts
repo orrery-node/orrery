@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'A relay at its `--relay-max-mb` limit says so to other routers at `/orrery/peers`, and a router reading that peer says its relay is "full for today" (status `relayFull`, the console, `orrery peers`, `orrery peers --check` and `orrery doctor`), so nobody points `--proxy` at a relay that will turn them away.' },
   { who: 'router', text: '`--relay-max-mb <n>`: a relay stops taking new connections once it has carried that much for other routers in a day, and says when it carries again ("this relay has carried its 500.0 MB for today; it carries again in about 7 h"); connections already open are carried to their end. The status, console and `orrery doctor` say how much of the day\'s limit is used.' },
   { who: 'router', text: 'A relay counts the bytes it carries for other routers, both ways: the status has `bytes`, and the console, `orrery peers` and `orrery doctor` say it beside the count ("carried 31 (3.4 MB), refused 4").' },
   { who: 'router', text: 'With `--trust-peers` on, each peer says how much its notes count right now when it is less than in full: the status has `say`, the console marks "counts 50% under --trust-peers", and `orrery peers` and `orrery doctor` add the reason ("; counts 50% under --trust-peers (notes 35 min old)"), a router met through a peer counting half.' },

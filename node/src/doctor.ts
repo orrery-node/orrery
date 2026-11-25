@@ -9,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
-import { type PeerSum, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
+import { type PeerSum, readIntroductions, readPeerNotes, readRelayFull, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -172,7 +172,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -264,7 +264,7 @@ export function relayLine(r: { port: number | null; relayed: number; refused: nu
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
-export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null }, now = Date.now()): string {
+export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null }, now = Date.now()): string {
   const at = p.name ? `${p.name} (${p.url})` : p.url;
   const via = p.via ? `, met through ${p.via}` : '';
   if (p.refused) return `${at}: refused, ${p.refused}${via}`;
@@ -273,7 +273,8 @@ export function peerLine(p: { url: string; pinned: boolean; by: string | null; s
   if (p.at === 0) return `${at}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried${later})${via}`;
   const who = p.signed && p.by ? `signed by ${p.by.slice(0, 4)}\u2026${p.by.slice(-4)}${p.pinned ? ' (pinned)' : ''}` : 'unsigned';
   const quiet = missed ? `; no answer to the last ${missed === 1 ? 'read' : `${missed} reads`}, these notes are kept for up to an hour${later}` : '';
-  const load = typeof p.relayOpen === 'number' ? ` (${p.relayOpen} open now)` : '';
+  const busy = [typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', p.relayFull ? 'full for today' : ''].filter(Boolean).join(', ');
+  const load = busy ? ` (${busy})` : '';
   const relays = p.relayPort ? `; relays on port ${p.relayPort}${load}, usable as --proxy http://<its host>:${p.relayPort}` : '';
   const unlisted = p.unlisted ? `, ${p.unlisted} of them not listed on chain (not used)` : '';
   const kept = p.kept && p.at ? `, kept from before the restart (written ${Math.max(1, Math.round((now - p.at) / 60_000))} min ago)` : '';
@@ -300,7 +301,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {
@@ -355,7 +356,8 @@ export function peerCheck(target: string, notes: unknown, intros: unknown = null
   else if (!read.signed) lines.push('unsigned: shown beside your record, but --trust-peers will not count them');
   const port = readRelayPort(intros);
   const open = readRelayOpen(intros);
-  lines.push(port ? `relays on port ${port}${open !== null ? ` (${open} open now)` : ''}, usable as --proxy http://<its host>:${port}` : 'runs no relay');
+  const busy = [open !== null ? `${open} open now` : '', readRelayFull(intros) ? 'full for today' : ''].filter(Boolean).join(', ');
+  lines.push(port ? `relays on port ${port}${busy ? ` (${busy})` : ''}, usable as --proxy http://<its host>:${port}` : 'runs no relay');
   const named = readIntroductions(intros);
   lines.push(intros === null ? 'introduces no routers (no /orrery/peers)' : `introduces ${named.length} router${named.length === 1 ? '' : 's'}${named.length ? ', read with --meet-peers' : ''}`);
   lines.push(read.signed && read.by ? `add it with: --peer ${url}#${read.by}` : `add it with: --peer ${url} (unsigned, so it cannot be pinned)`);

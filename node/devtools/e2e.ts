@@ -2591,6 +2591,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && typeof st?.maxBytes === 'number' && (st?.today ?? 0) > st.maxBytes && / of [\d.]+ [KMG]?B today \(listed nodes only\)$/.test(capLine) && again === 'HTTP/1.1 200 Connection Established',
     `under the limit: ${first} · over it: ${full.split('\r\n').filter(Boolean).pop() ?? full.split('\r\n')[0]} · doctor: …${capLine.slice(-60)} · limit lifted: ${again}`);
 }
+// A relay that has carried its limit for today says so at /orrery/peers, and a router reading that peer says the relay is
+// full for today (status, orrery doctor), so nobody points --proxy at a relay that will turn them away.
+{
+  const opts = routerOpts as { relayMaxBytes?: number; shareNotes?: boolean; peers?: string[] };
+  opts.shareNotes = true;
+  opts.relayMaxBytes = 1;
+  const ownFull = ((await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { relay?: { full?: boolean } | null }).relay?.full ?? null;
+  opts.relayMaxBytes = undefined;
+  const ownOpen = ((await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { relay?: { full?: boolean } | null }).relay?.full ?? null;
+  opts.shareNotes = false;
+  const fullPeer = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272, open: 0, full: true } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => fullPeer.listen(0, '127.0.0.1', () => done()));
+  const fullUrl = `http://127.0.0.1:${(fullPeer.address() as { port: number }).port}`;
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.peers = [fullUrl];
+  await rp.readPeers?.();
+  const shown = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; relayFull?: boolean | null }[] }).peers ?? []).find((p) => p.url === fullUrl)?.relayFull ?? null;
+  const fullLine = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'peer' && l.detail.includes(fullUrl))?.detail ?? '';
+  opts.peers = [];
+  await rp.readPeers?.();
+  fullPeer.closeAllConnections();
+  await new Promise((done) => fullPeer.close(done));
+  check('a relay at its daily limit says so at /orrery/peers, and a router reading that peer says its relay is full for today',
+    ownFull === true && ownOpen === false && shown === true && fullLine.endsWith('; relays on port 7272 (0 open now, full for today), usable as --proxy http://<its host>:7272'),
+    `own relay over its limit: full ${ownFull}, without one: full ${ownOpen} · a full peer: status relayFull ${shown}, doctor: …${fullLine.slice(-90)}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

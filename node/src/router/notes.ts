@@ -124,7 +124,7 @@ export const MEET_MAX = 8;
 
 /** What a router serves at /orrery/peers when it shares notes: the routers it reads whose notes it could check, each
  * with the key that signed them, so a router that meets them through it can pin them to that key. */
-export type Introductions = { peers: { url: string; by: string }[]; relay?: { port: number; open?: number } | null };
+export type Introductions = { peers: { url: string; by: string }[]; relay?: { port: number; open?: number; full?: boolean } | null };
 
 /** The relay port a peer says it runs (in its /orrery/peers), or null when it runs none or says nothing readable. */
 export function readRelayPort(j: unknown): number | null {
@@ -133,6 +133,13 @@ export function readRelayPort(j: unknown): number | null {
 }
 
 /** How many connections a peer's relay says it has open now, or null when it does not say (or runs no relay). */
+/** Whether a peer's relay says it has carried its limit for today (--relay-max-mb), so it takes no new connections; null
+ * when it runs no relay. */
+export function readRelayFull(j: unknown): boolean | null {
+  if (readRelayPort(j) === null) return null;
+  return (j as Partial<Introductions> | null)?.relay?.full === true;
+}
+
 export function readRelayOpen(j: unknown): number | null {
   if (readRelayPort(j) === null) return null;
   const open = (j as Partial<Introductions> | null)?.relay?.open;

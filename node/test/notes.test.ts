@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { keptPeerNotes, MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
+import { keptPeerNotes, MEET_MAX, MET_WEIGHT, notesFrom, parseNotes, parsePeersFile, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, peerText, readIntroductions, readPeerNotes, readRelayFull, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from '../src/router/notes.ts';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 
@@ -161,5 +161,13 @@ describe('signed notes', () => {
     assert.equal(peerFreshness(9_000_000), 0);
     assert.equal(peerFreshness(-5_000), 1);
     assert.equal(peerPrior([{ weight: peerFreshness(2_100_000), sent: 40, answered: 0 }]), 0.3);
+  });
+
+  it('reads whether a peer\'s relay says it is full for today, and nothing for a peer that runs no relay', () => {
+    assert.equal(readRelayFull({ peers: [], relay: { port: 7272, open: 0, full: true } }), true);
+    assert.equal(readRelayFull({ peers: [], relay: { port: 7272, open: 3 } }), false);
+    assert.equal(readRelayFull({ peers: [], relay: { port: 7272, full: 'yes' } }), false);
+    assert.equal(readRelayFull({ peers: [], relay: null }), null);
+    assert.equal(readRelayFull(null), null);
   });
 });

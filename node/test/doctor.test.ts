@@ -228,4 +228,11 @@ describe('orrery doctor, what the running router paid', () => {
   it('says how much of the relay\'s daily limit it has carried today, when it has one', () => {
     assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, bytes: 3_565_158, today: 3_565_158, maxBytes: 500 * 1024 ** 2 }), 'open on port 7272: carried 31 (3.4 MB), refused 4, 3.4 MB of 500.0 MB today (listed nodes only)');
   });
+
+  it('says when a peer\'s relay is full for today, in its line and before it is added', () => {
+    assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 0, relayFull: true }),
+      'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272 (0 open now, full for today), usable as --proxy http://<its host>:7272');
+    const now = 10_000_000_000;
+    assert.equal(peerCheck('http://10.0.0.9:7171', { notes: 1, at: now, nodes: [] }, { peers: [], relay: { port: 7272, full: true } }, now).lines[2], 'relays on port 7272 (full for today), usable as --proxy http://<its host>:7272');
+  });
 });

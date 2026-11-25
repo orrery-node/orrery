@@ -85,6 +85,11 @@ export class Relay {
     return Date.now() - this.day.start >= DAY_MS ? 0 : this.day.bytes;
   }
 
+  /** Whether the relay has carried its limit for today and takes no new connections. */
+  get full(): boolean {
+    return this.fullLine() !== null;
+  }
+
   /** How many bytes a day the relay carries before it turns new connections away; 0 for no limit. */
   get maxBytes(): number {
     return Math.max(0, Math.floor(this.o.maxBytes?.() ?? 0));
