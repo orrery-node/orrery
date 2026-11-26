@@ -3,7 +3,7 @@
 // exactly like a request from any other tool.
 import { answeredText, span, watchedText } from './router/watched.ts';
 import { billsText, skipNote, speedText, unansweredNote } from './spend.ts';
-import { peerCheck, peersReport } from './doctor.ts';
+import { peerCheck, peersReport, relayChoices } from './doctor.ts';
 import { fetchNode } from './proxy.ts';
 import { createInterface } from 'node:readline';
 
@@ -128,7 +128,7 @@ const TOOLS = [
   {
     name: 'peers',
     description: 'The local router\u2019s P2P side: how many peer routers it reads, each with who signed its notes on nodes, which peer introduced it, and the relay port it offers (usable as the router\u2019s --proxy, so nodes see that router and not this computer), and the router\u2019s own relay. Read from the local router; nothing is sent to a peer or a node. With check, it reads that one router instead, before it is added as a peer: whether its notes are signed (and by the key given after #), how fresh, whether it relays, how many routers it introduces, and the --peer line to add it with.',
-    inputSchema: { type: 'object', properties: { check: { type: 'string', description: 'a router to read before adding it as a peer: http(s)://host:port, optionally #<key> to pin it' } } },
+    inputSchema: { type: 'object', properties: { check: { type: 'string', description: 'a router to read before adding it as a peer: http(s)://host:port, optionally #<key> to pin it' }, relays: { type: 'boolean', description: 'list the relays the peers offer as --proxy lines, least busy first, as orrery peers --relays does (full ones that still carry $OREY holders are offered when this router\u2019s wallet rides the holder lanes)' } } },
   },
 ];
 
@@ -271,7 +271,9 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       }
       const r = await fetchFn(`${router}/orrery/status`);
       if (!r.ok) return text(`the router could not say who its peers are: ${r.status}`, true);
-      return text(peersReport((await r.json()) as Parameters<typeof peersReport>[0]).join('\n'));
+      const status = (await r.json()) as Parameters<typeof peersReport>[0] & { holder?: { lane?: boolean } | null };
+      if (a.relays === true) return text(relayChoices(status.peers ?? [], status.holder?.lane === true).join('\n'));
+      return text(peersReport(status).join('\n'));
     }
     if (name === 'spend') {
       const by = typeof a.by === 'string' && ['model', 'provider', 'task', 'agent', 'kind', 'day'].includes(a.by) ? a.by : 'model';

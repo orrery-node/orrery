@@ -2880,6 +2880,25 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     relayLineSaid === 'relays on port 7272 (1 open now, keeps a lane for $OREY holders past its daily limit), usable as --proxy http://<its host>:7272',
     relayLineSaid || laneCheck.replaceAll(laneCandUrl, '<peer>').split('\n').join(' | ').slice(0, 200) || 'nothing printed');
 }
+// An agent gets the same relay list as orrery peers --relays through orrery mcp: the peers tool with relays.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const offeringRelay = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7474, open: 3 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => offeringRelay.listen(0, '127.0.0.1', () => done()));
+  opts.peers = [`http://127.0.0.1:${(offeringRelay.address() as { port: number }).port}`];
+  await rp.readPeers?.();
+  const cliRelays = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  const { handle: relaysMcp } = await import('../src/mcp.ts');
+  const mcpRelays = await (relaysMcp as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { relays: true } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
+  opts.peers = [];
+  await rp.readPeers?.();
+  offeringRelay.closeAllConnections();
+  await new Promise((done) => offeringRelay.close(done));
+  check('an agent gets the peers\u2019 relays through orrery mcp: the peers tool with relays gives the same lines as orrery peers --relays',
+    mcpRelays !== '' && mcpRelays === cliRelays && mcpRelays.includes('--proxy http://127.0.0.1:7474'),
+    mcpRelays.replaceAll('127.0.0.1', '<host>').split('\n').slice(0, 2).join(' | ').slice(0, 200) || 'no answer from the peers tool');
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

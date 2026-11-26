@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The `peers` tool in `orrery mcp` takes `relays`: an agent gets the same `--proxy` lines as `orrery peers --relays`, least busy first, including full relays that still carry $OREY holders when its router's wallet rides the holder lanes.
 - **Router** · `orrery peers --check` says when the router it reads keeps a lane for $OREY holders on its relay ("keeps a lane for $OREY holders past its daily limit", or "full for today, $OREY holders still ride"), so a holder sees it before adding that peer; the `peers` tool in `orrery mcp` says the same.
 - **Router** · The router console's holder line adds, when your wallet rides the $OREY holder lanes, that peer relays carry it past their daily limit.
 - **Router** · `orrery peers --relays` knows when your wallet rides the $OREY holder lanes: a peer relay that is full for today but still carries holders is offered to you, marked "full for today, carries you as a $OREY holder"; for everyone else it stays left out.

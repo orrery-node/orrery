@@ -342,4 +342,12 @@ describe('orrery mcp and task budgets', () => {
     assert.equal(bad.result.isError, true);
     assert.equal(bad.result.content[0].text, 'check needs a router address: http(s)://host:port, optionally #<key>');
   });
+
+  it('the peers tool lists the peers\' relays as --proxy lines when asked for relays', async () => {
+    const listed = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'http://r', (async () => reply({})) as never, '0')) as { result: { tools: { name: string; inputSchema: { properties: Record<string, unknown> } }[] } };
+    assert.ok('relays' in listed.result.tools.find((t) => t.name === 'peers')!.inputSchema.properties);
+    const status = { peers: [{ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: true, nodes: 0, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 2 }], relay: null, holder: { lane: false } };
+    const out = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { relays: true } } }, 'http://r', (async () => reply(status)) as never, '0')) as { result: { content: { text: string }[] } };
+    assert.equal(out.result.content[0].text, ['1 peer relay you can use, least busy first:', '  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 2 open now)', 'Start your router with one as --proxy and the nodes see that router, not this computer.'].join('\n'));
+  });
 });
