@@ -9,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
-import { type PeerSum, readIntroductions, readPeerNotes, readRelayFull, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
+import { type PeerSum, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -404,7 +404,8 @@ export function peerCheck(target: string, notes: unknown, intros: unknown = null
   else if (!read.signed) lines.push('unsigned: shown beside your record, but --trust-peers will not count them');
   const port = readRelayPort(intros);
   const open = readRelayOpen(intros);
-  const busy = [open !== null ? `${open} open now` : '', readRelayFull(intros) ? 'full for today' : ''].filter(Boolean).join(', ');
+  const lane = readRelayHolders(intros) === true;
+  const busy = [open !== null ? `${open} open now` : '', readRelayFull(intros) ? (lane ? 'full for today, $OREY holders still ride' : 'full for today') : lane ? 'keeps a lane for $OREY holders past its daily limit' : ''].filter(Boolean).join(', ');
   lines.push(port ? `relays on port ${port}${busy ? ` (${busy})` : ''}, usable as --proxy http://<its host>:${port}` : 'runs no relay');
   const named = readIntroductions(intros);
   lines.push(intros === null ? 'introduces no routers (no /orrery/peers)' : `introduces ${named.length} router${named.length === 1 ? '' : 's'}${named.length ? ', read with --meet-peers' : ''}`);

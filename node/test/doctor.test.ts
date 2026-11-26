@@ -287,4 +287,11 @@ describe('orrery doctor, what the running router paid', () => {
     ]);
     assert.deepEqual(relayChoices(peers, false), ['No peer relay can take new connections right now.', '2 full for today, left out: http://10.0.0.2:7171, http://10.0.0.3:7171']);
   });
+
+  it('orrery peers --check says when a router\'s relay keeps a lane for $OREY holders, full for today or not', () => {
+    const now = 10_000_000_000;
+    const notes = { notes: 1, at: now, nodes: [] };
+    assert.equal(peerCheck('http://10.0.0.9:7171', notes, { peers: [], relay: { port: 7272, open: 1, holders: true } }, now).lines[2], 'relays on port 7272 (1 open now, keeps a lane for $OREY holders past its daily limit), usable as --proxy http://<its host>:7272');
+    assert.equal(peerCheck('http://10.0.0.9:7171', notes, { peers: [], relay: { port: 7272, open: 0, full: true, holders: true } }, now).lines[2], 'relays on port 7272 (0 open now, full for today, $OREY holders still ride), usable as --proxy http://<its host>:7272');
+  });
 });

@@ -2866,6 +2866,20 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     laneNow === true && page.includes("s.holder&&s.holder.lane?' Peer relays carry this wallet past their daily limit: it rides the $OREY holder lanes.'"),
     `status lane ${laneNow ?? '?'} · console ${page.includes('rides the $OREY holder lanes') ? 'says it' : 'says nothing'}`);
 }
+// orrery peers --check says when the router it reads keeps a lane for $OREY holders on its relay, so a holder sees it
+// before adding that peer.
+{
+  const laneCand = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: 7272, open: 1, holders: true } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => laneCand.listen(0, '127.0.0.1', () => done()));
+  const laneCandUrl = `http://127.0.0.1:${(laneCand.address() as { port: number }).port}`;
+  const laneCheck = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', laneCandUrl], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  laneCand.closeAllConnections();
+  await new Promise((done) => laneCand.close(done));
+  const relayLineSaid = laneCheck.split('\n').find((l) => l.startsWith('relays on port')) ?? '';
+  check('orrery peers --check says when a router\u2019s relay keeps a lane for $OREY holders past its daily limit',
+    relayLineSaid === 'relays on port 7272 (1 open now, keeps a lane for $OREY holders past its daily limit), usable as --proxy http://<its host>:7272',
+    relayLineSaid || laneCheck.replaceAll(laneCandUrl, '<peer>').split('\n').join(' | ').slice(0, 200) || 'nothing printed');
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
