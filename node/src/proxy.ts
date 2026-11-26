@@ -17,7 +17,7 @@ import { connect as tlsConnect, type ConnectionOptions } from 'node:tls';
 import { Readable, type Duplex } from 'node:stream';
 import { fetchWithTimeout } from './sse.ts';
 
-export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string };
+export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string; extra?: () => Record<string, string> };
 type Init = RequestInit & { timeoutMs?: number };
 
 /** Reads `http://host:port`, `socks5://host:port` (or `host:port`, or with `user:pass@`). The label is what gets
@@ -127,7 +127,7 @@ export class ProxyRefused extends Error {
 /** Asks an HTTP proxy for a tunnel (CONNECT) to host:port. The proxy resolves the name. */
 export function httpTunnel(proxy: Proxy, host: string, port: number): Promise<Socket> {
   return new Promise((done, fail) => {
-    const ask = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: authority(host, port), agent: false, headers: { host: authority(host, port), ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
+    const ask = httpRequest({ host: proxy.host, port: proxy.port, method: 'CONNECT', path: authority(host, port), agent: false, headers: { host: authority(host, port), ...(proxy.extra?.() ?? {}), ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
     ask.on('error', (err) => fail(new Error(`the proxy at ${proxy.label} did not answer: ${err.message}`)));
     ask.once('connect', (res, socket) => {
       if (res.statusCode !== 200) {
@@ -354,7 +354,7 @@ export function viaProxy(proxy: Proxy, url: string, init: Init = {}, tls: Connec
     } else {
       // A plain-http host through an HTTP proxy: the proxy is asked for the whole address. What it forwards is already
       // sealed to the node.
-      send({ agent: pool.forward, host: proxy.host, port: proxy.port, path: target.href, headers: { host: target.host, ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
+      send({ agent: pool.forward, host: proxy.host, port: proxy.port, path: target.href, headers: { host: target.host, ...(proxy.extra?.() ?? {}), ...(proxy.auth ? { 'proxy-authorization': `Basic ${proxy.auth}` } : {}) } });
     }
   });
 }

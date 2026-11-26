@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
-import { allowedTargets, bytesText, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
+import { allowedTargets, bytesText, HOLDER_HEADER, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
 import { httpTunnel, parseProxy, ProxyRefused } from '../src/proxy.ts';
 
 describe('a relay only reaches listed nodes', () => {
@@ -120,5 +120,23 @@ describe('a relay only reaches listed nodes', () => {
     count(6);
     count(6);
     assert.deepEqual(said, ['relay: carried its 10 B for today; new connections are turned away for about 24 h, the ones open now finish']);
+  });
+
+  it('past its daily limit, still carries a router that shows it holds $OREY, and nobody else', async () => {
+    const relay = new Relay({ allowed: () => new Set(['127.0.0.1:9']), maxBytes: () => 10, holder: async (proof) => proof === 'good' });
+    (relay as unknown as { count: (n: number) => void }).count(12);
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const port = (relay.server.address() as AddressInfo).port;
+    const code = (headers: Record<string, string>) => new Promise<string>((done) => {
+      const q = request({ host: '127.0.0.1', port, path: 'http://127.0.0.1:9/x', agent: false, headers }, (r) => { let b = ''; r.on('data', (c) => (b += c)); r.on('end', () => done(b.includes('relay_full') ? 'full' : `${r.statusCode}`)); });
+      q.on('error', () => done('error'));
+      q.end();
+    });
+    assert.equal(await code({}), 'full');
+    assert.equal(await code({ [HOLDER_HEADER]: 'bad' }), 'full');
+    assert.notEqual(await code({ [HOLDER_HEADER]: 'good' }), 'full');
+    assert.equal(relay.forHolders, 1);
+    relay.server.closeAllConnections();
+    await new Promise((d) => relay.server.close(d));
   });
 });

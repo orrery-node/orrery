@@ -172,7 +172,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -258,15 +258,16 @@ export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise
  * open now and the limit for one address. */
 export { bytesText };
 
-export function relayLine(r: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null }): string {
+export function relayLine(r: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number }): string {
   const now = r.open !== undefined && r.perClient !== undefined ? `, ${r.open} open now (up to ${r.perClient} at a time for one address)` : '';
   const size = typeof r.bytes === 'number' && r.bytes > 0 ? ` (${bytesText(r.bytes)})` : '';
   const cap = r.maxBytes ? `, ${bytesText(r.today ?? 0)} of ${bytesText(r.maxBytes)} today` : '';
-  return `open on port ${r.port ?? '?'}: carried ${r.relayed}${size}, refused ${r.refused}${now}${cap} (listed nodes only${r.peersOnly ? ', for peer routers only' : ''})`;
+  const lane = r.forHolders ? `, ${r.forHolders} carried for $OREY holders past it` : '';
+  return `open on port ${r.port ?? '?'}: carried ${r.relayed}${size}, refused ${r.refused}${now}${cap}${lane} (listed nodes only${r.peersOnly ? ', for peer routers only' : ''})`;
 }
 
 /** One peer router as `orrery doctor` says it: where, who signed its notes, how many nodes, or why it was refused. */
-export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null }, now = Date.now()): string {
+export function peerLine(p: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null }, now = Date.now()): string {
   const at = p.name ? `${p.name} (${p.url})` : p.url;
   const via = p.via ? `, met through ${p.via}` : '';
   if (p.refused) return `${at}: refused, ${p.refused}${via}`;
@@ -275,7 +276,7 @@ export function peerLine(p: { url: string; pinned: boolean; by: string | null; s
   if (p.at === 0) return `${at}: no answer yet (${missed} read${missed === 1 ? '' : 's'} tried${later})${via}`;
   const who = p.signed && p.by ? `signed by ${p.by.slice(0, 4)}\u2026${p.by.slice(-4)}${p.pinned ? ' (pinned)' : ''}` : 'unsigned';
   const quiet = missed ? `; no answer to the last ${missed === 1 ? 'read' : `${missed} reads`}, these notes are kept for up to an hour${later}` : '';
-  const busy = [typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', p.relayFull ? 'full for today' : ''].filter(Boolean).join(', ');
+  const busy = [typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', p.relayFull ? (p.relayHolders ? 'full for today, $OREY holders still ride' : 'full for today') : ''].filter(Boolean).join(', ');
   const load = busy ? ` (${busy})` : '';
   const relays = p.relayPort ? `; relays on port ${p.relayPort}${load}, usable as --proxy http://<its host>:${p.relayPort}` : '';
   const unlisted = p.unlisted ? `, ${p.unlisted} of them not listed on chain (not used)` : '';
@@ -303,7 +304,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {
@@ -360,7 +361,7 @@ export function byTrust<T extends PeerRow>(peers: T[]): T[] {
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null } | null; discovery?: string | null }, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null }, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {

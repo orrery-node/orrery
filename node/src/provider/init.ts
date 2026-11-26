@@ -165,7 +165,7 @@ export function draftConfig(found: Found, o: { name?: string; publicUrl?: string
     }),
     redeem: { everySecs: 300, minUnits: 50_000 },
     paymentInside: true,
-    // Holder prices are on unless the operator says otherwise (--no-holder-prices): the seed node's tiers.
+    // Holder prices are on unless the operator says otherwise (--no-holder-prices): the seed node's tiers, with a smaller one below them.
     ...(o.holderPrices === false ? {} : { holder: { tiers: DEFAULT_HOLDER_TIERS.map((t) => ({ ...t })) } }),
     // The webhook each payout's arrival (and the day's books) is posted to, when init was given one.
     ...(o.notify ? { notify: o.notify } : {}),

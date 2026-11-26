@@ -8,7 +8,15 @@ import { connect as netConnect, type Socket } from 'node:net';
  * API, so nothing that spends this router's wallet is reachable through it. What it carries to a node is already
  * sealed to that node's key, payment included for nodes that read it inside the seal: the relay sees a host and a
  * port, never a prompt. */
-export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; maxBytes?: () => number; log?: (line: string) => void };
+export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; maxBytes?: () => number; holder?: (proof: string) => Promise<boolean>; log?: (line: string) => void };
+
+/** The header a router sends a peer's relay to show it holds $OREY: `<wallet>.<ms>.<signature>`, the wallet's signature
+ * over HOLDER_PROOF, the relay router's key and the time. Never passed on to the node. */
+export const HOLDER_HEADER = 'x-orrery-holder';
+
+export function holderProofMessage(relayKey: string, ms: number): Uint8Array {
+  return new TextEncoder().encode(`orrery-relay-holder|${relayKey}|${ms}`);
+}
 
 /** A byte count as people read it: 512 B, 3.4 KB, 12.0 MB, 1.25 GB. */
 export function bytesText(n: number): string {
@@ -50,13 +58,15 @@ export function allowedTargets(endpoints: string[]): Set<string> {
   return out;
 }
 
-const HOP = new Set(['connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'x-forwarded-for', 'forwarded', 'via']);
+const HOP = new Set(['x-orrery-holder', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'x-forwarded-for', 'forwarded', 'via']);
 
 export class Relay {
   relayed = 0;
   refused = 0;
   /** Bytes carried for other routers, both ways: what they sent the nodes and what came back. */
   bytes = 0;
+  /** Connections carried for $OREY holders while the relay was full for today. */
+  forHolders = 0;
   /** The bytes carried in the relay's current day, which starts with the first byte after the last day ended. */
   private day = { start: 0, bytes: 0 };
   readonly server: Server;
@@ -64,8 +74,8 @@ export class Relay {
   private readonly openBy = new Map<string, number>();
 
   constructor(private readonly o: RelayOptions) {
-    this.server = createServer((req, res) => this.forward(req, res));
-    this.server.on('connect', (req: IncomingMessage, socket: Socket, head: Buffer) => this.tunnel(req, socket, head));
+    this.server = createServer((req, res) => void this.forward(req, res));
+    this.server.on('connect', (req: IncomingMessage, socket: Socket, head: Buffer) => void this.tunnel(req, socket, head));
   }
 
   /** Connections open through the relay right now, from every address. */
@@ -83,6 +93,18 @@ export class Relay {
   /** Bytes carried in the current day. */
   get today(): number {
     return Date.now() - this.day.start >= DAY_MS ? 0 : this.day.bytes;
+  }
+
+  /** Past the day's limit, a connection still goes through when the router behind it shows it holds $OREY; the rest are
+   * turned away with when the relay carries again. Null when it goes through. */
+  private async fullFor(proof: string | string[] | undefined): Promise<string | null> {
+    const full = this.fullLine();
+    if (!full) return null;
+    if (typeof proof === 'string' && this.o.holder && (await this.o.holder(proof).catch(() => false))) {
+      this.forHolders += 1;
+      return null;
+    }
+    return full;
   }
 
   /** Whether the relay has carried its limit for today and takes no new connections. */
@@ -146,7 +168,7 @@ export class Relay {
 
   /** A plain-http request in absolute form (the node's whole address in the request line, as a proxy is asked), passed
    * on to a listed node with nothing added that names the router it came from. */
-  private forward(req: IncomingMessage, res: ServerResponse): void {
+  private async forward(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (this.o.clientAllowed && !this.o.clientAllowed(plainAddress(req.socket.remoteAddress ?? ''))) return this.refuse(res, PEERS_ONLY);
     let target: URL;
     try {
@@ -157,7 +179,7 @@ export class Relay {
     if (target.protocol !== 'http:' || !this.o.allowed().has(targetKey(target.hostname, target.port, 'http:'))) {
       return this.refuse(res, `a relay only passes requests on to nodes listed on chain; ${target.host || 'this address'} is not one`);
     }
-    const full = this.fullLine();
+    const full = await this.fullFor(req.headers[HOLDER_HEADER]);
     if (full) {
       this.refused += 1;
       res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'relay_full', message: full } }));
@@ -188,7 +210,7 @@ export class Relay {
   }
 
   /** CONNECT host:port: a tunnel to a listed node, for an https endpoint (TLS runs inside it, end to end). */
-  private tunnel(req: IncomingMessage, socket: Socket, head: Buffer): void {
+  private async tunnel(req: IncomingMessage, socket: Socket, head: Buffer): Promise<void> {
     if (this.o.clientAllowed && !this.o.clientAllowed(plainAddress(socket.remoteAddress ?? ''))) {
       this.refused += 1;
       socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\n${PEERS_ONLY}\n`);
@@ -200,7 +222,7 @@ export class Relay {
       socket.end('HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\na relay only opens tunnels to nodes listed on chain\n');
       return;
     }
-    const full = this.fullLine();
+    const full = await this.fullFor(req.headers[HOLDER_HEADER]);
     if (full) {
       this.refused += 1;
       socket.end(`HTTP/1.1 429 Too Many Requests\r\ncontent-type: text/plain\r\n\r\n${full}\n`);

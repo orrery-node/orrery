@@ -2779,6 +2779,50 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && said.length === 2 && said[0].startsWith(`nodes: reached through the relay of peer ${offeringUrl} (http://127.0.0.1:${ownRelay}, 0 open)`) && said[1] === `nodes: no peer relay can take connections now; the nodes are reached ${fallback}`,
     `chose ${chosen ?? 'nothing'} · answer ${answered.status}, the relay carried ${carriedBefore} → ${carriedAfter} · doctor: ${viaDoctor.replaceAll(String(ownRelay), '<port>').slice(0, 60) || 'no line'} · full for today: ${afterFull ?? 'off the relay'} · log: ${said.map((l) => l.replaceAll(offeringUrl, '<peer>').slice(0, 70)).join(' | ') || 'nothing'}`);
 }
+// $OREY holders ride a full relay: a relay past its daily limit still carries a router whose wallet signs that it holds
+// $OREY (checked on chain), and turns everyone else away; with --proxy-via-peers, a holder router keeps using a peer's
+// relay that says it is full for today but carries holders.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean; relayMaxBytes?: number; shareNotes?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const ours = await (await fetch(`${ROUTER}/orrery/notes`)).json();
+  opts.shareNotes = false;
+  const statusLane = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null; relay?: { port: number | null; forHolders?: number; holderLane?: boolean } | null };
+  const laneRelay = (await statusLane()).relay?.port ?? 0;
+  const laneNodePort = providerSpecs[1].port;
+  opts.relayMaxBytes = 1;
+  const stranger = await new Promise<string>((done) => {
+    let got = '';
+    const sock = netConnect(laneRelay, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${laneNodePort} HTTP/1.1\r\nhost: 127.0.0.1:${laneNodePort}\r\n\r\n`));
+    sock.on('data', (c: Buffer) => { got += c.toString('latin1'); if (got.includes('\r\n\r\n')) sock.end(); });
+    sock.on('close', () => done(got.split('\r\n')[0]));
+    sock.on('error', () => done(got.split('\r\n')[0] || 'error'));
+  });
+  const lanePeer = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(ours)) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: laneRelay, open: 0, full: true, holders: true } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => lanePeer.listen(0, '127.0.0.1', () => done()));
+  const lanePeerUrl = `http://127.0.0.1:${(lanePeer.address() as { port: number }).port}`;
+  opts.peers = [`${lanePeerUrl}#${ourKey}`];
+  opts.proxyViaPeers = true;
+  await rp.readPeers?.();
+  const laneChosen = (await statusLane()).peerRelay ?? null;
+  const ridersBefore = (await statusLane()).relay?.forHolders ?? 0;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const laneAnswer = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+  await laneAnswer.text();
+  const after = await statusLane();
+  const laneDoctor = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'relay')?.detail ?? '';
+  opts.proxyViaPeers = false;
+  opts.peers = [];
+  opts.relayMaxBytes = undefined;
+  await rp.readPeers?.();
+  lanePeer.closeAllConnections();
+  await new Promise((done) => lanePeer.close(done));
+  check('$OREY holders ride a full relay: past its daily limit the relay turns a stranger away but carries a router whose wallet signs that it holds $OREY, and a holder router keeps a full peer relay that carries holders',
+    stranger.startsWith('HTTP/1.1 429') && laneChosen === `http://127.0.0.1:${laneRelay}` && laneAnswer.status === 200 && (after.relay?.forHolders ?? 0) > ridersBefore && after.relay?.holderLane === true && / carried for \$OREY holders past it /.test(laneDoctor),
+    `a stranger: ${stranger} · the holder router chose ${laneChosen ?? 'nothing'}, answer ${laneAnswer.status}, carried for holders ${ridersBefore} → ${after.relay?.forHolders ?? '?'} · doctor: …${laneDoctor.slice(-80)}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
@@ -2998,7 +3042,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('orrery peers shows the P2P side of a running router: a count of its peer routers, a line for each with who signed and the relay port, and its own relay',
     lines[0] === '1 peer router: 1 signed, 0 met through a peer, 0 refused, 1 relaying'
     && lines[1] === `  ${peerUrl}: signed by ${ourKey.slice(0, 4)}\u2026${ourKey.slice(-4)} (pinned), notes on ${ours.nodes.length} node${ours.nodes.length === 1 ? '' : 's'}; relays on port 7272, usable as --proxy http://<its host>:7272`
-    && /^this router's relay: open on port \d+: carried \d+(?: \([\d.]+ [KMG]?B\))?, refused \d+, \d+ open now \(up to 16 at a time for one address\) \(listed nodes only\)$/.test(lines[2] ?? ''),
+    && /^this router's relay: open on port \d+: carried \d+(?: \([\d.]+ [KMG]?B\))?, refused \d+, \d+ open now \(up to 16 at a time for one address\)(?:, \d+ carried for \$OREY holders past it)? \(listed nodes only\)$/.test(lines[2] ?? ''),
     peersCli.replaceAll(peerUrl, '<peer>').replaceAll(ourKey.slice(0, 4), '<key>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
 // A peer cannot add nodes: notes on an address that is not listed on chain are read but never used, and the router
@@ -3996,8 +4040,8 @@ check('orrery provider init takes a payout webhook with --notify and writes it i
   const { checkTiers } = await import('../src/holder.ts') as { checkTiers: (t: unknown) => unknown };
   const tiersOk = (() => { try { checkTiers(drafted?.holder?.tiers); return true; } catch { return false; } })();
   const said = hookInit.text.split('\n').find((l) => l.startsWith('holder prices: ')) ?? '';
-  check('orrery provider init gives a new node holder prices, the seed node’s tiers, and --no-holder-prices leaves them out',
-    JSON.stringify(drafted?.holder?.tiers) === JSON.stringify(HOLDER_TIERS) && tiersOk && said.startsWith('holder prices: $OREY holders pay 20% less with 0.1% of its supply, 35% less with 1%')
+  check('orrery provider init gives a new node holder prices, the seed node’s tiers with a smaller one below them, and --no-holder-prices leaves them out',
+    JSON.stringify(drafted?.holder?.tiers) === JSON.stringify([{ share: 1, off: 1_000 }, ...HOLDER_TIERS]) && tiersOk && said.startsWith('holder prices: $OREY holders pay 10% less with 0.01% of its supply, 20% less with 0.1%, 35% less with 1%')
     && plain.code === 0 && !!plainCfg && !('holder' in plainCfg) && !plain.text.includes('holder prices: '),
     said || 'no holder line');
 }

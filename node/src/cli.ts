@@ -672,7 +672,7 @@ async function main() {
       if (listed) console.log(`\n${renderCompare(cfg.name, compare(cfg.models.map((m) => ({ id: m.id, price: m.price, kind: m.kind })), listed, null))}\n`);
     }
     // Holder prices are written in unless the operator left them out; say what they are and how to drop them.
-    if (cfg.holder) console.log(`${holderTiersNote(cfg.holder.tiers)} (the seed node's tiers; --no-holder-prices leaves them out, or edit "holder" in ${out})`);
+    if (cfg.holder) console.log(`${holderTiersNote(cfg.holder.tiers)} (the seed node's two, with a smaller one below them; --no-holder-prices leaves them out, or edit "holder" in ${out})`);
     if (notify) console.log(`payout notices: each payout's arrival, and the day's books just after midnight UTC, go to ${notify.url ? new URL(notify.url).host : `the webhook in ${notify.urlEnv}`}; ${CLI} provider check sends a test one`);
     console.log(`wrote ${out}. Next:\n${nextSteps(out, CLI, { publicUrl: cfg.publicUrl, localCluster: privateAddress(cfg.rpcUrl) })}`);
     const walletFile = expand(cfg.wallet);

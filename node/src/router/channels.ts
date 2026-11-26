@@ -93,6 +93,11 @@ export class Channels {
     return this.wallet?.publicKey ?? null;
   }
 
+  /** Signs with the wallet, for a holder proof to a peer's relay; null without a wallet. */
+  walletSigner(): Sign | null {
+    return this.wallet ? signerOf(this.wallet) : null;
+  }
+
   list(): ChannelState[] {
     return [...this.map.values()];
   }
