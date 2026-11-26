@@ -2384,6 +2384,25 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     && JSON.stringify(found) === JSON.stringify([...listed.entries.keys()].sort()) && JSON.stringify(ready) === JSON.stringify(listedReady),
     `with no peers: ${alone.slice(0, 50)} · with ${named.length} named + 2 made up: ${found.length} listings found, ${ready.length} ready (a router listing the program itself: ${listed.entries.size} and ${listedReady.length})`);
 }
+// Peer exchange past an RPC that does list the program but leaves a listing out (behind, or dropping it): the router
+// reads the listings its peers named by address and keeps the ones the chain confirms, so one RPC is never the whole map.
+{
+  const all = [...registry.entries.keys()].sort();
+  const dropped = all.find((a) => registry.entries.get(a)?.manifest) ?? all[0];
+  const leaving = Object.assign(Object.create(conn) as object, {
+    getProgramAccounts: async (...a: Parameters<typeof conn.getProgramAccounts>) => (await conn.getProgramAccounts(...a)).filter((x) => x.pubkey.toBase58() !== dropped),
+  }) as unknown as typeof conn;
+  const alone = new Registry(leaving, { allowDev: true, measurements: [] });
+  await alone.refresh();
+  const withPeers = new Registry(leaving, { allowDev: true, measurements: [] });
+  (withPeers as unknown as { peerListings?: () => string[] }).peerListings = () => [...all, Keypair.generate().publicKey.toBase58()];
+  await withPeers.refresh();
+  const found = [...withPeers.entries.keys()].sort();
+  const left = (withPeers as unknown as { rpcLeftOut?: number }).rpcLeftOut;
+  check('peer exchange past an RPC that leaves a listing out: the router adds the listing its peers named, read on chain, and says so',
+    all.length > 1 && !alone.entries.has(dropped) && JSON.stringify(found) === JSON.stringify(all) && withPeers.entries.get(dropped)?.manifest != null && left === 1 && withPeers.discovery === 'chain',
+    `RPC list ${all.length - 1} of ${all.length} · alone ${alone.entries.size}, with peers ${found.length} (left out and added: ${left ?? 'unknown'}, its price list ${withPeers.entries.get(dropped)?.manifest ? 'read' : 'missing'})`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

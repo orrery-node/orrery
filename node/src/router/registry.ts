@@ -67,6 +67,11 @@ export function readPins(path?: string): Set<string> {
   }
 }
 
+/** Listings the RPC's list of the program left out that the peers named and the chain confirmed. */
+export function rpcLeftOutLine(n: number): string {
+  return `${n} listing${n === 1 ? '' : 's'} this RPC's list of the program left out, named by peer routers and read on chain one by one: the router uses ${n === 1 ? 'it' : 'them'} too`;
+}
+
 export class Registry {
   entries = new Map<string, ProviderEntry>();
   /** Listing addresses peer routers named (their notes), for an RPC that will not list the program's accounts. */
@@ -74,6 +79,12 @@ export class Registry {
   /** How the last refresh found the listings: the program's accounts listed by the RPC, or the peers' addresses read
    * one by one and checked on chain. */
   discovery: 'chain' | 'peers' | null = null;
+  /** Listings the RPC's list of the program left out that peer routers named and the chain confirmed: an RPC that drops a
+   * listing (behind, or leaving it out) cannot hide a node the peers have seen. */
+  rpcLeftOut = 0;
+  /** Addresses a peer named that the chain did not hold as a listing, with when to read them again: a closed listing a
+   * peer still remembers costs one read every ten minutes, not one each refresh. */
+  private absentUntil = new Map<string, number>();
   refreshedAt = 0;
   /** Node keys that have shown this router a signed wire key that reads payment inside. A router keeps to that: when the
    * flag or the wire key later goes missing (as a hosting platform in front of the node could make it), it keeps
@@ -154,26 +165,52 @@ export class Registry {
   /** Every listing on chain. Many RPCs refuse getProgramAccounts (it reads the whole program); when this one does and
    * peer routers have named listings, those addresses are read one by one (getMultipleAccountsInfo, which every RPC
    * serves) and each is kept only if the program owns it and it reads as a listing: a peer can point at listings,
-   * never make one up. */
+   * never make one up. When the RPC does list the program, the listings the peers named that its list left out are read
+   * the same way and added. */
   private async listings(): Promise<readonly { pubkey: PublicKey; account: { data: Buffer } }[]> {
+    let all: readonly { pubkey: PublicKey; account: { data: Buffer } }[];
     try {
-      const all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
-      this.discovery = 'chain';
-      return all;
+      all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
     } catch (e) {
-      const named = [...new Set(this.peerListings?.() ?? [])].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+      const named = this.named();
       if (!named.length) throw e;
-      const out: { pubkey: PublicKey; account: { data: Buffer } }[] = [];
-      for (let i = 0; i < named.length; i += 100) {
-        const keys = named.slice(i, i + 100);
-        const infos = await this.conn.getMultipleAccountsInfo(keys);
-        infos.forEach((info, j) => {
-          if (info && info.owner.equals(programId()) && Buffer.from(info.data).subarray(0, ACCOUNT.Provider.length).equals(Buffer.from(ACCOUNT.Provider))) out.push({ pubkey: keys[j], account: { data: Buffer.from(info.data) } });
-        });
-      }
+      const out = await this.readNamed(named);
       this.discovery = 'peers';
+      this.rpcLeftOut = 0;
       return out;
     }
+    this.discovery = 'chain';
+    // The peers' listings the RPC's list did not have are read by address, so one RPC is never the whole map.
+    const have = new Set(all.map((a) => a.pubkey.toBase58()));
+    const now = Date.now();
+    const left = this.named().filter((k) => !have.has(k.toBase58()) && (this.absentUntil.get(k.toBase58()) ?? 0) <= now);
+    const extra = left.length ? await this.readNamed(left).catch(() => null) : [];
+    if (!extra) return all;
+    if (left.length && extra.length < left.length) {
+      const found = new Set(extra.map((x) => x.pubkey.toBase58()));
+      for (const k of left) if (!found.has(k.toBase58())) this.absentUntil.set(k.toBase58(), now + 10 * 60_000);
+    }
+    this.rpcLeftOut = extra.length;
+    return extra.length ? [...all, ...extra] : all;
+  }
+
+  /** The listing addresses peer routers named, each a valid key, once. */
+  private named(): PublicKey[] {
+    return [...new Set(this.peerListings?.() ?? [])].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+  }
+
+  /** Reads named addresses by address (getMultipleAccountsInfo, which every RPC serves) and keeps each only if the program
+   * owns it and it reads as a listing: a peer can point at listings, never make one up. */
+  private async readNamed(named: PublicKey[]): Promise<{ pubkey: PublicKey; account: { data: Buffer } }[]> {
+    const out: { pubkey: PublicKey; account: { data: Buffer } }[] = [];
+    for (let i = 0; i < named.length; i += 100) {
+      const keys = named.slice(i, i + 100);
+      const infos = await this.conn.getMultipleAccountsInfo(keys);
+      infos.forEach((info, j) => {
+        if (info && info.owner.equals(programId()) && Buffer.from(info.data).subarray(0, ACCOUNT.Provider.length).equals(Buffer.from(ACCOUNT.Provider))) out.push({ pubkey: keys[j], account: { data: Buffer.from(info.data) } });
+      });
+    }
+    return out;
   }
 
   /** The key a node wants requests encrypted to, accepted only with a signature from the node key on its listing. */

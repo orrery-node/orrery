@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · One RPC is no longer the whole map: when the RPC lists the program but leaves a listing out (behind, or dropping it), the router reads the listings its peer routers named by address, keeps each one the chain confirms, and uses it. `orrery peers`, `orrery doctor`, the console and the log say how many; an address the chain does not hold is read again only after ten minutes.
+
 ## 0.1.31 · 2026-11-26 09:05 UTC
 
 **Routers go through their peers: --proxy-via-peers sends requests to nodes through the least busy relay a signed peer offers; relays count what they carry, take a daily limit and say when they are full; $OREY holders get their own lane past that limit; new nodes start holder prices at 0.01% of supply; peers' notes survive a restart and count less as they age; and orrery peers --relays and --check show all of it, for people and agents alike.**
