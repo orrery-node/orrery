@@ -190,6 +190,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   }
   for (const p of byTrust(status?.peers ?? [])) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
+  const viaPeer = (status as { peerRelay?: string | null } | null)?.peerRelay;
+  if (viaPeer) out.push({ ok: null, what: '  nodes via', detail: `${viaPeer}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
   // Where the router's wallet stands on holder prices, as its console says it.
   if (status?.holder?.line) out.push({ ok: null, what: '  holder price', detail: status.holder.line });

@@ -218,8 +218,30 @@ export function nodeProxy(): Proxy | null {
   return current;
 }
 
-/** Every request this software makes to a node goes through here: by the proxy when one is set, directly when not. */
+let relayRoute: Proxy | null = null;
+
+/** Sets (or clears) a peer router's relay that requests to nodes go through (--proxy-via-peers), in place of the proxy
+ * for those requests only: the RPC and everything else keep the proxy or go directly, and reads of other routers never
+ * use it (fetchPeer), since a relay carries traffic only to nodes listed on chain. */
+export function setNodeRelay(p: Proxy | null): void {
+  for (const { pool } of pools.values()) closePool(pool);
+  pools.clear();
+  relayRoute = p;
+}
+
+export function nodeRelay(): Proxy | null {
+  return relayRoute;
+}
+
+/** Every request this software makes to a node goes through here: by a peer's relay when one is in use, else by the
+ * proxy when one is set, directly when not. */
 export function fetchNode(url: string, init: Init = {}): Promise<Response> {
+  const via = relayRoute ?? current;
+  return via ? viaProxy(via, url, init, testTls) : fetchWithTimeout(url, init);
+}
+
+/** A read of another router (its notes, its peers): through the proxy when one is set, never through a peer's relay. */
+export function fetchPeer(url: string, init: Init = {}): Promise<Response> {
   return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
 }
 

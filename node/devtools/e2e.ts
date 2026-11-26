@@ -2734,6 +2734,51 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     lines[0] === '2 peer relays you can use, least busy first:' && lines[1] === `  --proxy http://127.0.0.1:7373  (${urls[1]}, 0 open now, unsigned)` && lines[2] === `  --proxy http://127.0.0.1:7272  (${urls[0]}, 3 open now, unsigned)` && lines[3] === `1 full for today, left out: ${urls[2]}`,
     relaysOut.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
+// --proxy-via-peers: the router sends its requests to nodes through the least busy relay a signed peer offers, chosen
+// at each refresh, while it keeps reading that peer directly; once that relay says it is full for today, the router
+// goes back to its own route (directly, or its --proxy), and the log says each change once.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signVia } = await import('../src/router/notes.ts');
+  const { signerOf: signerVia } = await import('../src/keys.ts');
+  const viaKey = Keypair.generate();
+  const statusNow = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null; relay?: { port: number | null; relayed: number } | null };
+  const ownRelay = (await statusNow()).relay?.port ?? 0;
+  let fullToday = false;
+  const offering = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signVia({ notes: 1, at: Date.now(), nodes: [] }, viaKey.publicKey.toBase58(), signerVia(viaKey)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: ownRelay, open: 0, full: fullToday } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => offering.listen(0, '127.0.0.1', () => done()));
+  const offeringUrl = `http://127.0.0.1:${(offering.address() as { port: number }).port}`;
+  const heardVia: string[] = [];
+  const logBefore = (router as unknown as { log: (l: string) => void }).log;
+  (router as unknown as { log: (l: string) => void }).log = (l) => { heardVia.push(l); logBefore(l); };
+  opts.peers = [offeringUrl];
+  opts.proxyViaPeers = true;
+  await rp.readPeers?.();
+  const chosen = (await statusNow()).peerRelay ?? null;
+  const carriedBefore = (await statusNow()).relay?.relayed ?? 0;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const answered = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
+  await answered.text();
+  const carriedAfter = (await statusNow()).relay?.relayed ?? 0;
+  const viaDoctor = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
+  fullToday = true;
+  await rp.readPeers?.();
+  const afterFull = (await statusNow()).peerRelay ?? null;
+  opts.proxyViaPeers = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  (router as unknown as { log: (l: string) => void }).log = logBefore;
+  offering.closeAllConnections();
+  await new Promise((done) => offering.close(done));
+  const said = heardVia.filter((l) => l.startsWith('nodes: '));
+  const { nodeProxy: proxyNow } = await import('../src/proxy.ts');
+  const fallback = proxyNow() ? 'through --proxy' : 'directly';
+  check('--proxy-via-peers sends requests to nodes through the least busy relay a signed peer offers, reading that peer directly; once the relay is full for today the router goes back to its own route, each change logged once',
+    chosen === `http://127.0.0.1:${ownRelay}` && answered.status === 200 && carriedAfter > carriedBefore && viaDoctor.startsWith(`http://127.0.0.1:${ownRelay}, a peer's relay`) && afterFull === null
+    && said.length === 2 && said[0].startsWith(`nodes: reached through the relay of peer ${offeringUrl} (http://127.0.0.1:${ownRelay}, 0 open)`) && said[1] === `nodes: no peer relay can take connections now; the nodes are reached ${fallback}`,
+    `chose ${chosen ?? 'nothing'} · answer ${answered.status}, the relay carried ${carriedBefore} → ${carriedAfter} · doctor: ${viaDoctor.replaceAll(String(ownRelay), '<port>').slice(0, 60) || 'no line'} · full for today: ${afterFull ?? 'off the relay'} · log: ${said.map((l) => l.replaceAll(offeringUrl, '<peer>').slice(0, 70)).join(' | ') || 'nothing'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `--proxy-via-peers`: the router sends its requests to nodes through the least busy relay one of its signed peers offers, chosen again at each refresh, so the nodes see that router and not this computer. A relay full for today is passed over; with none left the router goes back to its own route (directly, or its `--proxy`). Reads of the peers themselves and the RPC never go through the relay. `orrery doctor` says which relay is in use, and the log says each change once.
 - **Router** · `orrery peers --relays` lists the relays your peers offer as ready `--proxy` lines with each peer's own host, least busy first ("--proxy http://10.0.0.3:7373  (alice, 0 open now)"); relays full for today are left out and said, and peers that were refused or never answered are not offered.
 - **Router** · With `--meet-peers`, a router met through a peer is also asked which relay it runs, so its port, how busy it is and whether it is full for today show in `orrery peers` and the console like a given peer's; who it reads is still never taken from it, so every router read stays at most two steps away.
 - **Router** · The peers' summary line in `orrery peers`, `orrery doctor` and the console says how many of their relays are full for today ("2 relaying (1 full for today)"); `--json` keeps the same counts as before.
