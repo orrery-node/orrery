@@ -9,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, rpcLeftOutLine, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
-import { type PeerSum, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
+import { type PeerSum, relayOrder, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -312,7 +312,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; readMs?: number | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {
@@ -338,7 +338,8 @@ export function noPeerRelayLine(): string {
   return "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer";
 }
 
-/** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first, each as the --proxy
+/** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first (between relays as
+ * busy, the peer that answered quicker), each as the --proxy
  * it would take (the peer's host, the relay's port). Relays full for today are left out and said, except, for a router
  * whose wallet rides the $OREY holder lanes, those that still carry holders; refused peers and peers that never
  * answered are not offered. */
@@ -346,7 +347,8 @@ export function relayChoices(peers: PeerRow[], holder = false): string[] {
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
   const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
   const full = running.filter((p) => p.relayFull && !lane(p));
-  const usable = running.filter((p) => !p.relayFull || lane(p)).sort((a, b) => Number(lane(a)) - Number(lane(b)) || (a.relayOpen ?? Infinity) - (b.relayOpen ?? Infinity) || Number(b.signed) - Number(a.signed));
+  const offer = (p: PeerRow) => ({ holderLane: lane(p), open: p.relayOpen ?? null, ms: p.readMs ?? null, signed: p.signed });
+  const usable = running.filter((p) => !p.relayFull || lane(p)).sort((a, b) => relayOrder(offer(a), offer(b)));
   if (!running.length) return ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).'];
   const host = (url: string) => {
     try {

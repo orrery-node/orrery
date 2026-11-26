@@ -2498,6 +2498,43 @@ const all4 = () => registry.entries.size;
     recorded > 0 && listings?.ok === true && (listings.detail ?? '').startsWith(`${recorded} from this router\u2019s own record of the nodes it watched, each read on chain`),
     `${recorded} of the record listed · listings: ${listings?.ok ?? '?'}, ${(listings?.detail ?? 'no line').slice(0, 140)}`);
 }
+// Between peer relays that are just as busy, the peer that answered this router's last read quicker comes first: two
+// signed peers each offer a relay with one connection open, one of them answers its notes 300 ms late.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signQ } = await import('../src/router/notes.ts');
+  const { signerOf: signerQ } = await import('../src/keys.ts');
+  const late = new Map<number, number>();
+  const offer = (relayPort: number) => {
+    const k = Keypair.generate();
+    return createHttpServer((req, res) => {
+      const reply = () => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signQ({ notes: 1, at: Date.now(), nodes: [] }, k.publicKey.toBase58(), signerQ(k)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: relayPort, open: 1 } })) : res.writeHead(404).end());
+      const ms = late.get(relayPort) ?? 0;
+      if (req.url === '/orrery/notes' && ms) setTimeout(reply, ms);
+      else reply();
+    });
+  };
+  const slow = offer(7676);
+  const quick = offer(7777);
+  await Promise.all([slow, quick].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
+  const [slowUrl, quickUrl] = [slow, quick].map((srv) => `http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  // The slow peer is met first (so it comes first in any order that is only the order of meeting), then it slows down.
+  opts.peers = [slowUrl];
+  await rp.readPeers?.();
+  late.set(7676, 300);
+  opts.peers = [slowUrl, quickUrl];
+  await rp.readPeers?.();
+  const relaysNow = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const ms = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { readMs?: number | null }[] }).peers ?? []).map((p) => p.readMs ?? -1);
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [slow, quick]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
+  const rl = relaysNow.split('\n');
+  check('between peer relays just as busy, the peer that answered quicker comes first in orrery peers --relays (and for --proxy-via-peers)',
+    rl[0] === '2 peer relays you can use, least busy first:' && rl[1]?.startsWith('  --proxy http://127.0.0.1:7777') && rl[2]?.startsWith('  --proxy http://127.0.0.1:7676'),
+    `${rl.slice(1, 3).map((l) => l.trim().split('  ')[0]).join(' then ') || 'no list'} · reads took ${ms.join(' / ')} ms`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

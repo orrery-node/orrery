@@ -49,6 +49,14 @@ function wellFormed(nodes: unknown[]): Note[] {
     .map((x) => ({ address: x.address, checks: x.checks, up: x.up, sent: x.sent, answered: x.answered }));
 }
 
+/** The order a router weighs peer relays in, for --proxy-via-peers and orrery peers --relays alike: the open ones before
+ * a full one that only carries holders, the least busy first, and between relays as busy, the peer that answered this
+ * router's last read quicker; a signed peer before an unsigned one last. */
+export type RelayOffer = { holderLane?: boolean; open: number | null; ms: number | null; signed?: boolean };
+export function relayOrder(a: RelayOffer, b: RelayOffer): number {
+  return Number(!!a.holderLane) - Number(!!b.holderLane) || (a.open ?? Infinity) - (b.open ?? Infinity) || (a.ms ?? Infinity) - (b.ms ?? Infinity) || Number(!!b.signed) - Number(!!a.signed);
+}
+
 /** What the peers this router reads say about one node, added up; null when none of them has a note on it. */
 export type PeerSum = { routers: number; checks: number; up: number; sent: number; answered: number };
 

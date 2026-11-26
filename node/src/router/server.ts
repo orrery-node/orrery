@@ -17,7 +17,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, fetchPeer, nodeProxy, parseProxy, setNodeRelay } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { keptPeerNotes, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
+import { keptPeerNotes, relayOrder, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { ed25519Verify, signerOf } from '../keys.ts';
 import { allowedTargets, HOLDER_HEADER, holderProofMessage, plainAddress, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { PublicKey } from '@solana/web3.js';
@@ -499,7 +499,7 @@ export class Router {
   /** --proxy-via-peers: the least busy relay a signed peer offers and that is not full for today, as http://<the peer's
    * host>:<relay port>, becomes the route to the nodes; the router logs each change once. */
   private async choosePeerRelay(): Promise<void> {
-    let pick: { url: string; peer: string; open: number | null; by: string | null; holderLane: boolean } | null = null;
+    let pick: { url: string; peer: string; open: number | null; ms: number | null; by: string | null; holderLane: boolean } | null = null;
     if (this.o.proxyViaPeers) {
       const held = await this.standing();
       const holder = !!held && held.balance > 0n && held.balance * 10_000n >= held.supply * HOLDER_LANE_BP;
@@ -515,9 +515,9 @@ export class Router {
         } catch {
           return [];
         }
-        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, by: p.by, holderLane: full && lane }];
+        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane }];
       });
-      offers.sort((a, b) => Number(a.holderLane) - Number(b.holderLane) || (a.open ?? Infinity) - (b.open ?? Infinity));
+      offers.sort(relayOrder);
       pick = offers[0] ?? null;
     }
     const next = pick ? `${pick.url}${pick.holderLane ? ' (holders)' : ''}` : null;

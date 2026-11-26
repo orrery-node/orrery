@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
 import { nothingToReadLine, Registry, rpcLeftOutLine } from '../src/router/registry.ts';
+import { relayOrder } from '../src/router/notes.ts';
 import { foundThroughPeers, listingsDetail, mapLine, newToMapLine, peerCheck, peersReport, RECORD_LINE } from '../src/doctor.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -164,5 +165,15 @@ describe('peer exchange past an RPC that leaves listings out', () => {
     assert.equal(listingsDetail(4, 'chain', 0, '80 ms'), '4 on chain, read in 80 ms');
     assert.equal(listingsDetail(4, 'chain', 1, '80 ms'), '4 on chain, 1 of them only in this router\u2019s own record (the RPC\u2019s list left it out), read in 80 ms');
     assert.equal(listingsDetail(3, 'record', 3, '90 ms'), '3 from this router\u2019s own record of the nodes it watched, each read on chain (this RPC does not list the program\u2019s accounts), read in 90 ms');
+  });
+
+  it('weighs peer relays: open before holder-only, least busy, then the quicker peer, then signed', () => {
+    const a = { open: 1, ms: 300, signed: true };
+    const b = { open: 1, ms: 12, signed: true };
+    const c = { open: 0, ms: 900, signed: true };
+    const d = { open: 0, ms: 5, signed: true, holderLane: true };
+    assert.deepEqual([a, b, c, d].sort(relayOrder), [c, b, a, d]);
+    assert.deepEqual([{ open: 1, ms: null, signed: true }, { open: 1, ms: 40, signed: true }].sort(relayOrder).map((x) => x.ms), [40, null]);
+    assert.deepEqual([{ open: 2, ms: null, signed: false }, { open: 2, ms: null, signed: true }].sort(relayOrder).map((x) => x.signed), [true, false]);
   });
 });
