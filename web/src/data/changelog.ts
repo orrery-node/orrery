@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers --relays` lists the relays your peers offer as ready `--proxy` lines with each peer\'s own host, least busy first ("--proxy http://10.0.0.3:7373  (alice, 0 open now)"); relays full for today are left out and said, and peers that were refused or never answered are not offered.' },
   { who: 'router', text: 'With `--meet-peers`, a router met through a peer is also asked which relay it runs, so its port, how busy it is and whether it is full for today show in `orrery peers` and the console like a given peer\'s; who it reads is still never taken from it, so every router read stays at most two steps away.' },
   { who: 'router', text: 'The peers\' summary line in `orrery peers`, `orrery doctor` and the console says how many of their relays are full for today ("2 relaying (1 full for today)"); `--json` keeps the same counts as before.' },
   { who: 'router', text: 'The router log says once when its relay reaches the `--relay-max-mb` limit for the day ("relay: carried its 500.0 MB for today; new connections are turned away for about 7 h, the ones open now finish"), and not again for what comes after it.' },

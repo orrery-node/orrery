@@ -314,6 +314,34 @@ export function peersSummary(peers: PeerRow[]): { peers: number; signed: number;
   };
 }
 
+/** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first, each as the --proxy
+ * it would take (the peer's host, the relay's port). Relays full for today are left out and said; refused peers and
+ * peers that never answered are not offered. */
+export function relayChoices(peers: PeerRow[]): string[] {
+  const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
+  const full = running.filter((p) => p.relayFull);
+  const usable = running.filter((p) => !p.relayFull).sort((a, b) => (a.relayOpen ?? Infinity) - (b.relayOpen ?? Infinity) || Number(b.signed) - Number(a.signed));
+  if (!running.length) return ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).'];
+  const host = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '<its host>';
+    }
+  };
+  const out: string[] = [];
+  if (usable.length) {
+    out.push(`${usable.length} peer relay${usable.length === 1 ? '' : 's'} you can use, least busy first:`);
+    for (const p of usable) {
+      const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
+      out.push(`  --proxy http://${host(p.url)}:${p.relayPort}  (${about})`);
+    }
+  } else out.push('No peer relay can take new connections right now.');
+  if (full.length) out.push(`${full.length} full for today, left out: ${full.map((p) => p.url).join(', ')}`);
+  if (usable.length) out.push('Start your router with one as --proxy and the nodes see that router, not this computer.');
+  return out;
+}
+
 /** How many of the peers' relays say they are full for today, for the summary line: " (1 full for today)", or nothing. */
 export function fullRelaysText(peers: PeerRow[]): string {
   const n = peers.filter((p) => p.relayPort && p.relayFull).length;

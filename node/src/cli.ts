@@ -27,7 +27,7 @@ import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALL
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
-import { byTrust, doctor, peerCheck, peersReport, peersSummary, render } from './doctor.ts';
+import { byTrust, doctor, peerCheck, peersReport, peersSummary, relayChoices, render } from './doctor.ts';
 import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, privateSpend, privateSpendLine, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, quoteKind, renderQuote } from './quote.ts';
@@ -78,7 +78,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
   ${CLI} wallet new               makes a wallet file and says what to send it (skip this if you have a Solana keypair file)
   ${CLI} router                   uses that wallet; then point any OpenAI-compatible tool at http://127.0.0.1:${ROUTER_PORT}/v1
   ${CLI} doctor                   reads the chain, the nodes, your wallet and your router, and says what is ready
-  ${CLI} peers                    the P2P side of your running router: its peer routers, who signed and introduced them, which relay, and its own relay (--json; --watch redraws it every 5 s, --every <s>; --check <url[#key]> reads a router before you add it)
+  ${CLI} peers                    the P2P side of your running router: its peer routers, who signed and introduced them, which relay, and its own relay (--json; --watch redraws it every 5 s, --every <s>; --check <url[#key]> reads a router before you add it; --relays lists the peers' relays you can point --proxy at)
   (--wallet <file> on either picks another wallet, such as a Solana keypair file you already have)
 
   ${CLI} router                 run the router on http://127.0.0.1:${ROUTER_PORT}/v1
@@ -794,6 +794,16 @@ async function main() {
     const out = peerCheck(target, notes, intros);
     if (!out.ok) process.exitCode = 1;
     return console.log(out.lines.join('\n'));
+  }
+  if (cmd === 'peers' && has('relays')) {
+    // The peers' relays as --proxy lines, from the local router's status: nothing goes to a peer or a node.
+    const routerUrl = flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!.replace(/\/$/, '');
+    const status = (await fetchWithTimeout(`${routerUrl}/orrery/status`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null)) as Parameters<typeof peersReport>[0] | null;
+    if (!status) {
+      process.exitCode = 1;
+      return console.log(`No router answers at ${routerUrl}. Start one with: ${CLI} router --peer <url>#<key>`);
+    }
+    return console.log(relayChoices(status.peers ?? []).join('\n'));
   }
   if (cmd === 'peers') {
     // Asks only the router on this computer (or the one --router names) for its status: nothing goes to a peer or a node.

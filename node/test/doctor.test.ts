@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, newer, peerCheck, peerLine, peersReport, peersSummary, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, newer, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -241,5 +241,24 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(fullRelaysText([row]), '');
     assert.equal(fullRelaysText([{ ...row, relayFull: true }, { ...row, url: 'http://10.0.0.3:7171', relayFull: true }]), ' (2 full for today)');
     assert.equal(peersReport({ peers: [{ ...row, relayFull: true }], relay: null })[0], '1 peer router: 0 signed, 0 met through a peer, 0 refused, 1 relaying (1 full for today)');
+  });
+
+  it('lists the peers\' relays as --proxy lines, least busy first, leaving out the full ones and the peers that never answered', () => {
+    const row = { pinned: false, by: null, signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    assert.deepEqual(relayChoices([{ ...row, url: 'http://10.0.0.2:7171' }]), ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).']);
+    assert.deepEqual(relayChoices([
+      { ...row, url: 'http://10.0.0.2:7171', name: 'alice', relayPort: 7272, relayOpen: 3 },
+      { ...row, url: 'http://10.0.0.3:7171', via: 'http://10.0.0.2:7171', relayPort: 7373, relayOpen: 0, signed: false },
+      { ...row, url: 'http://10.0.0.4:7171', relayPort: 7474, relayOpen: 0, relayFull: true },
+      { ...row, url: 'http://10.0.0.5:7171', relayPort: 7575, at: 0 },
+      { ...row, url: 'http://10.0.0.6:7171', relayPort: 7676, refused: 'not notes' },
+    ]), [
+      '2 peer relays you can use, least busy first:',
+      '  --proxy http://10.0.0.3:7373  (http://10.0.0.3:7171, met through http://10.0.0.2:7171, 0 open now, unsigned)',
+      '  --proxy http://10.0.0.2:7272  (alice, 3 open now)',
+      '1 full for today, left out: http://10.0.0.4:7171',
+      'Start your router with one as --proxy and the nodes see that router, not this computer.',
+    ]);
+    assert.deepEqual(relayChoices([{ ...row, url: 'http://10.0.0.4:7171', relayPort: 7474, relayFull: true }]), ['No peer relay can take new connections right now.', '1 full for today, left out: http://10.0.0.4:7171']);
   });
 });

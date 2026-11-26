@@ -2708,6 +2708,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     dRow?.via === aUrl && dRow.relayPort === 7373 && dRow.relayOpen === 1 && !twoSteps,
     `met router: via ${dRow?.via ? '<peer>' : dRow?.via ?? 'not met'}, relay ${dRow?.relayPort ?? 'none'} (${dRow?.relayOpen ?? '?'} open) · its own introduction taken: ${twoSteps}`);
 }
+// orrery peers --relays: the peers' relays as --proxy lines with each peer's own host, least busy first; a relay full for
+// today is left out and said.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const relayPeer = (port: number, open: number, full: boolean) => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port, open, full } })) : res.writeHead(404).end()));
+  const servers = [relayPeer(7272, 3, false), relayPeer(7373, 0, false), relayPeer(7474, 0, true)];
+  const urls: string[] = [];
+  for (const srv of servers) {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    urls.push(`http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  }
+  opts.peers = urls;
+  await rp.readPeers?.();
+  const relaysOut = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of servers) {
+    srv.closeAllConnections();
+    await new Promise((done) => srv.close(done));
+  }
+  const lines = relaysOut.split('\n');
+  check('orrery peers --relays lists the peers\u2019 relays as --proxy lines with each peer\u2019s host, least busy first, and leaves out a full one',
+    lines[0] === '2 peer relays you can use, least busy first:' && lines[1] === `  --proxy http://127.0.0.1:7373  (${urls[1]}, 0 open now, unsigned)` && lines[2] === `  --proxy http://127.0.0.1:7272  (${urls[0]}, 3 open now, unsigned)` && lines[3] === `1 full for today, left out: ${urls[2]}`,
+    relaysOut.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
