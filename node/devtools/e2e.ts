@@ -2434,6 +2434,21 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     dropped !== '' && JSON.stringify(marked) === JSON.stringify([dropped]) && st.rpcLeftOut === 1 && /found through peers, named by 1 peer router, read on chain/.test(line) && after.every((p) => p.found === 'rpc'),
     `found through peers: ${marked.length} (rpcLeftOut ${st.rpcLeftOut ?? '?'}) · orrery peers: ${line.trim().replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, '<address>').slice(0, 110) || 'no line'} · after: ${after.filter((p) => p.found === 'rpc').length} of ${after.length} from the RPC`);
 }
+// A node a router has used does not vanish with the RPC: with an RPC that will not list the program and no peer at all,
+// a router started from the same home finds the listings in its own record of the nodes it watched, each read on chain.
+{
+  const refusing = Object.assign(Object.create(conn) as object, { getProgramAccounts: () => Promise.reject(new Error('403 getProgramAccounts is not served on this RPC')) }) as unknown as typeof conn;
+  const recorded = Object.keys(JSON.parse(readFileSync(WATCHED, 'utf8')) as Record<string, unknown>);
+  const onChain = [...registry.entries.keys()].filter((a) => recorded.includes(a)).sort();
+  const fromHome = new (Registry as unknown as new (...a: unknown[]) => InstanceType<typeof Registry>)(refusing, { allowDev: true, measurements: [] }, undefined, WATCHED);
+  const result = await fromHome.refresh().then(() => 'listed', (e) => (e as Error).message);
+  const found = [...fromHome.entries.keys()].sort();
+  const kept = [...((fromHome as unknown as { fromRecord?: Set<string> }).fromRecord ?? [])].sort();
+  const discovery = (fromHome as unknown as { discovery?: string }).discovery;
+  check('with an RPC that will not list the program and no peers, a router finds the nodes in its own record, each read on chain',
+    onChain.length > 0 && result === 'listed' && discovery === 'record' && JSON.stringify(found) === JSON.stringify(onChain) && JSON.stringify(kept) === JSON.stringify(onChain) && fromHome.usable().length > 0,
+    `${recorded.length} in the record, ${onChain.length} of them listed · ${result.slice(0, 60)}, discovery ${discovery ?? 'none'}: ${found.length} found, ${fromHome.usable().length} ready`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

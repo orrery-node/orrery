@@ -194,6 +194,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine() });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
+  else if (status?.discovery === 'record') out.push({ ok: null, what: '  listings', detail: RECORD_LINE });
   else if (status?.rpcLeftOut) out.push({ ok: null, what: '  listings', detail: rpcLeftOutLine(status.rpcLeftOut) });
   // Where the router's wallet stands on holder prices, as its console says it.
   if (status?.holder?.line) out.push({ ok: null, what: '  holder price', detail: status.holder.line });
@@ -376,18 +377,23 @@ export function byTrust<T extends PeerRow>(peers: T[]): T[] {
   return [...peers].sort((a, b) => rank(a) - rank(b));
 }
 
+/** Where the listings came from when the RPC will not list the program and no peer named any: the router's own record. */
+export const RECORD_LINE = 'the listings came from this router\u2019s own record of the nodes it watched before, each checked on chain (this RPC does not list the program\u2019s accounts; add a peer router with --peer to find new ones)';
+
 export type FoundRow = { address: string; name?: string | null; found?: string; peers?: { routers: number } | null };
 
 /** The listings a router has only because its peers named them, one line each with how many peers named it: the part of
  * its map the peers drew. At most ten, then how many more. */
 export function foundThroughPeers(providers: FoundRow[], most = 10): string[] {
   const through = providers.filter((p) => p.found === 'peers');
-  if (!through.length) return [];
+  const kept = providers.filter((p) => p.found === 'record').length;
+  const recordLine = kept ? [`  ${kept} listing${kept === 1 ? '' : 's'} only in this router\u2019s own record of the nodes it watched before, read on chain`] : [];
+  if (!through.length) return recordLine;
   const line = (p: FoundRow) => {
     const n = p.peers?.routers ?? 0;
     return `  ${p.name ? `${p.name} (${p.address.slice(0, 4)}\u2026${p.address.slice(-4)})` : p.address}: found through peers${n ? `, named by ${n} peer router${n === 1 ? '' : 's'}` : ''}, read on chain`;
   };
-  return [...through.slice(0, most).map(line), ...(through.length > most ? [`  and ${through.length - most} more found through peers`] : [])];
+  return [...through.slice(0, most).map(line), ...(through.length > most ? [`  and ${through.length - most} more found through peers`] : []), ...recordLine];
 }
 
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
@@ -405,6 +411,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   }
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');
+  else if (status.discovery === 'record') out.push(RECORD_LINE);
   else if (status.rpcLeftOut) out.push(rpcLeftOutLine(status.rpcLeftOut));
   out.push(...foundThroughPeers(status.providers ?? []));
   return out;

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
 import { Registry, rpcLeftOutLine } from '../src/router/registry.ts';
-import { foundThroughPeers, peersReport } from '../src/doctor.ts';
+import { foundThroughPeers, peersReport, RECORD_LINE } from '../src/doctor.ts';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const listing = () => ({ owner: programId(), data: Buffer.concat([Buffer.from(ACCOUNT.Provider), Buffer.alloc(8)]) });
 
@@ -93,5 +96,38 @@ describe('peer exchange past an RPC that leaves listings out', () => {
     assert.equal(foundThroughPeers(many).length, 11);
     assert.equal(foundThroughPeers(many).at(-1), '  and 2 more found through peers');
     assert.deepEqual(peersReport({ peers: [], relay: null, discovery: 'chain', rpcLeftOut: 1, providers: rows.slice(0, 1) }).slice(-2), [rpcLeftOutLine(1), foundThroughPeers(rows.slice(0, 1))[0]]);
+  });
+
+  it('reads the listings in its own record when the RPC will not list the program and no peer names any', async () => {
+    const [a, b] = [0, 1].map(() => Keypair.generate().publicKey);
+    const home = join(mkdtempSync(join(tmpdir(), 'orrery-record-')), 'watched.json');
+    writeFileSync(home, JSON.stringify({ [b.toBase58()]: { checks: 4, up: 4, since: 1 } }));
+    let refuse = true;
+    const conn = {
+      getProgramAccounts: async () => { if (refuse) throw new Error('403'); return [{ pubkey: a, account: listing() }]; },
+      getMultipleAccountsInfo: async (keys: PublicKey[]) => keys.map(() => listing()),
+    } as unknown as Connection;
+    const reg = new Registry(conn, { allowDev: true, measurements: [] }, undefined, home);
+    const list = async () => ((await (reg as unknown as { listings: () => Promise<{ pubkey: PublicKey }[]> }).listings()).map((x) => x.pubkey.toBase58()));
+    assert.deepEqual(await list(), [b.toBase58()]);
+    assert.equal(reg.discovery, 'record');
+    assert.deepEqual([...reg.fromRecord], [b.toBase58()]);
+    // The RPC lists the program again but leaves the recorded node out: it is kept, and counted apart from the peers'.
+    refuse = false;
+    assert.deepEqual(await list(), [a.toBase58(), b.toBase58()]);
+    assert.equal(reg.discovery, 'chain');
+    assert.equal(reg.rpcLeftOut, 0);
+    assert.deepEqual([...reg.fromRecord], [b.toBase58()]);
+    // Named by a peer as well: it counts as found through the peers.
+    reg.peerListings = () => [b.toBase58()];
+    await list();
+    assert.deepEqual([...reg.throughPeers], [b.toBase58()]);
+    assert.deepEqual([...reg.fromRecord], []);
+    assert.equal(reg.rpcLeftOut, 1);
+  });
+
+  it('says the listings came from the router\'s own record, and counts the nodes only in it', () => {
+    assert.equal(peersReport({ peers: [], relay: null, discovery: 'record' }).at(-1), RECORD_LINE);
+    assert.deepEqual(foundThroughPeers([{ address: 'x', found: 'record' }, { address: 'y', found: 'record' }, { address: 'z', found: 'rpc' }]), ['  2 listings only in this router\u2019s own record of the nodes it watched before, read on chain']);
   });
 });

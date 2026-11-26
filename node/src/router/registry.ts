@@ -78,13 +78,16 @@ export class Registry {
   peerListings?: () => string[];
   /** How the last refresh found the listings: the program's accounts listed by the RPC, or the peers' addresses read
    * one by one and checked on chain. */
-  discovery: 'chain' | 'peers' | null = null;
+  discovery: 'chain' | 'peers' | 'record' | null = null;
   /** Listings the RPC's list of the program left out that peer routers named and the chain confirmed: an RPC that drops a
    * listing (behind, or leaving it out) cannot hide a node the peers have seen. */
   rpcLeftOut = 0;
   /** The listings this router has only because peer routers named them: all of them when the RPC will not list the
    * program, the ones its list left out otherwise. */
   throughPeers = new Set<string>();
+  /** The listings this router has only from its own record of the nodes it watched before (kept across restarts), not
+   * from the RPC's list and not named by a peer: a node it has used does not vanish because an RPC stopped listing it. */
+  fromRecord = new Set<string>();
   /** Addresses a peer named that the chain did not hold as a listing, with when to read them again: a closed listing a
    * peer still remembers costs one read every ten minutes, not one each refresh. */
   private absentUntil = new Map<string, number>();
@@ -169,34 +172,46 @@ export class Registry {
    * peer routers have named listings, those addresses are read one by one (getMultipleAccountsInfo, which every RPC
    * serves) and each is kept only if the program owns it and it reads as a listing: a peer can point at listings,
    * never make one up. When the RPC does list the program, the listings the peers named that its list left out are read
-   * the same way and added. */
+   * the same way and added. The listings this router recorded before (its own record of the nodes it watched) are read
+   * the same way too, so with no peers it still finds the nodes it knew. */
   private async listings(): Promise<readonly { pubkey: PublicKey; account: { data: Buffer } }[]> {
     let all: readonly { pubkey: PublicKey; account: { data: Buffer } }[];
+    const peerNamed = this.named();
+    const byPeers = new Set(peerNamed.map((k) => k.toBase58()));
+    const candidates = [...peerNamed, ...this.recorded().filter((k) => !byPeers.has(k.toBase58()))];
+    const sort = (got: { pubkey: PublicKey }[]) => {
+      this.throughPeers = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => byPeers.has(a)));
+      this.fromRecord = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => !byPeers.has(a)));
+    };
     try {
       all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
     } catch (e) {
-      const named = this.named();
-      if (!named.length) throw e;
-      const out = await this.readNamed(named);
-      this.discovery = 'peers';
+      if (!candidates.length) throw e;
+      const out = await this.readNamed(candidates);
+      sort(out);
+      this.discovery = this.throughPeers.size || !this.fromRecord.size ? 'peers' : 'record';
       this.rpcLeftOut = 0;
-      this.throughPeers = new Set(out.map((x) => x.pubkey.toBase58()));
       return out;
     }
     this.discovery = 'chain';
-    // The peers' listings the RPC's list did not have are read by address, so one RPC is never the whole map.
+    // The listings the RPC's list did not have are read by address, so one RPC is never the whole map.
     const have = new Set(all.map((a) => a.pubkey.toBase58()));
     const now = Date.now();
-    const left = this.named().filter((k) => !have.has(k.toBase58()) && (this.absentUntil.get(k.toBase58()) ?? 0) <= now);
+    const left = candidates.filter((k) => !have.has(k.toBase58()) && (this.absentUntil.get(k.toBase58()) ?? 0) <= now);
     const extra = left.length ? await this.readNamed(left).catch(() => null) : [];
     if (!extra) return all;
     if (left.length && extra.length < left.length) {
       const found = new Set(extra.map((x) => x.pubkey.toBase58()));
       for (const k of left) if (!found.has(k.toBase58())) this.absentUntil.set(k.toBase58(), now + 10 * 60_000);
     }
-    this.rpcLeftOut = extra.length;
-    this.throughPeers = new Set(extra.map((x) => x.pubkey.toBase58()));
+    sort(extra);
+    this.rpcLeftOut = this.throughPeers.size;
     return extra.length ? [...all, ...extra] : all;
+  }
+
+  /** The listing addresses in this router's own record of the nodes it watched, each a valid key. */
+  private recorded(): PublicKey[] {
+    return [...this.watch.keys()].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
   }
 
   /** The listing addresses peer routers named, each a valid key, once. */

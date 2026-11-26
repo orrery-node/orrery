@@ -348,6 +348,7 @@ export class Router {
     await this.readPeers();
     await this.o.registry.refresh().catch((e) => this.log(`registry refresh failed: ${(e as Error).message}`));
     if (this.o.registry.discovery === 'peers') this.log(`this RPC does not list the program's accounts; found ${this.o.registry.entries.size} listings from the peer routers' notes, each read and checked on chain`);
+    if (this.o.registry.discovery === 'record') this.log(`this RPC does not list the program's accounts; found ${this.o.registry.entries.size} listings from this router's own record of the nodes it watched before, each read and checked on chain`);
     this.noteLeftOut();
     // The same tick reads this wallet's holder standing again, so a request finds it in memory and never waits for it.
     this.timer = setInterval(() => {
@@ -833,8 +834,9 @@ export class Router {
     const billsBy = new Map(this.billsNow().map((x) => [x.provider, { checked: x.checked, over: x.over }]));
     const providers = [...this.o.registry.entries.values()].map((e) => ({
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
-      // Where this router found the listing: in the RPC's list of the program, or only because peer routers named it.
-      found: this.o.registry.throughPeers.has(e.address) ? 'peers' : 'rpc',
+      // Where this router found the listing: in the RPC's list of the program, only because peer routers named it, or only
+      // in its own record of the nodes it watched before.
+      found: this.o.registry.throughPeers.has(e.address) ? 'peers' : this.o.registry.fromRecord.has(e.address) ? 'record' : 'rpc',
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
       tee: e.tee ? { verified: e.tee.verified, dev: e.tee.dev, reason: e.tee.reason } : null, observed: this.stats.get(e.address),
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,
