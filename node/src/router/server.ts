@@ -490,43 +490,51 @@ export class Router {
   }
 
   /** Asks each given peer what it says at /orrery/peers: the relay it runs, if any (kept per peer, so the status can say
-   * which peers this router could use as its --proxy), and, with --meet-peers, which routers it reads. Of those, up to
+   * which peers this router could use as its --proxy), and, with --meet-peers, which routers it reads; a router met that
+   * way is then asked only about its relay. Of those, up to
    * MEET_MAX are kept, each pinned to the key that peer saw sign their notes, so a router met this way is read only if
    * that same router signs. A peer that does not answer keeps what it said before; routers already given, and
    * introductions of this router itself (its own key), are left out. */
   private async askPeers(): Promise<void> {
     const bases = [...new Set(this.givenPeers().map((g) => g.split('#')[0].replace(/\/$/, '')))];
     const known = new Set(bases);
-    for (const k of [...this.peerRelay.keys()]) if (!known.has(k)) this.peerRelay.delete(k);
     const own = this.o.channels.session.publicKey.toBase58();
-    const heard = await Promise.all(bases.map(async (base) => ({ base, j: await fetchNode(`${base}/orrery/peers`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : r.status === 404 ? null : undefined)).catch(() => undefined) })));
-    for (const k of [...this.peerRelayOpen.keys()]) if (!known.has(k)) this.peerRelayOpen.delete(k);
-    for (const k of [...this.peerRelayFull.keys()]) if (!known.has(k)) this.peerRelayFull.delete(k);
-    for (const { base, j } of heard) {
-      if (j === undefined) continue;
+    const ask = (base: string) => fetchNode(`${base}/orrery/peers`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : r.status === 404 ? null : undefined)).catch(() => undefined);
+    const keepRelay = (base: string, j: unknown) => {
+      if (j === undefined) return;
       this.peerRelay.set(base, readRelayPort(j));
       this.peerRelayOpen.set(base, readRelayOpen(j));
       this.peerRelayFull.set(base, readRelayFull(j));
-    }
+    };
+    const heard = await Promise.all(bases.map(async (base) => ({ base, j: await ask(base) })));
+    for (const { base, j } of heard) keepRelay(base, j);
+    const asked = new Set(bases);
     if (!this.o.meetPeers) {
       this.met.clear();
-      return;
-    }
-    const next = new Map<string, string>();
-    for (const { base, j } of heard) {
-      const named = j === undefined ? [...this.met].filter(([, via]) => via === base).map(([k]) => k) : readIntroductions(j);
-      for (const k of named) {
-        const [url, by] = k.split('#');
-        if (known.has(url) || by === own || next.has(k) || next.size >= this.meetMax()) continue;
-        next.set(k, base);
+    } else {
+      const next = new Map<string, string>();
+      for (const { base, j } of heard) {
+        const named = j === undefined ? [...this.met].filter(([, via]) => via === base).map(([k]) => k) : readIntroductions(j);
+        for (const k of named) {
+          const [url, by] = k.split('#');
+          if (known.has(url) || by === own || next.has(k) || next.size >= this.meetMax()) continue;
+          next.set(k, base);
+        }
       }
+      for (const [k, via] of next) {
+        if (this.met.has(k)) continue;
+        const [url, by] = k.split('#');
+        this.log(`met ${url} through ${via}, pinned to ${by.slice(0, 4)}\u2026${by.slice(-4)}`);
+      }
+      this.met = next;
+      // A router met through a peer is asked only which relay it runs: who it reads is never taken from it, so every
+      // router this one reads stays at most two steps away.
+      const metBases = [...new Set([...this.met.keys()].map((k) => k.split('#')[0].replace(/\/$/, '')))].filter((b) => !known.has(b));
+      const metHeard = await Promise.all(metBases.map(async (base) => ({ base, j: await ask(base) })));
+      for (const { base, j } of metHeard) keepRelay(base, j);
+      for (const b of metBases) asked.add(b);
     }
-    for (const [k, via] of next) {
-      if (this.met.has(k)) continue;
-      const [url, by] = k.split('#');
-      this.log(`met ${url} through ${via}, pinned to ${by.slice(0, 4)}\u2026${by.slice(-4)}`);
-    }
-    this.met = next;
+    for (const m of [this.peerRelay, this.peerRelayOpen, this.peerRelayFull]) for (const k of [...m.keys()]) if (!asked.has(k)) m.delete(k);
   }
 
   /** With --trust-peers, where a node this router has no record of starts: what the peers saw it answer, a peer this

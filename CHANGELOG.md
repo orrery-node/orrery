@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · With `--meet-peers`, a router met through a peer is also asked which relay it runs, so its port, how busy it is and whether it is full for today show in `orrery peers` and the console like a given peer's; who it reads is still never taken from it, so every router read stays at most two steps away.
 - **Router** · The peers' summary line in `orrery peers`, `orrery doctor` and the console says how many of their relays are full for today ("2 relaying (1 full for today)"); `--json` keeps the same counts as before.
 - **Router** · The router log says once when its relay reaches the `--relay-max-mb` limit for the day ("relay: carried its 500.0 MB for today; new connections are turned away for about 7 h, the ones open now finish"), and not again for what comes after it.
 - **Router** · A relay at its `--relay-max-mb` limit says so to other routers at `/orrery/peers`, and a router reading that peer says its relay is "full for today" (status `relayFull`, the console, `orrery peers`, `orrery peers --check` and `orrery doctor`), so nobody points `--proxy` at a relay that will turn them away.

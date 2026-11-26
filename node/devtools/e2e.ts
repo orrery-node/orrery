@@ -2672,6 +2672,42 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     summary === '1 peer router: 0 signed, 0 met through a peer, 0 refused, 1 relaying (1 full for today)',
     summary || 'no summary line');
 }
+// A router met through a peer also says which relay it runs, so relays two steps away are seen before they are needed;
+// who it reads is never taken from it (first-hand introductions only).
+{
+  const opts = routerOpts as { peers?: string[]; shareNotes?: boolean; meetPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signMet } = await import('../src/router/notes.ts');
+  const { signerOf: signerMet } = await import('../src/keys.ts');
+  const ourKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  opts.shareNotes = true;
+  const ours = (await (await fetch(`${ROUTER}/orrery/notes`)).json()) as { nodes: never[] };
+  const metKey = Keypair.generate();
+  const json = (body: unknown) => (res: import('node:http').ServerResponse) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+  const d = createHttpServer((req, res) => (req.url === '/orrery/notes' ? json(signMet({ notes: 1, at: Date.now(), nodes: ours.nodes }, metKey.publicKey.toBase58(), signerMet(metKey)))(res) : req.url === '/orrery/peers' ? json({ peers: [{ url: 'http://127.0.0.1:9', by: metKey.publicKey.toBase58() }], relay: { port: 7373, open: 1 } })(res) : res.writeHead(404).end()));
+  await new Promise<void>((done) => d.listen(0, '127.0.0.1', () => done()));
+  const dUrl = `http://127.0.0.1:${(d.address() as { port: number }).port}`;
+  const a = createHttpServer((req, res) => (req.url === '/orrery/notes' ? json(ours)(res) : req.url === '/orrery/peers' ? json({ peers: [{ url: dUrl, by: metKey.publicKey.toBase58() }] })(res) : res.writeHead(404).end()));
+  await new Promise<void>((done) => a.listen(0, '127.0.0.1', () => done()));
+  const aUrl = `http://127.0.0.1:${(a.address() as { port: number }).port}`;
+  opts.meetPeers = true;
+  opts.peers = [`${aUrl}#${ourKey}`];
+  await rp.readPeers?.();
+  const rows = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers?: { url: string; via?: string | null; relayPort?: number | null; relayOpen?: number | null }[] }).peers ?? [];
+  const dRow = rows.find((p) => p.url === dUrl);
+  const twoSteps = rows.some((p) => p.url === 'http://127.0.0.1:9');
+  opts.peers = [];
+  opts.meetPeers = false;
+  opts.shareNotes = false;
+  await rp.readPeers?.();
+  for (const srv of [a, d]) {
+    srv.closeAllConnections();
+    await new Promise((done) => srv.close(done));
+  }
+  check('a router met through a peer also says which relay it runs (port and how busy), and who it reads is not taken from it',
+    dRow?.via === aUrl && dRow.relayPort === 7373 && dRow.relayOpen === 1 && !twoSteps,
+    `met router: via ${dRow?.via ? '<peer>' : dRow?.via ?? 'not met'}, relay ${dRow?.relayPort ?? 'none'} (${dRow?.relayOpen ?? '?'} open) · its own introduction taken: ${twoSteps}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
