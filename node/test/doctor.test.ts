@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, holderLaneLine, newer, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, newer, noPeerRelayLine, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -293,5 +293,9 @@ describe('orrery doctor, what the running router paid', () => {
     const notes = { notes: 1, at: now, nodes: [] };
     assert.equal(peerCheck('http://10.0.0.9:7171', notes, { peers: [], relay: { port: 7272, open: 1, holders: true } }, now).lines[2], 'relays on port 7272 (1 open now, keeps a lane for $OREY holders past its daily limit), usable as --proxy http://<its host>:7272');
     assert.equal(peerCheck('http://10.0.0.9:7171', notes, { peers: [], relay: { port: 7272, open: 0, full: true, holders: true } }, now).lines[2], 'relays on port 7272 (0 open now, full for today, $OREY holders still ride), usable as --proxy http://<its host>:7272');
+  });
+
+  it('says when --proxy-via-peers is on but no peer relay can take the router, and where to look', () => {
+    assert.equal(noPeerRelayLine(), "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer");
   });
 });

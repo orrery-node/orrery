@@ -2899,6 +2899,21 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     mcpRelays !== '' && mcpRelays === cliRelays && mcpRelays.includes('--proxy http://127.0.0.1:7474'),
     mcpRelays.replaceAll('127.0.0.1', '<host>').split('\n').slice(0, 2).join(' | ').slice(0, 200) || 'no answer from the peers tool');
 }
+// With --proxy-via-peers on and no peer relay to use, orrery doctor says so instead of saying nothing.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  opts.peers = [];
+  opts.proxyViaPeers = true;
+  await rp.readPeers?.();
+  const viaNone = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
+  const statusVia = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { proxyViaPeers?: boolean; peerRelay?: string | null });
+  opts.proxyViaPeers = false;
+  await rp.readPeers?.();
+  check('with --proxy-via-peers on and no peer relay to use, orrery doctor says the nodes are reached the router\u2019s own way and where to look',
+    statusVia.proxyViaPeers === true && statusVia.peerRelay === null && viaNone.startsWith('--proxy-via-peers is on, but no signed peer offers a relay that takes connections now'),
+    `status proxyViaPeers ${statusVia.proxyViaPeers ?? '?'}, peerRelay ${statusVia.peerRelay ?? 'none'} · doctor: ${viaNone.slice(0, 120) || 'no line'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'With `--proxy-via-peers` on and no peer relay to use, `orrery doctor` says so (the nodes are reached the router\'s own way, and `orrery peers --relays` lists what the peers offer) instead of saying nothing; the status has `proxyViaPeers`.' },
   { who: 'router', text: 'The `peers` tool in `orrery mcp` takes `relays`: an agent gets the same `--proxy` lines as `orrery peers --relays`, least busy first, including full relays that still carry $OREY holders when its router\'s wallet rides the holder lanes.' },
   { who: 'router', text: '`orrery peers --check` says when the router it reads keeps a lane for $OREY holders on its relay ("keeps a lane for $OREY holders past its daily limit", or "full for today, $OREY holders still ride"), so a holder sees it before adding that peer; the `peers` tool in `orrery mcp` says the same.' },
   { who: 'router', text: 'The router console\'s holder line adds, when your wallet rides the $OREY holder lanes, that peer relays carry it past their daily limit.' },
