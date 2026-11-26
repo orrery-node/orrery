@@ -2476,6 +2476,28 @@ const all4 = () => registry.entries.size;
     line === '1 of the 2 nodes it names is not on your map yet (1 already is): once added, your router reads it on chain and keeps it only if it is a listing',
     line || checked.split('\n')[0].replace(/127\.0\.0\.1:\d+/, '<host>').slice(0, 120) || 'no answer');
 }
+// orrery doctor with an RPC that will not list the program (as many public ones do) still checks the nodes in the
+// router's own record, each read on chain: an RPC in front of the rehearsal validator refuses getProgramAccounts only.
+{
+  const refusingRpc = createHttpServer(async (req, res) => {
+    let body = '';
+    for await (const c of req) body += c;
+    const msg = JSON.parse(body) as { method?: string; id?: unknown };
+    if (!Array.isArray(msg) && msg.method === 'getProgramAccounts') return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32010, message: 'getProgramAccounts is not served on this RPC' } }));
+    const r = await fetch(RPC, { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    res.writeHead(r.status, { 'content-type': 'application/json' }).end(Buffer.from(await r.arrayBuffer()));
+  });
+  await new Promise<void>((done) => refusingRpc.listen(0, '127.0.0.1', () => done()));
+  const viaRefusing = `http://127.0.0.1:${(refusingRpc.address() as { port: number }).port}`;
+  const recorded = Object.keys(JSON.parse(readFileSync(WATCHED, 'utf8')) as Record<string, unknown>).filter((a) => registry.entries.has(a)).length;
+  const lines = await doctor({ rpc: viaRefusing, mint: usdc, router: ROUTER, deposit: USD, routerHome: join(WATCHED, '..') });
+  refusingRpc.closeAllConnections();
+  await new Promise((done) => refusingRpc.close(done));
+  const listings = lines.find((l) => l.what === 'listings');
+  check('orrery doctor with an RPC that will not list the program checks the nodes in the router\u2019s own record on chain, and says so',
+    recorded > 0 && listings?.ok === true && (listings.detail ?? '').startsWith(`${recorded} from this router\u2019s own record of the nodes it watched, each read on chain`),
+    `${recorded} of the record listed · listings: ${listings?.ok ?? '?'}, ${(listings?.detail ?? 'no line').slice(0, 140)}`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

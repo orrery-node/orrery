@@ -108,13 +108,15 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
 
   // The router's pins as it keeps them, read and not written: doctor's own reading of a node changes nothing there.
   const pins = readPins(o.pins);
-  const registry = new Registry(conn, { allowDev: o.allowDev ?? false, measurements: [] });
+  // The router's own record of the nodes it watched is read (never written): an RPC that will not list the program does
+  // not leave doctor blind to the nodes this router knew.
+  const registry = new Registry(conn, { allowDev: o.allowDev ?? false, measurements: [] }, undefined, o.routerHome ? join(o.routerHome, 'watched.json') : undefined);
   t0 = Date.now();
   const unlisted = await registry.refresh().then(() => null, (e) => (e as Error).message);
   const entries = [...registry.entries.values()];
   const up: { name: string; endpoint: string }[] = [];
   const privacy: { wire: boolean; inside: boolean; enclave: boolean }[] = [];
-  out.push(unlisted ? { ok: false, what: 'listings', detail: unlisted } : { ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: `${entries.length} on chain, read in ${ms(t0)}` });
+  out.push(unlisted ? { ok: false, what: 'listings', detail: unlisted } : { ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: listingsDetail(entries.length, registry.discovery, registry.fromRecord.size, ms(t0)) });
   for (const e of entries) {
     const name = e.manifest?.name ?? e.address.slice(0, 8);
     if (!e.account.active) {
@@ -377,6 +379,12 @@ export function fullRelaysText(peers: PeerRow[]): string {
 export function byTrust<T extends PeerRow>(peers: T[]): T[] {
   const rank = (p: PeerRow) => (p.refused ? 4 : p.at === 0 ? 3 : (p.missed ?? 0) > 0 ? 2 : p.via ? 1 : 0) * 2 + (p.signed ? 0 : 1);
   return [...peers].sort((a, b) => rank(a) - rank(b));
+}
+
+/** doctor's listings line: how many, and when the RPC did not give them all, how many came from the router's own record. */
+export function listingsDetail(n: number, discovery: string | null, fromRecord: number, took: string): string {
+  if (discovery === 'record') return `${n} from this router\u2019s own record of the nodes it watched, each read on chain (this RPC does not list the program\u2019s accounts), read in ${took}`;
+  return `${n} on chain${fromRecord ? `, ${fromRecord} of them only in this router\u2019s own record (the RPC\u2019s list left ${fromRecord === 1 ? 'it' : 'them'} out)` : ''}, read in ${took}`;
 }
 
 /** Where the listings came from when the RPC will not list the program and no peer named any: the router's own record. */

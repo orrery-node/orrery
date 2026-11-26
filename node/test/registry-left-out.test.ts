@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
 import { nothingToReadLine, Registry, rpcLeftOutLine } from '../src/router/registry.ts';
-import { foundThroughPeers, mapLine, newToMapLine, peerCheck, peersReport, RECORD_LINE } from '../src/doctor.ts';
+import { foundThroughPeers, listingsDetail, mapLine, newToMapLine, peerCheck, peersReport, RECORD_LINE } from '../src/doctor.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -158,5 +158,11 @@ describe('peer exchange past an RPC that leaves listings out', () => {
     const notes = { notes: 1, at: 1_000, nodes: [{ address: key, checks: 1, up: 1, sent: 0, answered: 0 }] };
     assert.ok(peerCheck('http://r:7171', notes, null, 1_000, new Set()).lines.includes(newToMapLine([key], new Set())));
     assert.ok(!peerCheck('http://r:7171', notes, null, 1_000).lines.some((l) => l.includes('your map')));
+  });
+
+  it('says in doctor\'s listings line how many came from the router\'s own record', () => {
+    assert.equal(listingsDetail(4, 'chain', 0, '80 ms'), '4 on chain, read in 80 ms');
+    assert.equal(listingsDetail(4, 'chain', 1, '80 ms'), '4 on chain, 1 of them only in this router\u2019s own record (the RPC\u2019s list left it out), read in 80 ms');
+    assert.equal(listingsDetail(3, 'record', 3, '90 ms'), '3 from this router\u2019s own record of the nodes it watched, each read on chain (this RPC does not list the program\u2019s accounts), read in 90 ms');
   });
 });

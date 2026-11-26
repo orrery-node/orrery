@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery doctor` reads the router\'s own record of the nodes it watched (without changing it), so with an RPC that will not list the program it still checks those listings on chain, and its listings line says how many came from the record.' },
   { who: 'router', text: '`orrery peers --check <url>` (and `check` in the `peers` tool of `orrery mcp`) says how many of the nodes that router names are not on your map yet, before you add it: once added, your router reads each on chain and keeps only real listings.' },
   { who: 'router', text: 'A new router whose RPC will not list the program, with no peer or record naming a listing yet, is told how to get its first map: start it with `--peer <url>#<key>` to read another router\'s notes (`orrery peers --check <url>` reads that router first), or use an RPC that serves getProgramAccounts. `orrery doctor` shows the same line on its listings check and goes on with the rest instead of stopping.' },
   { who: 'router', text: '`orrery peers`, `orrery doctor` and the console say where the router\'s map of the network came from in one line: how many listings it has, and how many are in the RPC\'s list, came from peers (named by peer routers, read on chain), or are only in its own record.' },
