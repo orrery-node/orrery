@@ -2832,6 +2832,32 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     st?.lane === true && laneLine === `this wallet holds ${st.share} of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)`,
     `status lane ${st?.lane ?? '?'} · doctor: ${laneLine || 'no line'}`);
 }
+// orrery peers --relays, for a router whose wallet rides the $OREY holder lanes: a peer relay full for today that still
+// carries holders is offered (and says so); one that does not is left out.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const fullPeer = (port: number, holders: boolean) => createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [] })) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port, open: 0, full: true, holders } })) : res.writeHead(404).end()));
+  const pair = [fullPeer(7272, true), fullPeer(7373, false)];
+  const pairUrls: string[] = [];
+  for (const srv of pair) {
+    await new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()));
+    pairUrls.push(`http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  }
+  opts.peers = pairUrls;
+  await rp.readPeers?.();
+  const holderRelays = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out.trim())); });
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of pair) {
+    srv.closeAllConnections();
+    await new Promise((done) => srv.close(done));
+  }
+  const hl = holderRelays.split('\n');
+  check('orrery peers --relays offers a holder router a peer relay full for today that still carries $OREY holders, and leaves out one that does not',
+    hl[0] === '1 peer relay you can use, least busy first:' && hl[1] === `  --proxy http://127.0.0.1:7272  (${pairUrls[0]}, 0 open now, full for today, carries you as a $OREY holder, unsigned)` && hl[2] === `1 full for today, left out: ${pairUrls[1]}`,
+    holderRelays.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

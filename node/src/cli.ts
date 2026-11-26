@@ -803,7 +803,7 @@ async function main() {
       process.exitCode = 1;
       return console.log(`No router answers at ${routerUrl}. Start one with: ${CLI} router --peer <url>#<key>`);
     }
-    return console.log(relayChoices(status.peers ?? []).join('\n'));
+    return console.log(relayChoices(status.peers ?? [], (status as { holder?: { lane?: boolean } | null }).holder?.lane === true).join('\n'));
   }
   if (cmd === 'peers') {
     // Asks only the router on this computer (or the one --router names) for its status: nothing goes to a peer or a node.

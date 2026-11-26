@@ -272,4 +272,19 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(holderLaneLine(true, '2.00%'), 'this wallet holds 2.00% of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)');
     assert.equal(holderLaneLine(false, '0.0040%'), "0.01% of $OREY's supply (100k) rides holder lanes on peer relays past their daily limit; this wallet holds 0.0040%");
   });
+
+  it('offers a full relay that still carries holders to a router whose wallet rides the holder lanes, and only to it', () => {
+    const row = { pinned: false, by: null, signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    const peers = [
+      { ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0, relayFull: true, relayHolders: true },
+      { ...row, url: 'http://10.0.0.3:7171', relayPort: 7373, relayOpen: 0, relayFull: true },
+    ];
+    assert.deepEqual(relayChoices(peers, true), [
+      '1 peer relay you can use, least busy first:',
+      '  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 0 open now, full for today, carries you as a $OREY holder)',
+      '1 full for today, left out: http://10.0.0.3:7171',
+      'Start your router with one as --proxy and the nodes see that router, not this computer.',
+    ]);
+    assert.deepEqual(relayChoices(peers, false), ['No peer relay can take new connections right now.', '2 full for today, left out: http://10.0.0.2:7171, http://10.0.0.3:7171']);
+  });
 });

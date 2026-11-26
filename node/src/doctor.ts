@@ -327,12 +327,14 @@ export function holderLaneLine(lane: boolean, share: string): string {
 }
 
 /** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first, each as the --proxy
- * it would take (the peer's host, the relay's port). Relays full for today are left out and said; refused peers and
- * peers that never answered are not offered. */
-export function relayChoices(peers: PeerRow[]): string[] {
+ * it would take (the peer's host, the relay's port). Relays full for today are left out and said, except, for a router
+ * whose wallet rides the $OREY holder lanes, those that still carry holders; refused peers and peers that never
+ * answered are not offered. */
+export function relayChoices(peers: PeerRow[], holder = false): string[] {
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
-  const full = running.filter((p) => p.relayFull);
-  const usable = running.filter((p) => !p.relayFull).sort((a, b) => (a.relayOpen ?? Infinity) - (b.relayOpen ?? Infinity) || Number(b.signed) - Number(a.signed));
+  const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
+  const full = running.filter((p) => p.relayFull && !lane(p));
+  const usable = running.filter((p) => !p.relayFull || lane(p)).sort((a, b) => Number(lane(a)) - Number(lane(b)) || (a.relayOpen ?? Infinity) - (b.relayOpen ?? Infinity) || Number(b.signed) - Number(a.signed));
   if (!running.length) return ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).'];
   const host = (url: string) => {
     try {
@@ -345,7 +347,7 @@ export function relayChoices(peers: PeerRow[]): string[] {
   if (usable.length) {
     out.push(`${usable.length} peer relay${usable.length === 1 ? '' : 's'} you can use, least busy first:`);
     for (const p of usable) {
-      const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
+      const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', lane(p) ? 'full for today, carries you as a $OREY holder' : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
       out.push(`  --proxy http://${host(p.url)}:${p.relayPort}  (${about})`);
     }
   } else out.push('No peer relay can take new connections right now.');
