@@ -2388,7 +2388,10 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
 // reads the listings its peers named by address and keeps the ones the chain confirms, so one RPC is never the whole map.
 {
   const all = [...registry.entries.keys()].sort();
-  const dropped = all.find((a) => registry.entries.get(a)?.manifest) ?? all[0];
+  // Dropped from the RPC's list: a node whose price list a router can read right now, so the check is about the listing.
+  const readNow = new Registry(conn, { allowDev: true, measurements: [] });
+  await readNow.refresh();
+  const dropped = all.find((a) => readNow.entries.get(a)?.manifest) ?? all[0];
   const leaving = Object.assign(Object.create(conn) as object, {
     getProgramAccounts: async (...a: Parameters<typeof conn.getProgramAccounts>) => (await conn.getProgramAccounts(...a)).filter((x) => x.pubkey.toBase58() !== dropped),
   }) as unknown as typeof conn;
@@ -2403,6 +2406,7 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     all.length > 1 && !alone.entries.has(dropped) && JSON.stringify(found) === JSON.stringify(all) && withPeers.entries.get(dropped)?.manifest != null && left === 1 && withPeers.discovery === 'chain',
     `RPC list ${all.length - 1} of ${all.length} · alone ${alone.entries.size}, with peers ${found.length} (left out and added: ${left ?? 'unknown'}, its price list ${withPeers.entries.get(dropped)?.manifest ? 'read' : 'missing'})`);
 }
+const all4 = () => registry.entries.size;
 // The router says which nodes it found only through its peers: with an RPC whose list leaves a listing out and one peer
 // naming it, the running router's status marks that node found through peers, and orrery peers lists it with the count.
 {
@@ -2433,6 +2437,10 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('the router says which node it found only through its peers: status found is peers, orrery peers lists it named by 1 peer router, and all are back to the RPC after',
     dropped !== '' && JSON.stringify(marked) === JSON.stringify([dropped]) && st.rpcLeftOut === 1 && /found through peers, named by 1 peer router, read on chain/.test(line) && after.every((p) => p.found === 'rpc'),
     `found through peers: ${marked.length} (rpcLeftOut ${st.rpcLeftOut ?? '?'}) · orrery peers: ${line.trim().replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, '<address>').slice(0, 110) || 'no line'} · after: ${after.filter((p) => p.found === 'rpc').length} of ${after.length} from the RPC`);
+  const mapNow = cliPeers.split('\n').find((l) => l.startsWith('the map: ')) ?? '';
+  check('orrery peers says where the map came from in one line: how many listings are in the RPC\u2019s list and how many came from peers',
+    mapNow === `the map: ${all4()} listings, ${all4() - 1} in the RPC's list, 1 from peers`,
+    mapNow || 'no map line');
 }
 // A node a router has used does not vanish with the RPC: with an RPC that will not list the program and no peer at all,
 // a router started from the same home finds the listings in its own record of the nodes it watched, each read on chain.

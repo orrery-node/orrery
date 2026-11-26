@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
 import { Registry, rpcLeftOutLine } from '../src/router/registry.ts';
-import { foundThroughPeers, peersReport, RECORD_LINE } from '../src/doctor.ts';
+import { foundThroughPeers, mapLine, peersReport, RECORD_LINE } from '../src/doctor.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,5 +129,15 @@ describe('peer exchange past an RPC that leaves listings out', () => {
   it('says the listings came from the router\'s own record, and counts the nodes only in it', () => {
     assert.equal(peersReport({ peers: [], relay: null, discovery: 'record' }).at(-1), RECORD_LINE);
     assert.deepEqual(foundThroughPeers([{ address: 'x', found: 'record' }, { address: 'y', found: 'record' }, { address: 'z', found: 'rpc' }]), ['  2 listings only in this router\u2019s own record of the nodes it watched before, read on chain']);
+  });
+
+  it('says where the map came from in one line', () => {
+    assert.equal(mapLine([]), null);
+    assert.equal(mapLine([{ address: 'a', found: 'rpc' }]), "the map: 1 listing, 1 in the RPC's list");
+    assert.equal(mapLine([{ address: 'a', found: 'rpc' }, { address: 'b', found: 'rpc' }, { address: 'c', found: 'peers' }, { address: 'd', found: 'record' }]), "the map: 4 listings, 2 in the RPC's list, 1 from peers, 1 from this router's own record");
+    assert.equal(mapLine([{ address: 'c', found: 'peers' }, { address: 'd' }]), "the map: 2 listings, 1 in the RPC's list, 1 from peers");
+    assert.equal(mapLine([{ address: 'c', found: 'peers' }]), "the map: 1 listing, none in the RPC's list, 1 from peers");
+    const report = peersReport({ peers: [], relay: null, discovery: 'chain', providers: [{ address: 'a', found: 'rpc' }, { address: 'c', found: 'peers' }] });
+    assert.ok(report.includes("the map: 2 listings, 1 in the RPC's list, 1 from peers"));
   });
 });
