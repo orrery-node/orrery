@@ -5,11 +5,12 @@ import { PROVIDER_PORT, TICKER, USDC_MAINNET } from '../brand.ts';
 import type { HolderTier } from '../holder.ts';
 
 /** The holder tiers a new node starts with: the seed node's own (0.1% of the network token's supply for 20% less, 1%
- * for 35% less), so a holder's price means the same at every node that keeps them. */
-export const DEFAULT_HOLDER_TIERS: HolderTier[] = [{ share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
+ * for 35% less) with a smaller one below them (0.01% for 10% less), so a holder's price means the same at every node
+ * that keeps them and a small holder has one too. */
+export const DEFAULT_HOLDER_TIERS: HolderTier[] = [{ share: 1, off: 1_000 }, { share: 10, off: 2_000 }, { share: 100, off: 3_500 }];
 
 /** What provider init says about the holder prices it wrote:
- *   holder prices: $OREY holders pay 20% less with 0.1% of its supply, 35% less with 1% (the seed node's tiers) */
+ *   holder prices: $OREY holders pay 10% less with 0.01% of its supply, 20% less with 0.1%, 35% less with 1% */
 export function holderTiersNote(tiers: HolderTier[]): string {
   const pct = (bp: number) => `${bp / 100}%`;
   return `holder prices: $${TICKER} holders pay ${tiers.map((t, i) => `${pct(t.off)} less with ${pct(t.share)}${i === 0 ? ' of its supply' : ''}`).join(', ')}`;
