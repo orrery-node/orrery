@@ -2858,6 +2858,14 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     hl[0] === '1 peer relay you can use, least busy first:' && hl[1] === `  --proxy http://127.0.0.1:7272  (${pairUrls[0]}, 0 open now, full for today, carries you as a $OREY holder, unsigned)` && hl[2] === `1 full for today, left out: ${pairUrls[1]}`,
     holderRelays.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
+// The router console's holder line also says when this router's wallet rides the $OREY holder lanes, from its status.
+{
+  const page = await (await fetch(`${ROUTER}/`)).text();
+  const laneNow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { holder?: { lane?: boolean } | null }).holder?.lane ?? null;
+  check('the router console\u2019s holder line says when this router\u2019s wallet rides the $OREY holder lanes on peer relays',
+    laneNow === true && page.includes("s.holder&&s.holder.lane?' Peer relays carry this wallet past their daily limit: it rides the $OREY holder lanes.'"),
+    `status lane ${laneNow ?? '?'} · console ${page.includes('rides the $OREY holder lanes') ? 'says it' : 'says nothing'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The router console\'s holder line adds, when your wallet rides the $OREY holder lanes, that peer relays carry it past their daily limit.' },
   { who: 'router', text: '`orrery peers --relays` knows when your wallet rides the $OREY holder lanes: a peer relay that is full for today but still carries holders is offered to you, marked "full for today, carries you as a $OREY holder"; for everyone else it stays left out.' },
   { who: 'router', text: 'The router says whether its own wallet rides the $OREY holder lanes: the status has `holder.lane`, and `orrery doctor` adds a line under the holder price ("this wallet holds 2.00% of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit"), or how much rides them when it does not.' },
   { who: 'router', text: '$OREY holders ride a full relay: past its `--relay-max-mb` limit, a relay still carries a router whose wallet signs that it holds at least 0.01% of $OREY\'s supply (checked on chain), and turns the rest away. A relay says it has this holder lane at `/orrery/peers`, and with `--proxy-via-peers` a holder router keeps using a peer relay that is full for today but carries holders. The proof goes only to a peer relay, never to the node.' },
