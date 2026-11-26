@@ -172,7 +172,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   } else out.push({ ok: null, what: 'wallet', detail: 'pass --wallet <keypair.json> or --address <pubkey> to check its SOL and USDC' });
 
   t0 = Date.now();
-  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null } | null } | null;
+  const status = await fetchWithTimeout(`${o.router.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { version?: string | null; privacy?: { pace?: Pace } | null; peers?: { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number }[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; route?: string; channels?: unknown[]; agents?: { name: string; cap: string | null; spent: string; left: string | null; models?: string[] }[]; providers?: { name: string | null; address: string; watched?: Watched | null; observed?: { ok: number; fail: number; broke?: number } | null; peers?: PeerSum | null }[]; holder?: { line?: string | null; lane?: boolean; share?: string } | null } | null;
   out.push(status ? { ok: true, what: 'router', detail: `running at ${o.router}${status.version ? `, orrery-node ${status.version}` : ''}, route ${status.route}, ${n(status.channels?.length ?? 0, 'channel')}` } : { ok: null, what: 'router', detail: routerMissing(o.router, !!o.walletFile) });
   // With a router running, the privacy line also says how its sealed answers come back, as the router's own line does.
   if (status?.privacy?.pace && privacy.length) {
@@ -195,6 +195,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
   // Where the router's wallet stands on holder prices, as its console says it.
   if (status?.holder?.line) out.push({ ok: null, what: '  holder price', detail: status.holder.line });
+  if (status?.holder && typeof status.holder.lane === 'boolean') out.push({ ok: null, what: '  holder lane', detail: holderLaneLine(status.holder.lane, status.holder.share ?? '?') });
   // Each agent's day on this router: its limit, what it spent and has left, and the models it is kept to.
   for (const a of status?.agents ?? []) out.push({ ok: null, what: '  agent', detail: agentDayLine(a) });
   // What the running router has seen for itself: how many of its own checks found each node up.
@@ -315,6 +316,14 @@ export function peersSummary(peers: PeerRow[]): { peers: number; signed: number;
     refused: peers.filter((p) => p.refused).length,
     relaying: peers.filter((p) => p.relayPort).length,
   };
+}
+
+/** Whether this router's wallet rides $OREY holder lanes: a peer relay past its daily limit still carries a router whose
+ * wallet holds at least 0.01% of the supply. */
+export function holderLaneLine(lane: boolean, share: string): string {
+  return lane
+    ? `this wallet holds ${share} of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)`
+    : `0.01% of $OREY's supply (100k) rides holder lanes on peer relays past their daily limit; this wallet holds ${share}`;
 }
 
 /** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first, each as the --proxy

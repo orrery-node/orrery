@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, newer, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, newer, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -266,5 +266,10 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(peerLine({ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: false, nodes: 2, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 0, relayFull: true, relayHolders: true }),
       'http://10.0.0.2:7171: unsigned, notes on 2 nodes; relays on port 7272 (0 open now, full for today, $OREY holders still ride), usable as --proxy http://<its host>:7272');
     assert.equal(relayLine({ port: 7272, relayed: 31, refused: 4, bytes: 3_565_158, today: 3_565_158, maxBytes: 1024 ** 2, forHolders: 3 }), 'open on port 7272: carried 31 (3.4 MB), refused 4, 3.4 MB of 1.0 MB today, 3 carried for $OREY holders past it (listed nodes only)');
+  });
+
+  it('says whether this router\'s wallet rides the holder lanes on peer relays, and the share that does', () => {
+    assert.equal(holderLaneLine(true, '2.00%'), 'this wallet holds 2.00% of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)');
+    assert.equal(holderLaneLine(false, '0.0040%'), "0.01% of $OREY's supply (100k) rides holder lanes on peer relays past their daily limit; this wallet holds 0.0040%");
   });
 });

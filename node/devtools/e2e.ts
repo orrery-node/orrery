@@ -110,7 +110,7 @@ const HOOK = `http://127.0.0.1:${(hookServer.address() as { port: number }).port
 const providerSpecs = [
   { name: 'Kestrel GPU Co-op', region: 'eu-north', port: 17281, up: 19101, tee: false, models: [['llama-3.3-70b', 120_000, 300_000], ['qwen3-32b', 80_000, 200_000]] },
   { name: 'Ironbridge Compute', region: 'us-east', port: 17282, up: 19102, tee: false, resume: true, burn: 2_500, models: [['llama-3.3-70b', 200_000, 450_000], ['deepseek-v3', 270_000, 1_100_000], ['gpt-oss-120b', 37_500, 140_000, 9_375], ['bge-m3', 20_000, 0], ['bge-reranker-v2-m3', 20_000, 0], ['kokoro-82m', 1_000_000, 0], ['flux-schnell', 100_000, 3_000_000]] },
-  { name: 'Vault Nine', region: 'eu-west', port: 17283, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
+  { name: 'Vault Nine', region: 'eu-west', port: 17286, up: 19103, tee: true, resume: true, models: [['llama-3.3-70b', 250_000, 600_000], ['qwen3-32b', 150_000, 300_000], ['gpt-oss-120b', 35_000, 140_000]] },
   { name: 'Halo Compute', region: 'ap-northeast', port: 17284, up: 19104, tee: false, holder: true, inside: true, models: [['gemma-3-27b', 200_000, 800_000]] },
 ] as const;
 
@@ -1666,7 +1666,7 @@ for (let i = 0; i < 3; i++) {
   const c = new Channels(conn, w, Keypair.generate(), usdc, join(WORK, `home/extra-${i}.json`), { deposit: USD / 10n, topUpBelow: 0n, dailyCap: USD });
   const st = await c.ensure(vaultNode.pda.toBase58(), 1n);
   const v = c.settle(vaultNode.pda.toBase58(), { requestId: `extra-${i}`, model: 'qwen3-32b', inputTokens: 1, outputTokens: 1, cost: 5n });
-  await fetch('http://127.0.0.1:17283/orrery/voucher', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: st.channel, voucher: v }) });
+  await fetch(`http://127.0.0.1:${providerSpecs[2].port}/orrery/voucher`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ channel: st.channel, voucher: v }) });
   extraChannels.push(st.channel);
 }
 await sendAndConfirmTransaction(conn, new Transaction().add(ins.closeChannel(vaultNode.node.publicKey, wallets[2].publicKey, new PublicKey(extraChannels[0]), (decodeChannel((await conn.getAccountInfo(new PublicKey(extraChannels[0])))!.data)).payer, usdc)), [vaultNode.node]);
@@ -2822,6 +2822,15 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   check('$OREY holders ride a full relay: past its daily limit the relay turns a stranger away but carries a router whose wallet signs that it holds $OREY, and a holder router keeps a full peer relay that carries holders',
     stranger.startsWith('HTTP/1.1 429') && laneChosen === `http://127.0.0.1:${laneRelay}` && laneAnswer.status === 200 && (after.relay?.forHolders ?? 0) > ridersBefore && after.relay?.holderLane === true && / carried for \$OREY holders past it /.test(laneDoctor),
     `a stranger: ${stranger} · the holder router chose ${laneChosen ?? 'nothing'}, answer ${laneAnswer.status}, carried for holders ${ridersBefore} → ${after.relay?.forHolders ?? '?'} · doctor: …${laneDoctor.slice(-80)}`);
+}
+// The router says whether its own wallet rides the $OREY holder lanes on peer relays: its status has holder.lane, and
+// orrery doctor says it in a line under the holder price.
+{
+  const st = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { holder?: { lane?: boolean; share?: string } | null }).holder ?? null;
+  const laneLine = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'holder lane')?.detail ?? '';
+  check('the router says whether its own wallet rides the $OREY holder lanes on peer relays, in its status and orrery doctor',
+    st?.lane === true && laneLine === `this wallet holds ${st.share} of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)`,
+    `status lane ${st?.lane ?? '?'} · doctor: ${laneLine || 'no line'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
