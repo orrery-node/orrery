@@ -6,7 +6,14 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [
+export const UNRELEASED: Change[] = [];
+
+export const RELEASES: Release[] = [
+  {
+    version: '0.1.31',
+    at: '2026-11-26T09:05:43Z',
+    headline: "Routers go through their peers: --proxy-via-peers sends requests to nodes through the least busy relay a signed peer offers; relays count what they carry, take a daily limit and say when they are full; $OREY holders get their own lane past that limit; new nodes start holder prices at 0.01% of supply; peers' notes survive a restart and count less as they age; and orrery peers --relays and --check show all of it, for people and agents alike.",
+    changes: [
   { who: 'router', text: 'With `--proxy-via-peers` on and no peer relay to use, `orrery doctor` says so (the nodes are reached the router\'s own way, and `orrery peers --relays` lists what the peers offer) instead of saying nothing; the status has `proxyViaPeers`.' },
   { who: 'router', text: 'The `peers` tool in `orrery mcp` takes `relays`: an agent gets the same `--proxy` lines as `orrery peers --relays`, least busy first, including full relays that still carry $OREY holders when its router\'s wallet rides the holder lanes.' },
   { who: 'router', text: '`orrery peers --check` says when the router it reads keeps a lane for $OREY holders on its relay ("keeps a lane for $OREY holders past its daily limit", or "full for today, $OREY holders still ride"), so a holder sees it before adding that peer; the `peers` tool in `orrery mcp` says the same.' },
@@ -34,9 +41,8 @@ export const UNRELEASED: Change[] = [
   { who: 'router', text: 'The `peers` tool in `orrery mcp` takes `check`: an agent reads a router before it is added as a peer and gets the same lines as `orrery peers --check` (signed and by which key, how fresh, whether it relays, what it introduces, the `--peer` line), through the proxy when one is set.' },
   { who: 'router', text: '`orrery doctor` heads its peer lines with the same one-line summary as `orrery peers` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying") and lists the peers in the same order.' },
   { who: 'router', text: '`orrery peers --check <url[#key]>` reads a router before you add it as a peer: whether its notes are signed (and by the key you pinned), how fresh they are, whether it relays and how busy, how many routers it introduces, and the `--peer url#<key>` line to add it with. Notes that would be refused, or no answer, exit 1.' },
-];
-
-export const RELEASES: Release[] = [
+    ],
+  },
   {
     version: '0.1.30',
     at: '2026-11-25T07:21:39Z',

@@ -650,6 +650,7 @@ OpenAI Chat Completions (`/v1/chat/completions`, streaming or not), the OpenAI R
 - [x] Peer exchange: many RPCs refuse getProgramAccounts; a router on one of them finds the network from the listing addresses its peer routers named, reads each one by address (which every RPC serves) and keeps only what the program owns, so a peer can point at listings but never make one up
 - [x] The P2P release, 0.1.29: signed and dated router notes, `--trust-peers`, `--relay`, peer exchange, and the console and `orrery doctor` showing all of it
 - [x] 0.1.30: routers introduce each other (`--meet-peers`, `--meet-max`), only signed notes steer `--trust-peers`, relays with limits and load, `--peers-file`, and `orrery peers` (`--watch`, `--json`, an MCP tool)
+- [x] 0.1.31: routers go through their peers (`--proxy-via-peers`), relays with books and a daily limit (`--relay-max-mb`), a lane for $OREY holders past it, holder prices from 0.01% at new nodes, and `orrery peers --relays` / `--check` (also in `orrery mcp`)
 - [ ] Nodes on your own network, found without the chain: the GPU in the next room serves your laptop
 - [ ] A run through Tor itself
 - [ ] $OREY bonds live on mainnet

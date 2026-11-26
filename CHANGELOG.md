@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.31 · 2026-11-26 09:05 UTC
+
+**Routers go through their peers: --proxy-via-peers sends requests to nodes through the least busy relay a signed peer offers; relays count what they carry, take a daily limit and say when they are full; $OREY holders get their own lane past that limit; new nodes start holder prices at 0.01% of supply; peers' notes survive a restart and count less as they age; and orrery peers --relays and --check show all of it, for people and agents alike.**
 
 - **Router** · With `--proxy-via-peers` on and no peer relay to use, `orrery doctor` says so (the nodes are reached the router's own way, and `orrery peers --relays` lists what the peers offer) instead of saying nothing; the status has `proxyViaPeers`.
 - **Router** · The `peers` tool in `orrery mcp` takes `relays`: an agent gets the same `--proxy` lines as `orrery peers --relays`, least busy first, including full relays that still carry $OREY holders when its router's wallet rides the holder lanes.
@@ -33,6 +35,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · The `peers` tool in `orrery mcp` takes `check`: an agent reads a router before it is added as a peer and gets the same lines as `orrery peers --check` (signed and by which key, how fresh, whether it relays, what it introduces, the `--peer` line), through the proxy when one is set.
 - **Router** · `orrery doctor` heads its peer lines with the same one-line summary as `orrery peers` ("3 peer routers: 2 signed, 1 met through a peer, 1 refused, 1 relaying") and lists the peers in the same order.
 - **Router** · `orrery peers --check <url[#key]>` reads a router before you add it as a peer: whether its notes are signed (and by the key you pinned), how fresh they are, whether it relays and how busy, how many routers it introduces, and the `--peer url#<key>` line to add it with. Notes that would be refused, or no answer, exit 1.
+
+`npx -y orrery-node@0.1.31`
 
 ## 0.1.30 · 2026-11-25 07:21 UTC
 
