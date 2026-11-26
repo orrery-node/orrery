@@ -266,7 +266,8 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
         const base = a.check.split('#')[0].replace(/\/$/, '');
         const notes = await fetchNode(`${base}/orrery/notes`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? r.json() : `${r.status}`)).catch((e: Error) => e.message);
         const intros = await fetchNode(`${base}/orrery/peers`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-        const out = peerCheck(a.check, notes, intros);
+        const mine = await fetchFn(`${router}/orrery/status`).then(async (r) => (r.ok ? new Set(((await r.json()) as { providers?: { address: string }[] }).providers?.map((p) => p.address) ?? []) : null)).catch(() => null);
+        const out = peerCheck(a.check, notes, intros, Date.now(), mine);
         return text(out.lines.join('\n'), !out.ok);
       }
       const r = await fetchFn(`${router}/orrery/status`);

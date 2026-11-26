@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
 import { nothingToReadLine, Registry, rpcLeftOutLine } from '../src/router/registry.ts';
-import { foundThroughPeers, mapLine, peersReport, RECORD_LINE } from '../src/doctor.ts';
+import { foundThroughPeers, mapLine, newToMapLine, peerCheck, peersReport, RECORD_LINE } from '../src/doctor.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -145,5 +145,18 @@ describe('peer exchange past an RPC that leaves listings out', () => {
     const reg = new Registry({ getProgramAccounts: async () => { throw new Error('403 getProgramAccounts is not served'); } } as unknown as Connection, { allowDev: true, measurements: [] });
     await assert.rejects(() => reg.refresh(), (e: Error) => e.message === nothingToReadLine('403 getProgramAccounts is not served'));
     assert.equal(nothingToReadLine('403 x'), "403 x; no peer router or record of this router names a listing yet, so there is nothing to read one by one. Start the router with --peer <url>#<key> to read another router's notes (orrery peers --check <url> reads it first), or use an RPC that serves getProgramAccounts");
+  });
+
+  it('says before peering how many of the nodes a router names are new to this map', () => {
+    const mine = new Set(['a', 'b']);
+    assert.equal(newToMapLine(['a', 'b'], mine), 'all 2 nodes it names are on your map already');
+    assert.equal(newToMapLine(['a'], mine), 'the node it names is on your map already');
+    assert.equal(newToMapLine(['c'], mine), 'the node it names is not on your map yet: once added, your router reads it on chain and keeps it only if it is a listing');
+    assert.equal(newToMapLine(['c', 'd'], mine), 'all 2 nodes it names are not on your map yet: once added, your router reads each on chain and keeps only the ones that are listings');
+    assert.equal(newToMapLine(['a', 'c', 'd', 'd'], mine), '2 of the 3 nodes it names are not on your map yet (1 already is): once added, your router reads each on chain and keeps only the ones that are listings');
+    const key = Keypair.generate().publicKey.toBase58();
+    const notes = { notes: 1, at: 1_000, nodes: [{ address: key, checks: 1, up: 1, sent: 0, answered: 0 }] };
+    assert.ok(peerCheck('http://r:7171', notes, null, 1_000, new Set()).lines.includes(newToMapLine([key], new Set())));
+    assert.ok(!peerCheck('http://r:7171', notes, null, 1_000).lines.some((l) => l.includes('your map')));
   });
 });

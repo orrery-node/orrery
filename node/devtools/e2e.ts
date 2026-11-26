@@ -2461,6 +2461,21 @@ const all4 = () => registry.entries.size;
     onChain.length > 0 && result === 'listed' && discovery === 'record' && JSON.stringify(found) === JSON.stringify(onChain) && JSON.stringify(kept) === JSON.stringify(onChain) && fromHome.usable().length > 0,
     `${recorded.length} in the record, ${onChain.length} of them listed · ${result.slice(0, 60)}, discovery ${discovery ?? 'none'}: ${found.length} found, ${fromHome.usable().length} ready`);
 }
+// Before adding a router as a peer, orrery peers --check says how many of the nodes it names are new to this router's map.
+{
+  const known = [...registry.entries.keys()][0];
+  const stranger = Keypair.generate().publicKey.toBase58();
+  const candidate = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [{ address: known, checks: 2, up: 2, sent: 0, answered: 0 }, { address: stranger, checks: 1, up: 1, sent: 0, answered: 0 }] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => candidate.listen(0, '127.0.0.1', () => done()));
+  const curl = `http://127.0.0.1:${(candidate.address() as { port: number }).port}`;
+  const checked = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', curl, '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  candidate.closeAllConnections();
+  await new Promise((done) => candidate.close(done));
+  const line = checked.split('\n').find((l) => l.includes('your map')) ?? '';
+  check('orrery peers --check says how many of the nodes a router names are new to this router\u2019s map, before it is added',
+    line === '1 of the 2 nodes it names is not on your map yet (1 already is): once added, your router reads it on chain and keeps it only if it is a listing',
+    line || checked.split('\n')[0].replace(/127\.0\.0\.1:\d+/, '<host>').slice(0, 120) || 'no answer');
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.
@@ -3258,7 +3273,7 @@ const all4 = () => registry.entries.size;
   const cand = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signAs({ notes: 1, at: Date.now(), nodes: ours.nodes }, by, signerFor(key)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [{ url: 'http://127.0.0.1:9', by }], relay: { port: 7272, open: 2 } })) : res.writeHead(404).end()));
   await new Promise<void>((done) => cand.listen(0, '127.0.0.1', () => done()));
   const candUrl = `http://127.0.0.1:${(cand.address() as { port: number }).port}`;
-  const runCheck = (target: string) => new Promise<{ code: number | null; out: string }>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', target], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', (code) => done({ code, out: out.trim() })); });
+  const runCheck = (target: string) => new Promise<{ code: number | null; out: string }>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--check', target, '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', (code) => done({ code, out: out.trim() })); });
   const good = await runCheck(`${candUrl}#${by}`);
   const { handle: checkMcpHandle } = await import('../src/mcp.ts');
   const viaMcp = await (checkMcpHandle as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[]; isError?: boolean } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { check: `${candUrl}#${by}` } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');

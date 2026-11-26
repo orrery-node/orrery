@@ -791,7 +791,10 @@ async function main() {
     const base = target.split('#')[0].replace(/\/$/, '');
     const notes = await fetchNode(`${base}/orrery/notes`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? r.json() : `${r.status}`)).catch((e: Error) => e.message);
     const intros = await fetchNode(`${base}/orrery/peers`, { timeoutMs: 5_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    const out = peerCheck(target, notes, intros);
+    // The local router's map, when it runs: which of the nodes that router names would be new to it.
+    const mine = await fetchWithTimeout(`${flag('router', `http://127.0.0.1:${ROUTER_PORT}`)!.replace(/\/$/, '')}/orrery/status`, { timeoutMs: 2_000 })
+      .then(async (r) => (r.ok ? new Set(((await r.json()) as { providers?: { address: string }[] }).providers?.map((p) => p.address) ?? []) : null)).catch(() => null);
+    const out = peerCheck(target, notes, intros, Date.now(), mine);
     if (!out.ok) process.exitCode = 1;
     return console.log(out.lines.join('\n'));
   }

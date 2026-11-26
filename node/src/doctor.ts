@@ -431,10 +431,20 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   return out;
 }
 
+/** How many of the nodes a router names are already on this router's map, and how many it would bring. */
+export function newToMapLine(named: string[], mine: Set<string>): string {
+  const all = [...new Set(named)];
+  const fresh = all.filter((a) => !mine.has(a)).length;
+  const have = all.length - fresh;
+  if (!fresh) return all.length === 1 ? 'the node it names is on your map already' : `all ${all.length} nodes it names are on your map already`;
+  return `${!have ? (all.length === 1 ? 'the node it names is' : `all ${all.length} nodes it names are`) : `${fresh} of the ${all.length} nodes it names ${fresh === 1 ? 'is' : 'are'}`} not on your map yet${have ? ` (${have} already ${have === 1 ? 'is' : 'are'})` : ''}: once added, your router reads ${fresh === 1 ? 'it' : 'each'} on chain and keeps ${fresh === 1 ? 'it only if it is a listing' : 'only the ones that are listings'}`;
+}
+
 /** `orrery peers --check <url[#key]>`: what this router would make of a router before it is added as a peer, from its
  * notes and its /orrery/peers as they came back (or why nothing did). Ok is false when its notes would be refused or it
- * did not answer. Nothing is kept. */
-export function peerCheck(target: string, notes: unknown, intros: unknown = null, now = Date.now()): { ok: boolean; lines: string[] } {
+ * did not answer. Nothing is kept. With `mine` (the listings on the local router's map), it also says how many of the
+ * nodes it names are new to that map. */
+export function peerCheck(target: string, notes: unknown, intros: unknown = null, now = Date.now(), mine: Set<string> | null = null): { ok: boolean; lines: string[] } {
   const [base, pinned] = target.split('#');
   const url = base.replace(/\/$/, '');
   if (typeof notes === 'string') return { ok: false, lines: [`${url}: no notes (${notes}); a router shares them only when started with --share-notes`] };
@@ -454,5 +464,6 @@ export function peerCheck(target: string, notes: unknown, intros: unknown = null
   const named = readIntroductions(intros);
   lines.push(intros === null ? 'introduces no routers (no /orrery/peers)' : `introduces ${named.length} router${named.length === 1 ? '' : 's'}${named.length ? ', read with --meet-peers' : ''}`);
   lines.push(read.signed && read.by ? `add it with: --peer ${url}#${read.by}` : `add it with: --peer ${url} (unsigned, so it cannot be pinned)`);
+  if (mine && read.nodes.length) lines.push(newToMapLine(read.nodes.map((n) => n.address), mine));
   return { ok: true, lines };
 }
