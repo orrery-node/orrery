@@ -82,6 +82,9 @@ export class Registry {
   /** Listings the RPC's list of the program left out that peer routers named and the chain confirmed: an RPC that drops a
    * listing (behind, or leaving it out) cannot hide a node the peers have seen. */
   rpcLeftOut = 0;
+  /** The listings this router has only because peer routers named them: all of them when the RPC will not list the
+   * program, the ones its list left out otherwise. */
+  throughPeers = new Set<string>();
   /** Addresses a peer named that the chain did not hold as a listing, with when to read them again: a closed listing a
    * peer still remembers costs one read every ten minutes, not one each refresh. */
   private absentUntil = new Map<string, number>();
@@ -177,6 +180,7 @@ export class Registry {
       const out = await this.readNamed(named);
       this.discovery = 'peers';
       this.rpcLeftOut = 0;
+      this.throughPeers = new Set(out.map((x) => x.pubkey.toBase58()));
       return out;
     }
     this.discovery = 'chain';
@@ -191,6 +195,7 @@ export class Registry {
       for (const k of left) if (!found.has(k.toBase58())) this.absentUntil.set(k.toBase58(), now + 10 * 60_000);
     }
     this.rpcLeftOut = extra.length;
+    this.throughPeers = new Set(extra.map((x) => x.pubkey.toBase58()));
     return extra.length ? [...all, ...extra] : all;
   }
 

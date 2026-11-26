@@ -833,6 +833,8 @@ export class Router {
     const billsBy = new Map(this.billsNow().map((x) => [x.provider, { checked: x.checked, over: x.over }]));
     const providers = [...this.o.registry.entries.values()].map((e) => ({
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
+      // Where this router found the listing: in the RPC's list of the program, or only because peer routers named it.
+      found: this.o.registry.throughPeers.has(e.address) ? 'peers' : 'rpc',
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
       tee: e.tee ? { verified: e.tee.verified, dev: e.tee.dev, reason: e.tee.reason } : null, observed: this.stats.get(e.address),
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,

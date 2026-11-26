@@ -2403,6 +2403,37 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
     all.length > 1 && !alone.entries.has(dropped) && JSON.stringify(found) === JSON.stringify(all) && withPeers.entries.get(dropped)?.manifest != null && left === 1 && withPeers.discovery === 'chain',
     `RPC list ${all.length - 1} of ${all.length} · alone ${alone.entries.size}, with peers ${found.length} (left out and added: ${left ?? 'unknown'}, its price list ${withPeers.entries.get(dropped)?.manifest ? 'read' : 'missing'})`);
 }
+// The router says which nodes it found only through its peers: with an RPC whose list leaves a listing out and one peer
+// naming it, the running router's status marks that node found through peers, and orrery peers lists it with the count.
+{
+  const opts = routerOpts as { peers?: string[] };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const reg = registry as unknown as { conn: typeof conn };
+  const dropped = [...registry.entries.keys()].sort().find((a) => registry.entries.get(a)?.manifest) ?? '';
+  const naming = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ notes: 1, at: Date.now(), nodes: [{ address: dropped, checks: 3, up: 3, sent: 0, answered: 0 }] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => naming.listen(0, '127.0.0.1', () => done()));
+  const realConn = reg.conn;
+  reg.conn = Object.assign(Object.create(realConn) as object, {
+    getProgramAccounts: async (...a: Parameters<typeof conn.getProgramAccounts>) => (await realConn.getProgramAccounts(...a)).filter((x) => x.pubkey.toBase58() !== dropped),
+  }) as unknown as typeof conn;
+  opts.peers = [`http://127.0.0.1:${(naming.address() as { port: number }).port}`];
+  await rp.readPeers?.();
+  await registry.refresh();
+  const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers?: { address: string; found?: string }[]; rpcLeftOut?: number };
+  const cliPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  reg.conn = realConn;
+  opts.peers = [];
+  await rp.readPeers?.();
+  await registry.refresh();
+  naming.closeAllConnections();
+  await new Promise((done) => naming.close(done));
+  const marked = (st.providers ?? []).filter((p) => p.found === 'peers').map((p) => p.address);
+  const line = cliPeers.split('\n').find((l) => l.includes('found through peers')) ?? '';
+  const after = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers?: { found?: string }[] }).providers ?? [];
+  check('the router says which node it found only through its peers: status found is peers, orrery peers lists it named by 1 peer router, and all are back to the RPC after',
+    dropped !== '' && JSON.stringify(marked) === JSON.stringify([dropped]) && st.rpcLeftOut === 1 && /found through peers, named by 1 peer router, read on chain/.test(line) && after.every((p) => p.found === 'rpc'),
+    `found through peers: ${marked.length} (rpcLeftOut ${st.rpcLeftOut ?? '?'}) · orrery peers: ${line.trim().replace(/[1-9A-HJ-NP-Za-km-z]{32,44}/g, '<address>').slice(0, 110) || 'no line'} · after: ${after.filter((p) => p.found === 'rpc').length} of ${after.length} from the RPC`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

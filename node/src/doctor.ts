@@ -376,10 +376,24 @@ export function byTrust<T extends PeerRow>(peers: T[]): T[] {
   return [...peers].sort((a, b) => rank(a) - rank(b));
 }
 
+export type FoundRow = { address: string; name?: string | null; found?: string; peers?: { routers: number } | null };
+
+/** The listings a router has only because its peers named them, one line each with how many peers named it: the part of
+ * its map the peers drew. At most ten, then how many more. */
+export function foundThroughPeers(providers: FoundRow[], most = 10): string[] {
+  const through = providers.filter((p) => p.found === 'peers');
+  if (!through.length) return [];
+  const line = (p: FoundRow) => {
+    const n = p.peers?.routers ?? 0;
+    return `  ${p.name ? `${p.name} (${p.address.slice(0, 4)}\u2026${p.address.slice(-4)})` : p.address}: found through peers${n ? `, named by ${n} peer router${n === 1 ? '' : 's'}` : ''}, read on chain`;
+  };
+  return [...through.slice(0, most).map(line), ...(through.length > most ? [`  and ${through.length - most} more found through peers`] : [])];
+}
+
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number }, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] }, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {
@@ -392,6 +406,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');
   else if (status.rpcLeftOut) out.push(rpcLeftOutLine(status.rpcLeftOut));
+  out.push(...foundThroughPeers(status.providers ?? []));
   return out;
 }
 

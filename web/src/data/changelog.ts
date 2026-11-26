@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The router says which nodes it found only through its peers: each node in the status has `found` (`rpc` or `peers`), the console marks it "found through peers", and `orrery peers` (and the `peers` tool in `orrery mcp`) lists each one with how many peer routers named it.' },
   { who: 'router', text: 'One RPC is no longer the whole map: when the RPC lists the program but leaves a listing out (behind, or dropping it), the router reads the listings its peer routers named by address, keeps each one the chain confirms, and uses it. `orrery peers`, `orrery doctor`, the console and the log say how many; an address the chain does not hold is read again only after ten minutes.' },
 ];
 
