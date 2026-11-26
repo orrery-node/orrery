@@ -110,11 +110,11 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   const pins = readPins(o.pins);
   const registry = new Registry(conn, { allowDev: o.allowDev ?? false, measurements: [] });
   t0 = Date.now();
-  await registry.refresh();
+  const unlisted = await registry.refresh().then(() => null, (e) => (e as Error).message);
   const entries = [...registry.entries.values()];
   const up: { name: string; endpoint: string }[] = [];
   const privacy: { wire: boolean; inside: boolean; enclave: boolean }[] = [];
-  out.push({ ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: `${entries.length} on chain, read in ${ms(t0)}` });
+  out.push(unlisted ? { ok: false, what: 'listings', detail: unlisted } : { ok: entries.some((e) => e.account.active && e.manifest && !e.problem), what: 'listings', detail: `${entries.length} on chain, read in ${ms(t0)}` });
   for (const e of entries) {
     const name = e.manifest?.name ?? e.address.slice(0, 8);
     if (!e.account.active) {

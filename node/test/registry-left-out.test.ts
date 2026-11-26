@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair, PublicKey, type Connection } from '@solana/web3.js';
 import { ACCOUNT, programId } from '../src/chain/program.ts';
-import { Registry, rpcLeftOutLine } from '../src/router/registry.ts';
+import { nothingToReadLine, Registry, rpcLeftOutLine } from '../src/router/registry.ts';
 import { foundThroughPeers, mapLine, peersReport, RECORD_LINE } from '../src/doctor.ts';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -139,5 +139,11 @@ describe('peer exchange past an RPC that leaves listings out', () => {
     assert.equal(mapLine([{ address: 'c', found: 'peers' }]), "the map: 1 listing, none in the RPC's list, 1 from peers");
     const report = peersReport({ peers: [], relay: null, discovery: 'chain', providers: [{ address: 'a', found: 'rpc' }, { address: 'c', found: 'peers' }] });
     assert.ok(report.includes("the map: 2 listings, 1 in the RPC's list, 1 from peers"));
+  });
+
+  it('tells a router with nothing to read how to get its first map, keeping what the RPC said', async () => {
+    const reg = new Registry({ getProgramAccounts: async () => { throw new Error('403 getProgramAccounts is not served'); } } as unknown as Connection, { allowDev: true, measurements: [] });
+    await assert.rejects(() => reg.refresh(), (e: Error) => e.message === nothingToReadLine('403 getProgramAccounts is not served'));
+    assert.equal(nothingToReadLine('403 x'), "403 x; no peer router or record of this router names a listing yet, so there is nothing to read one by one. Start the router with --peer <url>#<key> to read another router's notes (orrery peers --check <url> reads it first), or use an RPC that serves getProgramAccounts");
   });
 });

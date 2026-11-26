@@ -2371,6 +2371,9 @@ check('the frames of a sealed answer are one length, so a proxy cannot read toke
   const fresh = new Registry(refusing, { allowDev: true, measurements: [] });
   const named = [...registry.entries.keys()];
   const alone = await fresh.refresh().then(() => 'listed', (e) => (e as Error).message);
+  check('a router whose RPC will not list the program and that has no peer or record yet is told how to get its first map: --peer, and orrery peers --check',
+    /getProgramAccounts/.test(alone) && alone.includes('Start the router with --peer <url>#<key>') && alone.includes('orrery peers --check <url>'),
+    alone.slice(0, 200));
   (fresh as unknown as { peerListings?: () => string[] }).peerListings = () => [...named, Keypair.generate().publicKey.toBase58(), admin.publicKey.toBase58()];
   const viaPeers = await fresh.refresh().then(() => 'listed', (e) => (e as Error).message);
   const found = [...fresh.entries.keys()].sort();
@@ -2424,6 +2427,7 @@ const all4 = () => registry.entries.size;
   await rp.readPeers?.();
   await registry.refresh();
   const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers?: { address: string; found?: string }[]; rpcLeftOut?: number };
+  writeFileSync(join(WORK, 'router-map.json'), JSON.stringify({ status: st, spend: await (await fetch(`${ROUTER}/orrery/spend?since=24h&by=model`)).json() }, null, 1));
   const cliPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   reg.conn = realConn;
   opts.peers = [];

@@ -67,6 +67,12 @@ export function readPins(path?: string): Set<string> {
   }
 }
 
+/** An RPC that will not list the program, and nothing else naming a listing yet: what failed, and how a router gets its
+ * first map from another router. */
+export function nothingToReadLine(why: string): string {
+  return `${why}; no peer router or record of this router names a listing yet, so there is nothing to read one by one. Start the router with --peer <url>#<key> to read another router's notes (orrery peers --check <url> reads it first), or use an RPC that serves getProgramAccounts`;
+}
+
 /** Listings the RPC's list of the program left out that the peers named and the chain confirmed. */
 export function rpcLeftOutLine(n: number): string {
   return `${n} listing${n === 1 ? '' : 's'} this RPC's list of the program left out, named by peer routers and read on chain one by one: the router uses ${n === 1 ? 'it' : 'them'} too`;
@@ -186,7 +192,7 @@ export class Registry {
     try {
       all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
     } catch (e) {
-      if (!candidates.length) throw e;
+      if (!candidates.length) throw new Error(nothingToReadLine((e as Error).message));
       const out = await this.readNamed(candidates);
       sort(out);
       this.discovery = this.throughPeers.size || !this.fromRecord.size ? 'peers' : 'record';
