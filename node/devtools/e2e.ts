@@ -3416,7 +3416,7 @@ const all4 = () => registry.entries.size;
     `doctor: ${lanDoc.replaceAll('127.0.0.1', '<host>').slice(0, 160) || 'no line'} · ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
   const lanPeersLine = lanCli.split('\n').find((l) => l.startsWith('this network:')) ?? '';
   check('orrery peers and the peers tool in orrery mcp say the same of this network: where the router listens, what it heard, which nodes it reaches there; the console marks those nodes',
-    lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes("' <span class=cap>on this network \u00b7 '") && lanPage.includes("' for nodes on this network: '"),
+    lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes("' <span class=cap>on this network \u00b7 '") && lanPage.includes('for nodes on this network: '),
     `peers: ${lanPeersLine.replaceAll('127.0.0.1', '<host>').slice(0, 150) || 'no line'} · mcp ${lanTool.includes('this network:') ? 'same' : 'no line'} · console ${lanPage.includes('on this network') ? 'marks them' : 'no mark'}`);
   check('orrery provider status says where the node says it is on its network, to whom, and how many signed beacons went out',
     new RegExp(`^  on this network {7}saying where it is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key: routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)$`).test(lanNodeStatus),
@@ -3456,6 +3456,11 @@ const all4 = () => registry.entries.size;
   await rl.readPeers?.();
   const routersPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   const routersDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).filter((l) => l.what.trim() === 'this network').map((l) => l.detail);
+  const consoleHtmlLan = await (await fetch(`${ROUTER}/`)).text();
+  const lanSrcAt = consoleHtmlLan.indexOf('const lanBits=');
+  const liveStatus = await (await fetch(`${ROUTER}/orrery/status`)).json();
+  const { runInNewContext: runPage } = await import('node:vm');
+  const consoleLan = lanSrcAt < 0 ? [] : (runPage(`(${consoleHtmlLan.slice(lanSrcAt + 'const lanBits='.length, consoleHtmlLan.indexOf(';\nconst esc=', lanSrcAt))})(s)`, { s: liveStatus }) as string[]);
   type PeerSeen = { url: string; pinned: boolean; via: string | null; signed: boolean; by: string | null };
   const lanPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.find((p) => p.url === otherUrl);
   const forgedPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.some((p) => p.url === 'http://127.0.0.1:17998');
@@ -3484,6 +3489,9 @@ const all4 = () => registry.entries.size;
   check('orrery peers and orrery doctor say which routers this router heard on its network, that it reads them as peers, and what it says there itself',
     routersPeers.includes(`this network: ${heardLine}`) && routersPeers.includes(`this network: ${sayLine}`) && routersDoc.includes(heardLine) && routersDoc.some((l) => l.startsWith(sayLine)),
     `peers ${routersPeers.includes(heardLine) ? 'names it' : 'no heard line'}, ${routersPeers.includes(sayLine) ? 'says what it announces' : 'no announce line'} · doctor ${routersDoc.includes(heardLine) ? 'names it' : 'no heard line'}`);
+  check('the router console, running its own page code on the live status, says the routers it heard on this network and the beacons it sent',
+    consoleLan.includes('1 router heard on this network, each signed with its own key, read as peers') && consoleLan.some((l) => l.startsWith(`this router says where its notes are on this network (${ROUTER}): `) && / beacons? sent, signed with its key$/.test(l)),
+    consoleLan.map((l) => l.replaceAll('127.0.0.1', '<host>')).join(' | ').slice(0, 220) || 'no console code for this network');
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

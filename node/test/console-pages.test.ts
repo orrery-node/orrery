@@ -28,6 +28,17 @@ describe('the local console pages', () => {
     }
   });
 
+  it('the router console says what it heard on its own network and what it says there, with the code the page runs', () => {
+    const html = consolePage();
+    assert.ok(html.includes('const lanBits=') && html.includes('bits.push(...lanBits(s))'), 'inlined and used');
+    const status = { lan: { listening: '0.0.0.0:7373', heard: 2, nodes: 1, routers: [{ key: 'K', url: 'http://192.168.1.30:7171' }], peers: false }, lanAnnouncing: { to: '192.168.1.255:7373', url: 'http://192.168.1.20:7171', sent: 1 } };
+    const want = ['listening on 0.0.0.0:7373 for nodes on this network: 2 heard, 1 reached there directly', '1 router heard on this network, each signed with its own key (--lan-peers reads them as peers)', 'this router says where its notes are on this network (http://192.168.1.20:7171): 1 beacon sent, signed with its key'];
+    assert.deepEqual(routerConsole.lanBits(status), want);
+    const src = html.slice(html.indexOf('const lanBits=') + 'const lanBits='.length, html.indexOf(';\nconst esc='));
+    assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(`(${src})(s)`, { s: status }))), want, 'the inlined copy runs on its own');
+    assert.deepEqual(routerConsole.lanBits({ lan: null, lanAnnouncing: null }), []);
+  });
+
   it('carry their two typefaces inside the page', () => {
     for (const [name, html] of Object.entries(pages)) {
       assert.equal((html.match(/@font-face/g) ?? []).length, 2, `${name} console`);
