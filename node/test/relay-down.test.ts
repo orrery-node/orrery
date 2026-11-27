@@ -155,4 +155,13 @@ describe('a peer relay that cannot be reached', () => {
     const oneSigned = relayChoices([{ ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0 }, { ...row, url: 'http://10.0.0.3:7171', relayPort: 7272, relayOpen: 1, signed: false }]);
     assert.ok(!oneSigned.some((l) => l.includes('--spread-relays')));
   });
+
+  it('marks the relay in use in orrery peers --relays', () => {
+    const row = { pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    const peersNow = [{ ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0 }, { ...row, url: 'http://10.0.0.3:7171', relayPort: 7272, relayOpen: 1 }];
+    const out = relayChoices(peersNow, false, ['http://10.0.0.3:7272']);
+    assert.ok(out.includes('  --proxy http://10.0.0.3:7272  (http://10.0.0.3:7171, 1 open now)  \u2190 in use now'));
+    assert.ok(out.includes('  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 0 open now)'));
+    assert.deepEqual(relayChoices(peersNow), relayChoices(peersNow, false, []));
+  });
 });

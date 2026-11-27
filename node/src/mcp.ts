@@ -273,7 +273,7 @@ async function call(name: string, a: Json, router: string, fetchFn: Fetch, agent
       const r = await fetchFn(`${router}/orrery/status`);
       if (!r.ok) return text(`the router could not say who its peers are: ${r.status}`, true);
       const status = (await r.json()) as Parameters<typeof peersReport>[0] & { holder?: { lane?: boolean } | null };
-      if (a.relays === true) return text(relayChoices(status.peers ?? [], status.holder?.lane === true).join('\n'));
+      if (a.relays === true) return text(relayChoices(status.peers ?? [], status.holder?.lane === true, (status as { peerRelays?: string[] }).peerRelays ?? []).join('\n'));
       return text(peersReport(status).join('\n'));
     }
     if (name === 'spend') {

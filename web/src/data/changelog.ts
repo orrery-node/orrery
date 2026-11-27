@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers --relays` (and `relays` in the `peers` tool of `orrery mcp`) marks the relay your router is using now.' },
   { who: 'router', text: 'After a peer relay could not be reached, the next choice of relays always runs, so relays a peer no longer offers do not stay in use.' },
   { who: 'router', text: '`--proxy-via-peers` stays with the relay it picked while that relay can take it, and moves only for one with at least 2 fewer connections open: fewer peers ever carry your traffic.' },
   { who: 'router', text: '`orrery peers --relays` says when `--proxy-via-peers --spread-relays` would use two or more of the signed peers\' relays at once.' },

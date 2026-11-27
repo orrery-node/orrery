@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery peers --relays` (and `relays` in the `peers` tool of `orrery mcp`) marks the relay your router is using now.
 - **Router** · After a peer relay could not be reached, the next choice of relays always runs, so relays a peer no longer offers do not stay in use.
 - **Router** · `--proxy-via-peers` stays with the relay it picked while that relay can take it, and moves only for one with at least 2 fewer connections open: fewer peers ever carry your traffic.
 - **Router** · `orrery peers --relays` says when `--proxy-via-peers --spread-relays` would use two or more of the signed peers' relays at once.

@@ -364,7 +364,7 @@ export function noPeerRelayLine(passedOver = 0): string {
  * it would take (the peer's host, the relay's port). Relays full for today are left out and said, except, for a router
  * whose wallet rides the $OREY holder lanes, those that still carry holders; refused peers and peers that never
  * answered are not offered. */
-export function relayChoices(peers: PeerRow[], holder = false): string[] {
+export function relayChoices(peers: PeerRow[], holder = false, inUse: string[] = []): string[] {
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
   const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
   const isDown = (p: PeerRow) => (p.relayDownFor ?? 0) > 0;
@@ -384,8 +384,9 @@ export function relayChoices(peers: PeerRow[], holder = false): string[] {
   if (usable.length) {
     out.push(`${usable.length} peer relay${usable.length === 1 ? '' : 's'} you can use, least busy first:`);
     for (const p of usable) {
+      const using = inUse.includes(`http://${host(p.url)}:${p.relayPort}`);
       const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', lane(p) ? 'full for today, carries you as a $OREY holder' : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
-      out.push(`  --proxy http://${host(p.url)}:${p.relayPort}  (${about})`);
+      out.push(`  --proxy http://${host(p.url)}:${p.relayPort}  (${about})${using ? '  \u2190 in use now' : ''}`);
     }
   } else out.push('No peer relay can take new connections right now.');
   if (full.length) out.push(`${full.length} full for today, left out: ${full.map((p) => p.url).join(', ')}`);

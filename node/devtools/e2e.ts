@@ -3053,6 +3053,7 @@ const all4 = () => registry.entries.size;
   opts.proxyViaPeers = true;
   await rp.readPeers?.();
   const first = (await statusK()).peerRelay ?? null;
+  const relaysInUse = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   open.set(ownK, 0);
   open.set(otherK, 1);
   await rp.readPeers?.();
@@ -3067,6 +3068,10 @@ const all4 = () => registry.entries.size;
   const ownUrlK = `http://127.0.0.1:${ownK}`;
   const otherUrlK = `http://127.0.0.1:${otherK}`;
   const name = (u: string | null) => (u === ownUrlK ? 'A' : u === otherUrlK ? 'B' : u ?? 'none');
+  const marked = relaysInUse.split('\n').filter((l) => l.endsWith('\u2190 in use now'));
+  check('orrery peers --relays marks the relay the router is using now',
+    marked.length === 1 && marked[0].startsWith(`  --proxy http://127.0.0.1:${otherK}`),
+    marked.map((l) => l.trim().split('  ')[0].replace(String(otherK), '<B>').replace(String(ownK), '<A>')).join(' | ') || 'no line marked');
   check('--proxy-via-peers stays with the relay it picked unless another is clearly less busy: one more connection keeps it, three more moves it',
     first === otherUrlK && second === otherUrlK && third === ownUrlK,
     `picked ${name(first)} (A 1 open, B 0) · then ${name(second)} (A 0, B 1) · then ${name(third)} (A 0, B 3)`);
