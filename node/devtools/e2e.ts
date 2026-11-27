@@ -3055,6 +3055,8 @@ const all4 = () => registry.entries.size;
   const first = (await statusK()).peerRelay ?? null;
   const relaysInUse = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   const relaysJsonText = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--json', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const { handle: handleJ } = await import('../src/mcp.ts');
+  const mcpJsonText = await (handleJ as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { relays: true, json: true } } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   open.set(ownK, 0);
   open.set(otherK, 1);
   await rp.readPeers?.();
@@ -3072,6 +3074,10 @@ const all4 = () => registry.entries.size;
   const marked = relaysInUse.split('\n').filter((l) => l.endsWith('\u2190 in use now'));
   const relaysJson = ((): { relays?: { proxy: string | null; usable: boolean; inUse: boolean; signed: boolean; open: number | null }[]; inUse?: string[] } | null => { try { return JSON.parse(relaysJsonText); } catch { return null; } })();
   const rowsJ = relaysJson?.relays ?? [];
+  const mcpJson = ((): unknown => { try { return JSON.parse(mcpJsonText); } catch { return null; } })();
+  check('an agent gets the same relay data through orrery mcp: the peers tool with relays and json matches orrery peers --relays --json',
+    mcpJson !== null && relaysJson !== null && JSON.stringify(mcpJson) === JSON.stringify(relaysJson),
+    mcpJson ? `${((mcpJson as { relays?: unknown[] }).relays ?? []).length} relays, ${JSON.stringify(mcpJson) === JSON.stringify(relaysJson) ? 'same as' : 'not the same as'} the CLI` : `not JSON: ${mcpJsonText.split('\n')[0].slice(0, 60)}`);
   check('orrery peers --relays --json gives the peers\u2019 relays as data: both usable, signed, how busy, and the one in use',
     rowsJ.length === 2 && rowsJ.every((r) => r.usable && r.signed) && rowsJ[0].proxy === `http://127.0.0.1:${otherK}` && rowsJ[0].open === 0 && rowsJ.filter((r) => r.inUse).length === 1 && rowsJ.find((r) => r.inUse)?.proxy === first && JSON.stringify(relaysJson?.inUse) === JSON.stringify([first]),
     relaysJson ? `${rowsJ.length} relays · first ${rowsJ[0]?.proxy?.replace(String(otherK), '<B>').replace(String(ownK), '<A>') ?? 'none'} · in use ${rowsJ.filter((r) => r.inUse).length}` : `not JSON: ${relaysJsonText.split('\n')[0].slice(0, 60)}`);

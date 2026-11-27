@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · The `peers` tool in `orrery mcp` takes `json` with `relays`: an agent gets the same relay data as `orrery peers --relays --json`.
 - **Router** · `orrery peers --relays --json` gives every relay the peers offer as data, for scripts and agents: the `--proxy` address, the peer, how busy, how quick its last read, signed or not, usable now or why not (full for today, passed over), and which one is in use.
 - **Router** · A relay says how many routers it carried today: `orrery peers`, `orrery doctor` and the console say "carried connections for N routers today", and the status has `routersToday`. Only the count is kept; the addresses stay in memory for the day and are never shown or written.
 - **Router** · `orrery peers --relays` (and `relays` in the `peers` tool of `orrery mcp`) marks the relay your router is using now.

@@ -350,4 +350,12 @@ describe('orrery mcp and task budgets', () => {
     const out = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { relays: true } } }, 'http://r', (async () => reply(status)) as never, '0')) as { result: { content: { text: string }[] } };
     assert.equal(out.result.content[0].text, ['1 peer relay you can use, least busy first:', '  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 2 open now)', 'Start your router with one as --proxy and the nodes see that router, not this computer.'].join('\n'));
   });
+
+  it('the peers tool gives the relays as JSON when asked for relays and json', async () => {
+    const status = { peers: [{ url: 'http://10.0.0.2:7171', pinned: false, by: null, signed: true, nodes: 0, refused: null, at: 1, missed: 0, relayPort: 7272, relayOpen: 2 }], relay: null, holder: { lane: false }, peerRelays: ['http://10.0.0.2:7272'] };
+    const out = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: { relays: true, json: true } } }, 'http://r', (async () => reply(status)) as never, '0')) as { result: { content: { text: string }[] } };
+    const j = JSON.parse(out.result.content[0].text) as { relays: { proxy: string; inUse: boolean; open: number }[]; inUse: string[] };
+    assert.deepEqual(j.relays.map((r) => [r.proxy, r.open, r.inUse]), [['http://10.0.0.2:7272', 2, true]]);
+    assert.deepEqual(j.inUse, ['http://10.0.0.2:7272']);
+  });
 });
