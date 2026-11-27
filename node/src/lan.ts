@@ -132,6 +132,8 @@ export class LanListener {
   private socket: Socket | null = null;
   /** Called when a listing is heard for the first time, or at a new URL. */
   onNew: ((b: Beacon) => void) | null = null;
+  /** Called when a router is heard for the first time, or at a new URL. */
+  onRouter: ((b: RouterBeacon) => void) | null = null;
   address: string | null = null;
 
   listen(spec: string): Promise<string> {
@@ -175,6 +177,7 @@ export class LanListener {
     if (prev && prev.at >= r.at) return;
     if (!prev && this.routersHeard(now).length >= LAN_MAX_ROUTERS) return;
     this.routers.set(r.router, r);
+    if (!prev || prev.url !== r.url) this.onRouter?.(r);
   }
 
   /** The routers on this network that said where their notes are, each signed with its own key, still recent. */

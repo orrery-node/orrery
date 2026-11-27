@@ -107,6 +107,9 @@ export type RouterOptions = {
    * it at: this computer's network address and the router's port unless given. */
   lanAnnounce?: string;
   lanUrl?: string;
+  /** With --lan-listen, the routers heard on this network (each signed with its own key) are read as peers, pinned to that
+   * key and counted like a router met through a peer (MET_WEIGHT), at most as many as --meet-max (--lan-peers). */
+  lanPeers?: boolean;
   /** The relay carries traffic only from the addresses of this router's peers (--peer, --peers-file), as they resolve at
    * each refresh. Off unless asked: a relay is open to anyone who knows its port. */
   relayPeersOnly?: boolean;
@@ -245,6 +248,9 @@ const send = (res: ServerResponse, status: number, body: unknown, headers: Recor
   res.writeHead(status, { 'content-type': 'application/json', ...headers });
   res.end(JSON.stringify(body, (_, v) => (typeof v === 'bigint' ? v.toString() : v)));
 };
+
+/** What a peer met on this router's own network says it was met through. */
+export const LAN_VIA = 'this network';
 
 /** A node first reached on this router's own network. */
 export function lanLine(name: string, url: string, listed: string): string {
@@ -394,6 +400,9 @@ export class Router {
     const at = await lan.listen(spec);
     this.lan = lan;
     this.o.registry.lanBeacons = () => lan.fresh();
+    lan.onRouter = () => {
+      if (this.o.lanPeers) void this.readPeers();
+    };
     lan.onNew = () => {
       if (this.lanTimer) return;
       this.lanTimer = setTimeout(() => {
@@ -752,10 +761,12 @@ export class Router {
     const heard = await Promise.all(bases.map(async (base) => ({ base, j: await ask(base) })));
     for (const { base, j } of heard) keepRelay(base, j);
     const asked = new Set(bases);
+    const before = new Map(this.met);
+    const onLan = this.lanMet(known, own);
     if (!this.o.meetPeers) {
-      this.met.clear();
+      this.met = new Map(onLan);
     } else {
-      const next = new Map<string, string>();
+      const next = new Map<string, string>(onLan);
       for (const { base, j } of heard) {
         const named = j === undefined ? [...this.met].filter(([, via]) => via === base).map(([k]) => k) : readIntroductions(j);
         for (const k of named) {
@@ -764,20 +775,27 @@ export class Router {
           next.set(k, base);
         }
       }
-      for (const [k, via] of next) {
-        if (this.met.has(k)) continue;
-        const [url, by] = k.split('#');
-        this.log(`met ${url} through ${via}, pinned to ${by.slice(0, 4)}\u2026${by.slice(-4)}`);
-      }
       this.met = next;
-      // A router met through a peer is asked only which relay it runs: who it reads is never taken from it, so every
-      // router this one reads stays at most two steps away.
-      const metBases = [...new Set([...this.met.keys()].map((k) => k.split('#')[0].replace(/\/$/, '')))].filter((b) => !known.has(b));
-      const metHeard = await Promise.all(metBases.map(async (base) => ({ base, j: await ask(base) })));
-      for (const { base, j } of metHeard) keepRelay(base, j);
-      for (const b of metBases) asked.add(b);
     }
+    for (const [k, via] of this.met) {
+      if (before.has(k)) continue;
+      const [url, by] = k.split('#');
+      this.log(`met ${url} ${via === LAN_VIA ? 'on this network' : `through ${via}`}, pinned to ${by.slice(0, 4)}\u2026${by.slice(-4)}`);
+    }
+    // A router met through a peer (or on this network) is asked only which relay it runs: who it reads is never taken
+    // from it, so every router this one reads stays at most two steps away.
+    const metBases = [...new Set([...this.met.keys()].map((k) => k.split('#')[0].replace(/\/$/, '')))].filter((b) => !known.has(b));
+    const metHeard = await Promise.all(metBases.map(async (base) => ({ base, j: await ask(base) })));
+    for (const { base, j } of metHeard) keepRelay(base, j);
+    for (const b of metBases) asked.add(b);
     for (const m of [this.peerRelay, this.peerRelayOpen, this.peerRelayFull, this.peerRelayHolders]) for (const k of [...m.keys()]) if (!asked.has(k)) m.delete(k);
+  }
+
+  /** With --lan-peers, the routers heard on this network as peers to read, each pinned to the key that signed its beacon,
+   * leaving out this router itself and routers already given; at most --meet-max of them. */
+  private lanMet(known: Set<string>, own: string): [string, string][] {
+    if (!this.o.lanPeers || !this.lan) return [];
+    return this.lan.routersHeard().filter((r) => r.router !== own && !known.has(r.url)).slice(0, this.meetMax()).map((r) => [`${r.url}#${r.router}`, LAN_VIA]);
   }
 
   /** With --trust-peers, where a node this router has no record of starts: what the peers saw it answer, a peer this

@@ -3427,15 +3427,20 @@ const all4 = () => registry.entries.size;
 {
   const { LanListener: Listener, announce: say, signRouterBeacon, routerBeaconSigned } = await import('../src/lan.ts');
   const { signerOf } = await import('../src/keys.ts');
-  const opts = routerOpts as { shareNotes?: boolean };
-  const rl = router as unknown as { startLan?: (s: string) => Promise<string>; stopLan?: () => Promise<void>; startLanAnnounce?: (to: string, url?: string) => string | null; stopLanAnnounce?: () => void };
+  const opts = routerOpts as { shareNotes?: boolean; lanPeers?: boolean };
+  const rl = router as unknown as { startLan?: (s: string) => Promise<string>; stopLan?: () => Promise<void>; startLanAnnounce?: (to: string, url?: string) => string | null; stopLanAnnounce?: () => void; readPeers?: () => Promise<void> };
+  const { signNotes } = await import('../src/router/notes.ts');
+  const other = Keypair.generate();
+  const otherRouter = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signNotes({ notes: 1, at: Date.now(), nodes: [] }, other.publicKey.toBase58(), signerOf(other)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [] })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => otherRouter.listen(0, '127.0.0.1', () => done()));
+  const otherUrl = `http://127.0.0.1:${(otherRouter.address() as { port: number }).port}`;
+  opts.lanPeers = true;
   const elsewhere = new Listener();
   const elsewhereAt = await elsewhere.listen('127.0.0.1:0');
   opts.shareNotes = true;
   const given = rl.startLanAnnounce?.(elsewhereAt, ROUTER) ?? null;
-  const other = Keypair.generate();
   const heardAt = (await rl.startLan?.('127.0.0.1:0')) ?? '127.0.0.1:9';
-  const otherSays = say(heardAt, () => signRouterBeacon(other.publicKey.toBase58(), 'http://127.0.0.1:17999', Date.now(), signerOf(other)), 60_000);
+  const otherSays = say(heardAt, () => signRouterBeacon(other.publicKey.toBase58(), otherUrl, Date.now(), signerOf(other)), 60_000);
   const forgedSays = say(heardAt, () => signRouterBeacon(Keypair.generate().publicKey.toBase58(), 'http://127.0.0.1:17998', Date.now(), signerOf(other)), 60_000);
   type RouterRow = { key: string; url: string };
   let heardRouters: RouterRow[] = [];
@@ -3448,17 +3453,29 @@ const all4 = () => registry.entries.size;
     if (heardRouters.length && elsewhere.routersHeard().length) break;
   }
   const ours = elsewhere.routersHeard()[0];
+  await rl.readPeers?.();
+  type PeerSeen = { url: string; pinned: boolean; via: string | null; signed: boolean; by: string | null };
+  const lanPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.find((p) => p.url === otherUrl);
+  const forgedPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.some((p) => p.url === 'http://127.0.0.1:17998');
   otherSays();
   forgedSays();
   rl.stopLanAnnounce?.();
   await rl.stopLan?.();
   elsewhere.close();
+  opts.lanPeers = false;
+  await rl.readPeers?.();
+  const lanPeerAfter = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.some((p) => p.url === otherUrl);
+  otherRouter.closeAllConnections();
+  await new Promise((done) => otherRouter.close(done));
   opts.shareNotes = false;
   check('routers on the same network find each other: --lan-announce says where this router\u2019s notes are, signed with its session key, and --lan-listen keeps only a router whose own key signed its beacon',
     given === ROUTER && !!ours && ours.router === session.publicKey.toBase58() && ours.url === ROUTER && routerBeaconSigned(ours)
-      && heardRouters.length === 1 && heardRouters[0].key === other.publicKey.toBase58() && heardRouters[0].url === 'http://127.0.0.1:17999'
+      && heardRouters.length === 1 && heardRouters[0].key === other.publicKey.toBase58() && heardRouters[0].url === otherUrl
       && !!announcing && announcing.sent >= 1,
     `this router said ${ours ? (ours.router === session.publicKey.toBase58() ? 'its own key' : 'another key') : 'nothing'} · heard ${heardRouters.length} router${heardRouters.length === 1 ? '' : 's'}${heardRouters[0] ? ` (${heardRouters[0].key === other.publicKey.toBase58() ? 'the signed one' : 'a forged one'})` : ''} · beacons sent ${announcing?.sent ?? 0}`);
+  check('with --lan-peers, a router heard on this network is read as a peer, pinned to the key that signed its beacon: its notes come in signed by that key, it shows as met through this network, and it is dropped when the router stops listening',
+    !!lanPeer && lanPeer.pinned && lanPeer.via === 'this network' && lanPeer.signed && lanPeer.by === other.publicKey.toBase58() && !forgedPeer && !lanPeerAfter,
+    lanPeer ? `peer ${lanPeer.url.replace('127.0.0.1', '<host>')}: ${lanPeer.pinned ? 'pinned' : 'not pinned'}, via ${lanPeer.via ?? 'none'}, ${lanPeer.signed ? 'signed' : 'unsigned'}${lanPeer.by === other.publicKey.toBase58() ? ' by its key' : ''} · forged ${forgedPeer ? 'read' : 'left out'} · after stop ${lanPeerAfter ? 'still read' : 'dropped'}` : 'the router heard on this network is not among the peers');
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

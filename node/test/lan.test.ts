@@ -131,6 +131,18 @@ describe('a node saying where it is on its own network', () => {
     assert.equal(lan.routersHeard(now).length, LAN_MAX_ROUTERS);
   });
 
+  it('a router is told when another router is heard on its network for the first time or at a new address', () => {
+    const lan = new LanListener();
+    const told: string[] = [];
+    lan.onRouter = (b) => told.push(b.url);
+    const r = Keypair.generate();
+    const now = Date.now();
+    lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.30:7171', now - 2_000, signerOf(r))), now);
+    lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.30:7171', now - 1_000, signerOf(r))), now);
+    lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.31:7171', now, signerOf(r))), now);
+    assert.deepEqual(told, ['http://192.168.1.30:7171', 'http://192.168.1.31:7171']);
+  });
+
   it('the router says once where a node on its network is reached', () => {
     assert.equal(lanLine('Kestrel GPU Co-op', 'http://192.168.1.20:7070', 'https://kestrel.example'), 'Kestrel GPU Co-op is on this network: its requests go to http://192.168.1.20:7070 directly (listed on chain at https://kestrel.example), checked by the node key on its listing');
   });
