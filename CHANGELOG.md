@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · $OREY holders get twice the connections at a time on a peer relay that keeps a holder lane: a router whose wallet holds 0.01% of the supply sends its signed proof to such a relay whenever it uses it (not only past the daily limit), and the relay lets it open twice as many connections at once.
 - **Router** · `--spread-relays` turns on `--proxy-via-peers` by itself, and while only one signed peer offers a relay, `orrery peers` and `orrery doctor` say the spreading starts with the second.
 - **Router** · The `peers` tool in `orrery mcp` takes `json` with `relays`: an agent gets the same relay data as `orrery peers --relays --json`.
 - **Router** · `orrery peers --relays --json` gives every relay the peers offer as data, for scripts and agents: the `--proxy` address, the peer, how busy, how quick its last read, signed or not, usable now or why not (full for today, passed over), and which one is in use.

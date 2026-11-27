@@ -60,6 +60,9 @@ export function allowedTargets(endpoints: string[]): Set<string> {
 
 const HOP = new Set(['x-orrery-holder', 'connection', 'keep-alive', 'proxy-authorization', 'proxy-connection', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'x-forwarded-for', 'forwarded', 'via']);
 
+/** A router that shows it holds $OREY gets this many times a relay's connections at a time. */
+export const RELAY_HOLDER_FACTOR = 2;
+
 export class Relay {
   relayed = 0;
   refused = 0;
@@ -111,14 +114,20 @@ export class Relay {
 
   /** Past the day's limit, a connection still goes through when the router behind it shows it holds $OREY; the rest are
    * turned away with when the relay carries again. Null when it goes through. */
-  private async fullFor(proof: string | string[] | undefined): Promise<string | null> {
+  private fullFor(holder: boolean): string | null {
     const full = this.fullLine();
     if (!full) return null;
-    if (typeof proof === 'string' && this.o.holder && (await this.o.holder(proof).catch(() => false))) {
+    if (holder) {
       this.forHolders += 1;
       return null;
     }
     return full;
+  }
+
+  /** Whether the router behind a connection showed it holds $OREY (a wallet signature, checked on chain by the relay's
+   * router). */
+  private async holderOf(proof: string | string[] | undefined): Promise<boolean> {
+    return typeof proof === 'string' && !!this.o.holder && (await this.o.holder(proof).catch(() => false));
   }
 
   /** Whether the relay has carried its limit for today and takes no new connections. */
@@ -155,15 +164,16 @@ export class Relay {
     return `this relay has carried its ${bytesText(max)} for today; it carries again in about ${this.hoursLeft()} h`;
   }
 
-  private busyLine(): string {
-    return `this relay carries up to ${this.perClient} connection${this.perClient === 1 ? '' : 's'} at a time for one address; wait for one to finish`;
+  private busyLine(holder = false): string {
+    const n = this.perClient * (holder ? RELAY_HOLDER_FACTOR : 1);
+    return `this relay carries up to ${n} connection${n === 1 ? '' : 's'} at a time for one address${holder ? ' holding $OREY' : ''}; wait for one to finish`;
   }
 
   /** Takes one of an address's places on the relay, or null when it has none left. The place is given back once, when
    * the connection closes. */
-  private take(from: string): (() => void) | null {
+  private take(from: string, holder = false): (() => void) | null {
     const n = this.openBy.get(from) ?? 0;
-    if (n >= this.perClient) return null;
+    if (n >= this.perClient * (holder ? RELAY_HOLDER_FACTOR : 1)) return null;
     this.openBy.set(from, n + 1);
     let given = false;
     return () => {
@@ -193,16 +203,17 @@ export class Relay {
     if (target.protocol !== 'http:' || !this.o.allowed().has(targetKey(target.hostname, target.port, 'http:'))) {
       return this.refuse(res, `a relay only passes requests on to nodes listed on chain; ${target.host || 'this address'} is not one`);
     }
-    const full = await this.fullFor(req.headers[HOLDER_HEADER]);
+    const holder = await this.holderOf(req.headers[HOLDER_HEADER]);
+    const full = this.fullFor(holder);
     if (full) {
       this.refused += 1;
       res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'relay_full', message: full } }));
       return;
     }
-    const release = this.take(req.socket.remoteAddress ?? '?');
+    const release = this.take(req.socket.remoteAddress ?? '?', holder);
     if (!release) {
       this.refused += 1;
-      res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'relay_busy', message: this.busyLine() } }));
+      res.writeHead(429, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: 'relay_busy', message: this.busyLine(holder) } }));
       return;
     }
     res.on('close', release);
@@ -237,16 +248,17 @@ export class Relay {
       socket.end('HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\na relay only opens tunnels to nodes listed on chain\n');
       return;
     }
-    const full = await this.fullFor(req.headers[HOLDER_HEADER]);
+    const holder = await this.holderOf(req.headers[HOLDER_HEADER]);
+    const full = this.fullFor(holder);
     if (full) {
       this.refused += 1;
       socket.end(`HTTP/1.1 429 Too Many Requests\r\ncontent-type: text/plain\r\n\r\n${full}\n`);
       return;
     }
-    const release = this.take(socket.remoteAddress ?? '?');
+    const release = this.take(socket.remoteAddress ?? '?', holder);
     if (!release) {
       this.refused += 1;
-      socket.end(`HTTP/1.1 429 Too Many Requests\r\ncontent-type: text/plain\r\n\r\n${this.busyLine()}\n`);
+      socket.end(`HTTP/1.1 429 Too Many Requests\r\ncontent-type: text/plain\r\n\r\n${this.busyLine(holder)}\n`);
       return;
     }
     socket.on('close', release);

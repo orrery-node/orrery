@@ -3245,6 +3245,36 @@ const all4 = () => registry.entries.size;
     hl[0] === '1 peer relay you can use, least busy first:' && hl[1] === `  --proxy http://127.0.0.1:7272  (${pairUrls[0]}, 0 open now, full for today, carries you as a $OREY holder, unsigned)` && hl[2] === `1 full for today, left out: ${pairUrls[1]}`,
     holderRelays.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
+// $OREY holders get twice the connections at a time on a relay with a holder lane: with one connection allowed per
+// address, a second plain connection is turned away, while a router that signs that it holds $OREY gets a second one.
+{
+  const opts = routerOpts as { relayPerClient?: number };
+  const { holderProofMessage: proofMsg, HOLDER_HEADER: proofHeader } = await import('../src/router/relay.ts');
+  const relayKey = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  const signer = (channels as unknown as { walletSigner: () => ((m: Uint8Array) => Uint8Array) | null }).walletSigner();
+  const owner = (channels as unknown as { owner: () => PublicKey | null }).owner()?.toBase58() ?? '';
+  const proof = () => { const ms = Date.now(); return `${owner}.${ms}.${Buffer.from(signer!(proofMsg(relayKey, ms))).toString('base64url')}`; };
+  const relayPortH = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null } | null }).relay?.port) ?? 0;
+  const nodePortH = providerSpecs[1].port;
+  opts.relayPerClient = 1;
+  const held: ReturnType<typeof netConnect>[] = [];
+  const tunnelH = (withProof: boolean) => new Promise<string>((done) => {
+    let got = '';
+    const sock = netConnect(relayPortH, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePortH} HTTP/1.1\r\nhost: 127.0.0.1:${nodePortH}\r\n${withProof ? `${proofHeader}: ${proof()}\r\n` : ''}\r\n`));
+    held.push(sock);
+    sock.on('data', (c: Buffer) => { got += c.toString('latin1'); if (got.includes('\r\n\r\n')) done(got.split('\r\n')[0]); });
+    sock.on('error', () => done(got.split('\r\n')[0] || 'error'));
+  });
+  const firstPlain = await tunnelH(false);
+  const secondPlain = await tunnelH(false);
+  const holderSecond = signer && owner ? await tunnelH(true) : 'no wallet';
+  const holderThird = signer && owner ? await tunnelH(true) : 'no wallet';
+  for (const sk of held) sk.destroy();
+  opts.relayPerClient = undefined;
+  check('$OREY holders get twice the connections at a time on a relay: one allowed per address turns a second plain one away and lets a holder\u2019s second one through',
+    firstPlain === 'HTTP/1.1 200 Connection Established' && secondPlain.startsWith('HTTP/1.1 429') && holderSecond === 'HTTP/1.1 200 Connection Established' && holderThird.startsWith('HTTP/1.1 429'),
+    `plain: ${firstPlain.slice(9, 12)}, ${secondPlain.slice(9, 12)} · holder: ${holderSecond.slice(9, 12) || holderSecond}, ${holderThird.slice(9, 12) || holderThird}`);
+}
 // The router console's holder line also says when this router's wallet rides the $OREY holder lanes, from its status.
 {
   const page = await (await fetch(`${ROUTER}/`)).text();

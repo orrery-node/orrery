@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
-import { allowedTargets, bytesText, HOLDER_HEADER, plainAddress, Relay, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
+import { allowedTargets, bytesText, HOLDER_HEADER, plainAddress, Relay, RELAY_HOLDER_FACTOR, RELAY_PER_CLIENT, targetKey } from '../src/router/relay.ts';
 import { httpTunnel, parseProxy, ProxyRefused } from '../src/proxy.ts';
 
 describe('a relay only reaches listed nodes', () => {
@@ -158,6 +158,37 @@ describe('a relay only reaches listed nodes', () => {
       assert.equal(relay.relayed, 2);
       assert.equal(relay.routersToday, 1);
     } finally {
+      relay.server.closeAllConnections();
+      await new Promise((d) => relay.server.close(d));
+      up.closeAllConnections();
+      await new Promise((d) => up.close(d));
+    }
+  });
+
+  it('lets a router that shows it holds $OREY open twice the connections at a time', async () => {
+    assert.equal(RELAY_HOLDER_FACTOR, 2);
+    const up = createServer((_q, s) => s.end('ok'));
+    await new Promise<void>((d) => up.listen(0, '127.0.0.1', () => d()));
+    const upPort = (up.address() as AddressInfo).port;
+    const relay = new Relay({ allowed: () => new Set([`127.0.0.1:${upPort}`]), perClient: () => 1, holder: async (proof) => proof === 'holds' });
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const rp = (relay.server.address() as AddressInfo).port;
+    const socks: Socket[] = [];
+    const tunnel = (proof?: string) => new Promise<string>((done) => {
+      let got = '';
+      const sock = connect(rp, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${upPort} HTTP/1.1\r\nhost: 127.0.0.1:${upPort}\r\n${proof ? `${HOLDER_HEADER}: ${proof}\r\n` : ''}\r\n`));
+      socks.push(sock);
+      sock.on('data', (c) => { got += c.toString('latin1'); if (got.includes('\r\n\r\n')) done(got.split('\r\n')[0]); });
+      sock.on('error', () => done(got.split('\r\n')[0] || 'error'));
+    });
+    try {
+      assert.equal(await tunnel(), 'HTTP/1.1 200 Connection Established');
+      assert.ok((await tunnel()).startsWith('HTTP/1.1 429'));
+      assert.equal(await tunnel('holds'), 'HTTP/1.1 200 Connection Established');
+      assert.ok((await tunnel('holds')).startsWith('HTTP/1.1 429'));
+      assert.ok((await tunnel('does not')).startsWith('HTTP/1.1 429'));
+    } finally {
+      for (const s of socks) s.destroy();
       relay.server.closeAllConnections();
       await new Promise((d) => relay.server.close(d));
       up.closeAllConnections();

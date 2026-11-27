@@ -517,7 +517,7 @@ export class Router {
   /** --proxy-via-peers: the least busy relay a signed peer offers and that is not full for today, as http://<the peer's
    * host>:<relay port>, becomes the route to the nodes; the router logs each change once. */
   private async choosePeerRelay(): Promise<void> {
-    type Pick = { url: string; peer: string; open: number | null; ms: number | null; by: string | null; holderLane: boolean };
+    type Pick = { url: string; peer: string; open: number | null; ms: number | null; by: string | null; holderLane: boolean; prove: boolean };
     let pick: Pick | null = null;
     let picks: Pick[] = [];
     if (this.viaPeers) {
@@ -536,7 +536,7 @@ export class Router {
           return [];
         }
         if ((this.relayDownUntil.get(`http://${host}:${port}`) ?? 0) > Date.now()) return [];
-        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane }];
+        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane, prove: lane }];
       });
       offers.sort(relayOrder);
       picks = offers.slice(0, this.o.spreadRelays ? SPREAD_MAX : 1);
@@ -558,7 +558,7 @@ export class Router {
       const ms = Date.now();
       return { [HOLDER_HEADER]: `${owner}.${ms}.${Buffer.from(signer(holderProofMessage(by, ms))).toString('base64url')}` };
     } : undefined);
-    setNodeRelays(picks.map((p) => ({ ...parseProxy(p.url), ...(p.holderLane && proofFor(p.by) ? { extra: proofFor(p.by)! } : {}) })), (relay, err) => this.relayDown(`http://${relay.host}:${relay.port}`, err.message.replace(/^.*?: /, '')));
+    setNodeRelays(picks.map((p) => ({ ...parseProxy(p.url), ...(p.prove && proofFor(p.by) ? { extra: proofFor(p.by)! } : {}) })), (relay, err) => this.relayDown(`http://${relay.host}:${relay.port}`, err.message.replace(/^.*?: /, '')));
     if (picks.length > 1) this.log(`nodes: spread over ${picks.length} peer relays (--spread-relays), each node always through the same one: ${picks.map((p) => p.url).join(', ')}; no single peer sees all of this router's traffic`);
     else if (pick) this.log(`nodes: reached through the relay of peer ${pick.peer} (${pick.url}${pick.holderLane ? ', full for today and carrying $' + TICKER + ' holders' : pick.open !== null ? `, ${pick.open} open` : ''}); the nodes see that router, not this computer`);
     else if (was && this.viaPeers) this.log(`nodes: no peer relay can take connections now; the nodes are reached ${nodeProxy() ? 'through --proxy' : 'directly'}`);
