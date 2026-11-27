@@ -2568,6 +2568,7 @@ const all4 = () => registry.entries.size;
   await rp.readPeers?.();
   const again = (await statusD()).peerRelay ?? null;
   const relaysDown = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const viaDown = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
   opts.proxyViaPeers = false;
   opts.peers = [];
   await rp.readPeers?.();
@@ -2579,6 +2580,9 @@ const all4 = () => registry.entries.size;
     chosen === `http://127.0.0.1:${deadPort}` && answered.status === 200 && after === null && again === null && said.length === 1 && said[0].includes('passed over for 5 min'),
     `chose ${chosen ? chosen.replace(String(deadPort), '<dead>') : 'nothing'} (peer on ${peerPortD === deadPort ? 'the same port' : 'another port'}) · answer ${answered.status} · after ${after ?? 'own route'}, next choice ${again ?? 'own route'} · log: ${said.length} line(s)`);
   const downLine = relaysDown.split('\n').find((l) => l.includes('could not be reached')) ?? '';
+  check('orrery doctor says --proxy-via-peers has no relay to use because one was passed over after it could not be reached',
+    viaDown.startsWith('--proxy-via-peers is on, but no signed peer offers a relay that takes connections now (1 passed over for a few minutes after it could not be reached), so the nodes are reached'),
+    viaDown.slice(0, 160) || 'no nodes via line');
   check('orrery peers --relays says which peer relay could not be reached and for how long it is passed over, and does not offer it',
     downLine === `1 could not be reached and is passed over for now: http://127.0.0.1:${peerPortD} (5 more min)` && !relaysDown.includes(`--proxy http://127.0.0.1:${deadPort}`),
     downLine.replaceAll(String(peerPortD), '<peer>') || relaysDown.split('\n')[0].slice(0, 120) || 'no answer');

@@ -297,5 +297,6 @@ describe('orrery doctor, what the running router paid', () => {
 
   it('says when --proxy-via-peers is on but no peer relay can take the router, and where to look', () => {
     assert.equal(noPeerRelayLine(), "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer");
+    assert.equal(noPeerRelayLine(2), "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now (2 passed over for a few minutes after it could not be reached), so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer");
   });
 });

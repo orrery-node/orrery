@@ -194,7 +194,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
   const via = status as { peerRelay?: string | null; proxyViaPeers?: boolean } | null;
   if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
-  else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine() });
+  else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
   const map = mapLine(status?.providers ?? []);
   if (map && (status?.peers?.length || status?.discovery !== 'chain')) out.push({ ok: null, what: '  map', detail: map });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
@@ -334,8 +334,9 @@ export function holderLaneLine(lane: boolean, share: string): string {
 }
 
 /** --proxy-via-peers is on but no signed peer offers a relay that takes connections now. */
-export function noPeerRelayLine(): string {
-  return "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer";
+export function noPeerRelayLine(passedOver = 0): string {
+  const why = passedOver ? ` (${passedOver} passed over for a few minutes after it could not be reached)` : '';
+  return `--proxy-via-peers is on, but no signed peer offers a relay that takes connections now${why}, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer`;
 }
 
 /** `orrery peers --relays`: the peers' relays this router could point --proxy at, least busy first (between relays as

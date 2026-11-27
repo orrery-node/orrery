@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'With `--proxy-via-peers` on and no relay to use, `orrery doctor` says how many peer relays are being passed over for a few minutes after they could not be reached.' },
   { who: 'router', text: 'A peer relay that could not be reached shows as such: `orrery peers --relays` leaves it out and says for how many more minutes it is passed over, the console marks it on the peer\'s row, and the status has `relayDownFor` in seconds.' },
   { who: 'router', text: 'When the peer relay `--proxy-via-peers` uses cannot be reached at all, the request that finds out never left your computer, so it goes once more your router\'s own way (directly, or through `--proxy`) instead of failing and counting against the node; that relay is passed over for 5 minutes and the log says so once.' },
   { who: 'router', text: 'Between peer relays that are just as busy, `--proxy-via-peers` and `orrery peers --relays` put the peer that answered this router\'s last read quicker first.' },
