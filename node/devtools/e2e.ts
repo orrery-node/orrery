@@ -3398,6 +3398,10 @@ const all4 = () => registry.entries.size;
   await nearAsk.text();
   const askedNear = through - before;
   const lanDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'this network')?.detail ?? '';
+  const lanCli = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const { handle: lanMcp } = await import('../src/mcp.ts');
+  const lanTool = await (lanMcp as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
+  const lanPage = await (await fetch(`${ROUTER}/`)).text();
   forged();
   kl.stopLan?.();
   await rl.stopLan?.();
@@ -3409,6 +3413,10 @@ const all4 = () => registry.entries.size;
       && after?.lan === null && after?.endpoint === 'http://127.0.0.1:17282'
       && lanDoc.startsWith(`listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`),
     `doctor: ${lanDoc.replaceAll('127.0.0.1', '<host>').slice(0, 160) || 'no line'} · ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
+  const lanPeersLine = lanCli.split('\n').find((l) => l.startsWith('this network:')) ?? '';
+  check('orrery peers and the peers tool in orrery mcp say the same of this network: where the router listens, what it heard, which nodes it reaches there; the console marks those nodes',
+    lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes("' <span class=cap>on this network \u00b7 '") && lanPage.includes("' for nodes on this network: '"),
+    `peers: ${lanPeersLine.replaceAll('127.0.0.1', '<host>').slice(0, 150) || 'no line'} · mcp ${lanTool.includes('this network:') ? 'same' : 'no line'} · console ${lanPage.includes('on this network') ? 'marks them' : 'no mark'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanDoctorLine, newer, noPeerRelayLine, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanDoctorLine, LAN_LISTINGS_LINE, lanNear, mapLine as mapLineOf, newer, noPeerRelayLine, peersReport as peersReportOf, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine, routersTodayLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -312,5 +312,19 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 0 }, []), "listening on 0.0.0.0:7373 (UDP) for nodes on this network; none has said where it is yet: a node joins with orrery provider start --lan-announce <this computer>:7373 (or the network's broadcast address)");
     assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 2 }, [{ name: 'Kestrel GPU Co-op', url: 'http://192.168.1.20:7070' }]), 'listening on 0.0.0.0:7373 (UDP): 2 listings heard on this network, 1 reached there directly: Kestrel GPU Co-op at http://192.168.1.20:7070; the other 1 not used (no such listing on chain, or not signed by the node key on it)');
     assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 1 }, []), 'listening on 0.0.0.0:7373 (UDP): 1 listing heard on this network, none reached there yet; the other 1 not used (no such listing on chain, or not signed by the node key on it)');
+  });
+
+  it('orrery peers says what this router hears on its own network, and the map counts listings heard there', () => {
+    const providers = [
+      { address: 'A'.repeat(44), name: 'Kestrel GPU Co-op', found: 'rpc', lan: { url: 'http://192.168.1.20:7070' } },
+      { address: 'B'.repeat(44), name: null, found: 'lan', lan: { url: 'http://192.168.1.21:7070' } },
+      { address: 'C'.repeat(44), name: 'Vault Nine', found: 'rpc', lan: null },
+    ];
+    assert.deepEqual(lanNear(providers), [{ name: 'Kestrel GPU Co-op', url: 'http://192.168.1.20:7070' }, { name: 'BBBBBB\u2026', url: 'http://192.168.1.21:7070' }]);
+    assert.equal(mapLineOf(providers), "the map: 3 listings, 2 in the RPC's list, 1 from this network");
+    const lines = peersReportOf({ peers: [], relay: null, providers, lan: { listening: '0.0.0.0:7373', heard: 2 }, discovery: 'chain' });
+    assert.ok(lines.includes('this network: listening on 0.0.0.0:7373 (UDP): 2 listings heard on this network, 2 reached there directly: Kestrel GPU Co-op at http://192.168.1.20:7070, BBBBBB\u2026 at http://192.168.1.21:7070'), lines.join('\n'));
+    assert.ok(peersReportOf({ peers: [], relay: null, providers, discovery: 'lan' }).includes(LAN_LISTINGS_LINE));
+    assert.ok(!peersReportOf({ peers: [], relay: null, providers }).some((l) => l.startsWith('this network:')));
   });
 });

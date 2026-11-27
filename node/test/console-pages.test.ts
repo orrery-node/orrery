@@ -1,5 +1,5 @@
 import { describe, it } from 'node:test';
-import { runInNewContext } from 'node:vm';
+import { runInNewContext, Script } from 'node:vm';
 import assert from 'node:assert/strict';
 import { fontFaces } from '../devtools/fonts.ts';
 import * as routerConsole from '../src/router/console.ts';
@@ -18,6 +18,13 @@ describe('the local console pages', () => {
       assert.deepEqual(outside(html), [], `${name} console`);
       assert.ok(!/<link\b/i.test(html), `${name} console has no <link>`);
       assert.ok(!/<script[^>]+src=/i.test(html) && !/<img\b/i.test(html), `${name} console loads no script or image`);
+    }
+  });
+
+  it('carry scripts that parse as JavaScript, so an escape lost in the page template cannot blank the console', () => {
+    for (const [name, html] of Object.entries(pages)) {
+      const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+      for (const [i, body] of scripts.entries()) assert.doesNotThrow(() => new Script(body), `${name} console, script ${i + 1}`);
     }
   });
 
