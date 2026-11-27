@@ -2937,6 +2937,63 @@ const all4 = () => registry.entries.size;
     lines[0] === '2 peer relays you can use, least busy first:' && lines[1] === `  --proxy http://127.0.0.1:7373  (${urls[1]}, 0 open now, unsigned)` && lines[2] === `  --proxy http://127.0.0.1:7272  (${urls[0]}, 3 open now, unsigned)` && lines[3] === `1 full for today, left out: ${urls[2]}`,
     relaysOut.replaceAll('127.0.0.1', '<host>').split('\n').join(' | ').slice(0, 300) || 'nothing printed');
 }
+// --spread-relays: with three signed peers each offering a relay that carries traffic (this router's own and two more),
+// the router spreads the nodes over them, each node always through the same relay: a round of health checks goes through
+// exactly the relays the nodes are assigned to (the rehearsal's nodes land on more than one), and orrery doctor lists them.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signS } = await import('../src/router/notes.ts');
+  const { signerOf: signerS } = await import('../src/keys.ts');
+  const { Relay: RelayS, allowedTargets: allowedS } = await import('../src/router/relay.ts');
+  const proxyMod = (await import('../src/proxy.ts')) as { relayIndex?: (t: string, n: number) => number };
+  const relayIndex = proxyMod.relayIndex ?? (() => -1);
+  const statusS = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelays?: string[]; relay?: { port: number | null; relayed: number } | null };
+  const ownPort = (await statusS()).relay?.port ?? 0;
+  const endpoints = () => [...registry.entries.values()].filter((e) => e.account.active).map((e) => e.account.endpoint);
+  const second = new RelayS({ allowed: () => allowedS(endpoints()), perClient: () => 16 });
+  const third = new RelayS({ allowed: () => allowedS(endpoints()), perClient: () => 16 });
+  await Promise.all([second, third].map((r) => new Promise<void>((done) => r.server.listen(0, '127.0.0.1', () => done()))));
+  const secondPort = (second.server.address() as { port: number }).port;
+  const thirdPort = (third.server.address() as { port: number }).port;
+  const offer = (relayPort: number) => {
+    const k = Keypair.generate();
+    return createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signS({ notes: 1, at: Date.now(), nodes: [] }, k.publicKey.toBase58(), signerS(k)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: relayPort, open: 0 } })) : res.writeHead(404).end()));
+  };
+  const peerA = offer(ownPort);
+  const peerB = offer(secondPort);
+  const peerC = offer(thirdPort);
+  await Promise.all([peerA, peerB, peerC].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
+  opts.peers = [peerA, peerB, peerC].map((srv) => `http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  opts.proxyViaPeers = true;
+  opts.spreadRelays = true;
+  await rp.readPeers?.();
+  const relays = (await statusS()).peerRelays ?? [];
+  const ownBefore = (await statusS()).relay?.relayed ?? 0;
+  const secondBefore = second.relayed;
+  const thirdBefore = third.relayed;
+  await registry.checkHealth();
+  const ownCarried = ((await statusS()).relay?.relayed ?? 0) - ownBefore;
+  const secondCarried = second.relayed - secondBefore;
+  const thirdCarried = third.relayed - thirdBefore;
+  const viaSpread = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
+  opts.spreadRelays = false;
+  opts.proxyViaPeers = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [peerA, peerB, peerC, second.server, third.server]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
+  const assigned = registry.usable().map((e) => { const u = new URL(e.account.endpoint); return relays[relayIndex(`${u.hostname}:${u.port || (u.protocol === 'https:' ? '443' : '80')}`, relays.length)]; });
+  const ownUrl = `http://127.0.0.1:${ownPort}`;
+  const secondUrl = `http://127.0.0.1:${secondPort}`;
+  const toOwn = assigned.filter((u) => u === ownUrl).length;
+  const toSecond = assigned.filter((u) => u === secondUrl).length;
+  const thirdUrl = `http://127.0.0.1:${thirdPort}`;
+  const toThird = assigned.filter((u) => u === thirdUrl).length;
+  check('--spread-relays spreads the nodes over every peer relay, each node always through the same one: a round of health checks goes through exactly the relays the nodes are assigned to',
+    relays.length === 3 && [ownUrl, secondUrl, thirdUrl].every((u) => relays.includes(u)) && new Set(assigned).size >= 2
+    && (ownCarried > 0) === (toOwn > 0) && (secondCarried > 0) === (toSecond > 0) && (thirdCarried > 0) === (toThird > 0) && viaSpread.startsWith('spread over 3 peer relays (--spread-relays)'),
+    `${relays.length} relays · nodes assigned ${toOwn} / ${toSecond} / ${toThird} · carried ${ownCarried} / ${secondCarried} / ${thirdCarried} · doctor: ${viaSpread.slice(0, 40) || 'no line'}`);
+}
 // --proxy-via-peers: the router sends its requests to nodes through the least busy relay a signed peer offers, chosen
 // at each refresh, while it keeps reading that peer directly; once that relay says it is full for today, the router
 // goes back to its own route (directly, or its --proxy), and the log says each change once.

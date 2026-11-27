@@ -192,8 +192,9 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   }
   for (const p of byTrust(status?.peers ?? [])) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
-  const via = status as { peerRelay?: string | null; proxyViaPeers?: boolean } | null;
-  if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
+  const via = status as { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean } | null;
+  if ((via?.peerRelays?.length ?? 0) > 1) out.push({ ok: null, what: '  nodes via', detail: spreadLine(via!.peerRelays!) });
+  else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
   const map = mapLine(status?.providers ?? []);
   if (map && (status?.peers?.length || status?.discovery !== 'chain')) out.push({ ok: null, what: '  map', detail: map });
@@ -331,6 +332,11 @@ export function holderLaneLine(lane: boolean, share: string): string {
   return lane
     ? `this wallet holds ${share} of $OREY, past the 0.01% that rides holder lanes: peer relays that carry holders take it past their daily limit (--proxy-via-peers)`
     : `0.01% of $OREY's supply (100k) rides holder lanes on peer relays past their daily limit; this wallet holds ${share}`;
+}
+
+/** --spread-relays: the peer relays the nodes are spread over. */
+export function spreadLine(relays: string[]): string {
+  return `spread over ${relays.length} peer relays (--spread-relays): ${relays.join(', ')}; each node is always reached through the same one, so no single peer sees all of this router's traffic`;
 }
 
 /** --proxy-via-peers is on but no signed peer offers a relay that takes connections now. */

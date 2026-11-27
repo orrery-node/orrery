@@ -15,6 +15,7 @@ import { Agent, request as httpRequest, type ClientRequest, type IncomingMessage
 import { connect as netConnect, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect, type ConnectionOptions } from 'node:tls';
 import { Readable, type Duplex } from 'node:stream';
+import { createHash } from 'node:crypto';
 import { fetchWithTimeout } from './sse.ts';
 
 export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string; extra?: () => Record<string, string> };
@@ -219,15 +220,40 @@ export function nodeProxy(): Proxy | null {
 }
 
 let relayRoute: Proxy | null = null;
+/** The peer relays requests to nodes go through: one, or several with --spread-relays, each node always through the same. */
+let relayRoutes: Proxy[] = [];
 
 /** Sets (or clears) a peer router's relay that requests to nodes go through (--proxy-via-peers), in place of the proxy
  * for those requests only: the RPC and everything else keep the proxy or go directly, and reads of other routers never
  * use it (fetchPeer), since a relay carries traffic only to nodes listed on chain. */
 export function setNodeRelay(p: Proxy | null, onDown: ((relay: Proxy, err: Error) => void) | null = null): void {
+  setNodeRelays(p ? [p] : [], onDown);
+}
+
+/** Several peer relays at once (--spread-relays): each node is reached through one of them, always the same one for the
+ * same node (relayIndex), so no single peer carries all of this router's traffic. */
+export function setNodeRelays(ps: Proxy[], onDown: ((relay: Proxy, err: Error) => void) | null = null): void {
   for (const { pool } of pools.values()) closePool(pool);
   pools.clear();
-  relayRoute = p;
-  onRelayDown = p ? onDown : null;
+  relayRoutes = [...ps];
+  relayRoute = relayRoutes[0] ?? null;
+  onRelayDown = relayRoutes.length ? onDown : null;
+}
+
+export function nodeRelays(): Proxy[] {
+  return [...relayRoutes];
+}
+
+/** Which of n relays a node at host:port goes through: fixed by the node's address, the same at every request. */
+export function relayIndex(target: string, n: number): number {
+  return n <= 1 ? 0 : createHash('sha256').update(target).digest().readUInt32BE(0) % n;
+}
+
+/** The relay a request to this node goes through, or null for the router's own way. */
+export function relayFor(url: string): Proxy | null {
+  if (relayRoutes.length <= 1) return relayRoutes[0] ?? null;
+  const t = new URL(url);
+  return relayRoutes[relayIndex(`${t.hostname}:${t.port || (t.protocol === 'https:' ? '443' : '80')}`, relayRoutes.length)];
 }
 
 export function nodeRelay(): Proxy | null {
@@ -247,14 +273,16 @@ export function relayUnreachable(err: Error): boolean {
  * proxy when one is set, directly when not. When the peer's relay cannot be reached at all, the request never got out,
  * so it goes once more the router's own way, the relay is dropped, and whoever listens is told. */
 export async function fetchNode(url: string, init: Init = {}): Promise<Response> {
-  const relay = relayRoute;
+  const relay = relayFor(url);
   if (!relay) return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
   try {
     return await viaProxy(relay, url, init, testTls);
   } catch (err) {
-    if (relayRoute !== relay || !relayUnreachable(err as Error)) throw err;
+    if (!relayRoutes.includes(relay) || !relayUnreachable(err as Error)) throw err;
     const told = onRelayDown;
-    setNodeRelay(null);
+    relayRoutes = relayRoutes.filter((r) => r !== relay);
+    relayRoute = relayRoutes[0] ?? null;
+    if (!relayRoutes.length) onRelayDown = null;
     told?.(relay, err as Error);
     return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
   }

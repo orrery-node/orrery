@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `--spread-relays` (with `--proxy-via-peers`): requests to nodes are spread over every relay your signed peers offer (up to 8), each node always through the same one, so no single peer sees all of your router's traffic. A relay that cannot be reached drops out and the rest carry on; the status has `peerRelays` and `orrery doctor` lists them.
 - **Router** · With `--proxy-via-peers` on and no relay to use, `orrery doctor` says how many peer relays are being passed over for a few minutes after they could not be reached.
 - **Router** · A peer relay that could not be reached shows as such: `orrery peers --relays` leaves it out and says for how many more minutes it is passed over, the console marks it on the peer's row, and the status has `relayDownFor` in seconds.
 - **Router** · When the peer relay `--proxy-via-peers` uses cannot be reached at all, the request that finds out never left your computer, so it goes once more your router's own way (directly, or through `--proxy`) instead of failing and counting against the node; that relay is passed over for 5 minutes and the log says so once.
