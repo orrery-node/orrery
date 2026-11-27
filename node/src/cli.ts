@@ -15,6 +15,7 @@ import { HolderBook, sharePct, type HolderTier } from './holder.ts';
 import { estimateInputTokens, perMillion, usd } from './pricing.ts';
 import { frameMsFrom } from './provider/pace.ts';
 import { readProviderConfig } from './provider/config-file.ts';
+import { announceLine } from './lan.ts';
 import { PACKAGE_VERSION } from './version.ts';
 import { COMMANDS, PROVIDER_COMMANDS, unknownCommand } from './suggest.ts';
 import { feesLine, FEE_FLOOR_LAMPORTS, NODE_VERSION, ProviderNode, REDEEM_FEE_LAMPORTS, REDEEM_MIN_UNITS, type ProviderConfig } from './provider/node.ts';
@@ -511,7 +512,7 @@ async function provider(sub: string) {
     const ago = (ms: number) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))} s` : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
     // Which release the node runs: one started before an update keeps the old code until it is started again.
     const behind = releaseLine(s.version, NODE_VERSION, `${CLI} provider start --config ${cfgPath}`);
-    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, version: s.version ?? null, installed: NODE_VERSION, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, payoutFailed: s.payoutFailed ?? null, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, paced: day.paced ?? 0, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
+    if (has('json')) return console.log(JSON.stringify({ name: s.name, provider: s.provider, version: s.version ?? null, installed: NODE_VERSION, answers: s.answers, signed: s.signed, redeemed: s.redeemed, waiting: s.waiting, payoutFailed: s.payoutFailed ?? null, listing, reach: s.reach ?? null, day: day ? { answers: day.answers, billed: day.usd, paced: day.paced ?? 0, ...(day.kinds ? { kinds: day.kinds.map((k) => ({ kind: k.key, answers: k.answers, billed: k.usd })) } : {}) } : null, month: month ? { month: month.day, answers: month.answers, billed: month.billed, payouts: month.payouts, paidOut: month.paid } : null, payouts: s.payouts ?? null, wallet: s.wallet ? { held: usd(BigInt(s.wallet.units)), afterTx: s.wallet.tx, at: new Date(s.wallet.at).toISOString() } : null, lan: s.lan ?? null, notify: s.notify ? { host: s.notify.host, last: s.notify.last ? { at: new Date(s.notify.last.at).toISOString(), what: s.notify.last.what, status: s.notify.last.status } : null } : null, slots: s.slots ?? null, channels: s.channels.length, unsignedAnswers: unsigned, feeLamports: lamports, payoutsLeft, opensUsdcAccount: openingRent !== null, lastAnswerAt: lastAt === null ? null : new Date(lastAt).toISOString() }, null, 2));
     const fees = lamports === null ? 'the RPC did not answer' : feesLine({ lamports, openingRent, nodeKey: node.node.publicKey.toBase58() });
     return console.log([
       `${s.name}  ·  listing ${s.provider}${s.version ? `  ·  orrery-node ${s.version}` : ''}`,
@@ -529,6 +530,7 @@ async function provider(sub: string) {
       ...(s.payouts === undefined ? [] : payoutLines(s.payouts, Date.now(), !s.payouts && (await node.paidOutBefore()))),
       ...(s.wallet ? [walletLine(s.wallet)] : []),
       ...(s.notify ? [noticeLine(s.notify.host, s.notify.last)] : []),
+      ...(s.lan ? [announceLine(s.lan)] : []),
       ...(s.slots ? [slotsLine(s.slots)] : []),
       `  channels            ${s.channels.length}${unsigned ? `  (${unsigned} answer${unsigned === 1 ? '' : 's'} not signed for yet)` : ''}`,
       `  last answer           ${lastAt === null ? 'none since start' : `${ago(Date.now() - lastAt)} ago (${new Date(lastAt).toISOString().slice(11, 19)} UTC)`}`,

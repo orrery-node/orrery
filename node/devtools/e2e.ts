@@ -3402,6 +3402,7 @@ const all4 = () => registry.entries.size;
   const { handle: lanMcp } = await import('../src/mcp.ts');
   const lanTool = await (lanMcp as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   const lanPage = await (await fetch(`${ROUTER}/`)).text();
+  const lanNodeStatus = (await cliOut(['status'])).split('\n').find((l) => l.startsWith('  on this network')) ?? '';
   forged();
   kl.stopLan?.();
   await rl.stopLan?.();
@@ -3417,6 +3418,9 @@ const all4 = () => registry.entries.size;
   check('orrery peers and the peers tool in orrery mcp say the same of this network: where the router listens, what it heard, which nodes it reaches there; the console marks those nodes',
     lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes("' <span class=cap>on this network \u00b7 '") && lanPage.includes("' for nodes on this network: '"),
     `peers: ${lanPeersLine.replaceAll('127.0.0.1', '<host>').slice(0, 150) || 'no line'} · mcp ${lanTool.includes('this network:') ? 'same' : 'no line'} · console ${lanPage.includes('on this network') ? 'marks them' : 'no mark'}`);
+  check('orrery provider status says where the node says it is on its network, to whom, and how many signed beacons went out',
+    new RegExp(`^  on this network {7}saying where it is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key: routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)$`).test(lanNodeStatus),
+    lanNodeStatus.replaceAll('127.0.0.1', '<host>').trim().slice(0, 200) || 'no line in provider status');
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

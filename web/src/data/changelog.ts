@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider status` (and `--json`, as `lan`) says where a node started with `--lan-announce` says it is on its network: to which address, the address routers there reach it at, and how many signed beacons went out, the last how long ago.' },
   { who: 'router', text: 'The router console fills in again: a pattern in its page script (the peer relay each node goes through) lost an escape on the way into the page and stopped the whole script; a test now checks that every console script parses.' },
   { who: 'router', text: '`orrery peers`, the `peers` tool in `orrery mcp` and the console say what this router hears on its own network: where `--lan-listen` listens, how many listings it heard, which nodes it reaches there directly; the map counts the listings found only there, and the console marks each such node with its address on the network.' },
   { who: 'router', text: '`orrery doctor` says what `--lan-listen` heard on this network: where the router listens, how many listings it heard, which nodes it reaches there directly (name and address), and how many it left unused because no such listing is on chain or the node key on it did not sign.' },

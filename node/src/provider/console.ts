@@ -60,7 +60,7 @@ export function nextPayoutHint(n: NextPayout, configPath: string): string {
   return `  ($${(Number(n.due) / 1e6).toFixed(6)} at the next round, every ${every}; $${(Number(n.below) / 1e6).toFixed(6)} waits for $${min} a channel)`;
 }
 
-export type OwnStatus = { provider: string; name: string; answers: number; version?: string | null; payoutFailed?: { at: number; said: string } | null; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null; slots?: SlotState | null };
+export type OwnStatus = { provider: string; name: string; answers: number; lan?: { to: string; url: string; sent: number; at: number | null } | null; version?: string | null; payoutFailed?: { at: number; said: string } | null; signed: string; redeemed: string; waiting: string; channels: { unsigned: number }[]; recent?: { at: number }[]; refused?: Partial<Record<string, number>>; payouts?: PayoutSummary | null; manifestHash?: string; reach?: ReachNow; nextPayout?: NextPayout; wallet?: Held | null; notify?: { host: string; last: NoticeSent | null } | null; slots?: SlotState | null };
 
 /** The running node's own status, read on this computer with its key; null when no node answers on that port. Stays on
  * loopback, so it never goes through a proxy. */

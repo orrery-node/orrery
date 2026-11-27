@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
-import { announce, beaconSigned, lanAddress, LAN_FRESH_MS, LAN_MAX_HEARD, LanListener, parseBeacon, signBeacon, type Beacon } from '../src/lan.ts';
+import { announce, announceLine, beaconSigned, lanAddress, LAN_FRESH_MS, LAN_MAX_HEARD, LanListener, parseBeacon, signBeacon, type Beacon } from '../src/lan.ts';
 import { addLanNode, onLan, relayFor, setLanNodes, setNodeRelay } from '../src/proxy.ts';
 import { lanLine } from '../src/router/server.ts';
 
@@ -85,6 +85,23 @@ describe('a node saying where it is on its own network', () => {
     setLanNodes([]);
     setNodeRelay(null);
     assert.ok(!onLan('http://192.168.1.20:7070'));
+  });
+
+  it('orrery provider status says where the node says it is, to whom, and how many beacons went out', () => {
+    assert.equal(announceLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', sent: 0, at: null }), '  on this network       saying where it is to 192.168.1.255:7373 every 15 s, signed with the node key: routers there reach it at http://192.168.1.20:7070 (none sent yet)');
+    assert.equal(announceLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', sent: 4, at: 1_000 }, 13_400), '  on this network       saying where it is to 192.168.1.255:7373 every 15 s, signed with the node key: routers there reach it at http://192.168.1.20:7070 (4 sent, the last 12 s ago)');
+  });
+
+  it('a node counts the beacons it sent', async () => {
+    const lan = new LanListener();
+    const at = await lan.listen('127.0.0.1:0');
+    let sent = 0;
+    const heard = new Promise<Beacon>((done) => (lan.onNew = done));
+    const stop = announce(at, () => signBeacon(listing, 'http://127.0.0.1:7070', Date.now(), sign), 60_000, () => sent++);
+    await heard;
+    stop();
+    lan.close();
+    assert.equal(sent, 1);
   });
 
   it('the router says once where a node on its network is reached', () => {

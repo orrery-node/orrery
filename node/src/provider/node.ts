@@ -14,7 +14,7 @@ import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from 
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
-import { announce, LAN_EVERY_MS, networkAddress, signBeacon } from '../lan.ts';
+import { announce, LAN_EVERY_MS, networkAddress, signBeacon, type Announcing } from '../lan.ts';
 import { canonical, IMAGE_TOKENS, imageCount, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
@@ -216,6 +216,7 @@ export class ProviderNode {
   private quietTimer: NodeJS.Timeout | null = null;
   private booksTimer: NodeJS.Timeout | null = null;
   private lanStop: (() => void) | null = null;
+  private announcing: Announcing | null = null;
   private listingRead: { at: number; onChain: { payouts: number; settled: string } | null; fees: { line: string; low: boolean } | null } | null = null;
   private booksDay = utcDay(Date.now());
   private warnedNoCacheReport = false;
@@ -392,6 +393,8 @@ export class ProviderNode {
       wallet: readHeld(`${this.dir}/held.json`),
       // Where payout notices go (the webhook's host only: its path is a secret) and what the last one got back.
       notify: this.notifyTo ? { host: new URL(this.notifyTo).host, last: readNotice(`${this.dir}/notice.json`) } : null,
+      // Where this node says it is on its own network (--lan-announce), and how many beacons went out. Null: it does not.
+      lan: this.announcing ? { ...this.announcing } : null,
       // How many answers stream at once and who is waiting; holders go first when every slot is taken. Null: no limit.
       slots: this.slots ? this.slots.state : null,
       // The last payout round that failed and why, until one goes through: without it the money only looks stuck.
@@ -1088,7 +1091,12 @@ export class ProviderNode {
     const url = (given ?? `http://${networkAddress() ?? '127.0.0.1'}:${port}`).replace(/\/$/, '');
     const sign = signerOf(this.node);
     this.lanStop?.();
-    this.lanStop = announce(to, () => signBeacon(this.pda.toBase58(), url, Date.now(), sign));
+    const a: Announcing = { to, url, sent: 0, at: null };
+    this.announcing = a;
+    this.lanStop = announce(to, () => signBeacon(this.pda.toBase58(), url, Date.now(), sign), LAN_EVERY_MS, () => {
+      a.sent++;
+      a.at = Date.now();
+    });
     this.log(`saying where this node is on its network to ${to} every ${LAN_EVERY_MS / 1000} s, signed with the node key: routers there reach it at ${url}`);
     return url;
   }
@@ -1096,6 +1104,7 @@ export class ProviderNode {
   stopLan(): void {
     this.lanStop?.();
     this.lanStop = null;
+    this.announcing = null;
   }
 
   close(): Promise<void> {

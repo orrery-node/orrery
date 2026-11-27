@@ -70,6 +70,15 @@ export function networkAddress(): string | null {
   return null;
 }
 
+/** What a node says on its network, as `orrery provider status` and its console show it. */
+export type Announcing = { to: string; url: string; sent: number; at: number | null };
+
+/** `orrery provider status`: where this node says it is on its network, to whom, and how many beacons went out. */
+export function announceLine(a: Announcing, now = Date.now()): string {
+  const last = a.at === null ? 'none sent yet' : `${a.sent} sent, the last ${Math.max(0, Math.round((now - a.at) / 1000))} s ago`;
+  return `  on this network       saying where it is to ${a.to} every ${LAN_EVERY_MS / 1000} s, signed with the node key: routers there reach it at ${a.url} (${last})`;
+}
+
 /** What a router heard on its network: the latest beacon for each listing, with when it came. */
 export class LanListener {
   private heard = new Map<string, Beacon>();
@@ -121,7 +130,7 @@ export class LanListener {
 
 /** A node saying where it is on its network every LAN_EVERY_MS: to one router's address, or to the network's broadcast
  * address so every router on it hears. Returns a function that stops it. */
-export function announce(spec: string, beacon: () => Beacon, every = LAN_EVERY_MS): () => void {
+export function announce(spec: string, beacon: () => Beacon, every = LAN_EVERY_MS, onSent?: () => void): () => void {
   const { host, port } = lanAddress(spec, null);
   const loopback = host === 'localhost' || host.startsWith('127.');
   const socket = createSocket('udp4');
@@ -129,7 +138,9 @@ export function announce(spec: string, beacon: () => Beacon, every = LAN_EVERY_M
   let timer: NodeJS.Timeout | null = null;
   const send = () => {
     const bytes = Buffer.from(JSON.stringify(beacon()));
-    socket.send(bytes, port, host, () => undefined);
+    socket.send(bytes, port, host, (err) => {
+      if (!err) onSent?.();
+    });
   };
   socket.bind(0, loopback ? '127.0.0.1' : undefined, () => {
     if (host.endsWith('.255')) socket.setBroadcast(true);
