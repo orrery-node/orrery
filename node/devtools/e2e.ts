@@ -3103,6 +3103,8 @@ const all4 = () => registry.entries.size;
   const answered = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hi.' }] }) });
   await answered.text();
   const carriedAfter = (await statusNow()).relay?.relayed ?? 0;
+  const routersCarried = (((await statusNow()).relay ?? null) as { routersToday?: number } | null)?.routersToday ?? 0;
+  const peersWithRelay = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   const viaDoctor = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
   fullToday = true;
   await rp.readPeers?.();
@@ -3114,6 +3116,10 @@ const all4 = () => registry.entries.size;
   offering.closeAllConnections();
   await new Promise((done) => offering.close(done));
   const said = heardVia.filter((l) => l.startsWith('nodes: '));
+  const routersLine = peersWithRelay.split('\n').find((l) => l.startsWith("this router's relay carried connections for ")) ?? '';
+  check('a relay says how many routers it carried today, as a count only: after carrying this router\u2019s request, at least one',
+    routersCarried >= 1 && routersLine === `this router's relay carried connections for ${routersCarried} router${routersCarried === 1 ? '' : 's'} today (a count only: no address is kept past the day or shown)` && !routersLine.includes('127.0.0.1'),
+    `routersToday ${routersCarried} · orrery peers: ${routersLine.slice(0, 80) || 'no line'}`);
   const { nodeProxy: proxyNow } = await import('../src/proxy.ts');
   const fallback = proxyNow() ? 'through --proxy' : 'directly';
   check('--proxy-via-peers sends requests to nodes through the least busy relay a signed peer offers, reading that peer directly; once the relay is full for today the router goes back to its own route, each change logged once',

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { bytesText, byTrust, fullRelaysText, holderLaneLine, newer, noPeerRelayLine, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
-import { agentDayLine, keptLine, paidLine } from '../src/doctor.ts';
+import { agentDayLine, keptLine, paidLine, routersTodayLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -298,5 +298,13 @@ describe('orrery doctor, what the running router paid', () => {
   it('says when --proxy-via-peers is on but no peer relay can take the router, and where to look', () => {
     assert.equal(noPeerRelayLine(), "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now, so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer");
     assert.equal(noPeerRelayLine(2), "--proxy-via-peers is on, but no signed peer offers a relay that takes connections now (2 passed over for a few minutes after it could not be reached), so the nodes are reached the router's own way (directly, or through --proxy); orrery peers --relays lists what the peers offer");
+  });
+
+  it('says how many routers this router\'s relay carried today, as a count only', () => {
+    assert.equal(routersTodayLine(1), "this router's relay carried connections for 1 router today (a count only: no address is kept past the day or shown)");
+    assert.equal(routersTodayLine(3), "this router's relay carried connections for 3 routers today (a count only: no address is kept past the day or shown)");
+    const report = peersReport({ peers: [], relay: { port: 7272, relayed: 4, refused: 0, routersToday: 2 } as never });
+    assert.ok(report.includes(routersTodayLine(2)));
+    assert.ok(!peersReport({ peers: [], relay: { port: 7272, relayed: 0, refused: 0, routersToday: 0 } as never }).some((l) => l.includes('router today') || l.includes('routers today')));
   });
 });

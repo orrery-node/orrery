@@ -69,6 +69,9 @@ export class Relay {
   forHolders = 0;
   /** The bytes carried in the relay's current day, which starts with the first byte after the last day ended. */
   private day = { start: 0, bytes: 0 };
+  /** The routers carried in the relay's current day, as a count: the addresses are kept in memory for the day only, to
+   * count each once, and are never shown or written anywhere. */
+  private routersDay = { start: 0, seen: new Set<string>() };
   readonly server: Server;
   /** Connections open through the relay right now, by the address they came from. */
   private readonly openBy = new Map<string, number>();
@@ -88,6 +91,17 @@ export class Relay {
   /** How many connections one address may have open at once. */
   get perClient(): number {
     return Math.max(1, Math.floor(this.o.perClient?.() ?? RELAY_PER_CLIENT));
+  }
+
+  /** How many routers this relay carried at least one connection for in the last day. */
+  get routersToday(): number {
+    return Date.now() - this.routersDay.start >= DAY_MS ? 0 : this.routersDay.seen.size;
+  }
+
+  private carriedFor(from: string): void {
+    const now = Date.now();
+    if (now - this.routersDay.start >= DAY_MS) this.routersDay = { start: now, seen: new Set() };
+    this.routersDay.seen.add(plainAddress(from));
   }
 
   /** Bytes carried in the current day. */
@@ -196,6 +210,7 @@ export class Relay {
     const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
     const up = httpRequest({ host: target.hostname, port: Number(target.port || 80), method: req.method, path: `${target.pathname}${target.search}`, headers, agent: false }, (r) => {
       this.relayed += 1;
+      this.carriedFor(req.socket.remoteAddress ?? '?');
       const back = Object.fromEntries(Object.entries(r.headers).filter(([k]) => !HOP.has(k.toLowerCase())));
       res.writeHead(r.statusCode ?? 502, back);
       r.on('data', (c: Buffer) => this.count(c.length));
@@ -237,6 +252,7 @@ export class Relay {
     socket.on('close', release);
     const far = netConnect(Number(m[2]), m[1], () => {
       this.relayed += 1;
+      this.carriedFor(socket.remoteAddress ?? '?');
       socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head.length) far.write(head);
       this.count(head.length);

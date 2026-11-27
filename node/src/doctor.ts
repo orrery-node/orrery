@@ -192,6 +192,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   }
   for (const p of byTrust(status?.peers ?? [])) out.push({ ok: p.refused || p.at === 0 ? false : null, what: '  peer', detail: peerLine(p) });
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
+  const relayRouters = (status?.relay as { routersToday?: number } | null | undefined)?.routersToday ?? 0;
+  if (relayRouters) out.push({ ok: null, what: '  relay today', detail: routersTodayLine(relayRouters) });
   const via = status as { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean } | null;
   if ((via?.peerRelays?.length ?? 0) > 1) out.push({ ok: null, what: '  nodes via', detail: spreadLine(via!.peerRelays!) });
   else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
@@ -266,6 +268,11 @@ export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise
 /** The relay as `orrery doctor` says it: what it carried and refused, and, from a router that says them, the connections
  * open now and the limit for one address. */
 export { bytesText, rpcLeftOutLine };
+
+/** How many routers this router's relay carried today, as a count only. */
+export function routersTodayLine(n: number): string {
+  return `this router's relay carried connections for ${n} router${n === 1 ? '' : 's'} today (a count only: no address is kept past the day or shown)`;
+}
 
 export function relayLine(r: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number }): string {
   const now = r.open !== undefined && r.perClient !== undefined ? `, ${r.open} open now (up to ${r.perClient} at a time for one address)` : '';
@@ -469,6 +476,8 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
     for (const p of byTrust(peers)) out.push(`  ${peerLine(p, now)}`);
   }
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
+  const carriedFor = (status.relay as { routersToday?: number } | null | undefined)?.routersToday ?? 0;
+  if (carriedFor) out.push(routersTodayLine(carriedFor));
   const route = nodesViaLine(status);
   if (route) out.push(route);
   if ((status.peerRelays?.length ?? 0) > 1) out.push(...spreadByNode(status.providers ?? []));

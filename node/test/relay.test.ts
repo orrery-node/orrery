@@ -139,4 +139,29 @@ describe('a relay only reaches listed nodes', () => {
     relay.server.closeAllConnections();
     await new Promise((d) => relay.server.close(d));
   });
+
+  it('counts the routers it carried today, each address once', async () => {
+    const up = createServer((_q, s) => s.end('ok'));
+    await new Promise<void>((d) => up.listen(0, '127.0.0.1', () => d()));
+    const upPort = (up.address() as AddressInfo).port;
+    const relay = new Relay({ allowed: () => new Set([`127.0.0.1:${upPort}`]), perClient: () => 4 });
+    await new Promise<void>((d) => relay.server.listen(0, '127.0.0.1', () => d()));
+    const rp = (relay.server.address() as AddressInfo).port;
+    const forward = () => new Promise<number>((done) => {
+      const q = request({ host: '127.0.0.1', port: rp, path: `http://127.0.0.1:${upPort}/x`, agent: false }, (r) => { r.resume(); r.on('end', () => done(r.statusCode ?? 0)); });
+      q.end();
+    });
+    try {
+      assert.equal(relay.routersToday, 0);
+      assert.equal(await forward(), 200);
+      assert.equal(await forward(), 200);
+      assert.equal(relay.relayed, 2);
+      assert.equal(relay.routersToday, 1);
+    } finally {
+      relay.server.closeAllConnections();
+      await new Promise((d) => relay.server.close(d));
+      up.closeAllConnections();
+      await new Promise((d) => up.close(d));
+    }
+  });
 });
