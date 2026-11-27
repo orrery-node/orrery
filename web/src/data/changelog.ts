@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers` (and the `peers` tool in `orrery mcp`) and the console say how your own requests reach the nodes now: through one peer\'s relay, spread over several (`--spread-relays`), or your own way when no peer relay can take them.' },
   { who: 'router', text: '`--spread-relays` (with `--proxy-via-peers`): requests to nodes are spread over every relay your signed peers offer (up to 8), each node always through the same one, so no single peer sees all of your router\'s traffic. A relay that cannot be reached drops out and the rest carry on; the status has `peerRelays` and `orrery doctor` lists them.' },
   { who: 'router', text: 'With `--proxy-via-peers` on and no relay to use, `orrery doctor` says how many peer relays are being passed over for a few minutes after they could not be reached.' },
   { who: 'router', text: 'A peer relay that could not be reached shows as such: `orrery peers --relays` leaves it out and says for how many more minutes it is passed over, the console marks it on the peer\'s row, and the status has `relayDownFor` in seconds.' },

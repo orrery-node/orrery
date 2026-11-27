@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fetchNode, nodeRelays, parseProxy, relayFor, relayIndex, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
 import { spreadLine } from '../src/doctor.ts';
-import { relayChoices, relayDownLine } from '../src/doctor.ts';
+import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine } from '../src/doctor.ts';
 
 const listen = (s: Server) => new Promise<number>((done) => s.listen(0, '127.0.0.1', () => done((s.address() as AddressInfo).port)));
 const close = (s: Server) => new Promise((done) => { s.closeAllConnections(); s.close(done); });
@@ -116,5 +116,14 @@ describe('a peer relay that cannot be reached', () => {
       await close(node);
       await close(live);
     }
+  });
+
+  it('orrery peers says how this router\'s own requests reach the nodes', () => {
+    assert.equal(nodesViaLine({}), null);
+    assert.equal(nodesViaLine({ peerRelay: 'http://10.0.0.2:7272', peerRelays: ['http://10.0.0.2:7272'], proxyViaPeers: true }), "your requests to nodes: through http://10.0.0.2:7272, a peer's relay (--proxy-via-peers); the nodes see that router, not this computer");
+    assert.equal(nodesViaLine({ peerRelay: 'http://a:1', peerRelays: ['http://a:1', 'http://b:2'], proxyViaPeers: true }), `your requests to nodes: ${spreadLine(['http://a:1', 'http://b:2'])}`);
+    const row = { url: 'http://10.0.0.2:7171', pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, relayPort: 7272, relayDownFor: 100 };
+    assert.equal(nodesViaLine({ peerRelay: null, peerRelays: [], proxyViaPeers: true, peers: [row] }), `your requests to nodes: ${noPeerRelayLine(1)}`);
+    assert.ok(peersReport({ peers: [], relay: null, peerRelays: ['http://a:1', 'http://b:2'], proxyViaPeers: true }).some((l) => l.startsWith('your requests to nodes: spread over 2 peer relays')));
   });
 });

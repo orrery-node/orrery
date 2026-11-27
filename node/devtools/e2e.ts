@@ -2977,6 +2977,7 @@ const all4 = () => registry.entries.size;
   const secondCarried = second.relayed - secondBefore;
   const thirdCarried = third.relayed - thirdBefore;
   const viaSpread = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
+  const peersSpread = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   opts.spreadRelays = false;
   opts.proxyViaPeers = false;
   opts.peers = [];
@@ -2993,6 +2994,10 @@ const all4 = () => registry.entries.size;
     relays.length === 3 && [ownUrl, secondUrl, thirdUrl].every((u) => relays.includes(u)) && new Set(assigned).size >= 2
     && (ownCarried > 0) === (toOwn > 0) && (secondCarried > 0) === (toSecond > 0) && (thirdCarried > 0) === (toThird > 0) && viaSpread.startsWith('spread over 3 peer relays (--spread-relays)'),
     `${relays.length} relays · nodes assigned ${toOwn} / ${toSecond} / ${toThird} · carried ${ownCarried} / ${secondCarried} / ${thirdCarried} · doctor: ${viaSpread.slice(0, 40) || 'no line'}`);
+  const routeNow = peersSpread.split('\n').find((l) => l.startsWith('your requests to nodes: ')) ?? '';
+  check('orrery peers says how this router\u2019s own requests reach the nodes: spread over the 3 peer relays',
+    routeNow.startsWith('your requests to nodes: spread over 3 peer relays (--spread-relays)'),
+    routeNow.slice(0, 80) || 'no line');
 }
 // --proxy-via-peers: the router sends its requests to nodes through the least busy relay a signed peer offers, chosen
 // at each refresh, while it keeps reading that peer directly; once that relay says it is full for today, the router

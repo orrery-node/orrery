@@ -334,6 +334,15 @@ export function holderLaneLine(lane: boolean, share: string): string {
     : `0.01% of $OREY's supply (100k) rides holder lanes on peer relays past their daily limit; this wallet holds ${share}`;
 }
 
+/** How this router's own requests reach the nodes now, when it goes through its peers: one peer's relay, spread over
+ * several, or its own way because none can take it. Null when --proxy-via-peers is off. */
+export function nodesViaLine(status: { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; peers?: PeerRow[] }): string | null {
+  if ((status.peerRelays?.length ?? 0) > 1) return `your requests to nodes: ${spreadLine(status.peerRelays!)}`;
+  if (status.peerRelay) return `your requests to nodes: through ${status.peerRelay}, a peer's relay (--proxy-via-peers); the nodes see that router, not this computer`;
+  if (status.proxyViaPeers) return `your requests to nodes: ${noPeerRelayLine((status.peers ?? []).filter((p) => (p.relayDownFor ?? 0) > 0).length)}`;
+  return null;
+}
+
 /** --spread-relays: the peer relays the nodes are spread over. */
 export function spreadLine(relays: string[]): string {
   return `spread over ${relays.length} peer relays (--spread-relays): ${relays.join(', ')}; each node is always reached through the same one, so no single peer sees all of this router's traffic`;
@@ -436,7 +445,7 @@ export function mapLine(providers: FoundRow[]): string | null {
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] }, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] ; peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean}, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {
@@ -447,6 +456,8 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
     for (const p of byTrust(peers)) out.push(`  ${peerLine(p, now)}`);
   }
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
+  const route = nodesViaLine(status);
+  if (route) out.push(route);
   const map = mapLine(status.providers ?? []);
   if (map) out.push(map);
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');
