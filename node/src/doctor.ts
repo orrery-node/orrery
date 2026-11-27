@@ -343,6 +343,11 @@ export function nodesViaLine(status: { peerRelay?: string | null; peerRelays?: s
   return null;
 }
 
+/** Under --spread-relays, which relay each node goes through, one line each. */
+export function spreadByNode(providers: FoundRow[]): string[] {
+  return providers.filter((p) => p.via).map((p) => `  ${p.name ?? p.address} \u2192 ${p.via}`);
+}
+
 /** --spread-relays: the peer relays the nodes are spread over. */
 export function spreadLine(relays: string[]): string {
   return `spread over ${relays.length} peer relays (--spread-relays): ${relays.join(', ')}; each node is always reached through the same one, so no single peer sees all of this router's traffic`;
@@ -416,7 +421,7 @@ export function listingsDetail(n: number, discovery: string | null, fromRecord: 
 /** Where the listings came from when the RPC will not list the program and no peer named any: the router's own record. */
 export const RECORD_LINE = 'the listings came from this router\u2019s own record of the nodes it watched before, each checked on chain (this RPC does not list the program\u2019s accounts; add a peer router with --peer to find new ones)';
 
-export type FoundRow = { address: string; name?: string | null; found?: string; peers?: { routers: number } | null };
+export type FoundRow = { address: string; name?: string | null; found?: string; via?: string | null; peers?: { routers: number } | null };
 
 /** The listings a router has only because its peers named them, one line each with how many peers named it: the part of
  * its map the peers drew. At most ten, then how many more. */
@@ -458,6 +463,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   out.push(status.relay ? `this router's relay: ${relayLine(status.relay)}` : 'this router runs no relay (start it with --relay <port> to carry other routers\u2019 traffic to listed nodes)');
   const route = nodesViaLine(status);
   if (route) out.push(route);
+  if ((status.peerRelays?.length ?? 0) > 1) out.push(...spreadByNode(status.providers ?? []));
   const map = mapLine(status.providers ?? []);
   if (map) out.push(map);
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');

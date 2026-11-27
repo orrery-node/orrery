@@ -14,7 +14,7 @@ import { decrypt, padRequest, sealRequest } from '../seal.ts';
 import { identityIn, withoutIdentity } from './identity.ts';
 import { TEE_KINDS } from '../chain/program.ts';
 import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
-import { ProxyRefused, fetchNode, fetchPeer, nodeProxy, parseProxy, setNodeRelays } from '../proxy.ts';
+import { ProxyRefused, fetchNode, fetchPeer, nodeProxy, parseProxy, relayFor, setNodeRelays } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
 import { keptPeerNotes, relayOrder, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
@@ -879,6 +879,8 @@ export class Router {
       // Where this router found the listing: in the RPC's list of the program, only because peer routers named it, or only
       // in its own record of the nodes it watched before.
       found: this.o.registry.throughPeers.has(e.address) ? 'peers' : this.o.registry.fromRecord.has(e.address) ? 'record' : 'rpc',
+      // The peer relay this router's requests to this node go through now (--proxy-via-peers), or null for its own way.
+      via: ((r) => (r ? `http://${r.host}:${r.port}` : null))(this.o.proxyViaPeers ? relayFor(e.account.endpoint) : null),
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),
       tee: e.tee ? { verified: e.tee.verified, dev: e.tee.dev, reason: e.tee.reason } : null, observed: this.stats.get(e.address),
       modelServer: e.upstream ?? null, healthMs: e.healthMs ?? null, healthAt: e.healthAt ?? null,

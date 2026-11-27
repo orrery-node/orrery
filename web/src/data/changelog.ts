@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'Under `--spread-relays` you can see which peer relay each node goes through: each node in the status has `via`, the console marks it on the node\'s row, and `orrery peers` lists it node by node.' },
   { who: 'router', text: '`orrery peers` (and the `peers` tool in `orrery mcp`) and the console say how your own requests reach the nodes now: through one peer\'s relay, spread over several (`--spread-relays`), or your own way when no peer relay can take them.' },
   { who: 'router', text: '`--spread-relays` (with `--proxy-via-peers`): requests to nodes are spread over every relay your signed peers offer (up to 8), each node always through the same one, so no single peer sees all of your router\'s traffic. A relay that cannot be reached drops out and the rest carry on; the status has `peerRelays` and `orrery doctor` lists them.' },
   { who: 'router', text: 'With `--proxy-via-peers` on and no relay to use, `orrery doctor` says how many peer relays are being passed over for a few minutes after they could not be reached.' },

@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fetchNode, nodeRelays, parseProxy, relayFor, relayIndex, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
 import { spreadLine } from '../src/doctor.ts';
-import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine } from '../src/doctor.ts';
+import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine, spreadByNode } from '../src/doctor.ts';
 
 const listen = (s: Server) => new Promise<number>((done) => s.listen(0, '127.0.0.1', () => done((s.address() as AddressInfo).port)));
 const close = (s: Server) => new Promise((done) => { s.closeAllConnections(); s.close(done); });
@@ -125,5 +125,13 @@ describe('a peer relay that cannot be reached', () => {
     const row = { url: 'http://10.0.0.2:7171', pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, relayPort: 7272, relayDownFor: 100 };
     assert.equal(nodesViaLine({ peerRelay: null, peerRelays: [], proxyViaPeers: true, peers: [row] }), `your requests to nodes: ${noPeerRelayLine(1)}`);
     assert.ok(peersReport({ peers: [], relay: null, peerRelays: ['http://a:1', 'http://b:2'], proxyViaPeers: true }).some((l) => l.startsWith('your requests to nodes: spread over 2 peer relays')));
+  });
+
+  it('lists which peer relay each node goes through under --spread-relays', () => {
+    const rows = [{ address: 'a1', name: 'Kestrel GPU Co-op', via: 'http://10.0.0.2:7272' }, { address: 'b2', via: 'http://10.0.0.3:7272' }, { address: 'c3', name: 'Off', via: null }];
+    assert.deepEqual(spreadByNode(rows), ['  Kestrel GPU Co-op \u2192 http://10.0.0.2:7272', '  b2 \u2192 http://10.0.0.3:7272']);
+    const out = peersReport({ peers: [], relay: null, peerRelays: ['http://10.0.0.2:7272', 'http://10.0.0.3:7272'], proxyViaPeers: true, providers: rows });
+    assert.ok(out.includes('  Kestrel GPU Co-op \u2192 http://10.0.0.2:7272'));
+    assert.ok(!peersReport({ peers: [], relay: null, peerRelays: ['http://10.0.0.2:7272'], peerRelay: 'http://10.0.0.2:7272', proxyViaPeers: true, providers: rows }).some((l) => l.includes('\u2192')));
   });
 });
