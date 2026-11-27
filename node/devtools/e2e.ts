@@ -3422,6 +3422,44 @@ const all4 = () => registry.entries.size;
     new RegExp(`^  on this network {7}saying where it is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key: routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)$`).test(lanNodeStatus),
     lanNodeStatus.replaceAll('127.0.0.1', '<host>').trim().slice(0, 200) || 'no line in provider status');
 }
+// Routers on the same network find each other: one started with --lan-announce (and --share-notes) says where its notes
+// are, signed with its session key; a router's --lan-listen keeps it only with that key's signature.
+{
+  const { LanListener: Listener, announce: say, signRouterBeacon, routerBeaconSigned } = await import('../src/lan.ts');
+  const { signerOf } = await import('../src/keys.ts');
+  const opts = routerOpts as { shareNotes?: boolean };
+  const rl = router as unknown as { startLan?: (s: string) => Promise<string>; stopLan?: () => Promise<void>; startLanAnnounce?: (to: string, url?: string) => string | null; stopLanAnnounce?: () => void };
+  const elsewhere = new Listener();
+  const elsewhereAt = await elsewhere.listen('127.0.0.1:0');
+  opts.shareNotes = true;
+  const given = rl.startLanAnnounce?.(elsewhereAt, ROUTER) ?? null;
+  const other = Keypair.generate();
+  const heardAt = (await rl.startLan?.('127.0.0.1:0')) ?? '127.0.0.1:9';
+  const otherSays = say(heardAt, () => signRouterBeacon(other.publicKey.toBase58(), 'http://127.0.0.1:17999', Date.now(), signerOf(other)), 60_000);
+  const forgedSays = say(heardAt, () => signRouterBeacon(Keypair.generate().publicKey.toBase58(), 'http://127.0.0.1:17998', Date.now(), signerOf(other)), 60_000);
+  type RouterRow = { key: string; url: string };
+  let heardRouters: RouterRow[] = [];
+  let announcing = null as { to: string; url: string; sent: number } | null;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { lan: { routers?: RouterRow[] } | null; lanAnnouncing: typeof announcing };
+    heardRouters = st.lan?.routers ?? [];
+    announcing = st.lanAnnouncing ?? null;
+    if (heardRouters.length && elsewhere.routersHeard().length) break;
+  }
+  const ours = elsewhere.routersHeard()[0];
+  otherSays();
+  forgedSays();
+  rl.stopLanAnnounce?.();
+  await rl.stopLan?.();
+  elsewhere.close();
+  opts.shareNotes = false;
+  check('routers on the same network find each other: --lan-announce says where this router\u2019s notes are, signed with its session key, and --lan-listen keeps only a router whose own key signed its beacon',
+    given === ROUTER && !!ours && ours.router === session.publicKey.toBase58() && ours.url === ROUTER && routerBeaconSigned(ours)
+      && heardRouters.length === 1 && heardRouters[0].key === other.publicKey.toBase58() && heardRouters[0].url === 'http://127.0.0.1:17999'
+      && !!announcing && announcing.sent >= 1,
+    `this router said ${ours ? (ours.router === session.publicKey.toBase58() ? 'its own key' : 'another key') : 'nothing'} · heard ${heardRouters.length} router${heardRouters.length === 1 ? '' : 's'}${heardRouters[0] ? ` (${heardRouters[0].key === other.publicKey.toBase58() ? 'the signed one' : 'a forged one'})` : ''} · beacons sent ${announcing?.sent ?? 0}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

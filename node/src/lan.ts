@@ -16,6 +16,8 @@ export const LAN_PORT = 7373;
 const MAX_BYTES = 1_024;
 /** How many listings a router keeps from its network at once: anything past that is dropped until one goes quiet. */
 export const LAN_MAX_HEARD = 256;
+/** How many routers a router keeps from its network at once. */
+export const LAN_MAX_ROUTERS = 64;
 const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /** The bytes a node key signs: a fixed prefix and the listing, URL and time in a fixed key order. */
@@ -45,6 +47,50 @@ export function parseBeacon(bytes: Buffer | string): Beacon | null {
     return null;
   }
   return { lan: 1, listing: j.listing, url: j.url.replace(/\/$/, ''), at: j.at, sig: j.sig };
+}
+
+/** A router on the same network saying where its shared notes are (--lan-announce with --share-notes): its session key,
+ * the one that signs those notes, the URL to read them at, and when, signed with that same key. */
+export type RouterBeacon = { lan: 1; router: string; url: string; at: number; sig: string };
+
+export function routerBeaconMessage(router: string, url: string, at: number): Uint8Array {
+  return Buffer.concat([Buffer.from('orrery/lan-router/1'), Buffer.from(JSON.stringify({ router, url, at }))]);
+}
+
+export function signRouterBeacon(router: string, url: string, at: number, sign: Sign): RouterBeacon {
+  return { lan: 1, router, url, at, sig: Buffer.from(sign(routerBeaconMessage(router, url, at))).toString('base64') };
+}
+
+/** A datagram read as a router's beacon, or null. */
+export function parseRouterBeacon(bytes: Buffer | string): RouterBeacon | null {
+  if (bytes.length > MAX_BYTES) return null;
+  let j: Partial<RouterBeacon>;
+  try {
+    j = JSON.parse(bytes.toString()) as Partial<RouterBeacon>;
+  } catch {
+    return null;
+  }
+  if (!j || typeof j !== 'object' || j.lan !== 1 || typeof j.router !== 'string' || !base58.test(j.router)) return null;
+  if (typeof j.url !== 'string' || j.url.length > 200 || typeof j.at !== 'number' || !Number.isSafeInteger(j.at) || typeof j.sig !== 'string') return null;
+  try {
+    const u = new URL(j.url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  } catch {
+    return null;
+  }
+  return { lan: 1, router: j.router, url: j.url.replace(/\/$/, ''), at: j.at, sig: j.sig };
+}
+
+/** Whether the router key in the beacon signed it, and it is recent. */
+export function routerBeaconSigned(b: RouterBeacon, now = Date.now()): boolean {
+  if (Math.abs(now - b.at) > LAN_FRESH_MS) return false;
+  let key: Uint8Array;
+  try {
+    key = new PublicKey(b.router).toBytes();
+  } catch {
+    return false;
+  }
+  return ed25519Verify(key, routerBeaconMessage(b.router, b.url, b.at), Buffer.from(b.sig, 'base64'));
 }
 
 /** Whether the node key on the listing signed this beacon, and it is recent: a beacon copied and sent again later is
@@ -82,6 +128,7 @@ export function announceLine(a: Announcing, now = Date.now()): string {
 /** What a router heard on its network: the latest beacon for each listing, with when it came. */
 export class LanListener {
   private heard = new Map<string, Beacon>();
+  private routers = new Map<string, RouterBeacon>();
   private socket: Socket | null = null;
   /** Called when a listing is heard for the first time, or at a new URL. */
   onNew: ((b: Beacon) => void) | null = null;
@@ -104,16 +151,36 @@ export class LanListener {
     });
   }
 
-  /** One datagram: a beacon that reads is kept (the newest for its listing), anything else is dropped. */
+  /** One datagram: a beacon that reads is kept (the newest for its listing), a router's beacon only with the signature of
+   * the key it names, anything else is dropped. */
   take(bytes: Buffer | string, now = Date.now()): Beacon | null {
     const b = parseBeacon(bytes);
-    if (!b || Math.abs(now - b.at) > LAN_FRESH_MS) return null;
+    if (!b) {
+      this.takeRouter(bytes, now);
+      return null;
+    }
+    if (Math.abs(now - b.at) > LAN_FRESH_MS) return null;
     const prev = this.heard.get(b.listing);
     if (prev && prev.at >= b.at) return null;
     if (!prev && this.heard.size >= LAN_MAX_HEARD && this.fresh(now).length >= LAN_MAX_HEARD) return null;
     this.heard.set(b.listing, b);
     if (!prev || prev.url !== b.url) this.onNew?.(b);
     return b;
+  }
+
+  private takeRouter(bytes: Buffer | string, now: number): void {
+    const r = parseRouterBeacon(bytes);
+    if (!r || !routerBeaconSigned(r, now)) return;
+    const prev = this.routers.get(r.router);
+    if (prev && prev.at >= r.at) return;
+    if (!prev && this.routersHeard(now).length >= LAN_MAX_ROUTERS) return;
+    this.routers.set(r.router, r);
+  }
+
+  /** The routers on this network that said where their notes are, each signed with its own key, still recent. */
+  routersHeard(now = Date.now()): RouterBeacon[] {
+    for (const [k, b] of this.routers) if (Math.abs(now - b.at) > LAN_FRESH_MS) this.routers.delete(k);
+    return [...this.routers.values()];
   }
 
   /** The beacons still recent enough to believe (their signatures are checked against the listing on chain later). */
@@ -130,7 +197,7 @@ export class LanListener {
 
 /** A node saying where it is on its network every LAN_EVERY_MS: to one router's address, or to the network's broadcast
  * address so every router on it hears. Returns a function that stops it. */
-export function announce(spec: string, beacon: () => Beacon, every = LAN_EVERY_MS, onSent?: () => void): () => void {
+export function announce(spec: string, beacon: () => Beacon | RouterBeacon, every = LAN_EVERY_MS, onSent?: () => void): () => void {
   const { host, port } = lanAddress(spec, null);
   const loopback = host === 'localhost' || host.startsWith('127.');
   const socket = createSocket('udp4');

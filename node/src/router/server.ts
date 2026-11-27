@@ -19,7 +19,7 @@ import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
 import { keptPeerNotes, readRelayHoldersOnly, relayOrder, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { ed25519Verify, signerOf } from '../keys.ts';
-import { LanListener } from '../lan.ts';
+import { announce, LAN_EVERY_MS, LanListener, networkAddress, signRouterBeacon, type Announcing } from '../lan.ts';
 import { allowedTargets, HOLDER_HEADER, holderProofMessage, plainAddress, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
@@ -102,6 +102,11 @@ export type RouterOptions = {
    * listing's node key signed that is reached there, directly, and a listing heard this way is read on chain by address
    * even when the RPC's list leaves it out. */
   lanListen?: string;
+  /** Says where this router's shared notes are on its own network (--lan-announce, with --share-notes): every 15 seconds,
+   * signed with its session key, to this `host:port`, so routers there can read them. `lanUrl` is the address they read
+   * it at: this computer's network address and the router's port unless given. */
+  lanAnnounce?: string;
+  lanUrl?: string;
   /** The relay carries traffic only from the addresses of this router's peers (--peer, --peers-file), as they resolve at
    * each refresh. Off unless asked: a relay is open to anyone who knows its port. */
   relayPeersOnly?: boolean;
@@ -413,6 +418,38 @@ export class Router {
     this.o.registry.lanBeacons = undefined;
   }
 
+  private lanAnnounceStop: (() => void) | null = null;
+  private lanAnnouncing: Announcing | null = null;
+
+  /** Says where this router's shared notes are on its network, from now on (see RouterOptions.lanAnnounce). Returns the
+   * URL it gives, or null when it shares no notes. */
+  startLanAnnounce(to: string, given?: string): string | null {
+    if (!this.o.shareNotes) {
+      this.log('--lan-announce says where this router\u2019s shared notes are, so it needs --share-notes; nothing is said on this network');
+      return null;
+    }
+    const port = (this.server?.address() as { port: number } | null)?.port ?? this.o.port;
+    const url = (given ?? `http://${networkAddress() ?? '127.0.0.1'}:${port}`).replace(/\/$/, '');
+    const key = this.o.channels.session.publicKey.toBase58();
+    const sign = signerOf(this.o.channels.session);
+    this.lanAnnounceStop?.();
+    const a: Announcing = { to, url, sent: 0, at: null };
+    this.lanAnnouncing = a;
+    this.lanAnnounceStop = announce(to, () => signRouterBeacon(key, url, Date.now(), sign), LAN_EVERY_MS, () => {
+      a.sent++;
+      a.at = Date.now();
+    });
+    const local = !given && /^(127\.|localhost$)/.test(this.o.host ?? '127.0.0.1');
+    this.log(`saying where this router\u2019s notes are on its network to ${to} every ${LAN_EVERY_MS / 1000} s, signed with its key: routers there read them at ${url}${local ? ' (this router listens on this computer only: start it with --host 0.0.0.0 so they can)' : ''}`);
+    return url;
+  }
+
+  stopLanAnnounce(): void {
+    this.lanAnnounceStop?.();
+    this.lanAnnounceStop = null;
+    this.lanAnnouncing = null;
+  }
+
   /** Says once for each node first reached on this network, with where it is listed. */
   private noteLan(): void {
     for (const e of this.o.registry.entries.values()) {
@@ -448,6 +485,7 @@ export class Router {
     this.server = createServer((req, res) => void this.handle(req, res));
     await listenOn(this.server, this.o.port, this.o.host ?? '127.0.0.1', 'router');
     if (this.o.relayPort !== undefined) await this.startRelay(this.o.relayPort, this.o.relayHost);
+    if (this.o.lanAnnounce) this.startLanAnnounce(this.o.lanAnnounce, this.o.lanUrl);
     return this.server;
   }
 
@@ -823,6 +861,7 @@ export class Router {
     if (this.timer) clearInterval(this.timer);
     if (this.healthTimer) clearInterval(this.healthTimer);
     if (this.lanTimer) clearTimeout(this.lanTimer);
+    this.stopLanAnnounce();
     this.lan?.close();
     this.relay?.server.close();
     if (this.burnTimer) clearInterval(this.burnTimer);
@@ -998,7 +1037,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER), lane: s.balance > 0n && s.balance * 10_000n >= s.supply * HOLDER_LANE_BP } : null;
-    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, rpcLeftOut: this.o.registry.rpcLeftOut, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, name: this.peerNames.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayFull: this.peerRelayFull.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHolders: this.peerRelayHolders.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHoldersOnly: this.peerRelayHoldersOnly.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayDownFor: this.relayDownFor(url), unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, readMs: this.peerMs.get(url) ?? null, kept: this.peerKept.has(url), say: this.peerSay(url), written: this.peerSaid.get(url)?.at ? this.notesWritten(url) : null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), peerRelay: this.usingPeerRelay, peerRelays: this.usingPeerRelays, proxyViaPeers: this.viaPeers, spreadRelays: !!this.o.spreadRelays, lan: this.lan ? { listening: this.lan.address, heard: this.lan.fresh().length, nodes: [...this.o.registry.entries.values()].filter((e) => e.lan).length } : null, relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, routersToday: this.relay.routersToday, bytes: this.relay.bytes, today: this.relay.today, maxBytes: this.relay.maxBytes || null, forHolders: this.relay.forHolders, holderLane: !!this.o.holders, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient, peersOnly: !!this.o.relayPeersOnly } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, rpcLeftOut: this.o.registry.rpcLeftOut, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, name: this.peerNames.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayFull: this.peerRelayFull.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHolders: this.peerRelayHolders.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHoldersOnly: this.peerRelayHoldersOnly.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayDownFor: this.relayDownFor(url), unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, readMs: this.peerMs.get(url) ?? null, kept: this.peerKept.has(url), say: this.peerSay(url), written: this.peerSaid.get(url)?.at ? this.notesWritten(url) : null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), peerRelay: this.usingPeerRelay, peerRelays: this.usingPeerRelays, proxyViaPeers: this.viaPeers, spreadRelays: !!this.o.spreadRelays, lan: this.lan ? { listening: this.lan.address, heard: this.lan.fresh().length, nodes: [...this.o.registry.entries.values()].filter((e) => e.lan).length, routers: this.lan.routersHeard().map((r) => ({ key: r.router, url: r.url, at: r.at })) } : null, lanAnnouncing: this.lanAnnouncing ? { ...this.lanAnnouncing } : null, relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, routersToday: this.relay.routersToday, bytes: this.relay.bytes, today: this.relay.today, maxBytes: this.relay.maxBytes || null, forHolders: this.relay.forHolders, holderLane: !!this.o.holders, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient, peersOnly: !!this.o.relayPeersOnly } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
-import { announce, announceLine, beaconSigned, lanAddress, LAN_FRESH_MS, LAN_MAX_HEARD, LanListener, parseBeacon, signBeacon, type Beacon } from '../src/lan.ts';
+import { announce, announceLine, beaconSigned, lanAddress, LAN_FRESH_MS, LAN_MAX_HEARD, LAN_MAX_ROUTERS, LanListener, parseBeacon, parseRouterBeacon, routerBeaconSigned, signBeacon, signRouterBeacon, type Beacon } from '../src/lan.ts';
 import { addLanNode, onLan, relayFor, setLanNodes, setNodeRelay } from '../src/proxy.ts';
 import { lanLine } from '../src/router/server.ts';
 
@@ -102,6 +102,33 @@ describe('a node saying where it is on its own network', () => {
     stop();
     lan.close();
     assert.equal(sent, 1);
+  });
+
+  it('a router on the network says where its notes are, believed only with the signature of the key it names', () => {
+    const router = Keypair.generate();
+    const key = router.publicKey.toBase58();
+    const now = Date.now();
+    const b = signRouterBeacon(key, 'http://192.168.1.30:7171', now, signerOf(router));
+    assert.ok(routerBeaconSigned(b, now));
+    assert.ok(!routerBeaconSigned({ ...b, url: 'http://192.168.1.66:7171' }, now), 'the URL changed on the way');
+    assert.ok(!routerBeaconSigned(signRouterBeacon(key, 'http://192.168.1.30:7171', now, sign), now), 'signed with another key');
+    assert.ok(!routerBeaconSigned(b, now + LAN_FRESH_MS + 1), 'too old');
+    assert.equal(parseRouterBeacon(JSON.stringify(b))?.router, key);
+    assert.equal(parseBeacon(JSON.stringify(b)), null, 'not a node beacon');
+    assert.equal(parseRouterBeacon(JSON.stringify({ ...b, url: 'ftp://x' })), null);
+  });
+
+  it('a router keeps the routers it heard on its network, newest beacon each, forged ones dropped, at most LAN_MAX_ROUTERS', () => {
+    const lan = new LanListener();
+    const now = Date.now();
+    const r = Keypair.generate();
+    lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.30:7171', now - 2_000, signerOf(r))), now);
+    lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.31:7171', now - 1_000, signerOf(r))), now);
+    lan.take(JSON.stringify(signRouterBeacon(Keypair.generate().publicKey.toBase58(), 'http://192.168.1.40:7171', now, sign)), now);
+    assert.deepEqual(lan.routersHeard(now).map((x) => x.url), ['http://192.168.1.31:7171']);
+    assert.equal(lan.fresh(now).length, 0, 'a router is not a listing');
+    for (let i = 0; i < LAN_MAX_ROUTERS + 5; i++) { const k = Keypair.generate(); lan.take(JSON.stringify(signRouterBeacon(k.publicKey.toBase58(), `http://10.0.1.${i}:7171`, now, signerOf(k))), now); }
+    assert.equal(lan.routersHeard(now).length, LAN_MAX_ROUTERS);
   });
 
   it('the router says once where a node on its network is reached', () => {

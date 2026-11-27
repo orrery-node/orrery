@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · Routers on the same network find each other: `orrery router --share-notes --lan-announce host:port` says where its notes are every 15 seconds, signed with its session key (the key that signs those notes), and a router's `--lan-listen` keeps a router it heard only with that key's signature; the status lists them as `lan.routers` and what this router says as `lanAnnouncing`.
 - **Node** · `orrery provider status` (and `--json`, as `lan`) says where a node started with `--lan-announce` says it is on its network: to which address, the address routers there reach it at, and how many signed beacons went out, the last how long ago.
 - **Router** · The router console fills in again: a pattern in its page script (the peer relay each node goes through) lost an escape on the way into the page and stopped the whole script; a test now checks that every console script parses.
 - **Router** · `orrery peers`, the `peers` tool in `orrery mcp` and the console say what this router hears on its own network: where `--lan-listen` listens, how many listings it heard, which nodes it reaches there directly; the map counts the listings found only there, and the console marks each such node with its address on the network.
