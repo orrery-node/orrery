@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fetchNode, nodeRelays, parseProxy, relayFor, relayIndex, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
+import { fetchNode, nodeAddress, nodeRelays, parseProxy, pickRelay, relayFor, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
 import { spreadLine } from '../src/doctor.ts';
 import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine, spreadByNode } from '../src/doctor.ts';
 
@@ -67,22 +67,28 @@ describe('a peer relay that cannot be reached', () => {
     assert.ok(!out.some((l) => l.includes('--proxy http://10.0.0.2:7272')));
   });
 
-  it('spreads nodes over several relays, each node always through the same one', () => {
-    assert.equal(relayIndex('127.0.0.1:7001', 1), 0);
-    const seen = new Set<number>();
-    for (let p = 7000; p < 7040; p++) {
-      const i = relayIndex(`127.0.0.1:${p}`, 3);
-      assert.equal(relayIndex(`127.0.0.1:${p}`, 3), i);
-      assert.ok(i >= 0 && i < 3);
-      seen.add(i);
-    }
-    assert.equal(seen.size, 3);
+  it('spreads nodes over several relays, each node always through the same one, and a relay leaving moves only its own nodes', () => {
     const a = parseProxy('http://10.0.0.2:7272');
     const b = parseProxy('http://10.0.0.3:7272');
+    const c = parseProxy('http://10.0.0.4:7272');
+    assert.equal(pickRelay('127.0.0.1:7001', []), null);
+    assert.equal(pickRelay('127.0.0.1:7001', [a]), a);
+    const seen = new Set<Proxy>();
+    for (let p = 7000; p < 7040; p++) {
+      const t = `127.0.0.1:${p}`;
+      const r = pickRelay(t, [a, b, c])!;
+      assert.equal(pickRelay(t, [c, a, b]), r);
+      seen.add(r);
+      if (r !== b) assert.equal(pickRelay(t, [a, c]), r);
+      else assert.ok(pickRelay(t, [a, c]) !== b);
+    }
+    assert.equal(seen.size, 3);
+    assert.equal(nodeAddress('https://node.example.com/v1/chat'), 'node.example.com:443');
+    assert.equal(nodeAddress('http://127.0.0.1:7001/health'), '127.0.0.1:7001');
     setNodeRelays([a, b]);
     try {
-      assert.equal(relayFor('http://127.0.0.1:7001/health'), [a, b][relayIndex('127.0.0.1:7001', 2)]);
-      assert.equal(relayFor('https://node.example.com/v1/chat'), [a, b][relayIndex('node.example.com:443', 2)]);
+      assert.equal(relayFor('http://127.0.0.1:7001/health'), pickRelay('127.0.0.1:7001', [a, b]));
+      assert.equal(relayFor('https://node.example.com/v1/chat'), pickRelay('node.example.com:443', [a, b]));
       assert.deepEqual(nodeRelays(), [a, b]);
     } finally {
       setNodeRelays([]);
@@ -94,15 +100,22 @@ describe('a peer relay that cannot be reached', () => {
   it('drops only the spread relay that could not be reached, and the request still gets its answer', async () => {
     const node = createServer((_q, s) => s.end('from the node'));
     const nodePort = await listen(node);
-    const gone = createServer();
-    const deadPort = await listen(gone);
-    await close(gone);
     const live = createServer((q, s) => s.writeHead(502).end('the live relay only answers 502 in this test'));
     const livePort = await listen(live);
-    const dead = parseProxy(`http://127.0.0.1:${deadPort}`);
     const ok = parseProxy(`http://127.0.0.1:${livePort}`);
     const target = `127.0.0.1:${nodePort}`;
-    const list = relayIndex(target, 2) === 0 ? [dead, ok] : [ok, dead];
+    // A closed port that this node would be sent through, next to the live relay.
+    let dead = ok;
+    let deadPort = 0;
+    for (let i = 0; i < 40 && dead === ok; i++) {
+      const gone = createServer();
+      deadPort = await listen(gone);
+      await close(gone);
+      const candidate = parseProxy(`http://127.0.0.1:${deadPort}`);
+      if (pickRelay(target, [candidate, ok]) === candidate) dead = candidate;
+    }
+    assert.ok(dead !== ok);
+    const list = [dead, ok];
     const heard: number[] = [];
     setNodeRelays(list, (r) => heard.push(r.port));
     try {

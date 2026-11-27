@@ -2946,8 +2946,6 @@ const all4 = () => registry.entries.size;
   const { signNotes: signS } = await import('../src/router/notes.ts');
   const { signerOf: signerS } = await import('../src/keys.ts');
   const { Relay: RelayS, allowedTargets: allowedS } = await import('../src/router/relay.ts');
-  const proxyMod = (await import('../src/proxy.ts')) as { relayIndex?: (t: string, n: number) => number };
-  const relayIndex = proxyMod.relayIndex ?? (() => -1);
   const statusS = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelays?: string[]; relay?: { port: number | null; relayed: number } | null };
   const ownPort = (await statusS()).relay?.port ?? 0;
   const endpoints = () => [...registry.entries.values()].filter((e) => e.account.active).map((e) => e.account.endpoint);
@@ -2979,29 +2977,43 @@ const all4 = () => registry.entries.size;
   const viaSpread = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'nodes via')?.detail ?? '';
   const viaRows = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers?: { address: string; via?: string | null }[] }).providers ?? [];
   const peersSpread = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const ownUrl = `http://127.0.0.1:${ownPort}`;
+  const secondUrl = `http://127.0.0.1:${secondPort}`;
+  const thirdUrl = `http://127.0.0.1:${thirdPort}`;
+  const viaOf = new Map(viaRows.map((p) => [p.address, p.via ?? null]));
+  // One of the two extra relays goes away (the one carrying more nodes): the next round finds it unreachable, and only
+  // the nodes that went through it move.
+  const load = (u: string) => registry.usable().filter((e) => viaOf.get(e.address) === u).length;
+  const [dropUrl, dropRelay] = load(thirdUrl) > load(secondUrl) ? [thirdUrl, third] : [secondUrl, second];
+  dropRelay.server.closeAllConnections();
+  await new Promise((done) => dropRelay.server.close(done));
+  await registry.checkHealth();
+  const viaAfter = new Map((((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers?: { address: string; via?: string | null }[] }).providers ?? []).map((p) => [p.address, p.via ?? null]));
   opts.spreadRelays = false;
   opts.proxyViaPeers = false;
   opts.peers = [];
   await rp.readPeers?.();
   for (const srv of [peerA, peerB, peerC, second.server, third.server]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
-  const assigned = registry.usable().map((e) => { const u = new URL(e.account.endpoint); return relays[relayIndex(`${u.hostname}:${u.port || (u.protocol === 'https:' ? '443' : '80')}`, relays.length)]; });
-  const ownUrl = `http://127.0.0.1:${ownPort}`;
-  const secondUrl = `http://127.0.0.1:${secondPort}`;
+  const assigned = registry.usable().map((e) => viaOf.get(e.address) ?? null);
   const toOwn = assigned.filter((u) => u === ownUrl).length;
   const toSecond = assigned.filter((u) => u === secondUrl).length;
-  const thirdUrl = `http://127.0.0.1:${thirdPort}`;
   const toThird = assigned.filter((u) => u === thirdUrl).length;
   check('--spread-relays spreads the nodes over every peer relay, each node always through the same one: a round of health checks goes through exactly the relays the nodes are assigned to',
-    relays.length === 3 && [ownUrl, secondUrl, thirdUrl].every((u) => relays.includes(u)) && new Set(assigned).size >= 2
+    relays.length === 3 && [ownUrl, secondUrl, thirdUrl].every((u) => relays.includes(u)) && assigned.every((u) => u !== null && relays.includes(u))
     && (ownCarried > 0) === (toOwn > 0) && (secondCarried > 0) === (toSecond > 0) && (thirdCarried > 0) === (toThird > 0) && viaSpread.startsWith('spread over 3 peer relays (--spread-relays)'),
     `${relays.length} relays · nodes assigned ${toOwn} / ${toSecond} / ${toThird} · carried ${ownCarried} / ${secondCarried} / ${thirdCarried} · doctor: ${viaSpread.slice(0, 40) || 'no line'}`);
   const routeNow = peersSpread.split('\n').find((l) => l.startsWith('your requests to nodes: ')) ?? '';
   const usableNow = registry.usable();
-  const viaMatches = usableNow.filter((e, i) => viaRows.find((p) => p.address === e.address)?.via === assigned[i]).length;
+  const viaMatches = usableNow.filter((e) => relays.includes(viaOf.get(e.address) ?? '')).length;
   const byNodeLines = peersSpread.split('\n').filter((l) => / \u2192 http:\/\/127\.0\.0\.1:\d+$/.test(l)).length;
   check('under --spread-relays the status says which peer relay each node goes through, and orrery peers lists it node by node',
     usableNow.length > 0 && viaMatches === usableNow.length && byNodeLines === viaRows.filter((p) => p.via).length && byNodeLines >= usableNow.length,
     `${viaMatches} of ${usableNow.length} nodes' via match their relay · orrery peers: ${byNodeLines} node line(s)`);
+  const stayed = registry.usable().filter((e) => viaOf.get(e.address) !== dropUrl);
+  const moved = registry.usable().filter((e) => viaOf.get(e.address) === dropUrl);
+  check('when a spread peer relay drops out, only the nodes that went through it move; every other node keeps its relay',
+    stayed.every((e) => viaAfter.get(e.address) === viaOf.get(e.address)) && moved.every((e) => !!viaAfter.get(e.address) && viaAfter.get(e.address) !== dropUrl),
+    `${moved.length} node(s) on the relay that went away, ${moved.filter((e) => viaAfter.get(e.address) && viaAfter.get(e.address) !== dropUrl).length} moved · ${stayed.length} elsewhere, ${stayed.filter((e) => viaAfter.get(e.address) === viaOf.get(e.address)).length} kept their relay`);
   check('orrery peers says how this router\u2019s own requests reach the nodes: spread over the 3 peer relays',
     routeNow.startsWith('your requests to nodes: spread over 3 peer relays (--spread-relays)'),
     routeNow.slice(0, 80) || 'no line');

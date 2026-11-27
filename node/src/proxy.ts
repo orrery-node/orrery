@@ -231,7 +231,7 @@ export function setNodeRelay(p: Proxy | null, onDown: ((relay: Proxy, err: Error
 }
 
 /** Several peer relays at once (--spread-relays): each node is reached through one of them, always the same one for the
- * same node (relayIndex), so no single peer carries all of this router's traffic. */
+ * same node (pickRelay), so no single peer carries all of this router's traffic. */
 export function setNodeRelays(ps: Proxy[], onDown: ((relay: Proxy, err: Error) => void) | null = null): void {
   for (const { pool } of pools.values()) closePool(pool);
   pools.clear();
@@ -244,16 +244,32 @@ export function nodeRelays(): Proxy[] {
   return [...relayRoutes];
 }
 
-/** Which of n relays a node at host:port goes through: fixed by the node's address, the same at every request. */
-export function relayIndex(target: string, n: number): number {
-  return n <= 1 ? 0 : createHash('sha256').update(target).digest().readUInt32BE(0) % n;
+/** Which relay a node at host:port goes through: the one whose sha256 of node and relay together is highest (rendezvous
+ * hashing). The same at every request; when a relay drops out, only the nodes that went through it move, and when one is
+ * added, only the nodes it now wins move to it. */
+export function pickRelay<T extends { host: string; port: number }>(target: string, relays: T[]): T | null {
+  let best: T | null = null;
+  let top = -1;
+  for (const r of relays) {
+    const score = createHash('sha256').update(`${target}|${r.host}:${r.port}`).digest().readUInt32BE(0);
+    if (score > top) {
+      top = score;
+      best = r;
+    }
+  }
+  return best;
+}
+
+/** A node's address as relays are picked by: host and port, with the scheme's port when none is written. */
+export function nodeAddress(url: string): string {
+  const t = new URL(url);
+  return `${t.hostname}:${t.port || (t.protocol === 'https:' ? '443' : '80')}`;
 }
 
 /** The relay a request to this node goes through, or null for the router's own way. */
 export function relayFor(url: string): Proxy | null {
   if (relayRoutes.length <= 1) return relayRoutes[0] ?? null;
-  const t = new URL(url);
-  return relayRoutes[relayIndex(`${t.hostname}:${t.port || (t.protocol === 'https:' ? '443' : '80')}`, relayRoutes.length)];
+  return pickRelay(nodeAddress(url), relayRoutes);
 }
 
 export function nodeRelay(): Proxy | null {
