@@ -3275,6 +3275,37 @@ const all4 = () => registry.entries.size;
     firstPlain === 'HTTP/1.1 200 Connection Established' && secondPlain.startsWith('HTTP/1.1 429') && holderSecond === 'HTTP/1.1 200 Connection Established' && holderThird.startsWith('HTTP/1.1 429'),
     `plain: ${firstPlain.slice(9, 12)}, ${secondPlain.slice(9, 12)} · holder: ${holderSecond.slice(9, 12) || holderSecond}, ${holderThird.slice(9, 12) || holderThird}`);
 }
+// --relay-holders-only: the relay carries only routers that show they hold $OREY, and tells its peers so.
+{
+  const opts = routerOpts as { relayHoldersOnly?: boolean; shareNotes?: boolean };
+  const { holderProofMessage: proofMsgO, HOLDER_HEADER: headerO } = await import('../src/router/relay.ts');
+  const relayKeyO = (channels as unknown as { session: Keypair }).session.publicKey.toBase58();
+  const signerO = (channels as unknown as { walletSigner: () => ((m: Uint8Array) => Uint8Array) | null }).walletSigner();
+  const ownerO = (channels as unknown as { owner: () => PublicKey | null }).owner()?.toBase58() ?? '';
+  const proofO = () => { const ms = Date.now(); return `${ownerO}.${ms}.${Buffer.from(signerO!(proofMsgO(relayKeyO, ms))).toString('base64url')}`; };
+  const relayPortO = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null } | null }).relay?.port) ?? 0;
+  const nodePortO = providerSpecs[1].port;
+  opts.relayHoldersOnly = true;
+  opts.shareNotes = true;
+  const told = ((await (await fetch(`${ROUTER}/orrery/peers`)).json()) as { relay?: { holdersOnly?: boolean } | null }).relay?.holdersOnly ?? false;
+  const socksO: ReturnType<typeof netConnect>[] = [];
+  const tunnelO = (withProof: boolean) => new Promise<string>((done) => {
+    let got = '';
+    const sock = netConnect(relayPortO, '127.0.0.1', () => sock.write(`CONNECT 127.0.0.1:${nodePortO} HTTP/1.1\r\nhost: 127.0.0.1:${nodePortO}\r\n${withProof ? `${headerO}: ${proofO()}\r\n` : ''}\r\n`));
+    socksO.push(sock);
+    sock.on('data', (c: Buffer) => { got += c.toString('latin1'); if (got.includes('\r\n\r\n')) done(got.split('\r\n')[0]); });
+    sock.on('end', () => done(got.split('\r\n')[0]));
+    sock.on('error', () => done(got.split('\r\n')[0] || 'error'));
+  });
+  const strangerO = await tunnelO(false);
+  const holderO = signerO && ownerO ? await tunnelO(true) : 'no wallet';
+  for (const sk of socksO) sk.destroy();
+  opts.relayHoldersOnly = false;
+  opts.shareNotes = false;
+  check('--relay-holders-only carries only routers that show they hold $OREY, and tells its peers so',
+    told === true && strangerO.startsWith('HTTP/1.1 403') && holderO === 'HTTP/1.1 200 Connection Established',
+    `told peers ${told} · a stranger: ${strangerO.slice(9, 12) || strangerO} · a holder: ${holderO.slice(9, 12) || holderO}`);
+}
 // The router console's holder line also says when this router's wallet rides the $OREY holder lanes, from its status.
 {
   const page = await (await fetch(`${ROUTER}/`)).text();

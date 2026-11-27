@@ -185,4 +185,16 @@ describe('a peer relay that cannot be reached', () => {
     assert.equal(one, `your requests to nodes: through http://10.0.0.2:7272, a peer's relay (--proxy-via-peers); the nodes see that router, not this computer${SPREAD_WAITS}`);
     assert.ok(!nodesViaLine({ peerRelay: 'http://10.0.0.2:7272', peerRelays: ['http://10.0.0.2:7272'], proxyViaPeers: true })!.includes('--spread-relays'));
   });
+
+  it('offers a holders-only relay only to a router whose wallet holds $OREY', () => {
+    const row = { pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    const peersNow = [{ ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0, relayHoldersOnly: true }];
+    const plain = relayChoices(peersNow, false);
+    assert.equal(plain[0], 'No peer relay can take new connections right now.');
+    assert.ok(plain.includes('1 for $OREY holders only, left out: http://10.0.0.2:7171 (a router whose wallet holds 0.01% of the supply can use it)'));
+    const holder = relayChoices(peersNow, true);
+    assert.equal(holder[1], '  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 0 open now, for $OREY holders only)');
+    assert.equal(relayChoicesJson(peersNow, false).relays[0].usable, false);
+    assert.equal(relayChoicesJson(peersNow, true).relays[0].usable, true);
+  });
 });

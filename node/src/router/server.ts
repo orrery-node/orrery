@@ -17,7 +17,7 @@ import { answerEvents, drop, finish, sseFrame } from '../sse.ts';
 import { ProxyRefused, fetchNode, fetchPeer, nodeProxy, parseProxy, relayFor, setNodeRelays } from '../proxy.ts';
 import { frameMsFrom } from '../provider/pace.ts';
 import { listenOn } from '../ports.ts';
-import { keptPeerNotes, relayOrder, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
+import { keptPeerNotes, readRelayHoldersOnly, relayOrder, MEET_MAX, MET_WEIGHT, NOTES_MAX_AGE_MS, notesFrom, peerBackoffMs, peerFreshness, peersFileNames, peerPrior, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, signNotes, sumPeers, type Note } from './notes.ts';
 import { ed25519Verify, signerOf } from '../keys.ts';
 import { allowedTargets, HOLDER_HEADER, holderProofMessage, plainAddress, Relay, RELAY_PER_CLIENT } from './relay.ts';
 import { PublicKey } from '@solana/web3.js';
@@ -100,6 +100,8 @@ export type RouterOptions = {
   /** The relay carries traffic only from the addresses of this router's peers (--peer, --peers-file), as they resolve at
    * each refresh. Off unless asked: a relay is open to anyone who knows its port. */
   relayPeersOnly?: boolean;
+  /** The relay carries only routers that show they hold $OREY (a wallet signature, checked on chain). */
+  relayHoldersOnly?: boolean;
   log?: (line: string) => void;
   holders?: HolderBook;
   aliases?: Alias[];
@@ -295,6 +297,8 @@ export class Router {
   private peerRelayFull = new Map<string, boolean | null>();
   /** Whether each peer's relay says it keeps carrying $OREY holders when full for today. */
   private peerRelayHolders = new Map<string, boolean | null>();
+  /** Peer relays that carry $OREY holders only. */
+  private peerRelayHoldersOnly = new Map<string, boolean | null>();
   /** The peer relay requests to nodes go through now (--proxy-via-peers), as its --proxy address, or null. */
   private usingPeerRelay: string | null = null;
   private usingPeerRelays: string[] = [];
@@ -391,7 +395,7 @@ export class Router {
   /** Opens the relay: a listener apart from the router's own API, passing other routers' traffic on to the nodes listed
    * on chain and to nothing else. Returns the port it listens on. */
   async startRelay(port: number, host = '0.0.0.0'): Promise<number> {
-    const relay = new Relay({ allowed: () => allowedTargets([...this.o.registry.entries.values()].filter((e) => e.account.active).map((e) => e.account.endpoint)), perClient: () => this.o.relayPerClient ?? RELAY_PER_CLIENT, maxBytes: () => this.o.relayMaxBytes ?? 0, holder: (proof) => this.holderProof(proof), clientAllowed: (address) => !this.o.relayPeersOnly || this.peerHosts.has(address), log: (l) => this.log(l) });
+    const relay = new Relay({ allowed: () => allowedTargets([...this.o.registry.entries.values()].filter((e) => e.account.active).map((e) => e.account.endpoint)), perClient: () => this.o.relayPerClient ?? RELAY_PER_CLIENT, maxBytes: () => this.o.relayMaxBytes ?? 0, holder: (proof) => this.holderProof(proof), holdersOnly: () => !!this.o.relayHoldersOnly && !!this.o.holders, clientAllowed: (address) => !this.o.relayPeersOnly || this.peerHosts.has(address), log: (l) => this.log(l) });
     await listenOn(relay.server, port, host, 'router');
     this.relay = relay;
     const bound = (relay.server.address() as { port: number }).port;
@@ -528,7 +532,8 @@ export class Router {
         const port = this.peerRelay.get(base);
         const full = !!this.peerRelayFull.get(base);
         const lane = holder && !!this.peerRelayHolders.get(base);
-        if (!port || p.refused || p.at === 0 || !p.signed || (full && !lane)) return [];
+        const onlyHolders = !!this.peerRelayHoldersOnly.get(base);
+        if (!port || p.refused || p.at === 0 || !p.signed || (full && !lane) || (onlyHolders && !holder)) return [];
         let host: string;
         try {
           host = new URL(base).hostname;
@@ -536,7 +541,7 @@ export class Router {
           return [];
         }
         if ((this.relayDownUntil.get(`http://${host}:${port}`) ?? 0) > Date.now()) return [];
-        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane, prove: lane }];
+        return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane, prove: lane || onlyHolders }];
       });
       offers.sort(relayOrder);
       picks = offers.slice(0, this.o.spreadRelays ? SPREAD_MAX : 1);
@@ -645,6 +650,7 @@ export class Router {
       this.peerRelayOpen.set(base, readRelayOpen(j));
       this.peerRelayFull.set(base, readRelayFull(j));
       this.peerRelayHolders.set(base, readRelayHolders(j));
+      this.peerRelayHoldersOnly.set(base, readRelayHoldersOnly(j));
     };
     const heard = await Promise.all(bases.map(async (base) => ({ base, j: await ask(base) })));
     for (const { base, j } of heard) keepRelay(base, j);
@@ -797,7 +803,7 @@ export class Router {
       // on, so a router met this way is always two steps away and counts half (MET_WEIGHT). Only when it shares notes.
       if (req.method === 'GET' && url.pathname === '/orrery/peers') {
         if (!this.o.shareNotes) return send(res, 404, { error: { code: 'not_found', message: 'this router does not share notes (start it with --share-notes)' } });
-        return send(res, 200, { peers: [...this.peerSaid].filter(([g, p]) => !this.met.has(g) && p.signed && p.by && !p.refused && p.at > 0).map(([g, p]) => ({ url: g.split('#')[0], by: p.by })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, open: this.relay.open, full: this.relay.full, holders: !!this.o.holders } : null });
+        return send(res, 200, { peers: [...this.peerSaid].filter(([g, p]) => !this.met.has(g) && p.signed && p.by && !p.refused && p.at > 0).map(([g, p]) => ({ url: g.split('#')[0], by: p.by })), relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, open: this.relay.open, full: this.relay.full, holders: !!this.o.holders, ...(this.o.relayHoldersOnly && this.o.holders ? { holdersOnly: true } : {}) } : null });
       }
       if (req.method === 'GET' && url.pathname === '/orrery/tasks') return send(res, 200, { tasks: this.tasks.list().map((t) => ({ name: t.name, budget: usd(t.budget), spent: usd(t.spent), left: usd(t.budget > t.spent ? t.budget - t.spent : 0n), answers: t.answers, firstAt: t.firstAt, lastAt: t.lastAt })) });
       if (req.method === 'GET' && url.pathname === '/orrery/quote') {
@@ -929,7 +935,7 @@ export class Router {
     // Where this wallet stands: its holder price at the nodes that list one, and the nearest step up.
     const priced = [...this.o.registry.entries.values()].filter((e) => e.account.active && !e.problem && e.manifest?.holder?.tiers?.length).map((e) => ({ name: e.manifest?.name ?? e.address.slice(0, 6), tiers: e.manifest!.holder!.tiers }));
     const holder = s ? { mint: s.mint, balance: s.balance.toString(), supply: s.supply.toString(), share: sharePct(s), line: standingLine(s, priced, TICKER), lane: s.balance > 0n && s.balance * 10_000n >= s.supply * HOLDER_LANE_BP } : null;
-    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, rpcLeftOut: this.o.registry.rpcLeftOut, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, name: this.peerNames.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayFull: this.peerRelayFull.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHolders: this.peerRelayHolders.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayDownFor: this.relayDownFor(url), unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, readMs: this.peerMs.get(url) ?? null, kept: this.peerKept.has(url), say: this.peerSay(url), written: this.peerSaid.get(url)?.at ? this.notesWritten(url) : null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), peerRelay: this.usingPeerRelay, peerRelays: this.usingPeerRelays, proxyViaPeers: this.viaPeers, spreadRelays: !!this.o.spreadRelays, relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, routersToday: this.relay.routersToday, bytes: this.relay.bytes, today: this.relay.today, maxBytes: this.relay.maxBytes || null, forHolders: this.relay.forHolders, holderLane: !!this.o.holders, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient, peersOnly: !!this.o.relayPeersOnly } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
+    send(res, 200, { version: PACKAGE_VERSION, discovery: this.o.registry.discovery, rpcLeftOut: this.o.registry.rpcLeftOut, peers: [...this.peerSaid].map(([url, p]) => ({ url: url.split('#')[0], pinned: url.includes('#'), via: this.met.get(url) ?? null, name: this.peerNames.get(url) ?? null, relayPort: this.peerRelay.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayOpen: this.peerRelayOpen.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayFull: this.peerRelayFull.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHolders: this.peerRelayHolders.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayHoldersOnly: this.peerRelayHoldersOnly.get(url.split('#')[0].replace(/\/$/, '')) ?? null, relayDownFor: this.relayDownFor(url), unlisted: (this.peerNotes.get(url) ?? []).filter((n) => !this.o.registry.entries.has(n.address)).length, readMs: this.peerMs.get(url) ?? null, kept: this.peerKept.has(url), say: this.peerSay(url), written: this.peerSaid.get(url)?.at ? this.notesWritten(url) : null, retryAt: peerBackoffMs(p.missed) ? (this.peerTried.get(url) ?? 0) + peerBackoffMs(p.missed) : null, ...p })), peerRelay: this.usingPeerRelay, peerRelays: this.usingPeerRelays, proxyViaPeers: this.viaPeers, spreadRelays: !!this.o.spreadRelays, relay: this.relay ? { port: (this.relay.server.address() as { port: number } | null)?.port ?? null, relayed: this.relay.relayed, routersToday: this.relay.routersToday, bytes: this.relay.bytes, today: this.relay.today, maxBytes: this.relay.maxBytes || null, forHolders: this.relay.forHolders, holderLane: !!this.o.holders, refused: this.relay.refused, open: this.relay.open, perClient: this.relay.perClient, peersOnly: !!this.o.relayPeersOnly } : null, route: this.o.route, privateOnly: !!this.o.privateOnly, privacy, proxy: nodeProxy()?.label ?? null, proxySeen: nodeProxy() && this.farSide ? { node: this.farSide.node, address: this.farSide.address, also: this.farSide.also, givenAway: this.farSide.givenAway, checkedAt: this.farSide.checkedAt } : null, refreshedAt: this.o.registry.refreshedAt, spentToday: usd(this.o.channels.todaySpent()), holder, providers, channels, trips: this.trips.slice(-50).reverse(), agents: this.agents!.list().map((a) => ({ name: a.name, cap: a.cap === null ? null : usd(a.cap), spent: usd(a.spent), left: a.cap === null ? null : usd(a.cap > a.spent ? a.cap - a.spent : 0n), ...(this.o.agentModels?.get(a.name) ? { models: [...this.o.agentModels.get(a.name)!] } : {}) })) });
   }
 
   private async chat(req: IncomingMessage, res: ServerResponse) {

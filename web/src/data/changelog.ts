@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`--relay-holders-only`: a relay that carries only routers holding $OREY (0.01% of the supply, shown with the wallet\'s signature and checked on chain); it says so to its peers, and `orrery peers --relays` offers it only to a router whose wallet holds $OREY.' },
   { who: 'router', text: '$OREY holders get twice the connections at a time on a peer relay that keeps a holder lane: a router whose wallet holds 0.01% of the supply sends its signed proof to such a relay whenever it uses it (not only past the daily limit), and the relay lets it open twice as many connections at once.' },
   { who: 'router', text: '`--spread-relays` turns on `--proxy-via-peers` by itself, and while only one signed peer offers a relay, `orrery peers` and `orrery doctor` say the spreading starts with the second.' },
   { who: 'router', text: 'The `peers` tool in `orrery mcp` takes `json` with `relays`: an agent gets the same relay data as `orrery peers --relays --json`.' },

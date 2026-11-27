@@ -8,7 +8,7 @@ import { connect as netConnect, type Socket } from 'node:net';
  * API, so nothing that spends this router's wallet is reachable through it. What it carries to a node is already
  * sealed to that node's key, payment included for nodes that read it inside the seal: the relay sees a host and a
  * port, never a prompt. */
-export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; maxBytes?: () => number; holder?: (proof: string) => Promise<boolean>; log?: (line: string) => void };
+export type RelayOptions = { allowed: () => Set<string>; perClient?: () => number; clientAllowed?: (address: string) => boolean; maxBytes?: () => number; holder?: (proof: string) => Promise<boolean>; log?: (line: string) => void ; holdersOnly?: () => boolean };
 
 /** The header a router sends a peer's relay to show it holds $OREY: `<wallet>.<ms>.<signature>`, the wallet's signature
  * over HOLDER_PROOF, the relay router's key and the time. Never passed on to the node. */
@@ -34,6 +34,8 @@ export function plainAddress(address: string): string {
 }
 
 const PEERS_ONLY = 'this relay carries traffic only for its peer routers';
+/** Why a holders-only relay (--relay-holders-only) turns a router away. */
+export const HOLDERS_ONLY = 'this relay carries routers that hold $OREY only: 0.01% of the supply, shown with the wallet\'s signature';
 
 /** How many connections one address may have open through a relay at once, unless the router says otherwise: a relay
  * is shared, so no one address takes all of it. */
@@ -204,6 +206,7 @@ export class Relay {
       return this.refuse(res, `a relay only passes requests on to nodes listed on chain; ${target.host || 'this address'} is not one`);
     }
     const holder = await this.holderOf(req.headers[HOLDER_HEADER]);
+    if (this.o.holdersOnly?.() && !holder) return this.refuse(res, HOLDERS_ONLY);
     const full = this.fullFor(holder);
     if (full) {
       this.refused += 1;
@@ -249,6 +252,11 @@ export class Relay {
       return;
     }
     const holder = await this.holderOf(req.headers[HOLDER_HEADER]);
+    if (this.o.holdersOnly?.() && !holder) {
+      this.refused += 1;
+      socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\n\r\n${HOLDERS_ONLY}\n`);
+      return;
+    }
     const full = this.fullFor(holder);
     if (full) {
       this.refused += 1;

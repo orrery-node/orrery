@@ -9,7 +9,7 @@ import { usd } from './pricing.ts';
 import { readPins, Registry, rpcLeftOutLine, type ProviderEntry } from './router/registry.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { PACKAGE_VERSION } from './version.ts';
-import { type PeerSum, relayOrder, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
+import { type PeerSum, relayOrder, readIntroductions, readPeerNotes, readRelayFull, readRelayHolders, readRelayHoldersOnly, readRelayOpen, readRelayPort, peerText } from './router/notes.ts';
 import { answeredText, watchedText, type Watched } from './router/watched.ts';
 import { billsText, speedText, skipNote, unansweredNote, readTrips, readUnanswered } from './spend.ts';
 import { startRouter } from './connect.ts';
@@ -320,7 +320,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; readMs?: number | null; relayDownFor?: number | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; readMs?: number | null; relayDownFor?: number | null; relayHoldersOnly?: boolean | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {
@@ -378,10 +378,12 @@ export function relayChoices(peers: PeerRow[], holder = false, inUse: string[] =
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
   const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
   const isDown = (p: PeerRow) => (p.relayDownFor ?? 0) > 0;
-  const full = running.filter((p) => p.relayFull && !lane(p) && !isDown(p));
-  const down = running.filter(isDown);
+  const shut = (p: PeerRow) => !!p.relayHoldersOnly && !holder;
+  const full = running.filter((p) => p.relayFull && !lane(p) && !isDown(p) && !shut(p));
+  const down = running.filter((p) => isDown(p) && !shut(p));
+  const holdersOnlyOut = running.filter(shut);
   const offer = (p: PeerRow) => ({ holderLane: lane(p), open: p.relayOpen ?? null, ms: p.readMs ?? null, signed: p.signed });
-  const usable = running.filter((p) => (!p.relayFull || lane(p)) && !isDown(p)).sort((a, b) => relayOrder(offer(a), offer(b)));
+  const usable = running.filter((p) => (!p.relayFull || lane(p)) && !isDown(p) && !shut(p)).sort((a, b) => relayOrder(offer(a), offer(b)));
   if (!running.length) return ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).'];
   const host = (url: string) => {
     try {
@@ -395,12 +397,13 @@ export function relayChoices(peers: PeerRow[], holder = false, inUse: string[] =
     out.push(`${usable.length} peer relay${usable.length === 1 ? '' : 's'} you can use, least busy first:`);
     for (const p of usable) {
       const using = inUse.includes(`http://${host(p.url)}:${p.relayPort}`);
-      const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', lane(p) ? 'full for today, carries you as a $OREY holder' : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
+      const about = [p.name ?? p.url, p.via ? `met through ${p.via}` : '', typeof p.relayOpen === 'number' ? `${p.relayOpen} open now` : '', lane(p) ? 'full for today, carries you as a $OREY holder' : '', p.relayHoldersOnly ? 'for $OREY holders only' : '', p.signed ? '' : 'unsigned', (p.missed ?? 0) > 0 ? 'quiet' : ''].filter(Boolean).join(', ');
       out.push(`  --proxy http://${host(p.url)}:${p.relayPort}  (${about})${using ? '  \u2190 in use now' : ''}`);
     }
   } else out.push('No peer relay can take new connections right now.');
   if (full.length) out.push(`${full.length} full for today, left out: ${full.map((p) => p.url).join(', ')}`);
   if (down.length) out.push(relayDownLine(down.map((p) => ({ url: p.url, seconds: p.relayDownFor ?? 0 }))));
+  if (holdersOnlyOut.length) out.push(`${holdersOnlyOut.length} for $OREY holders only, left out: ${holdersOnlyOut.map((p) => p.url).join(', ')} (a router whose wallet holds 0.01% of the supply can use ${holdersOnlyOut.length === 1 ? 'it' : 'them'})`);
   if (usable.length) out.push('Start your router with one as --proxy and the nodes see that router, not this computer.');
   const signedUsable = usable.filter((p) => p.signed).length;
   if (signedUsable >= 2) out.push(spreadHintLine(signedUsable));
@@ -414,7 +417,7 @@ export function relayDownLine(down: { url: string; seconds: number }[]): string 
 
 /** `orrery peers --relays --json`: every relay the peers offer as data, the ones a router could use now first (in the
  * order --proxy-via-peers weighs them), with why the others are left out. */
-export type RelayRow = { proxy: string | null; peer: string; name: string | null; open: number | null; readMs: number | null; signed: boolean; usable: boolean; full: boolean; holderLane: boolean; downFor: number | null; inUse: boolean };
+export type RelayRow = { proxy: string | null; peer: string; name: string | null; open: number | null; readMs: number | null; signed: boolean; usable: boolean; full: boolean; holderLane: boolean; holdersOnly: boolean; downFor: number | null; inUse: boolean };
 export function relayChoicesJson(peers: PeerRow[], holder = false, inUse: string[] = []): { relays: RelayRow[]; inUse: string[] } {
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
   const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
@@ -429,7 +432,8 @@ export function relayChoicesJson(peers: PeerRow[], holder = false, inUse: string
     const h = hostOf(p.url);
     const proxy = h ? `http://${h}:${p.relayPort}` : null;
     const down = (p.relayDownFor ?? 0) > 0;
-    return { proxy, peer: p.url, name: p.name ?? null, open: p.relayOpen ?? null, readMs: p.readMs ?? null, signed: p.signed, usable: (!p.relayFull || lane(p)) && !down, full: !!p.relayFull, holderLane: lane(p), downFor: down ? p.relayDownFor ?? null : null, inUse: !!proxy && inUse.includes(proxy) };
+    const onlyHolders = !!p.relayHoldersOnly;
+    return { proxy, peer: p.url, name: p.name ?? null, open: p.relayOpen ?? null, readMs: p.readMs ?? null, signed: p.signed, usable: (!p.relayFull || lane(p)) && !down && (!onlyHolders || holder), full: !!p.relayFull, holderLane: lane(p), holdersOnly: onlyHolders, downFor: down ? p.relayDownFor ?? null : null, inUse: !!proxy && inUse.includes(proxy) };
   });
   rows.sort((a, b) => Number(b.usable) - Number(a.usable) || relayOrder({ holderLane: a.holderLane, open: a.open, ms: a.readMs, signed: a.signed }, { holderLane: b.holderLane, open: b.open, ms: b.readMs, signed: b.signed }));
   return { relays: rows, inUse };
@@ -544,7 +548,8 @@ export function peerCheck(target: string, notes: unknown, intros: unknown = null
   const port = readRelayPort(intros);
   const open = readRelayOpen(intros);
   const lane = readRelayHolders(intros) === true;
-  const busy = [open !== null ? `${open} open now` : '', readRelayFull(intros) ? (lane ? 'full for today, $OREY holders still ride' : 'full for today') : lane ? 'keeps a lane for $OREY holders past its daily limit' : ''].filter(Boolean).join(', ');
+  const onlyHolders = readRelayHoldersOnly(intros) === true;
+  const busy = [open !== null ? `${open} open now` : '', onlyHolders ? 'for $OREY holders only' : '', readRelayFull(intros) ? (lane ? 'full for today, $OREY holders still ride' : 'full for today') : lane ? 'keeps a lane for $OREY holders past its daily limit' : ''].filter(Boolean).join(', ');
   lines.push(port ? `relays on port ${port}${busy ? ` (${busy})` : ''}, usable as --proxy http://<its host>:${port}` : 'runs no relay');
   const named = readIntroductions(intros);
   lines.push(intros === null ? 'introduces no routers (no /orrery/peers)' : `introduces ${named.length} router${named.length === 1 ? '' : 's'}${named.length ? ', read with --meet-peers' : ''}`);
