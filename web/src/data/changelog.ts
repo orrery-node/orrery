@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`--spread-relays` turns on `--proxy-via-peers` by itself, and while only one signed peer offers a relay, `orrery peers` and `orrery doctor` say the spreading starts with the second.' },
   { who: 'router', text: 'The `peers` tool in `orrery mcp` takes `json` with `relays`: an agent gets the same relay data as `orrery peers --relays --json`.' },
   { who: 'router', text: '`orrery peers --relays --json` gives every relay the peers offer as data, for scripts and agents: the `--proxy` address, the peer, how busy, how quick its last read, signed or not, usable now or why not (full for today, passed over), and which one is in use.' },
   { who: 'router', text: 'A relay says how many routers it carried today: `orrery peers`, `orrery doctor` and the console say "carried connections for N routers today", and the status has `routersToday`. Only the count is kept; the addresses stay in memory for the day and are never shown or written.' },

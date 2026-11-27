@@ -194,9 +194,9 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   if (status?.relay) out.push({ ok: null, what: '  relay', detail: relayLine(status.relay) });
   const relayRouters = (status?.relay as { routersToday?: number } | null | undefined)?.routersToday ?? 0;
   if (relayRouters) out.push({ ok: null, what: '  relay today', detail: routersTodayLine(relayRouters) });
-  const via = status as { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean } | null;
+  const via = status as { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean } | null;
   if ((via?.peerRelays?.length ?? 0) > 1) out.push({ ok: null, what: '  nodes via', detail: spreadLine(via!.peerRelays!) });
-  else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer` });
+  else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer${via.spreadRelays ? SPREAD_WAITS : ''}` });
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
   const map = mapLine(status?.providers ?? []);
   if (map && (status?.peers?.length || status?.discovery !== 'chain')) out.push({ ok: null, what: '  map', detail: map });
@@ -343,9 +343,9 @@ export function holderLaneLine(lane: boolean, share: string): string {
 
 /** How this router's own requests reach the nodes now, when it goes through its peers: one peer's relay, spread over
  * several, or its own way because none can take it. Null when --proxy-via-peers is off. */
-export function nodesViaLine(status: { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; peers?: PeerRow[] }): string | null {
+export function nodesViaLine(status: { peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean; peers?: PeerRow[] }): string | null {
   if ((status.peerRelays?.length ?? 0) > 1) return `your requests to nodes: ${spreadLine(status.peerRelays!)}`;
-  if (status.peerRelay) return `your requests to nodes: through ${status.peerRelay}, a peer's relay (--proxy-via-peers); the nodes see that router, not this computer`;
+  if (status.peerRelay) return `your requests to nodes: through ${status.peerRelay}, a peer's relay (--proxy-via-peers); the nodes see that router, not this computer${status.spreadRelays ? SPREAD_WAITS : ''}`;
   if (status.proxyViaPeers) return `your requests to nodes: ${noPeerRelayLine((status.peers ?? []).filter((p) => (p.relayDownFor ?? 0) > 0).length)}`;
   return null;
 }
@@ -354,6 +354,9 @@ export function nodesViaLine(status: { peerRelay?: string | null; peerRelays?: s
 export function spreadByNode(providers: FoundRow[]): string[] {
   return providers.filter((p) => p.via).map((p) => `  ${p.name ?? p.address} \u2192 ${p.via}`);
 }
+
+/** Under --spread-relays with a single relay to use: the spreading starts with the second. */
+export const SPREAD_WAITS = '; --spread-relays spreads them as soon as a second signed peer offers a relay';
 
 /** --spread-relays: the peer relays the nodes are spread over. */
 export function spreadLine(relays: string[]): string {
@@ -488,7 +491,7 @@ export function mapLine(providers: FoundRow[]): string | null {
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] ; peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean}, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] ; peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean}, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {

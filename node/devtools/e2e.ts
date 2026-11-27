@@ -3088,6 +3088,33 @@ const all4 = () => registry.entries.size;
     first === otherUrlK && second === otherUrlK && third === ownUrlK,
     `picked ${name(first)} (A 1 open, B 0) · then ${name(second)} (A 0, B 1) · then ${name(third)} (A 0, B 3)`);
 }
+// --spread-relays alone turns on --proxy-via-peers, and with one signed peer's relay so far the router uses it and says
+// the spreading starts with the second.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signO } = await import('../src/router/notes.ts');
+  const { signerOf: signerO } = await import('../src/keys.ts');
+  const ownO = (((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { relay?: { port: number | null } | null }).relay?.port) ?? 0;
+  const k = Keypair.generate();
+  const one = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signO({ notes: 1, at: Date.now(), nodes: [] }, k.publicKey.toBase58(), signerO(k)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: ownO, open: 0 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => one.listen(0, '127.0.0.1', () => done()));
+  opts.peers = [`http://127.0.0.1:${(one.address() as { port: number }).port}`];
+  opts.proxyViaPeers = false;
+  opts.spreadRelays = true;
+  await rp.readPeers?.();
+  const st1 = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null; proxyViaPeers?: boolean; spreadRelays?: boolean };
+  const peersOne = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  opts.spreadRelays = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  one.closeAllConnections();
+  await new Promise((done) => one.close(done));
+  const routeOne = peersOne.split('\n').find((l) => l.startsWith('your requests to nodes: ')) ?? '';
+  check('--spread-relays alone turns on --proxy-via-peers; with one signed peer\u2019s relay the router uses it and says the spreading starts with the second',
+    st1.peerRelay === `http://127.0.0.1:${ownO}` && st1.proxyViaPeers === true && st1.spreadRelays === true && routeOne.endsWith('; --spread-relays spreads them as soon as a second signed peer offers a relay'),
+    `peerRelay ${st1.peerRelay ? st1.peerRelay.replace(String(ownO), '<own>') : 'none'} · proxyViaPeers ${st1.proxyViaPeers ?? '?'} · ${routeOne.slice(-70) || 'no route line'}`);
+}
 // --proxy-via-peers: the router sends its requests to nodes through the least busy relay a signed peer offers, chosen
 // at each refresh, while it keeps reading that peer directly; once that relay says it is full for today, the router
 // goes back to its own route (directly, or its --proxy), and the log says each change once.
