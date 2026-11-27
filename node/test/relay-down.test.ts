@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fetchNode, nodeAddress, nodeRelays, parseProxy, pickRelay, relayFor, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
 import { spreadLine } from '../src/doctor.ts';
-import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine, spreadByNode } from '../src/doctor.ts';
+import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine, spreadByNode, spreadHintLine } from '../src/doctor.ts';
 
 const listen = (s: Server) => new Promise<number>((done) => s.listen(0, '127.0.0.1', () => done((s.address() as AddressInfo).port)));
 const close = (s: Server) => new Promise((done) => { s.closeAllConnections(); s.close(done); });
@@ -146,5 +146,13 @@ describe('a peer relay that cannot be reached', () => {
     const out = peersReport({ peers: [], relay: null, peerRelays: ['http://10.0.0.2:7272', 'http://10.0.0.3:7272'], proxyViaPeers: true, providers: rows });
     assert.ok(out.includes('  Kestrel GPU Co-op \u2192 http://10.0.0.2:7272'));
     assert.ok(!peersReport({ peers: [], relay: null, peerRelays: ['http://10.0.0.2:7272'], peerRelay: 'http://10.0.0.2:7272', proxyViaPeers: true, providers: rows }).some((l) => l.includes('\u2192')));
+  });
+
+  it('orrery peers --relays points at --spread-relays when two or more signed peers offer a relay, never for unsigned ones', () => {
+    const row = { pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    const two = relayChoices([{ ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0 }, { ...row, url: 'http://10.0.0.3:7171', relayPort: 7272, relayOpen: 1 }]);
+    assert.equal(two.at(-1), spreadHintLine(2));
+    const oneSigned = relayChoices([{ ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 0 }, { ...row, url: 'http://10.0.0.3:7171', relayPort: 7272, relayOpen: 1, signed: false }]);
+    assert.ok(!oneSigned.some((l) => l.includes('--spread-relays')));
   });
 });

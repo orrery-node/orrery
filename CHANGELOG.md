@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery peers --relays` says when `--proxy-via-peers --spread-relays` would use two or more of the signed peers' relays at once.
 - **Router** · Under `--spread-relays` each node is matched to a relay by rendezvous hashing: when a peer relay drops out, only the nodes that went through it move, and every other node keeps its relay.
 - **Router** · Under `--spread-relays` you can see which peer relay each node goes through: each node in the status has `via`, the console marks it on the node's row, and `orrery peers` lists it node by node.
 - **Router** · `orrery peers` (and the `peers` tool in `orrery mcp`) and the console say how your own requests reach the nodes now: through one peer's relay, spread over several (`--spread-relays`), or your own way when no peer relay can take them.

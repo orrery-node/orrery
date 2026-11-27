@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers --relays` says when `--proxy-via-peers --spread-relays` would use two or more of the signed peers\' relays at once.' },
   { who: 'router', text: 'Under `--spread-relays` each node is matched to a relay by rendezvous hashing: when a peer relay drops out, only the nodes that went through it move, and every other node keeps its relay.' },
   { who: 'router', text: 'Under `--spread-relays` you can see which peer relay each node goes through: each node in the status has `via`, the console marks it on the node\'s row, and `orrery peers` lists it node by node.' },
   { who: 'router', text: '`orrery peers` (and the `peers` tool in `orrery mcp`) and the console say how your own requests reach the nodes now: through one peer\'s relay, spread over several (`--spread-relays`), or your own way when no peer relay can take them.' },

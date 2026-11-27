@@ -2531,6 +2531,9 @@ const all4 = () => registry.entries.size;
   await rp.readPeers?.();
   for (const srv of [slow, quick]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
   const rl = relaysNow.split('\n');
+  check('orrery peers --relays, with two signed peers offering relays, says --spread-relays would use both',
+    relaysNow.split('\n').includes("Or start it with --proxy-via-peers --spread-relays: it uses all 2 of these signed peers' relays, each node always through the same one, so no single peer sees all of your traffic."),
+    relaysNow.split('\n').filter((l) => l.includes('spread')).join(' | ').slice(0, 120) || 'no spread line');
   check('between peer relays just as busy, the peer that answered quicker comes first in orrery peers --relays (and for --proxy-via-peers)',
     rl[0] === '2 peer relays you can use, least busy first:' && rl[1]?.startsWith('  --proxy http://127.0.0.1:7777') && rl[2]?.startsWith('  --proxy http://127.0.0.1:7676'),
     `${rl.slice(1, 3).map((l) => l.trim().split('  ')[0]).join(' then ') || 'no list'} · reads took ${ms.join(' / ')} ms`);
@@ -2971,6 +2974,8 @@ const all4 = () => registry.entries.size;
   const secondBefore = second.relayed;
   const thirdBefore = third.relayed;
   await registry.checkHealth();
+  // A node that did not answer this round was never reached, so its relay carried nothing for it.
+  const answeredNow = new Set(registry.usable().filter((e) => !(e as { unansweredAt?: number }).unansweredAt).map((e) => e.address));
   const ownCarried = ((await statusS()).relay?.relayed ?? 0) - ownBefore;
   const secondCarried = second.relayed - secondBefore;
   const thirdCarried = third.relayed - thirdBefore;
@@ -2995,13 +3000,14 @@ const all4 = () => registry.entries.size;
   await rp.readPeers?.();
   for (const srv of [peerA, peerB, peerC, second.server, third.server]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
   const assigned = registry.usable().map((e) => viaOf.get(e.address) ?? null);
-  const toOwn = assigned.filter((u) => u === ownUrl).length;
-  const toSecond = assigned.filter((u) => u === secondUrl).length;
-  const toThird = assigned.filter((u) => u === thirdUrl).length;
+  const reached = registry.usable().filter((e) => answeredNow.has(e.address)).map((e) => viaOf.get(e.address) ?? null);
+  const toOwn = reached.filter((u) => u === ownUrl).length;
+  const toSecond = reached.filter((u) => u === secondUrl).length;
+  const toThird = reached.filter((u) => u === thirdUrl).length;
   check('--spread-relays spreads the nodes over every peer relay, each node always through the same one: a round of health checks goes through exactly the relays the nodes are assigned to',
     relays.length === 3 && [ownUrl, secondUrl, thirdUrl].every((u) => relays.includes(u)) && assigned.every((u) => u !== null && relays.includes(u))
     && (ownCarried > 0) === (toOwn > 0) && (secondCarried > 0) === (toSecond > 0) && (thirdCarried > 0) === (toThird > 0) && viaSpread.startsWith('spread over 3 peer relays (--spread-relays)'),
-    `${relays.length} relays · nodes assigned ${toOwn} / ${toSecond} / ${toThird} · carried ${ownCarried} / ${secondCarried} / ${thirdCarried} · doctor: ${viaSpread.slice(0, 40) || 'no line'}`);
+    `${relays.length} relays · answering nodes assigned ${toOwn} / ${toSecond} / ${toThird} (of ${assigned.length}) · carried ${ownCarried} / ${secondCarried} / ${thirdCarried} · doctor: ${viaSpread.slice(0, 40) || 'no line'}`);
   const routeNow = peersSpread.split('\n').find((l) => l.startsWith('your requests to nodes: ')) ?? '';
   const usableNow = registry.usable();
   const viaMatches = usableNow.filter((e) => relays.includes(viaOf.get(e.address) ?? '')).length;

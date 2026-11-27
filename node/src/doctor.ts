@@ -391,12 +391,19 @@ export function relayChoices(peers: PeerRow[], holder = false): string[] {
   if (full.length) out.push(`${full.length} full for today, left out: ${full.map((p) => p.url).join(', ')}`);
   if (down.length) out.push(relayDownLine(down.map((p) => ({ url: p.url, seconds: p.relayDownFor ?? 0 }))));
   if (usable.length) out.push('Start your router with one as --proxy and the nodes see that router, not this computer.');
+  const signedUsable = usable.filter((p) => p.signed).length;
+  if (signedUsable >= 2) out.push(spreadHintLine(signedUsable));
   return out;
 }
 
 /** The peers whose relay could not be reached when this router last used it: passed over for a few minutes each. */
 export function relayDownLine(down: { url: string; seconds: number }[]): string {
   return `${down.length} could not be reached and ${down.length === 1 ? 'is' : 'are'} passed over for now: ${down.map((d) => `${d.url} (${Math.max(1, Math.ceil(d.seconds / 60))} more min)`).join(', ')}`;
+}
+
+/** Under orrery peers --relays, when two or more signed peers offer a relay: --spread-relays would use all of them. */
+export function spreadHintLine(n: number): string {
+  return `Or start it with --proxy-via-peers --spread-relays: it uses all ${n} of these signed peers' relays, each node always through the same one, so no single peer sees all of your traffic.`;
 }
 
 /** How many of the peers' relays say they are full for today, for the summary line: " (1 full for today)", or nothing. */
