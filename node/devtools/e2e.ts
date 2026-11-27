@@ -2535,6 +2535,49 @@ const all4 = () => registry.entries.size;
     rl[0] === '2 peer relays you can use, least busy first:' && rl[1]?.startsWith('  --proxy http://127.0.0.1:7777') && rl[2]?.startsWith('  --proxy http://127.0.0.1:7676'),
     `${rl.slice(1, 3).map((l) => l.trim().split('  ')[0]).join(' then ') || 'no list'} · reads took ${ms.join(' / ')} ms`);
 }
+// A peer relay that cannot be reached is not the node's fault: with --proxy-via-peers on a signed peer's relay whose port
+// nothing listens on, a request still gets its answer the router's own way, the log says the relay could not be reached,
+// and the next choice passes it over.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void>; log: (l: string) => void };
+  const { signNotes: signD } = await import('../src/router/notes.ts');
+  const { signerOf: signerD } = await import('../src/keys.ts');
+  const k = Keypair.generate();
+  let deadPort = 0;
+  const offering = createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signD({ notes: 1, at: Date.now(), nodes: [] }, k.publicKey.toBase58(), signerD(k)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: deadPort, open: 0 } })) : res.writeHead(404).end()));
+  await new Promise<void>((done) => offering.listen(0, '127.0.0.1', () => done()));
+  const peerPortD = (offering.address() as { port: number }).port;
+  // A port that nothing listens on: taken while the peer above is already listening, so the two cannot be the same.
+  const gone = createHttpServer();
+  await new Promise<void>((done) => gone.listen(0, '127.0.0.1', () => done()));
+  deadPort = (gone.address() as { port: number }).port;
+  await new Promise((done) => gone.close(done));
+  const heard: string[] = [];
+  const logWas = rp.log;
+  rp.log = (l) => { heard.push(l); logWas.call(router, l); };
+  opts.peers = [`http://127.0.0.1:${(offering.address() as { port: number }).port}`];
+  opts.proxyViaPeers = true;
+  await rp.readPeers?.();
+  const statusD = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null };
+  const chosen = (await statusD()).peerRelay ?? null;
+  for (const o of router.stats.all().values()) o.cooldownUntil = 0;
+  const answered = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-patience': '0' }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say ok.' }] }) });
+  await answered.text();
+  const after = (await statusD()).peerRelay ?? null;
+  await rp.readPeers?.();
+  const again = (await statusD()).peerRelay ?? null;
+  opts.proxyViaPeers = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  rp.log = logWas;
+  offering.closeAllConnections();
+  await new Promise((done) => offering.close(done));
+  const said = heard.filter((l) => l.startsWith(`nodes: the peer relay http://127.0.0.1:${deadPort} could not be reached`));
+  check('a peer relay that cannot be reached does not cost the answer: the request goes the router\u2019s own way, the log says so once, and the relay is passed over',
+    chosen === `http://127.0.0.1:${deadPort}` && answered.status === 200 && after === null && again === null && said.length === 1 && said[0].includes('passed over for 5 min'),
+    `chose ${chosen ? chosen.replace(String(deadPort), '<dead>') : 'nothing'} (peer on ${peerPortD === deadPort ? 'the same port' : 'another port'}) · answer ${answered.status} · after ${after ?? 'own route'}, next choice ${again ?? 'own route'} · log: ${said.length} line(s)`);
+}
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
 // relay port never answers as the router itself.

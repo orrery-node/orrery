@@ -181,6 +181,8 @@ export const FULL_MS = 30_000;
 
 /** A wallet holding at least this share of $OREY's supply (basis points, 0.01%) rides a peer relay's holder lane. */
 export const HOLDER_LANE_BP = 1n;
+/** How long a peer relay that could not be reached is passed over by --proxy-via-peers. */
+export const RELAY_DOWN_MS = 5 * 60_000;
 
 /** What a job has spent and has left, as the headers every answer and every budget refusal under it carries. */
 const taskHeaders = (t: { budget: bigint; spent: bigint }): Record<string, string> => ({
@@ -287,6 +289,8 @@ export class Router {
   /** The peer relay requests to nodes go through now (--proxy-via-peers), as its --proxy address, or null. */
   private usingPeerRelay: string | null = null;
   private usingPeerRelayKey: string | null = null;
+  /** Peer relays that could not be reached, and until when they are passed over. */
+  private relayDownUntil = new Map<string, number>();
   /** When each peer was last tried, for the wait after missed reads (peerBackoffMs). */
   private peerTried = new Map<string, number>();
   /** How long each peer took to answer its notes the last time it answered, in ms. */
@@ -515,6 +519,7 @@ export class Router {
         } catch {
           return [];
         }
+        if ((this.relayDownUntil.get(`http://${host}:${port}`) ?? 0) > Date.now()) return [];
         return [{ url: `http://${host}:${port}`, peer: base, open: this.peerRelayOpen.get(base) ?? null, ms: this.peerMs.get(given) ?? null, by: p.by, holderLane: full && lane }];
       });
       offers.sort(relayOrder);
@@ -532,9 +537,19 @@ export class Router {
       const ms = Date.now();
       return { [HOLDER_HEADER]: `${owner}.${ms}.${Buffer.from(signer(holderProofMessage(by, ms))).toString('base64url')}` };
     } : undefined;
-    setNodeRelay(pick ? { ...parseProxy(pick.url), ...(pick.holderLane && proof ? { extra: proof } : {}) } : null);
+    setNodeRelay(pick ? { ...parseProxy(pick.url), ...(pick.holderLane && proof ? { extra: proof } : {}) } : null, (relay, err) => this.relayDown(`http://${relay.host}:${relay.port}`, err.message.replace(/^.*?: /, '')));
     if (pick) this.log(`nodes: reached through the relay of peer ${pick.peer} (${pick.url}${pick.holderLane ? ', full for today and carrying $' + TICKER + ' holders' : pick.open !== null ? `, ${pick.open} open` : ''}); the nodes see that router, not this computer`);
     else if (was && this.o.proxyViaPeers) this.log(`nodes: no peer relay can take connections now; the nodes are reached ${nodeProxy() ? 'through --proxy' : 'directly'}`);
+  }
+
+  /** The peer relay in use could not be reached: the request that found out went the router's own way, the relay is passed
+   * over for RELAY_DOWN_MS, and the log says so once. */
+  private relayDown(url: string, why: string): void {
+    this.relayDownUntil.set(url, Date.now() + RELAY_DOWN_MS);
+    if (this.usingPeerRelay !== url) return;
+    this.usingPeerRelay = null;
+    this.usingPeerRelayKey = null;
+    this.log(`nodes: the peer relay ${url} could not be reached (${why}); requests go ${nodeProxy() ? 'through --proxy' : 'directly'} and that relay is passed over for ${RELAY_DOWN_MS / 60_000} min`);
   }
 
   /** How many routers --meet-peers may add: --meet-max, or MEET_MAX, kept between 0 and 32. */

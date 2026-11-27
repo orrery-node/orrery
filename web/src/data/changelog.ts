@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'When the peer relay `--proxy-via-peers` uses cannot be reached at all, the request that finds out never left your computer, so it goes once more your router\'s own way (directly, or through `--proxy`) instead of failing and counting against the node; that relay is passed over for 5 minutes and the log says so once.' },
   { who: 'router', text: 'Between peer relays that are just as busy, `--proxy-via-peers` and `orrery peers --relays` put the peer that answered this router\'s last read quicker first.' },
   { who: 'router', text: '`orrery doctor` reads the router\'s own record of the nodes it watched (without changing it), so with an RPC that will not list the program it still checks those listings on chain, and its listings line says how many came from the record.' },
   { who: 'router', text: '`orrery peers --check <url>` (and `check` in the `peers` tool of `orrery mcp`) says how many of the nodes that router names are not on your map yet, before you add it: once added, your router reads each on chain and keeps only real listings.' },

@@ -223,21 +223,41 @@ let relayRoute: Proxy | null = null;
 /** Sets (or clears) a peer router's relay that requests to nodes go through (--proxy-via-peers), in place of the proxy
  * for those requests only: the RPC and everything else keep the proxy or go directly, and reads of other routers never
  * use it (fetchPeer), since a relay carries traffic only to nodes listed on chain. */
-export function setNodeRelay(p: Proxy | null): void {
+export function setNodeRelay(p: Proxy | null, onDown: ((relay: Proxy, err: Error) => void) | null = null): void {
   for (const { pool } of pools.values()) closePool(pool);
   pools.clear();
   relayRoute = p;
+  onRelayDown = p ? onDown : null;
 }
 
 export function nodeRelay(): Proxy | null {
   return relayRoute;
 }
 
+/** Who hears that the peer relay in use could not be reached: the router that set it (setNodeRelay), which then passes it
+ * over for a while. */
+let onRelayDown: ((relay: Proxy, err: Error) => void) | null = null;
+
+/** The relay itself could not be reached, so the request never left this computer: no tunnel opened, no connection. */
+export function relayUnreachable(err: Error): boolean {
+  return /did not answer: (connect )?E(CONNREFUSED|HOSTUNREACH|NETUNREACH)|: connect E(CONNREFUSED|HOSTUNREACH|NETUNREACH)/.test(err.message);
+}
+
 /** Every request this software makes to a node goes through here: by a peer's relay when one is in use, else by the
- * proxy when one is set, directly when not. */
-export function fetchNode(url: string, init: Init = {}): Promise<Response> {
-  const via = relayRoute ?? current;
-  return via ? viaProxy(via, url, init, testTls) : fetchWithTimeout(url, init);
+ * proxy when one is set, directly when not. When the peer's relay cannot be reached at all, the request never got out,
+ * so it goes once more the router's own way, the relay is dropped, and whoever listens is told. */
+export async function fetchNode(url: string, init: Init = {}): Promise<Response> {
+  const relay = relayRoute;
+  if (!relay) return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
+  try {
+    return await viaProxy(relay, url, init, testTls);
+  } catch (err) {
+    if (relayRoute !== relay || !relayUnreachable(err as Error)) throw err;
+    const told = onRelayDown;
+    setNodeRelay(null);
+    told?.(relay, err as Error);
+    return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
+  }
 }
 
 /** A read of another router (its notes, its peers): through the proxy when one is set, never through a peer's relay. */
