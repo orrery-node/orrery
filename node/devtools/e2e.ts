@@ -3454,6 +3454,8 @@ const all4 = () => registry.entries.size;
   }
   const ours = elsewhere.routersHeard()[0];
   await rl.readPeers?.();
+  const routersPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const routersDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).filter((l) => l.what.trim() === 'this network').map((l) => l.detail);
   type PeerSeen = { url: string; pinned: boolean; via: string | null; signed: boolean; by: string | null };
   const lanPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.find((p) => p.url === otherUrl);
   const forgedPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.some((p) => p.url === 'http://127.0.0.1:17998');
@@ -3476,6 +3478,12 @@ const all4 = () => registry.entries.size;
   check('with --lan-peers, a router heard on this network is read as a peer, pinned to the key that signed its beacon: its notes come in signed by that key, it shows as met through this network, and it is dropped when the router stops listening',
     !!lanPeer && lanPeer.pinned && lanPeer.via === 'this network' && lanPeer.signed && lanPeer.by === other.publicKey.toBase58() && !forgedPeer && !lanPeerAfter,
     lanPeer ? `peer ${lanPeer.url.replace('127.0.0.1', '<host>')}: ${lanPeer.pinned ? 'pinned' : 'not pinned'}, via ${lanPeer.via ?? 'none'}, ${lanPeer.signed ? 'signed' : 'unsigned'}${lanPeer.by === other.publicKey.toBase58() ? ' by its key' : ''} · forged ${forgedPeer ? 'read' : 'left out'} · after stop ${lanPeerAfter ? 'still read' : 'dropped'}` : 'the router heard on this network is not among the peers');
+  const shortKey = `${other.publicKey.toBase58().slice(0, 4)}\u2026${other.publicKey.toBase58().slice(-4)}`;
+  const heardLine = `1 router heard on this network, each signed with its own key: ${otherUrl} (${shortKey}); read as peers, each pinned to that key`;
+  const sayLine = `this router says where its notes are (${ROUTER}) to ${elsewhereAt} every 15 s, signed with its key: `;
+  check('orrery peers and orrery doctor say which routers this router heard on its network, that it reads them as peers, and what it says there itself',
+    routersPeers.includes(`this network: ${heardLine}`) && routersPeers.includes(`this network: ${sayLine}`) && routersDoc.includes(heardLine) && routersDoc.some((l) => l.startsWith(sayLine)),
+    `peers ${routersPeers.includes(heardLine) ? 'names it' : 'no heard line'}, ${routersPeers.includes(sayLine) ? 'says what it announces' : 'no announce line'} · doctor ${routersDoc.includes(heardLine) ? 'names it' : 'no heard line'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

@@ -200,6 +200,10 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
   const lan = (status as { lan?: { listening: string | null; heard: number } | null } | null)?.lan;
   if (lan) out.push({ ok: null, what: '  this network', detail: lanDoctorLine(lan, lanNear((status?.providers ?? []) as FoundRow[])) });
+  const lanMore = status as { lan?: { routers?: { key: string; url: string }[]; peers?: boolean } | null; lanAnnouncing?: { to: string; url: string; sent: number } | null } | null;
+  const routersLine = lanMore?.lan ? lanRoutersLine(lanMore.lan.routers ?? [], !!lanMore.lan.peers) : null;
+  if (routersLine) out.push({ ok: null, what: '  this network', detail: routersLine });
+  if (lanMore?.lanAnnouncing) out.push({ ok: null, what: '  this network', detail: lanAnnouncingLine(lanMore.lanAnnouncing) });
   const map = mapLine(status?.providers ?? []);
   if (map && (status?.peers?.length || status?.discovery !== 'chain')) out.push({ ok: null, what: '  map', detail: map });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
@@ -280,6 +284,19 @@ export function lanDoctorLine(lan: { listening: string | null; heard: number }, 
   const reached = near.length ? `${near.length} reached there directly: ${near.map((x) => `${x.name} at ${x.url}`).join(', ')}` : 'none reached there yet';
   const rest = lan.heard - near.length;
   return `listening on ${at} (UDP): ${lan.heard} listing${lan.heard === 1 ? '' : 's'} heard on this network, ${reached}${rest > 0 ? `; the other ${rest} not used (no such listing on chain, or not signed by the node key on it)` : ''}`;
+}
+
+/** The routers heard on this network (each signed with its own key), and whether this router reads them as peers. */
+export function lanRoutersLine(routers: { key: string; url: string }[], lanPeers: boolean): string | null {
+  if (!routers.length) return null;
+  const named = routers.slice(0, 4).map((r) => `${r.url} (${r.key.slice(0, 4)}\u2026${r.key.slice(-4)})`).join(', ');
+  const more = routers.length > 4 ? ` and ${routers.length - 4} more` : '';
+  return `${routers.length} router${routers.length === 1 ? '' : 's'} heard on this network, each signed with its own key: ${named}${more}; ${lanPeers ? 'read as peers, each pinned to that key' : 'start this router with --lan-peers to read them as peers'}`;
+}
+
+/** What this router says on its network (--lan-announce): where its notes are, to whom, how many beacons went out. */
+export function lanAnnouncingLine(a: { to: string; url: string; sent: number }): string {
+  return `this router says where its notes are (${a.url}) to ${a.to} every 15 s, signed with its key: ${a.sent} sent`;
 }
 
 /** How many routers this router's relay carried today, as a count only. */
@@ -516,7 +533,7 @@ export function mapLine(providers: FoundRow[]): string | null {
 /** `orrery peers`: the P2P side of a running router in one place, from its own status. Each peer router (who signed its
  * notes, which peer introduced it, whether it relays), a count of them, this router's relay, and where the listings
  * came from. A router that reads no peers is told how to start. */
-export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] ; peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean; lan?: { listening: string | null; heard: number } | null }, now = Date.now()): string[] {
+export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number | null; relayed: number; refused: number; open?: number; perClient?: number; peersOnly?: boolean; bytes?: number; today?: number; maxBytes?: number | null; forHolders?: number } | null; discovery?: string | null; rpcLeftOut?: number; providers?: FoundRow[] ; peerRelay?: string | null; peerRelays?: string[]; proxyViaPeers?: boolean; spreadRelays?: boolean; lan?: { listening: string | null; heard: number; routers?: { key: string; url: string }[]; peers?: boolean } | null; lanAnnouncing?: { to: string; url: string; sent: number } | null }, now = Date.now()): string[] {
   const peers = status.peers ?? [];
   const out: string[] = [];
   if (!peers.length) {
@@ -533,6 +550,9 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   if (route) out.push(route);
   if ((status.peerRelays?.length ?? 0) > 1) out.push(...spreadByNode(status.providers ?? []));
   if (status.lan) out.push(`this network: ${lanDoctorLine(status.lan, lanNear(status.providers ?? []))}`);
+  const heardRouters = status.lan ? lanRoutersLine(status.lan.routers ?? [], !!status.lan.peers) : null;
+  if (heardRouters) out.push(`this network: ${heardRouters}`);
+  if (status.lanAnnouncing) out.push(`this network: ${lanAnnouncingLine(status.lanAnnouncing)}`);
   const map = mapLine(status.providers ?? []);
   if (map) out.push(map);
   if (status.discovery === 'peers') out.push('the listings came from the peers\u2019 notes, each checked on chain');

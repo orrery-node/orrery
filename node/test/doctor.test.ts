@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanDoctorLine, LAN_LISTINGS_LINE, lanNear, mapLine as mapLineOf, newer, noPeerRelayLine, peersReport as peersReportOf, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanAnnouncingLine, lanDoctorLine, lanRoutersLine, LAN_LISTINGS_LINE, lanNear, mapLine as mapLineOf, newer, noPeerRelayLine, peersReport as peersReportOf, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine, routersTodayLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -326,5 +326,13 @@ describe('orrery doctor, what the running router paid', () => {
     assert.ok(lines.includes('this network: listening on 0.0.0.0:7373 (UDP): 2 listings heard on this network, 2 reached there directly: Kestrel GPU Co-op at http://192.168.1.20:7070, BBBBBB\u2026 at http://192.168.1.21:7070'), lines.join('\n'));
     assert.ok(peersReportOf({ peers: [], relay: null, providers, discovery: 'lan' }).includes(LAN_LISTINGS_LINE));
     assert.ok(!peersReportOf({ peers: [], relay: null, providers }).some((l) => l.startsWith('this network:')));
+  });
+
+  it('says which routers it heard on this network and whether it reads them, and what it says there itself', () => {
+    const k = 'K'.repeat(40) + 'abcd';
+    assert.equal(lanRoutersLine([], false), null);
+    assert.equal(lanRoutersLine([{ key: k, url: 'http://192.168.1.30:7171' }], false), `1 router heard on this network, each signed with its own key: http://192.168.1.30:7171 (KKKK\u2026abcd); start this router with --lan-peers to read them as peers`);
+    assert.equal(lanRoutersLine([{ key: k, url: 'http://192.168.1.30:7171' }, { key: k, url: 'http://192.168.1.31:7171' }], true), `2 routers heard on this network, each signed with its own key: http://192.168.1.30:7171 (KKKK\u2026abcd), http://192.168.1.31:7171 (KKKK\u2026abcd); read as peers, each pinned to that key`);
+    assert.equal(lanAnnouncingLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.30:7171', sent: 3 }), 'this router says where its notes are (http://192.168.1.30:7171) to 192.168.1.255:7373 every 15 s, signed with its key: 3 sent');
   });
 });
