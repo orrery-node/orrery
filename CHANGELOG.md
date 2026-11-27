@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · A peer relay that could not be reached shows as such: `orrery peers --relays` leaves it out and says for how many more minutes it is passed over, the console marks it on the peer's row, and the status has `relayDownFor` in seconds.
 - **Router** · When the peer relay `--proxy-via-peers` uses cannot be reached at all, the request that finds out never left your computer, so it goes once more your router's own way (directly, or through `--proxy`) instead of failing and counting against the node; that relay is passed over for 5 minutes and the log says so once.
 - **Router** · Between peer relays that are just as busy, `--proxy-via-peers` and `orrery peers --relays` put the peer that answered this router's last read quicker first.
 - **Router** · `orrery doctor` reads the router's own record of the nodes it watched (without changing it), so with an RPC that will not list the program it still checks those listings on chain, and its listings line says how many came from the record.

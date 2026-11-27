@@ -312,7 +312,7 @@ export function render(lines: Check[]): string {
   return lines.map((l) => `${l.ok === true ? '✓' : l.ok === false ? '✗' : '·'} ${l.what.padEnd(14)} ${l.detail}`).join('\n');
 }
 
-type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; readMs?: number | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
+type PeerRow = { url: string; pinned: boolean; by: string | null; signed: boolean; nodes: number; refused: string | null; readMs?: number | null; relayDownFor?: number | null; at?: number; missed?: number; via?: string | null; retryAt?: number | null; relayPort?: number | null; relayOpen?: number | null; relayFull?: boolean | null; relayHolders?: boolean | null; unlisted?: number; name?: string | null; kept?: boolean; say?: number | null; written?: number | null };
 
 /** The counts `orrery peers` heads its list with, and gives under --json. */
 export function peersSummary(peers: PeerRow[]): { peers: number; signed: number; met: number; refused: number; relaying: number } {
@@ -346,9 +346,11 @@ export function noPeerRelayLine(): string {
 export function relayChoices(peers: PeerRow[], holder = false): string[] {
   const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
   const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
-  const full = running.filter((p) => p.relayFull && !lane(p));
+  const isDown = (p: PeerRow) => (p.relayDownFor ?? 0) > 0;
+  const full = running.filter((p) => p.relayFull && !lane(p) && !isDown(p));
+  const down = running.filter(isDown);
   const offer = (p: PeerRow) => ({ holderLane: lane(p), open: p.relayOpen ?? null, ms: p.readMs ?? null, signed: p.signed });
-  const usable = running.filter((p) => !p.relayFull || lane(p)).sort((a, b) => relayOrder(offer(a), offer(b)));
+  const usable = running.filter((p) => (!p.relayFull || lane(p)) && !isDown(p)).sort((a, b) => relayOrder(offer(a), offer(b)));
   if (!running.length) return ['No peer offers a relay yet. A peer started with --relay <port> offers one; until then your router reaches the nodes itself (or through your own --proxy).'];
   const host = (url: string) => {
     try {
@@ -366,8 +368,14 @@ export function relayChoices(peers: PeerRow[], holder = false): string[] {
     }
   } else out.push('No peer relay can take new connections right now.');
   if (full.length) out.push(`${full.length} full for today, left out: ${full.map((p) => p.url).join(', ')}`);
+  if (down.length) out.push(relayDownLine(down.map((p) => ({ url: p.url, seconds: p.relayDownFor ?? 0 }))));
   if (usable.length) out.push('Start your router with one as --proxy and the nodes see that router, not this computer.');
   return out;
+}
+
+/** The peers whose relay could not be reached when this router last used it: passed over for a few minutes each. */
+export function relayDownLine(down: { url: string; seconds: number }[]): string {
+  return `${down.length} could not be reached and ${down.length === 1 ? 'is' : 'are'} passed over for now: ${down.map((d) => `${d.url} (${Math.max(1, Math.ceil(d.seconds / 60))} more min)`).join(', ')}`;
 }
 
 /** How many of the peers' relays say they are full for today, for the summary line: " (1 full for today)", or nothing. */

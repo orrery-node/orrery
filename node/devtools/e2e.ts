@@ -2567,6 +2567,7 @@ const all4 = () => registry.entries.size;
   const after = (await statusD()).peerRelay ?? null;
   await rp.readPeers?.();
   const again = (await statusD()).peerRelay ?? null;
+  const relaysDown = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   opts.proxyViaPeers = false;
   opts.peers = [];
   await rp.readPeers?.();
@@ -2577,6 +2578,10 @@ const all4 = () => registry.entries.size;
   check('a peer relay that cannot be reached does not cost the answer: the request goes the router\u2019s own way, the log says so once, and the relay is passed over',
     chosen === `http://127.0.0.1:${deadPort}` && answered.status === 200 && after === null && again === null && said.length === 1 && said[0].includes('passed over for 5 min'),
     `chose ${chosen ? chosen.replace(String(deadPort), '<dead>') : 'nothing'} (peer on ${peerPortD === deadPort ? 'the same port' : 'another port'}) · answer ${answered.status} · after ${after ?? 'own route'}, next choice ${again ?? 'own route'} · log: ${said.length} line(s)`);
+  const downLine = relaysDown.split('\n').find((l) => l.includes('could not be reached')) ?? '';
+  check('orrery peers --relays says which peer relay could not be reached and for how long it is passed over, and does not offer it',
+    downLine === `1 could not be reached and is passed over for now: http://127.0.0.1:${peerPortD} (5 more min)` && !relaysDown.includes(`--proxy http://127.0.0.1:${deadPort}`),
+    downLine.replaceAll(String(peerPortD), '<peer>') || relaysDown.split('\n')[0].slice(0, 120) || 'no answer');
 }
 // Routers relay for each other: a router opened with --relay passes another router's traffic on to the nodes listed on
 // chain (as that router's --proxy), forwarded plain http and CONNECT tunnels alike, and refuses anything else; the
