@@ -266,8 +266,26 @@ export function nodeAddress(url: string): string {
   return `${t.hostname}:${t.port || (t.protocol === 'https:' ? '443' : '80')}`;
 }
 
+/** Nodes on this router's own network (heard on --lan-listen, their listing's node key signed it): reached directly,
+ * never through --proxy or a peer's relay, since what is next to you does not need to be hidden from. */
+let lanNodes = new Set<string>();
+
+export function setLanNodes(urls: Iterable<string>): void {
+  lanNodes = new Set([...urls].map(nodeAddress));
+}
+
+/** One more node on this router's own network, reached directly from this request on (before its price list is read). */
+export function addLanNode(url: string): void {
+  lanNodes.add(nodeAddress(url));
+}
+
+export function onLan(url: string): boolean {
+  return lanNodes.size > 0 && lanNodes.has(nodeAddress(url));
+}
+
 /** The relay a request to this node goes through, or null for the router's own way. */
 export function relayFor(url: string): Proxy | null {
+  if (onLan(url)) return null;
   if (relayRoutes.length <= 1) return relayRoutes[0] ?? null;
   return pickRelay(nodeAddress(url), relayRoutes);
 }
@@ -289,6 +307,7 @@ export function relayUnreachable(err: Error): boolean {
  * proxy when one is set, directly when not. When the peer's relay cannot be reached at all, the request never got out,
  * so it goes once more the router's own way, the relay is dropped, and whoever listens is told. */
 export async function fetchNode(url: string, init: Init = {}): Promise<Response> {
+  if (onLan(url)) return fetchWithTimeout(url, init);
   const relay = relayFor(url);
   if (!relay) return current ? viaProxy(current, url, init, testTls) : fetchWithTimeout(url, init);
   try {

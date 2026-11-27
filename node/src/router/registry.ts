@@ -15,7 +15,8 @@ import { fetchTcbInfo } from '../tee/tcb.ts';
 import { ed25519Verify, home } from '../keys.ts';
 import { insideMessage, wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
-import { fetchNode } from '../proxy.ts';
+import { addLanNode, fetchNode, setLanNodes } from '../proxy.ts';
+import { beaconSigned, type Beacon } from '../lan.ts';
 import { drop } from '../sse.ts';
 
 /** `vcek` is the chip's certificate (DER, base64) that an AMD SEV-SNP node serves next to its report. */
@@ -28,6 +29,9 @@ export type ProviderEntry = {
   problem: string | null;
   checkedAt: number;
   tee: { verified: boolean; dev: boolean; reason: string; enclaveKey: Buffer } | null;
+  /** The node is on this router's own network: it said so on --lan-listen, signed with the node key on its listing, so
+   * its requests go to `url` there and `listed` is the address on chain. Null or unset for a node reached as listed. */
+  lan?: { url: string; listed: string } | null;
   /** What the node's /health last said about its model server; unset until checked or for nodes that do not say. */
   upstream?: 'up' | 'down';
   /** How long the node's /health took to answer, and when, at the last check that got an answer. */
@@ -84,7 +88,12 @@ export class Registry {
   peerListings?: () => string[];
   /** How the last refresh found the listings: the program's accounts listed by the RPC, or the peers' addresses read
    * one by one and checked on chain. */
-  discovery: 'chain' | 'peers' | 'record' | null = null;
+  discovery: 'chain' | 'peers' | 'record' | 'lan' | null = null;
+  /** What nodes on this router's own network said (--lan-listen): where each listing can be reached there, believed only
+   * with the signature of the node key on that listing. */
+  lanBeacons?: () => Beacon[];
+  /** The listings this router has only because a node on its own network named itself, read on chain by address. */
+  fromLan = new Set<string>();
   /** Listings the RPC's list of the program left out that peer routers named and the chain confirmed: an RPC that drops a
    * listing (behind, or leaving it out) cannot hide a node the peers have seen. */
   rpcLeftOut = 0;
@@ -136,6 +145,14 @@ export class Registry {
         } catch {
           return;
         }
+        // A node on this router's own network is reached there: the same node (the manifest it serves there must still
+        // match the hash on chain, and its wire key the node key's signature), only nearer.
+        const listed = p.endpoint;
+        const near = p.active ? this.lanUrl(address, p.nodeKey) : null;
+        if (near) {
+          addLanNode(near);
+          p = { ...p, endpoint: near };
+        }
         const prev = this.entries.get(address);
         const same = prev && prev.account.manifestHash.equals(p.manifestHash) && prev.account.endpoint === p.endpoint && prev.manifest && Date.now() - prev.checkedAt < 10 * 60_000;
         const entry: ProviderEntry = same ? { ...prev!, account: p } : { address, account: p, manifest: null, problem: null, checkedAt: Date.now(), tee: null };
@@ -159,6 +176,7 @@ export class Registry {
             entry.problem = (err as Error).message;
           }
         }
+        entry.lan = near ? { url: near, listed } : null;
         entry.tee = await this.checkTee(entry);
         // A node that showed a signed wire key before and has none now is asked again on every refresh, not only when
         // its listing changes: until then nothing goes to it in the clear.
@@ -171,6 +189,7 @@ export class Registry {
       }),
     );
     for (const k of [...this.entries.keys()]) if (!seen.has(k)) this.entries.delete(k);
+    if (this.lanBeacons) setLanNodes([...this.entries.values()].flatMap((e) => (e.lan ? [e.lan.url] : [])));
     this.refreshedAt = Date.now();
   }
 
@@ -184,10 +203,13 @@ export class Registry {
     let all: readonly { pubkey: PublicKey; account: { data: Buffer } }[];
     const peerNamed = this.named();
     const byPeers = new Set(peerNamed.map((k) => k.toBase58()));
-    const candidates = [...peerNamed, ...this.recorded().filter((k) => !byPeers.has(k.toBase58()))];
+    const lanNamed = this.lanNamed().filter((k) => !byPeers.has(k.toBase58()));
+    const byLan = new Set(lanNamed.map((k) => k.toBase58()));
+    const candidates = [...peerNamed, ...lanNamed, ...this.recorded().filter((k) => !byPeers.has(k.toBase58()) && !byLan.has(k.toBase58()))];
     const sort = (got: { pubkey: PublicKey }[]) => {
       this.throughPeers = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => byPeers.has(a)));
-      this.fromRecord = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => !byPeers.has(a)));
+      this.fromLan = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => byLan.has(a)));
+      this.fromRecord = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => !byPeers.has(a) && !byLan.has(a)));
     };
     try {
       all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
@@ -195,7 +217,7 @@ export class Registry {
       if (!candidates.length) throw new Error(nothingToReadLine((e as Error).message));
       const out = await this.readNamed(candidates);
       sort(out);
-      this.discovery = this.throughPeers.size || !this.fromRecord.size ? 'peers' : 'record';
+      this.discovery = this.throughPeers.size || (!this.fromLan.size && !this.fromRecord.size) ? 'peers' : this.fromLan.size ? 'lan' : 'record';
       this.rpcLeftOut = 0;
       return out;
     }
@@ -218,6 +240,17 @@ export class Registry {
   /** The listing addresses in this router's own record of the nodes it watched, each a valid key. */
   private recorded(): PublicKey[] {
     return [...this.watch.keys()].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+  }
+
+  /** The listing addresses nodes on this router's own network named, each a valid key, once. */
+  private lanNamed(): PublicKey[] {
+    return [...new Set((this.lanBeacons?.() ?? []).map((b) => b.listing))].flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+  }
+
+  /** The URL on this router's own network a node said it is at, when the node key on its listing signed that and it is recent. */
+  private lanUrl(address: string, nodeKey: PublicKey): string | null {
+    const b = (this.lanBeacons?.() ?? []).find((x) => x.listing === address);
+    return b && beaconSigned(b, nodeKey) ? b.url : null;
   }
 
   /** The listing addresses peer routers named, each a valid key, once. */

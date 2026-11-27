@@ -14,6 +14,7 @@ import { burnOnce, loadBook, type BurnReceipt, type Burner, type Swapper } from 
 import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
+import { announce, LAN_EVERY_MS, networkAddress, signBeacon } from '../lan.ts';
 import { canonical, IMAGE_TOKENS, imageCount, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
@@ -72,6 +73,10 @@ export type ProviderConfig = {
   /** A webhook to tell when money reaches the wallet: each payout's arrival, as read back from the chain, is posted
    * there as one line (Slack and Discord show it as a message). `urlEnv` names an environment variable holding it. */
   notify?: { url?: string; urlEnv?: string };
+  /** Says where this node is on its own network (--lan-announce): every 15 seconds, signed with the node key, to `announce`
+   * (`host:port`: one router's address, or the network's broadcast address), so routers there reach it directly. `url`
+   * is where they reach it: this computer's network address and the listen port unless given. */
+  lan?: { announce: string; url?: string };
   /** How many answers the node streams from its model server at once. When all are taken, a request waits for the next
    * free one, and a wallet that gets the holder price goes ahead of those that do not (the larger discount first). One
    * that waits 30 seconds is turned away as busy before anything is owed, and its router asks the next node. Unset: no
@@ -210,6 +215,7 @@ export class ProviderNode {
   private readonly payoutsOnChain = new Map<string, Landed>();
   private quietTimer: NodeJS.Timeout | null = null;
   private booksTimer: NodeJS.Timeout | null = null;
+  private lanStop: (() => void) | null = null;
   private listingRead: { at: number; onChain: { payouts: number; settled: string } | null; fees: { line: string; low: boolean } | null } | null = null;
   private booksDay = utcDay(Date.now());
   private warnedNoCacheReport = false;
@@ -984,6 +990,7 @@ export class ProviderNode {
     this.server = createServer((req, res) => void this.handle(req, res));
     // A port already in use is said in words (ports.ts), not as Node's stack trace, and nothing below starts.
     await listenOn(this.server, this.cfg.listen, this.cfg.host ?? '0.0.0.0', 'node');
+    if (this.cfg.lan) this.startLan(this.cfg.lan.announce, this.cfg.lan.url);
     // What is waiting to be redeemed exists only in the ledger file: say so once when the folder may not stay.
     const warning = folderWarning(this.dir, this.status().waiting);
     if (warning) this.log(warning);
@@ -1075,8 +1082,25 @@ export class ProviderNode {
     this.booksDay = day;
   }
 
+  /** Says where this node is on its network (--lan-announce), from now on: see ProviderConfig.lan. */
+  startLan(to: string, given?: string): string {
+    const port = (this.server?.address() as { port: number } | null)?.port ?? this.cfg.listen;
+    const url = (given ?? `http://${networkAddress() ?? '127.0.0.1'}:${port}`).replace(/\/$/, '');
+    const sign = signerOf(this.node);
+    this.lanStop?.();
+    this.lanStop = announce(to, () => signBeacon(this.pda.toBase58(), url, Date.now(), sign));
+    this.log(`saying where this node is on its network to ${to} every ${LAN_EVERY_MS / 1000} s, signed with the node key: routers there reach it at ${url}`);
+    return url;
+  }
+
+  stopLan(): void {
+    this.lanStop?.();
+    this.lanStop = null;
+  }
+
   close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    this.stopLan();
     if (this.quietTimer) clearTimeout(this.quietTimer);
     if (this.booksTimer) clearInterval(this.booksTimer);
     return new Promise((r) => (this.server ? this.server.close(() => r()) : r()));

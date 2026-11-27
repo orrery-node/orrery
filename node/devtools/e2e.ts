@@ -3362,6 +3362,52 @@ const all4 = () => registry.entries.size;
     statusVia.proxyViaPeers === true && statusVia.peerRelay === null && viaNone.startsWith('--proxy-via-peers is on, but no signed peer offers a relay that takes connections now'),
     `status proxyViaPeers ${statusVia.proxyViaPeers ?? '?'}, peerRelay ${statusVia.peerRelay ?? 'none'} · doctor: ${viaNone.slice(0, 120) || 'no line'}`);
 }
+// A node on the router's own network says where it is (--lan-announce, signed with its node key) and the router's
+// --lan-listen hears it: the node's manifest is read there and still matches the hash on chain, its requests go there
+// directly, and a beacon for another listing signed with the wrong key changes nothing.
+{
+  const { createServer: tcpServer } = await import('node:net');
+  const { announce: say, signBeacon } = await import('../src/lan.ts');
+  const { signerOf: signerFor } = await import('../src/keys.ts');
+  const near1 = nodes[1];
+  const halo = nodes[3];
+  let through = 0;
+  const near = tcpServer((c) => { c.on('data', (d: Buffer) => (through += d.length)); const up = netConnect(17282, '127.0.0.1'); c.pipe(up).pipe(c); up.on('error', () => c.destroy()); c.on('error', () => up.destroy()); });
+  await new Promise<void>((done) => near.listen(0, '127.0.0.1', () => done()));
+  const nearUrl = `http://127.0.0.1:${(near.address() as { port: number }).port}`;
+  const rl = router as unknown as { startLan?: (s: string) => Promise<string>; stopLan?: () => Promise<void> };
+  const kl = near1 as unknown as { startLan?: (to: string, url: string) => string; stopLan?: () => void };
+  const heardAt = (await rl.startLan?.('127.0.0.1:0')) ?? '127.0.0.1:9';
+  kl.startLan?.(heardAt, nearUrl);
+  const forged = say(heardAt, () => signBeacon(halo.pda.toBase58(), 'http://127.0.0.1:9', Date.now(), signerFor(near1.node)), 60_000);
+  type LanRow = { address: string; found: string; endpoint: string; lan: { url: string; listed: string } | null; problem: string | null };
+  let rows: LanRow[] = [];
+  let lanTop = null as { listening: string; heard: number; nodes: number } | null;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    const st = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: LanRow[]; lan: typeof lanTop };
+    rows = st.providers;
+    lanTop = st.lan;
+    if (!rl.startLan || rows.find((p) => p.address === near1.pda.toBase58())?.lan) break;
+  }
+  const nRow = rows.find((p) => p.address === near1.pda.toBase58());
+  const hRow = rows.find((p) => p.address === halo.pda.toBase58());
+  const before = through;
+  const nearAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': near1.pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+  const nearStatus = nearAsk.status;
+  await nearAsk.text();
+  const askedNear = through - before;
+  forged();
+  kl.stopLan?.();
+  await rl.stopLan?.();
+  const after = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: LanRow[]; lan: unknown }).providers.find((p) => p.address === near1.pda.toBase58());
+  near.close();
+  check('a node on the router\u2019s own network says where it is, signed with its node key: the router reads its manifest there (still the hash on chain) and sends its requests there directly; a beacon for another listing signed with the wrong key changes nothing',
+    !!nRow?.lan && nRow.lan.url === nearUrl && nRow.lan.listed === 'http://127.0.0.1:17282' && nRow.endpoint === nearUrl && nRow.problem === null && nearStatus === 200 && askedNear > 0
+      && !!hRow && hRow.lan === null && hRow.endpoint === 'http://127.0.0.1:17284' && lanTop?.nodes === 1 && (lanTop?.heard ?? 0) >= 2
+      && after?.lan === null && after?.endpoint === 'http://127.0.0.1:17282',
+    `ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
