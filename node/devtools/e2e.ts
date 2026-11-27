@@ -3054,6 +3054,7 @@ const all4 = () => registry.entries.size;
   await rp.readPeers?.();
   const first = (await statusK()).peerRelay ?? null;
   const relaysInUse = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  const relaysJsonText = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--relays', '--json', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   open.set(ownK, 0);
   open.set(otherK, 1);
   await rp.readPeers?.();
@@ -3069,6 +3070,11 @@ const all4 = () => registry.entries.size;
   const otherUrlK = `http://127.0.0.1:${otherK}`;
   const name = (u: string | null) => (u === ownUrlK ? 'A' : u === otherUrlK ? 'B' : u ?? 'none');
   const marked = relaysInUse.split('\n').filter((l) => l.endsWith('\u2190 in use now'));
+  const relaysJson = ((): { relays?: { proxy: string | null; usable: boolean; inUse: boolean; signed: boolean; open: number | null }[]; inUse?: string[] } | null => { try { return JSON.parse(relaysJsonText); } catch { return null; } })();
+  const rowsJ = relaysJson?.relays ?? [];
+  check('orrery peers --relays --json gives the peers\u2019 relays as data: both usable, signed, how busy, and the one in use',
+    rowsJ.length === 2 && rowsJ.every((r) => r.usable && r.signed) && rowsJ[0].proxy === `http://127.0.0.1:${otherK}` && rowsJ[0].open === 0 && rowsJ.filter((r) => r.inUse).length === 1 && rowsJ.find((r) => r.inUse)?.proxy === first && JSON.stringify(relaysJson?.inUse) === JSON.stringify([first]),
+    relaysJson ? `${rowsJ.length} relays · first ${rowsJ[0]?.proxy?.replace(String(otherK), '<B>').replace(String(ownK), '<A>') ?? 'none'} · in use ${rowsJ.filter((r) => r.inUse).length}` : `not JSON: ${relaysJsonText.split('\n')[0].slice(0, 60)}`);
   check('orrery peers --relays marks the relay the router is using now',
     marked.length === 1 && marked[0].startsWith(`  --proxy http://127.0.0.1:${otherK}`),
     marked.map((l) => l.trim().split('  ')[0].replace(String(otherK), '<B>').replace(String(ownK), '<A>')).join(' | ') || 'no line marked');

@@ -409,6 +409,29 @@ export function relayDownLine(down: { url: string; seconds: number }[]): string 
   return `${down.length} could not be reached and ${down.length === 1 ? 'is' : 'are'} passed over for now: ${down.map((d) => `${d.url} (${Math.max(1, Math.ceil(d.seconds / 60))} more min)`).join(', ')}`;
 }
 
+/** `orrery peers --relays --json`: every relay the peers offer as data, the ones a router could use now first (in the
+ * order --proxy-via-peers weighs them), with why the others are left out. */
+export type RelayRow = { proxy: string | null; peer: string; name: string | null; open: number | null; readMs: number | null; signed: boolean; usable: boolean; full: boolean; holderLane: boolean; downFor: number | null; inUse: boolean };
+export function relayChoicesJson(peers: PeerRow[], holder = false, inUse: string[] = []): { relays: RelayRow[]; inUse: string[] } {
+  const running = peers.filter((p) => p.relayPort && !p.refused && (p.at ?? 0) > 0);
+  const lane = (p: PeerRow) => !!p.relayFull && holder && !!p.relayHolders;
+  const hostOf = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return null;
+    }
+  };
+  const rows: RelayRow[] = running.map((p) => {
+    const h = hostOf(p.url);
+    const proxy = h ? `http://${h}:${p.relayPort}` : null;
+    const down = (p.relayDownFor ?? 0) > 0;
+    return { proxy, peer: p.url, name: p.name ?? null, open: p.relayOpen ?? null, readMs: p.readMs ?? null, signed: p.signed, usable: (!p.relayFull || lane(p)) && !down, full: !!p.relayFull, holderLane: lane(p), downFor: down ? p.relayDownFor ?? null : null, inUse: !!proxy && inUse.includes(proxy) };
+  });
+  rows.sort((a, b) => Number(b.usable) - Number(a.usable) || relayOrder({ holderLane: a.holderLane, open: a.open, ms: a.readMs, signed: a.signed }, { holderLane: b.holderLane, open: b.open, ms: b.readMs, signed: b.signed }));
+  return { relays: rows, inUse };
+}
+
 /** Under orrery peers --relays, when two or more signed peers offer a relay: --spread-relays would use all of them. */
 export function spreadHintLine(n: number): string {
   return `Or start it with --proxy-via-peers --spread-relays: it uses all ${n} of these signed peers' relays, each node always through the same one, so no single peer sees all of your traffic.`;

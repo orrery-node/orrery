@@ -27,7 +27,7 @@ import { CACHE_REPORTING, draftConfig, draftWallet, holderTiersNote, SOLANA_WALL
 import { CLIENTS, codexProfile, contextFromRouter, instructions, routerNote, startRouter, USUAL_MODEL, type Client } from './connect.ts';
 import { spawn } from 'node:child_process';
 import { pickModel, plan, planCommand, readBill, renderBill, routerModels, RUNNABLE, taskName, type Runnable } from './run.ts';
-import { byTrust, doctor, peerCheck, peersReport, peersSummary, relayChoices, render } from './doctor.ts';
+import { byTrust, doctor, peerCheck, peersReport, peersSummary, relayChoices, relayChoicesJson, render } from './doctor.ts';
 import { bills, heldGivenLine, heldSaved, heldSavedLine, paidInside, privateSpend, privateSpendLine, readTrips, rowsByKind, sealedTrips, skipNote, skipped, spendCsv, spentMonthLine, spentThisMonth, summarize, windowMs, readUnanswered, unansweredIn, unansweredNote } from './spend.ts';
 import { bench, median, renderBench } from './bench.ts';
 import { quote, quoteKind, renderQuote } from './quote.ts';
@@ -806,7 +806,10 @@ async function main() {
       process.exitCode = 1;
       return console.log(`No router answers at ${routerUrl}. Start one with: ${CLI} router --peer <url>#<key>`);
     }
-    return console.log(relayChoices(status.peers ?? [], (status as { holder?: { lane?: boolean } | null }).holder?.lane === true, (status as { peerRelays?: string[] }).peerRelays ?? []).join('\n'));
+    const laneOn = (status as { holder?: { lane?: boolean } | null }).holder?.lane === true;
+    const inUseNow = (status as { peerRelays?: string[] }).peerRelays ?? [];
+    if (has('json')) return console.log(JSON.stringify(relayChoicesJson(status.peers ?? [], laneOn, inUseNow), null, 2));
+    return console.log(relayChoices(status.peers ?? [], laneOn, inUseNow).join('\n'));
   }
   if (cmd === 'peers') {
     // Asks only the router on this computer (or the one --router names) for its status: nothing goes to a peer or a node.

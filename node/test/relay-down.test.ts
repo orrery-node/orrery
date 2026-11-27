@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fetchNode, nodeAddress, nodeRelays, parseProxy, pickRelay, relayFor, relayUnreachable, setNodeRelay, setNodeRelays, nodeRelay, type Proxy } from '../src/proxy.ts';
 import { spreadLine } from '../src/doctor.ts';
-import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayDownLine, spreadByNode, spreadHintLine } from '../src/doctor.ts';
+import { nodesViaLine, noPeerRelayLine, peersReport, relayChoices, relayChoicesJson, relayDownLine, spreadByNode, spreadHintLine } from '../src/doctor.ts';
 
 const listen = (s: Server) => new Promise<number>((done) => s.listen(0, '127.0.0.1', () => done((s.address() as AddressInfo).port)));
 const close = (s: Server) => new Promise((done) => { s.closeAllConnections(); s.close(done); });
@@ -163,5 +163,20 @@ describe('a peer relay that cannot be reached', () => {
     assert.ok(out.includes('  --proxy http://10.0.0.3:7272  (http://10.0.0.3:7171, 1 open now)  \u2190 in use now'));
     assert.ok(out.includes('  --proxy http://10.0.0.2:7272  (http://10.0.0.2:7171, 0 open now)'));
     assert.deepEqual(relayChoices(peersNow), relayChoices(peersNow, false, []));
+  });
+
+  it('gives the peers\' relays as data for --relays --json, the usable ones first, with why the others are left out', () => {
+    const row = { pinned: false, by: 'k', signed: true, nodes: 0, refused: null, at: 1, missed: 0 };
+    const out = relayChoicesJson([
+      { ...row, url: 'http://10.0.0.2:7171', relayPort: 7272, relayOpen: 2, readMs: 30 },
+      { ...row, url: 'http://10.0.0.3:7171', relayPort: 7272, relayOpen: 0, relayFull: true },
+      { ...row, url: 'http://10.0.0.4:7171', relayPort: 7272, relayOpen: 0, relayDownFor: 120 },
+      { ...row, url: 'http://10.0.0.5:7171', relayPort: 7272, relayOpen: 1, readMs: 5 },
+      { ...row, url: 'http://10.0.0.6:7171', relayPort: 7272, at: 0 },
+    ], false, ['http://10.0.0.5:7272']);
+    assert.deepEqual(out.relays.map((r) => [r.proxy, r.usable, r.inUse]), [['http://10.0.0.5:7272', true, true], ['http://10.0.0.2:7272', true, false], ['http://10.0.0.3:7272', false, false], ['http://10.0.0.4:7272', false, false]]);
+    assert.equal(out.relays.find((r) => r.proxy === 'http://10.0.0.3:7272')?.full, true);
+    assert.equal(out.relays.find((r) => r.proxy === 'http://10.0.0.4:7272')?.downFor, 120);
+    assert.deepEqual(out.inUse, ['http://10.0.0.5:7272']);
   });
 });
