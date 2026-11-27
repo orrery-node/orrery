@@ -3397,16 +3397,18 @@ const all4 = () => registry.entries.size;
   const nearStatus = nearAsk.status;
   await nearAsk.text();
   const askedNear = through - before;
+  const lanDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'this network')?.detail ?? '';
   forged();
   kl.stopLan?.();
   await rl.stopLan?.();
   const after = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: LanRow[]; lan: unknown }).providers.find((p) => p.address === near1.pda.toBase58());
   near.close();
-  check('a node on the router\u2019s own network says where it is, signed with its node key: the router reads its manifest there (still the hash on chain) and sends its requests there directly; a beacon for another listing signed with the wrong key changes nothing',
+  check('a node on the router\u2019s own network says where it is, signed with its node key: the router reads its manifest there (still the hash on chain) and sends its requests there directly; a beacon for another listing signed with the wrong key changes nothing; orrery doctor says what it heard and reached there',
     !!nRow?.lan && nRow.lan.url === nearUrl && nRow.lan.listed === 'http://127.0.0.1:17282' && nRow.endpoint === nearUrl && nRow.problem === null && nearStatus === 200 && askedNear > 0
       && !!hRow && hRow.lan === null && hRow.endpoint === 'http://127.0.0.1:17284' && lanTop?.nodes === 1 && (lanTop?.heard ?? 0) >= 2
-      && after?.lan === null && after?.endpoint === 'http://127.0.0.1:17282',
-    `ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
+      && after?.lan === null && after?.endpoint === 'http://127.0.0.1:17282'
+      && lanDoc.startsWith(`listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`),
+    `doctor: ${lanDoc.replaceAll('127.0.0.1', '<host>').slice(0, 160) || 'no line'} · ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

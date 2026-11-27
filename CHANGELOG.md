@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery doctor` says what `--lan-listen` heard on this network: where the router listens, how many listings it heard, which nodes it reaches there directly (name and address), and how many it left unused because no such listing is on chain or the node key on it did not sign.
 - **Node** · `orrery provider start --lan-announce host:port`: a node says where it is on its own network every 15 seconds, signed with the node key on its listing, to a router's `--lan-listen` or to the network's broadcast address (`--lan-url` for the address to give; this computer's network address and the node's port otherwise).
 - **Router** · `--lan-listen [host:]port`: a router hears the nodes on its own network. A node whose listing's node key signed where it is gets its requests there, directly, never through `--proxy` or a peer's relay; its price list is read there and must still match the hash on chain, and a listing heard this way is read on chain by address even when the RPC leaves it out. The status shows `lan` for each node and the listener; a relay still carries other routers only to the addresses on chain.
 - **Router** · `--relay-holders-only`: a relay that carries only routers holding $OREY (0.01% of the supply, shown with the wallet's signature and checked on chain); it says so to its peers, and `orrery peers --relays` offers it only to a router whose wallet holds $OREY.

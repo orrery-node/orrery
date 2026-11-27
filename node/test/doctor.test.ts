@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, holderLaneLine, newer, noPeerRelayLine, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanDoctorLine, newer, noPeerRelayLine, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine, routersTodayLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -306,5 +306,11 @@ describe('orrery doctor, what the running router paid', () => {
     const report = peersReport({ peers: [], relay: { port: 7272, relayed: 4, refused: 0, routersToday: 2 } as never });
     assert.ok(report.includes(routersTodayLine(2)));
     assert.ok(!peersReport({ peers: [], relay: { port: 7272, relayed: 0, refused: 0, routersToday: 0 } as never }).some((l) => l.includes('router today') || l.includes('routers today')));
+  });
+
+  it('says what --lan-listen heard on this network and which nodes it reaches there directly', () => {
+    assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 0 }, []), "listening on 0.0.0.0:7373 (UDP) for nodes on this network; none has said where it is yet: a node joins with orrery provider start --lan-announce <this computer>:7373 (or the network's broadcast address)");
+    assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 2 }, [{ name: 'Kestrel GPU Co-op', url: 'http://192.168.1.20:7070' }]), 'listening on 0.0.0.0:7373 (UDP): 2 listings heard on this network, 1 reached there directly: Kestrel GPU Co-op at http://192.168.1.20:7070; the other 1 not used (no such listing on chain, or not signed by the node key on it)');
+    assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 1 }, []), 'listening on 0.0.0.0:7373 (UDP): 1 listing heard on this network, none reached there yet; the other 1 not used (no such listing on chain, or not signed by the node key on it)');
   });
 });

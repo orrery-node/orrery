@@ -198,6 +198,11 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   if ((via?.peerRelays?.length ?? 0) > 1) out.push({ ok: null, what: '  nodes via', detail: spreadLine(via!.peerRelays!) });
   else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer${via.spreadRelays ? SPREAD_WAITS : ''}` });
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
+  const lan = (status as { lan?: { listening: string | null; heard: number } | null } | null)?.lan;
+  if (lan) {
+    const near = ((status?.providers ?? []) as { address: string; name?: string | null; lan?: { url: string } | null }[]).filter((p) => p.lan).map((p) => ({ name: p.name ?? `${p.address.slice(0, 6)}…`, url: p.lan!.url }));
+    out.push({ ok: null, what: '  this network', detail: lanDoctorLine(lan, near) });
+  }
   const map = mapLine(status?.providers ?? []);
   if (map && (status?.peers?.length || status?.discovery !== 'chain')) out.push({ ok: null, what: '  map', detail: map });
   if (status?.discovery === 'peers') out.push({ ok: null, what: '  listings', detail: 'found from the peers\u2019 notes, each checked on chain (this RPC does not list the program\u2019s accounts)' });
@@ -268,6 +273,16 @@ export async function latestOnNpm(env: NodeJS.ProcessEnv = process.env): Promise
 /** The relay as `orrery doctor` says it: what it carried and refused, and, from a router that says them, the connections
  * open now and the limit for one address. */
 export { bytesText, rpcLeftOutLine };
+
+/** --lan-listen as `orrery doctor` says it: where the router listens, how many listings it heard on its network, and
+ * which nodes it reaches there directly (only those whose listing's node key signed where they are). */
+export function lanDoctorLine(lan: { listening: string | null; heard: number }, near: { name: string; url: string }[]): string {
+  const at = lan.listening ?? '?';
+  if (!lan.heard) return `listening on ${at} (UDP) for nodes on this network; none has said where it is yet: a node joins with orrery provider start --lan-announce <this computer>:${at.split(':').pop()} (or the network's broadcast address)`;
+  const reached = near.length ? `${near.length} reached there directly: ${near.map((x) => `${x.name} at ${x.url}`).join(', ')}` : 'none reached there yet';
+  const rest = lan.heard - near.length;
+  return `listening on ${at} (UDP): ${lan.heard} listing${lan.heard === 1 ? '' : 's'} heard on this network, ${reached}${rest > 0 ? `; the other ${rest} not used (no such listing on chain, or not signed by the node key on it)` : ''}`;
+}
 
 /** How many routers this router's relay carried today, as a count only. */
 export function routersTodayLine(n: number): string {
