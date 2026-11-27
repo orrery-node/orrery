@@ -2999,6 +2999,10 @@ const all4 = () => registry.entries.size;
   opts.peers = [];
   await rp.readPeers?.();
   for (const srv of [peerA, peerB, peerC, second.server, third.server]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
+  const leftover = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null; peerRelays?: string[] };
+  check('after a relay dropped out, turning --proxy-via-peers off leaves no peer relay in use',
+    (leftover.peerRelay ?? null) === null && (leftover.peerRelays ?? []).length === 0,
+    `peerRelay ${leftover.peerRelay ?? 'none'} · peerRelays ${(leftover.peerRelays ?? []).length}`);
   const assigned = registry.usable().map((e) => viaOf.get(e.address) ?? null);
   const reached = registry.usable().filter((e) => answeredNow.has(e.address)).map((e) => viaOf.get(e.address) ?? null);
   const toOwn = reached.filter((u) => u === ownUrl).length;
@@ -3023,6 +3027,49 @@ const all4 = () => registry.entries.size;
   check('orrery peers says how this router\u2019s own requests reach the nodes: spread over the 3 peer relays',
     routeNow.startsWith('your requests to nodes: spread over 3 peer relays (--spread-relays)'),
     routeNow.slice(0, 80) || 'no line');
+}
+// --proxy-via-peers stays with the relay it picked unless another is clearly less busy: with two signed peers' relays,
+// one connection more on the relay in use keeps it; three more moves the router to the other.
+{
+  const opts = routerOpts as { peers?: string[]; proxyViaPeers?: boolean };
+  const rp = router as unknown as { readPeers?: () => Promise<void> };
+  const { signNotes: signK } = await import('../src/router/notes.ts');
+  const { signerOf: signerK } = await import('../src/keys.ts');
+  const { Relay: RelayK, allowedTargets: allowedK } = await import('../src/router/relay.ts');
+  const statusK = async () => (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peerRelay?: string | null; relay?: { port: number | null } | null };
+  const ownK = (await statusK()).relay?.port ?? 0;
+  const other = new RelayK({ allowed: () => allowedK([...registry.entries.values()].filter((e) => e.account.active).map((e) => e.account.endpoint)), perClient: () => 16 });
+  await new Promise<void>((done) => other.server.listen(0, '127.0.0.1', () => done()));
+  const otherK = (other.server.address() as { port: number }).port;
+  const open = new Map<number, number>([[ownK, 1], [otherK, 0]]);
+  const offer = (relayPort: number) => {
+    const k = Keypair.generate();
+    return createHttpServer((req, res) => (req.url === '/orrery/notes' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(signK({ notes: 1, at: Date.now(), nodes: [] }, k.publicKey.toBase58(), signerK(k)))) : req.url === '/orrery/peers' ? res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ peers: [], relay: { port: relayPort, open: open.get(relayPort) ?? 0 } })) : res.writeHead(404).end()));
+  };
+  const pa = offer(ownK);
+  const pb = offer(otherK);
+  await Promise.all([pa, pb].map((srv) => new Promise<void>((done) => srv.listen(0, '127.0.0.1', () => done()))));
+  opts.peers = [pa, pb].map((srv) => `http://127.0.0.1:${(srv.address() as { port: number }).port}`);
+  opts.proxyViaPeers = true;
+  await rp.readPeers?.();
+  const first = (await statusK()).peerRelay ?? null;
+  open.set(ownK, 0);
+  open.set(otherK, 1);
+  await rp.readPeers?.();
+  const second = (await statusK()).peerRelay ?? null;
+  open.set(otherK, 3);
+  await rp.readPeers?.();
+  const third = (await statusK()).peerRelay ?? null;
+  opts.proxyViaPeers = false;
+  opts.peers = [];
+  await rp.readPeers?.();
+  for (const srv of [pa, pb, other.server]) { srv.closeAllConnections(); await new Promise((done) => srv.close(done)); }
+  const ownUrlK = `http://127.0.0.1:${ownK}`;
+  const otherUrlK = `http://127.0.0.1:${otherK}`;
+  const name = (u: string | null) => (u === ownUrlK ? 'A' : u === otherUrlK ? 'B' : u ?? 'none');
+  check('--proxy-via-peers stays with the relay it picked unless another is clearly less busy: one more connection keeps it, three more moves it',
+    first === otherUrlK && second === otherUrlK && third === ownUrlK,
+    `picked ${name(first)} (A 1 open, B 0) · then ${name(second)} (A 0, B 1) · then ${name(third)} (A 0, B 3)`);
 }
 // --proxy-via-peers: the router sends its requests to nodes through the least busy relay a signed peer offers, chosen
 // at each refresh, while it keeps reading that peer directly; once that relay says it is full for today, the router

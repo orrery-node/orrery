@@ -91,8 +91,8 @@ export type RouterOptions = {
   /** How many bytes a day the relay carries for other routers before it turns new connections away (--relay-max-mb);
    * no limit unless told. */
   relayMaxBytes?: number;
-  /** Requests to nodes go through the least busy relay a signed peer offers (not full for today), chosen again at each
-   * refresh; with none, the nodes are reached as without it. Reads of the peers themselves never use the relay. */
+  /** Requests to nodes go through the least busy relay a signed peer offers (not full for today), looked at again at each
+   * refresh and kept unless another is clearly less busy (STICKY_OPEN); with none, the nodes are reached as without it. Reads of the peers themselves never use the relay. */
   proxyViaPeers?: boolean;
   /** With --proxy-via-peers, requests to nodes are spread over every relay the signed peers offer (up to SPREAD_MAX), each
    * node always through the same one, so no single peer carries all of this router's traffic. */
@@ -188,6 +188,10 @@ export const HOLDER_LANE_BP = 1n;
 export const RELAY_DOWN_MS = 5 * 60_000;
 /** At most this many peer relays at once under --spread-relays. */
 export const SPREAD_MAX = 8;
+/** --proxy-via-peers moves off the relay in use only for one with at least this many fewer connections open. */
+export const STICKY_OPEN = 2;
+/** The relay choice after a relay could not be reached: matches no real choice, so the next refresh always chooses again. */
+const RELAY_RECHOOSE = '\u0000rechoose';
 
 /** What a job has spent and has left, as the headers every answer and every budget refusal under it carries. */
 const taskHeaders = (t: { budget: bigint; spent: bigint }): Record<string, string> => ({
@@ -532,6 +536,10 @@ export class Router {
       });
       offers.sort(relayOrder);
       picks = offers.slice(0, this.o.spreadRelays ? SPREAD_MAX : 1);
+      // One relay at a time stays with the relay in use while it can still take the router, unless another is clearly less
+      // busy: the fewer peers ever carry this router's traffic, the less any of them can piece together.
+      const inUse = !this.o.spreadRelays && this.usingPeerRelay ? offers.find((o) => o.url === this.usingPeerRelay) : undefined;
+      if (inUse && picks[0] && inUse !== picks[0] && inUse.holderLane === picks[0].holderLane && (inUse.open ?? 0) - (picks[0].open ?? 0) < STICKY_OPEN) picks = [inUse];
       pick = picks[0] ?? null;
     }
     const next = picks.length ? picks.map((p) => `${p.url}${p.holderLane ? ' (holders)' : ''}`).join(', ') : null;
@@ -574,7 +582,9 @@ export class Router {
     if (!this.usingPeerRelays.includes(url)) return;
     this.usingPeerRelays = this.usingPeerRelays.filter((u) => u !== url);
     this.usingPeerRelay = this.usingPeerRelays[0] ?? null;
-    this.usingPeerRelayKey = null;
+    // Not null: null means "no relay chosen", and the next choice must run even if it finds none, or the relays left
+    // in use would stay in use unseen.
+    this.usingPeerRelayKey = RELAY_RECHOOSE;
     if (this.usingPeerRelays.length) return this.log(`nodes: the peer relay ${url} could not be reached (${why}); that request went ${nodeProxy() ? 'through --proxy' : 'directly'}, the nodes are spread over the ${this.usingPeerRelays.length} other peer relay${this.usingPeerRelays.length === 1 ? '' : 's'}, and that relay is passed over for ${RELAY_DOWN_MS / 60_000} min`);
     this.log(`nodes: the peer relay ${url} could not be reached (${why}); requests go ${nodeProxy() ? 'through --proxy' : 'directly'} and that relay is passed over for ${RELAY_DOWN_MS / 60_000} min`);
   }
