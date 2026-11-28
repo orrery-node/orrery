@@ -3501,6 +3501,25 @@ const all4 = () => registry.entries.size;
     consoleLan.includes('1 router heard on this network, each signed with its own key, read as peers') && consoleLan.some((l) => l.startsWith(`this router says where its notes are on this network (${ROUTER}): `) && / beacons? sent, signed with its key$/.test(l)),
     consoleLan.map((l) => l.replaceAll('127.0.0.1', '<host>')).join(' | ').slice(0, 220) || 'no console code for this network');
 }
+// orrery router --lan-listen --lan-peers: --lan-listen standing alone takes its address from ORRERY_LAN_LISTEN (7373 on
+// every interface when that is unset), so the flag after it is not read as the address.
+{
+  const lanHome = join(WORK, 'home-lan-flags');
+  mkdirSync(lanHome, { recursive: true });
+  const lanCli = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'router', '--port', '17297', '--rpc', RPC, '--mint', usdc.toBase58(), '--lan-listen', '--lan-peers'], { stdio: 'ignore', env: { ...process.env, ORRERY_HOME: lanHome, ORRERY_LAN_LISTEN: '127.0.0.1:0' } });
+  let lanSt = null as { lan?: { listening?: string | null; peers?: boolean } | null } | null;
+  for (let i = 0; i < 100 && lanCli.exitCode === null; i++) {
+    lanSt = await fetch('http://127.0.0.1:17297/orrery/status').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (lanSt) break;
+    await sleep(200);
+  }
+  const exited = lanCli.exitCode;
+  lanCli.kill();
+  await new Promise((done) => (lanCli.exitCode !== null ? done(null) : lanCli.once('exit', () => done(null))));
+  check('orrery router --lan-listen --lan-peers starts: the bare --lan-listen takes its address from ORRERY_LAN_LISTEN and --lan-peers is read as its own flag',
+    !!lanSt?.lan && /^127\.0\.0\.1:\d+$/.test(lanSt.lan.listening ?? '') && lanSt.lan.peers === true,
+    lanSt ? `listening ${lanSt.lan?.listening?.replace('127.0.0.1', '<host>') ?? 'not'}, lan peers ${lanSt.lan?.peers ?? 'off'}` : `the router did not start${exited !== null ? ` (exit ${exited})` : ''}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

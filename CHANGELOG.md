@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `--lan-listen` on its own listens on port 7373 (or `ORRERY_LAN_LISTEN`), so `--lan-listen --lan-peers` no longer reads the next flag as an address; `--lan-announce` with no address says what it needs.
 - **Node** · The node console says where a node started with `--lan-announce` says it is on its network, the address routers there reach it at, and how many signed beacons went out, as `orrery provider status` does.
 - **Router** · The router console says, beside the peers, how many routers it heard on this network and whether it reads them as peers, and how many beacons its own `--lan-announce` sent.
 - **Router** · `orrery peers` and `orrery doctor` name the routers heard on this network (address and key), say whether this router reads them as peers or how to start (`--lan-peers`), and what this router itself says there with `--lan-announce` and how many beacons went out.

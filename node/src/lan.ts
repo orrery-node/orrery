@@ -20,6 +20,18 @@ export const LAN_MAX_HEARD = 256;
 export const LAN_MAX_ROUTERS = 64;
 const base58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+/** A LAN flag's value on the command line: the word after it, or `bare` when the flag stands alone (the next word is
+ * another flag, or there is none); undefined when the flag is not given. With `bare` null the flag needs a value and
+ * says what kind. */
+export function lanFlag(argv: string[], name: string, bare: string | null): string | undefined {
+  const i = argv.indexOf(`--${name}`);
+  if (i < 0) return undefined;
+  const v = argv[i + 1];
+  if (v !== undefined && !v.startsWith('--')) return v;
+  if (bare === null) throw new Error(`--${name} needs host:port: a router's --lan-listen address, or the network's broadcast address (for example 192.168.1.255:${LAN_PORT})`);
+  return bare;
+}
+
 /** The bytes a node key signs: a fixed prefix and the listing, URL and time in a fixed key order. */
 export function beaconMessage(listing: string, url: string, at: number): Uint8Array {
   return Buffer.concat([Buffer.from('orrery/lan/1'), Buffer.from(JSON.stringify({ listing, url, at }))]);

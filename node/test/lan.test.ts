@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
-import { announce, announceLine, beaconSigned, lanAddress, LAN_FRESH_MS, LAN_MAX_HEARD, LAN_MAX_ROUTERS, LanListener, parseBeacon, parseRouterBeacon, routerBeaconSigned, signBeacon, signRouterBeacon, type Beacon } from '../src/lan.ts';
+import { announce, announceLine, beaconSigned, lanAddress, lanFlag, LAN_FRESH_MS, LAN_MAX_HEARD, LAN_MAX_ROUTERS, LanListener, parseBeacon, parseRouterBeacon, routerBeaconSigned, signBeacon, signRouterBeacon, type Beacon } from '../src/lan.ts';
 import { addLanNode, onLan, relayFor, setLanNodes, setNodeRelay } from '../src/proxy.ts';
 import { lanLine } from '../src/router/server.ts';
 
@@ -37,6 +37,15 @@ describe('a node saying where it is on its own network', () => {
     assert.deepEqual(lanAddress('192.168.1.255:7373', null), { host: '192.168.1.255', port: 7373 });
     assert.throws(() => lanAddress('7373', null), /host:port/);
     assert.throws(() => lanAddress('127.0.0.1:99999', '0.0.0.0'));
+  });
+
+  it('reads a LAN flag that stands alone as its default, and one that needs an address says so', () => {
+    assert.equal(lanFlag(['router', '--lan-listen', '--lan-peers'], 'lan-listen', '7373'), '7373');
+    assert.equal(lanFlag(['router', '--lan-listen'], 'lan-listen', '7373'), '7373');
+    assert.equal(lanFlag(['router', '--lan-listen', '127.0.0.1:7400', '--lan-peers'], 'lan-listen', '7373'), '127.0.0.1:7400');
+    assert.equal(lanFlag(['router', '--lan-peers'], 'lan-listen', '7373'), undefined);
+    assert.throws(() => lanFlag(['provider', 'start', '--lan-announce', '--lan-url', 'http://x'], 'lan-announce', null), /--lan-announce needs host:port/);
+    assert.equal(lanFlag(['provider', 'start', '--lan-announce', '192.168.1.255:7373'], 'lan-announce', null), '192.168.1.255:7373');
   });
 
   it('a router keeps the newest beacon for each listing and is told when one is new or moved', () => {
