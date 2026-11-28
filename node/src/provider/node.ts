@@ -402,6 +402,8 @@ export class ProviderNode {
       notify: this.notifyTo ? { host: new URL(this.notifyTo).host, last: readNotice(`${this.dir}/notice.json`) } : null,
       // Where this node says it is on its own network (--lan-announce), and how many beacons went out. Null: it does not.
       lan: this.announcing ? { ...this.announcing } : null,
+      // How many other nodes this node names at /orrery/known (--knows, --knows-file), and the file if one is given.
+      knows: { count: knownList(this.knows(), this.pda.toBase58()).length, file: this.cfg.knowsFile ?? null },
       // How many answers stream at once and who is waiting; holders go first when every slot is taken. Null: no limit.
       slots: this.slots ? this.slots.state : null,
       // The last payout round that failed and why, until one goes through: without it the money only looks stuck.

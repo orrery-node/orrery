@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
-import { KNOWN_MAX, knownList, knowsFileLines, readKnown } from '../src/known.ts';
+import { KNOWN_MAX, knownList, knowsFileLines, knowsSentence, readKnown } from '../src/known.ts';
 import { foundThroughNodes, mapLine } from '../src/doctor.ts';
 import { knowsCheckLine } from '../src/provider/check.ts';
 
@@ -40,5 +40,12 @@ describe('nodes naming other nodes', () => {
   it('a --knows-file has one listing a line, notes after #, blank lines skipped', () => {
     assert.deepEqual(knowsFileLines(`# my other nodes\n${a}  # the A100 box\n\n  ${b}\n`), [a, b]);
     assert.deepEqual(knowsFileLines(''), []);
+  });
+
+  it('provider status and the node console say how many nodes this node names, and from which file', () => {
+    assert.equal(knowsSentence({ count: 0, file: null }), '');
+    assert.equal(knowsSentence(null), '');
+    assert.equal(knowsSentence({ count: 1, file: null }), 'Names 1 other node at /orrery/known: routers that read this node check each on chain and add it to their map.');
+    assert.equal(knowsSentence({ count: 3, file: '/srv/knows.txt' }), 'Names 3 other nodes at /orrery/known (--knows and /srv/knows.txt, read again at every request): routers that read this node check each on chain and add it to their map.');
   });
 });

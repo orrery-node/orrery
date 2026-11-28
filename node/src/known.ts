@@ -10,6 +10,13 @@ export function knownList(given: string[] | undefined, own: string): string[] {
   return [...new Set((given ?? []).map((a) => a.trim()))].filter((a) => base58.test(a) && a !== own).slice(0, KNOWN_MAX);
 }
 
+/** The node console's and `orrery provider status`'s sentence on what this node names at /orrery/known; nothing when it
+ * names none. Self-contained: the console page inlines it. */
+export function knowsSentence(k: { count: number; file: string | null } | null | undefined): string {
+  if (!k || !k.count) return '';
+  return 'Names ' + k.count + ' other node' + (k.count === 1 ? '' : 's') + ' at /orrery/known' + (k.file ? ' (--knows and ' + k.file + ', read again at every request)' : '') + ': routers that read this node check each on chain and add it to their map.';
+}
+
 /** A --knows-file read: one listing a line, anything after # a note for the operator, blank lines skipped. */
 export function knowsFileLines(text: string): string[] {
   return text.split('\n').map((l) => l.split('#')[0].trim()).filter(Boolean);

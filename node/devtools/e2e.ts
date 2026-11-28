@@ -3633,11 +3633,20 @@ const all4 = () => registry.entries.size;
   const first = await readKnownNow().catch(() => [] as string[]);
   writeFileSync(file, `${halo}\n${vault}\n`);
   const second = await readKnownNow().catch(() => [] as string[]);
+  const knowsStatus = (await cliOut(['status'])).split('\n').find((l) => l.startsWith('  names nodes')) ?? '';
+  const knowsPage = await (await fetch(`http://127.0.0.1:17282/?key=${ibKey}`)).text();
+  const knowsLive = await (await fetch('http://127.0.0.1:17282/orrery/status', { headers: { 'x-orrery-console-key': ibKey } })).json();
+  const knowsAt = knowsPage.indexOf('const knowsSentence=');
+  const { runInNewContext: runKnowsPage } = await import('node:vm');
+  const knowsConsole = knowsAt < 0 ? '' : String(runKnowsPage(`(${knowsPage.slice(knowsAt + 'const knowsSentence='.length, knowsPage.indexOf(';\nconst ', knowsAt + 1))})(s.knows)`, { s: knowsLive }));
   ironCfg.knows = before.knows;
   ironCfg.knowsFile = before.knowsFile;
   check('a node reads --knows-file again at every request: one listing a line with # notes, and an edit to the file shows without a restart',
     JSON.stringify(first) === JSON.stringify([halo]) && JSON.stringify(second) === JSON.stringify([halo, vault]),
     `first read ${first.length} (${first.map((k) => (k === halo ? 'Halo' : k.slice(0, 6))).join(', ') || 'none'}), after the edit ${second.length}`);
+  check('orrery provider status and the node console, running its own page code on the live status, say how many nodes this node names and from which file',
+    knowsStatus.includes('Names 2 other nodes at /orrery/known (--knows and ') && knowsStatus.includes('knows.txt, read again at every request)') && knowsConsole.startsWith('Names 2 other nodes at /orrery/known'),
+    `status: ${knowsStatus.trim().replace(WORK, '<work>').slice(0, 120) || 'no line'} · console: ${knowsConsole.replace(WORK, '<work>').slice(0, 60) || 'none'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
