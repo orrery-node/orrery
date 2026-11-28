@@ -531,8 +531,8 @@ export function foundThroughPeers(providers: FoundRow[], most = 10): string[] {
 export function mapLine(providers: FoundRow[]): string | null {
   if (!providers.length) return null;
   const n = (f: string) => providers.filter((p) => (p.found ?? 'rpc') === f).length;
-  const [rpc, peers, record, lan] = [n('rpc'), n('peers'), n('record'), n('lan')];
-  const parts = [rpc ? `${rpc} in the RPC's list` : "none in the RPC's list", peers ? `${peers} from peers` : '', record ? `${record} from this router's own record` : '', lan ? `${lan} from this network` : ''].filter(Boolean);
+  const [rpc, peers, record, lan, named] = [n('rpc'), n('peers'), n('record'), n('lan'), n('nodes')];
+  const parts = [rpc ? `${rpc} in the RPC's list` : "none in the RPC's list", peers ? `${peers} from peers` : '', record ? `${record} from this router's own record` : '', lan ? `${lan} from this network` : '', named ? `${named} named by nodes` : ''].filter(Boolean);
   return `the map: ${providers.length} listing${providers.length === 1 ? '' : 's'}, ${parts.join(', ')}`;
 }
 

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { KNOWN_MAX, knownList, readKnown } from '../src/known.ts';
+import { mapLine } from '../src/doctor.ts';
 
 const a = Keypair.generate().publicKey.toBase58();
 const b = Keypair.generate().publicKey.toBase58();
@@ -18,5 +19,9 @@ describe('nodes naming other nodes', () => {
     assert.deepEqual(readKnown({ known: [a, 7, 'x', a, b] }), [a, b]);
     assert.deepEqual(readKnown({ known: 'nope' }), []);
     assert.deepEqual(readKnown(null), []);
+  });
+
+  it('the map line counts the listings the router has only because nodes named them', () => {
+    assert.equal(mapLine([{ address: a, found: 'rpc' }, { address: b, found: 'nodes' }]), "the map: 2 listings, 1 in the RPC's list, 1 named by nodes");
   });
 });

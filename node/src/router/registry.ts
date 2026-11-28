@@ -17,6 +17,7 @@ import { insideMessage, wireMessage } from '../seal.ts';
 import { checkManifest, manifestHash, type Manifest, type ModelOffer } from '../manifest.ts';
 import { addLanNode, fetchNode, setLanNodes } from '../proxy.ts';
 import { beaconSigned, type Beacon } from '../lan.ts';
+import { readKnown } from '../known.ts';
 import { drop } from '../sse.ts';
 
 /** `vcek` is the chip's certificate (DER, base64) that an AMD SEV-SNP node serves next to its report. */
@@ -82,6 +83,10 @@ export function rpcLeftOutLine(n: number): string {
   return `${n} listing${n === 1 ? '' : 's'} this RPC's list of the program left out, named by peer routers and read on chain one by one: the router uses ${n === 1 ? 'it' : 'them'} too`;
 }
 
+/** How often a router asks one node which other nodes it names (/orrery/known), and how many nodes it asks per refresh. */
+export const KNOWN_EVERY_MS = 10 * 60_000;
+export const KNOWN_READS = 32;
+
 /** How long a node's address on this router's own network is passed over after it stopped answering there. */
 export const LAN_DOWN_MS = 5 * 60_000;
 
@@ -97,6 +102,11 @@ export class Registry {
   lanBeacons?: () => Beacon[];
   /** The listings this router has only because a node on its own network named itself, read on chain by address. */
   fromLan = new Set<string>();
+  /** The listings this router has only because a node it knows named them (/orrery/known), read on chain by address: a
+   * node can point at listings, never make one up. */
+  fromNodes = new Set<string>();
+  /** What each node named at /orrery/known, and when it was asked. */
+  private known = new Map<string, { at: number; named: string[] }>();
   /** Nodes whose address on this network stopped answering this router's health checks, with until when that address is
    * passed over: the node is reached as listed on chain meanwhile, whatever its beacons still say. */
   private lanDown = new Map<string, number>();
@@ -224,6 +234,7 @@ export class Registry {
       this.fromLan = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => byLan.has(a)));
       this.fromRecord = new Set(got.map((x) => x.pubkey.toBase58()).filter((a) => !byPeers.has(a) && !byLan.has(a)));
     };
+    this.fromNodes = new Set();
     try {
       all = await this.conn.getProgramAccounts(programId(), { filters: [{ memcmp: { offset: 0, bytes: bs58.encode(ACCOUNT.Provider) } }] });
     } catch (e) {
@@ -232,7 +243,7 @@ export class Registry {
       sort(out);
       this.discovery = this.throughPeers.size || (!this.fromLan.size && !this.fromRecord.size) ? 'peers' : this.fromLan.size ? 'lan' : 'record';
       this.rpcLeftOut = 0;
-      return out;
+      return this.withNodesNamed(out);
     }
     this.discovery = 'chain';
     // The listings the RPC's list did not have are read by address, so one RPC is never the whole map.
@@ -240,14 +251,45 @@ export class Registry {
     const now = Date.now();
     const left = candidates.filter((k) => !have.has(k.toBase58()) && (this.absentUntil.get(k.toBase58()) ?? 0) <= now);
     const extra = left.length ? await this.readNamed(left).catch(() => null) : [];
-    if (!extra) return all;
+    if (!extra) return this.withNodesNamed(all);
     if (left.length && extra.length < left.length) {
       const found = new Set(extra.map((x) => x.pubkey.toBase58()));
       for (const k of left) if (!found.has(k.toBase58())) this.absentUntil.set(k.toBase58(), now + 10 * 60_000);
     }
     sort(extra);
     this.rpcLeftOut = this.throughPeers.size;
-    return extra.length ? [...all, ...extra] : all;
+    return this.withNodesNamed(extra.length ? [...all, ...extra] : all);
+  }
+
+  /** The listings found so far, and the ones the nodes among them name at /orrery/known that are not among them yet, each
+   * read on chain by address. A node is asked at most every KNOWN_EVERY_MS, at most KNOWN_READS of them a refresh. */
+  private async withNodesNamed(got: readonly { pubkey: PublicKey; account: { data: Buffer } }[]): Promise<readonly { pubkey: PublicKey; account: { data: Buffer } }[]> {
+    const now = Date.now();
+    const asked = got.flatMap(({ pubkey, account }) => {
+      try {
+        const p = decodeProvider(account.data);
+        const address = pubkey.toBase58();
+        return p.active ? [{ address, endpoint: this.entries.get(address)?.account.endpoint ?? p.endpoint }] : [];
+      } catch {
+        return [];
+      }
+    }).slice(0, KNOWN_READS);
+    await Promise.all(asked.map(async ({ address, endpoint }) => {
+      const k = this.known.get(address);
+      if (k && now - k.at < KNOWN_EVERY_MS) return;
+      const named = await fetchNode(`${endpoint.replace(/\/$/, '')}/orrery/known`, { timeoutMs: 3_000 }).then((r) => (r.ok ? r.json() : (drop(r), null))).then(readKnown).catch(() => [] as string[]);
+      this.known.set(address, { at: now, named });
+    }));
+    const have = new Set(got.map((x) => x.pubkey.toBase58()));
+    const fresh = [...new Set([...this.known.values()].flatMap((k) => k.named))].filter((a) => !have.has(a) && (this.absentUntil.get(a) ?? 0) <= now);
+    if (!fresh.length) return got;
+    const keys = fresh.flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
+    const more = await this.readNamed(keys).catch(() => null);
+    if (!more) return got;
+    const found = new Set(more.map((x) => x.pubkey.toBase58()));
+    for (const a of fresh) if (!found.has(a)) this.absentUntil.set(a, now + 10 * 60_000);
+    this.fromNodes = found;
+    return [...got, ...more];
   }
 
   /** The listing addresses in this router's own record of the nodes it watched, each a valid key. */

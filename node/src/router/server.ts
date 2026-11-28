@@ -1029,7 +1029,7 @@ export class Router {
       address: e.address, name: e.manifest?.name ?? null, endpoint: e.account.endpoint, active: e.account.active, problem: e.problem,
       // Where this router found the listing: in the RPC's list of the program, only because peer routers named it, or only
       // in its own record of the nodes it watched before.
-      found: this.o.registry.throughPeers.has(e.address) ? 'peers' : this.o.registry.fromLan.has(e.address) ? 'lan' : this.o.registry.fromRecord.has(e.address) ? 'record' : 'rpc',
+      found: this.o.registry.throughPeers.has(e.address) ? 'peers' : this.o.registry.fromLan.has(e.address) ? 'lan' : this.o.registry.fromNodes.has(e.address) ? 'nodes' : this.o.registry.fromRecord.has(e.address) ? 'record' : 'rpc',
       // On this router's own network: where its requests go there, and the address on chain they would go to otherwise.
       lan: e.lan ?? null,
       // How long more its address on this network is passed over after it stopped answering there (ms), or 0.

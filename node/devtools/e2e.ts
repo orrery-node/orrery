@@ -3553,6 +3553,27 @@ const all4 = () => registry.entries.size;
     !!known && known.length === 1 && known[0] === nodes[3].pda.toBase58(),
     known ? `named ${known.length}: ${known.map((k) => (k === nodes[3].pda.toBase58() ? 'Halo Compute' : k.slice(0, 6))).join(', ')}` : `answer ${knownRes.status}`);
 }
+// Nodes naming nodes past an RPC that leaves a listing out: a node that names it at /orrery/known (--knows) puts it on
+// the router's map, read on chain by address; an address the chain does not hold as a listing is left off.
+{
+  const ironCfg = nodes[1].cfg as { knows?: string[] };
+  const before = ironCfg.knows;
+  const halo = nodes[3].pda.toBase58();
+  const madeUp = Keypair.generate().publicKey.toBase58();
+  const leavingHalo = Object.assign(Object.create(conn) as object, {
+    getProgramAccounts: async (...a: Parameters<typeof conn.getProgramAccounts>) => (await conn.getProgramAccounts(...a)).filter((x) => x.pubkey.toBase58() !== halo),
+  }) as unknown as typeof conn;
+  const plain = new Registry(leavingHalo, { allowDev: true, measurements: [] });
+  await plain.refresh();
+  ironCfg.knows = [halo, madeUp];
+  const told = new Registry(leavingHalo, { allowDev: true, measurements: [] });
+  await told.refresh();
+  ironCfg.knows = before;
+  const fromNodes = (told as unknown as { fromNodes?: Set<string> }).fromNodes ?? new Set<string>();
+  check('a node that names another at /orrery/known puts it on the router\u2019s map past an RPC that left it out, read on chain by address; a made-up address stays off',
+    !plain.entries.has(halo) && told.entries.has(halo) && !!told.entries.get(halo)?.manifest && fromNodes.has(halo) && !told.entries.has(madeUp) && fromNodes.size === 1,
+    `RPC list without Halo · no node naming it: ${plain.entries.has(halo) ? 'on the map' : 'off the map'} · Ironbridge naming it (and one made up): ${told.entries.has(halo) ? 'on the map' : 'off'}, price list ${told.entries.get(halo)?.manifest ? 'read' : 'missing'}, named by nodes ${fromNodes.size}, made up ${told.entries.has(madeUp) ? 'on the map' : 'left off'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {
