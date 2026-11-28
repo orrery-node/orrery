@@ -10,6 +10,11 @@ export function knownList(given: string[] | undefined, own: string): string[] {
   return [...new Set((given ?? []).map((a) => a.trim()))].filter((a) => base58.test(a) && a !== own).slice(0, KNOWN_MAX);
 }
 
+/** A --knows-file read: one listing a line, anything after # a note for the operator, blank lines skipped. */
+export function knowsFileLines(text: string): string[] {
+  return text.split('\n').map((l) => l.split('#')[0].trim()).filter(Boolean);
+}
+
 /** A node's /orrery/known answer, read as data: the well-formed addresses in it, at most KNOWN_MAX; anything else is none. */
 export function readKnown(j: unknown): string[] {
   const k = (j as { known?: unknown } | null)?.known;

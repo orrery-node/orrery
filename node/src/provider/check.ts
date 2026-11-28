@@ -254,7 +254,7 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   }
 
   // The listings this node names for routers (--knows), each read on chain as a router would read it.
-  const named = knownList(cfg.knows, node.pda.toBase58());
+  const named = knownList(node.knows(), node.pda.toBase58());
   if (named.length) {
     const infos = await node.conn.getMultipleAccountsInfo(named.map((a) => new PublicKey(a))).catch(() => null);
     const open = new Set(named.filter((a, i) => {

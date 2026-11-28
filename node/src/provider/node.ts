@@ -15,7 +15,7 @@ import { sendFresh } from '../chain/send.ts';
 import { decodeVoucher, redeemInstructions, verifyVoucher, type Voucher, encodeVoucher } from '../chain/voucher.ts';
 import { home, loadKeypair, loadOrCreateKeypair, signerOf, writePrivate } from '../keys.ts';
 import { announce, LAN_EVERY_MS, networkAddress, signBeacon, type Announcing } from '../lan.ts';
-import { knownList } from '../known.ts';
+import { knownList, knowsFileLines } from '../known.ts';
 import { canonical, IMAGE_TOKENS, imageCount, kindPath, manifestHash, MODEL_KINDS, speechTokens, type Manifest, type ModelKind, type ModelOffer } from '../manifest.ts';
 import { checkTiers, discounted, HolderBook, type HolderTier } from '../holder.ts';
 import { checkHolderSlots, checkSlots, Slots } from './slots.ts';
@@ -81,6 +81,9 @@ export type ProviderConfig = {
   /** Other nodes' listings this node names at /orrery/known (--knows): nodes its operator vouches for. A router that reads
    * this node learns of them and checks each on chain by address. */
   knows?: string[];
+  /** A file of listings this node also names at /orrery/known (--knows-file), one a line, # for notes; read again at
+   * every request, so the list changes without a restart. A file that cannot be read adds none. */
+  knowsFile?: string;
   /** How many answers the node streams from its model server at once. When all are taken, a request waits for the next
    * free one, and a wallet that gets the holder price goes ahead of those that do not (the larger discount first). One
    * that waits 30 seconds is turned away as busy before anything is owed, and its router asks the next node. Unset: no
@@ -483,7 +486,7 @@ export class ProviderNode {
         return json(res, 200, { ok: true, upstream: upstream.up ? 'up' : 'down', upstreamMs: upstream.ms, provider: this.pda.toBase58(), models: this.manifest.models.length, channels: this.ledger.size });
       }
       // The other nodes this node names (--knows): public, like the price list; a router checks each on chain.
-      if (req.method === 'GET' && url.pathname === '/orrery/known') return json(res, 200, { known: knownList(this.cfg.knows, this.pda.toBase58()) });
+      if (req.method === 'GET' && url.pathname === '/orrery/known') return json(res, 200, { known: knownList(this.knows(), this.pda.toBase58()) });
       if (req.method === 'GET' && url.pathname === '/v1/seen') {
         // What this node learned about where the request came from. A router that reaches nodes through a proxy asks,
         // and so checks the proxy from this end instead of trusting its own setting.
@@ -1089,6 +1092,19 @@ export class ProviderNode {
       }
     }
     this.booksDay = day;
+  }
+
+  /** The listings this node names: --knows, then the lines of --knows-file as the file reads now. */
+  knows(): string[] {
+    let fromFile: string[] = [];
+    if (this.cfg.knowsFile) {
+      try {
+        fromFile = knowsFileLines(readFileSync(this.cfg.knowsFile, 'utf8'));
+      } catch {
+        fromFile = [];
+      }
+    }
+    return [...(this.cfg.knows ?? []), ...fromFile];
   }
 
   /** Says where this node is on its network (--lan-announce), from now on: see ProviderConfig.lan. */

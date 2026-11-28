@@ -3619,6 +3619,26 @@ const all4 = () => registry.entries.size;
     knowsGood.startsWith('✓') && knowsGood.includes('names 1 node at /orrery/known, each an open listing on chain') && knowsBad.startsWith('✗') && knowsBad.includes(`1 is not an open listing on chain, so routers leave it off: ${madeUp}`),
     `good: ${knowsGood.trim().slice(0, 90) || 'no line'} · bad: ${knowsBad.trim().replace(madeUp, '<made up>').slice(0, 120) || 'no line'}`);
 }
+// A node reads --knows-file again at every request: one listing a line, # for notes, and an edit shows without a restart.
+{
+  const ironCfg = nodes[1].cfg as { knows?: string[]; knowsFile?: string };
+  const before = { knows: ironCfg.knows, knowsFile: ironCfg.knowsFile };
+  const halo = nodes[3].pda.toBase58();
+  const vault = nodes[2].pda.toBase58();
+  const file = join(WORK, 'knows.txt');
+  writeFileSync(file, `# nodes this operator runs\n${halo}  # Halo\nnot-a-listing\n`);
+  ironCfg.knows = undefined;
+  ironCfg.knowsFile = file;
+  const readKnownNow = async () => ((await (await fetch('http://127.0.0.1:17282/orrery/known')).json()) as { known?: string[] }).known ?? [];
+  const first = await readKnownNow().catch(() => [] as string[]);
+  writeFileSync(file, `${halo}\n${vault}\n`);
+  const second = await readKnownNow().catch(() => [] as string[]);
+  ironCfg.knows = before.knows;
+  ironCfg.knowsFile = before.knowsFile;
+  check('a node reads --knows-file again at every request: one listing a line with # notes, and an edit to the file shows without a restart',
+    JSON.stringify(first) === JSON.stringify([halo]) && JSON.stringify(second) === JSON.stringify([halo, vault]),
+    `first read ${first.length} (${first.map((k) => (k === halo ? 'Halo' : k.slice(0, 6))).join(', ') || 'none'}), after the edit ${second.length}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

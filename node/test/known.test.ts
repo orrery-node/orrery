@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
-import { KNOWN_MAX, knownList, readKnown } from '../src/known.ts';
+import { KNOWN_MAX, knownList, knowsFileLines, readKnown } from '../src/known.ts';
 import { foundThroughNodes, mapLine } from '../src/doctor.ts';
 import { knowsCheckLine } from '../src/provider/check.ts';
 
@@ -35,5 +35,10 @@ describe('nodes naming other nodes', () => {
     assert.equal(knowsCheckLine([], new Set()), null);
     assert.deepEqual(knowsCheckLine([a, b], new Set([a, b])), { ok: true, what: 'knows', detail: 'names 2 nodes at /orrery/known, each an open listing on chain' });
     assert.deepEqual(knowsCheckLine([a, b], new Set([a])), { ok: false, what: 'knows', detail: `names 2 at /orrery/known; 1 is not an open listing on chain, so routers leave it off: ${b}` });
+  });
+
+  it('a --knows-file has one listing a line, notes after #, blank lines skipped', () => {
+    assert.deepEqual(knowsFileLines(`# my other nodes\n${a}  # the A100 box\n\n  ${b}\n`), [a, b]);
+    assert.deepEqual(knowsFileLines(''), []);
   });
 });

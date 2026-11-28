@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider start --knows-file <path>`: the listings a node names at `/orrery/known`, one a line with `#` for notes, read again at every request, so an operator adds or drops a node without a restart; `orrery provider check` reads them on chain too.
 - **Node** · `orrery provider check` reads each listing a node names with `--knows` on chain, as a router would, and fails, naming it, when one is not an open listing (a typo or a closed node), since every router would leave it off.
 - **Router** · The router console marks a node found because nodes named it with which nodes did ("named by …"), beside the marks for nodes found through peers, from the router's own record or on this network.
 
