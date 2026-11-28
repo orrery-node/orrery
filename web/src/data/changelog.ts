@@ -6,7 +6,9 @@
 export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
-export const UNRELEASED: Change[] = [];
+export const UNRELEASED: Change[] = [
+  { who: 'router', text: 'The router console marks a node found because nodes named it with which nodes did ("named by …"), beside the marks for nodes found through peers, from the router\'s own record or on this network.' },
+];
 
 export const RELEASES: Release[] = [
   {

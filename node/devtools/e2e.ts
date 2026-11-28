@@ -3433,7 +3433,7 @@ const all4 = () => registry.entries.size;
     `doctor: ${lanDoc.replaceAll('127.0.0.1', '<host>').slice(0, 160) || 'no line'} · ironbridge lan ${nRow?.lan ? nRow.lan.url.replace('127.0.0.1', '<host>') : 'none'}, problem ${nRow?.problem ?? 'none'}, answer ${nearStatus}, bytes carried there ${askedNear} · halo lan ${hRow?.lan ? 'set' : 'none'} · heard ${lanTop?.heard ?? '?'}, on lan ${lanTop?.nodes ?? '?'} · after stop ${after?.lan ? 'still lan' : 'as listed'}`);
   const lanPeersLine = lanCli.split('\n').find((l) => l.startsWith('this network:')) ?? '';
   check('orrery peers and the peers tool in orrery mcp say the same of this network: where the router listens, what it heard, which nodes it reaches there; the console marks those nodes',
-    lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes("' <span class=cap>on this network \u00b7 '") && lanPage.includes('for nodes on this network: '),
+    lanPeersLine.startsWith(`this network: listening on ${heardAt} (UDP): 2 listings heard on this network, 1 reached there directly: Ironbridge Compute at ${nearUrl}; the other 1 not used`) && lanTool.split('\n').includes(lanPeersLine) && lanPage.includes('<span class=cap>on this network') && lanPage.includes('for nodes on this network: '),
     `peers: ${lanPeersLine.replaceAll('127.0.0.1', '<host>').slice(0, 150) || 'no line'} · mcp ${lanTool.includes('this network:') ? 'same' : 'no line'} · console ${lanPage.includes('on this network') ? 'marks them' : 'no mark'}`);
   check('orrery provider status says where the node says it is on its network, to whom, and how many signed beacons went out',
     new RegExp(`^  on this network {7}saying where it is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key: routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)$`).test(lanNodeStatus),
@@ -3489,7 +3489,7 @@ const all4 = () => registry.entries.size;
   const lanSrcAt = consoleHtmlLan.indexOf('const lanBits=');
   const liveStatus = await (await fetch(`${ROUTER}/orrery/status`)).json();
   const { runInNewContext: runPage } = await import('node:vm');
-  const consoleLan = lanSrcAt < 0 ? [] : (runPage(`(${consoleHtmlLan.slice(lanSrcAt + 'const lanBits='.length, consoleHtmlLan.indexOf(';\nconst esc=', lanSrcAt))})(s)`, { s: liveStatus }) as string[]);
+  const consoleLan = lanSrcAt < 0 ? [] : (runPage(`(${consoleHtmlLan.slice(lanSrcAt + 'const lanBits='.length, consoleHtmlLan.indexOf(';\nconst ', lanSrcAt + 1))})(s)`, { s: liveStatus }) as string[]);
   type PeerSeen = { url: string; pinned: boolean; via: string | null; signed: boolean; by: string | null };
   const lanPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.find((p) => p.url === otherUrl);
   const forgedPeer = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { peers: PeerSeen[] }).peers.some((p) => p.url === 'http://127.0.0.1:17998');
@@ -3590,6 +3590,10 @@ const all4 = () => registry.entries.size;
   await registry.refresh();
   type NamedRow = { address: string; found?: string; namedBy?: string[] };
   const namedRow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: NamedRow[] }).providers.find((p) => p.address === halo);
+  const namedPage = await (await fetch(`${ROUTER}/`)).text();
+  const foundCapAt = namedPage.indexOf('const foundCap=');
+  const { runInNewContext: runNamedPage } = await import('node:vm');
+  const namedCap = foundCapAt < 0 || !namedRow ? '' : String(runNamedPage(`(${namedPage.slice(foundCapAt + 'const foundCap='.length, namedPage.indexOf(';\nconst ', foundCapAt))})(p)`, { p: namedRow }));
   const namedPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
   reg.conn = realConn;
   ironCfg.knows = before;
@@ -3600,6 +3604,9 @@ const all4 = () => registry.entries.size;
   check('the running router says which node named a listing it found that way: status found is nodes with Ironbridge Compute as the namer, orrery peers prints it, and it is back to the RPC after',
     namedRow?.found === 'nodes' && JSON.stringify(namedRow.namedBy) === JSON.stringify(['Ironbridge Compute']) && /^  Halo Compute \([^)]+\): named by Ironbridge Compute at \/orrery\/known, read on chain$/.test(namedLine) && backRow?.found === 'rpc',
     `status found ${namedRow?.found ?? 'missing'}, named by ${(namedRow?.namedBy ?? []).join(', ') || 'nobody'} · orrery peers: ${namedLine.trim().replace(/[1-9A-HJ-NP-Za-km-z]{4}\u2026[1-9A-HJ-NP-Za-km-z]{4}/, '<key>') || 'no line'} · after ${backRow?.found ?? 'missing'}`);
+  check('the router console, running its own page code on the live status, marks the listing found because Ironbridge Compute named it',
+    namedCap === ' <span class=cap>named by Ironbridge Compute</span>',
+    namedCap || 'no mark from the console code');
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

@@ -34,7 +34,8 @@ describe('the local console pages', () => {
     const status = { lan: { listening: '0.0.0.0:7373', heard: 2, nodes: 1, routers: [{ key: 'K', url: 'http://192.168.1.30:7171' }], peers: false }, lanAnnouncing: { to: '192.168.1.255:7373', url: 'http://192.168.1.20:7171', sent: 1 } };
     const want = ['listening on 0.0.0.0:7373 for nodes on this network: 2 heard, 1 reached there directly', '1 router heard on this network, each signed with its own key (--lan-peers reads them as peers)', 'this router says where its notes are on this network (http://192.168.1.20:7171): 1 beacon sent, signed with its key'];
     assert.deepEqual(routerConsole.lanBits(status), want);
-    const src = html.slice(html.indexOf('const lanBits=') + 'const lanBits='.length, html.indexOf(';\nconst esc='));
+    const lanAt = html.indexOf('const lanBits=') + 'const lanBits='.length;
+    const src = html.slice(lanAt, html.indexOf(';\nconst ', lanAt));
     assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(`(${src})(s)`, { s: status }))), want, 'the inlined copy runs on its own');
     assert.deepEqual(routerConsole.lanBits({ lan: null, lanAnnouncing: null }), []);
   });
@@ -48,6 +49,17 @@ describe('the local console pages', () => {
     const want = 'On this network: saying where this node is to 192.168.1.255:7373 every 15 s, signed with the node key; routers there reach it at http://192.168.1.20:7070 (4 sent, the last 12 s ago).';
     assert.equal(String(runInNewContext(`(${src})(a, 13400)`, { a })), want, 'the inlined copy runs on its own');
     assert.equal(String(runInNewContext(`(${src})(null, 0)`, {})), '');
+  });
+
+  it('the router console marks where it found each node, which nodes named one found that way, and its address on this network, with the code the page runs', () => {
+    const html = consolePage();
+    assert.ok(html.includes('const foundCap=') && html.includes('foundCap(p)+'), 'inlined and used');
+    const rows = [{ found: 'nodes', namedBy: ['Ironbridge <Compute>'] }, { found: 'peers' }, { found: 'rpc', lan: { url: 'http://192.168.1.20:7070' } }, { found: 'rpc' }];
+    const want = [' <span class=cap>named by Ironbridge &lt;Compute&gt;</span>', ' <span class=cap>found through peers</span>', ' <span class=cap>on this network \u00b7 192.168.1.20:7070</span>', ''];
+    assert.deepEqual(rows.map((r) => routerConsole.foundCap(r)), want);
+    const at = html.indexOf('const foundCap=') + 'const foundCap='.length;
+    const src = html.slice(at, html.indexOf(';\nconst ', at));
+    assert.deepEqual(JSON.parse(JSON.stringify(runInNewContext(`r.map(${src})`, { r: rows }))), want, 'the inlined copy runs on its own');
   });
 
   it('carry their two typefaces inside the page', () => {

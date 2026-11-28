@@ -4,6 +4,10 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
+## Unreleased (in main)
+
+- **Router** · The router console marks a node found because nodes named it with which nodes did ("named by …"), beside the marks for nodes found through peers, from the router's own record or on this network.
+
 ## 0.1.32 · 2026-11-28 09:04 UTC
 
 **Your own network, and a map no single RPC controls: a node says where it is on your network, signed with its node key, and routers reach it there directly; routers in one building find each other and read each other's notes; nodes vouch for nodes, and every listing a peer, a node or the router's own record names is read on chain by address; relays spread your traffic (--spread-relays), carry $OREY holders on twice the connections, or only holders (--relay-holders-only); and orrery peers, doctor, provider check and both consoles show where each piece stands.**
