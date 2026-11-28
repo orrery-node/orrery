@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { KNOWN_MAX, knownList, knowsFileLines, knowsSentence, readKnown } from '../src/known.ts';
-import { foundThroughNodes, mapLine } from '../src/doctor.ts';
+import { foundThroughNodes, mapLine, vouchLines } from '../src/doctor.ts';
 import { knowsCheckLine } from '../src/provider/check.ts';
 
 const a = Keypair.generate().publicKey.toBase58();
@@ -47,5 +47,10 @@ describe('nodes naming other nodes', () => {
     assert.equal(knowsSentence(null), '');
     assert.equal(knowsSentence({ count: 1, file: null }), 'Names 1 other node at /orrery/known: routers that read this node check each on chain and add it to their map.');
     assert.equal(knowsSentence({ count: 3, file: '/srv/knows.txt' }), 'Names 3 other nodes at /orrery/known (--knows and /srv/knows.txt, read again at every request): routers that read this node check each on chain and add it to their map.');
+  });
+
+  it('orrery peers says which node vouches for which, and how many it names that are not on the map', () => {
+    assert.deepEqual(vouchLines([{ by: 'Ironbridge Compute', named: [{ name: 'Halo Compute', address: a, onMap: true }, { name: null, address: b, onMap: false }] }]), ['  Ironbridge Compute vouches for Halo Compute (and 1 not on your map: not a listing on chain, or not read yet)']);
+    assert.deepEqual(vouchLines([{ by: 'Vault Nine', named: [{ name: null, address: b, onMap: false }] }]), ['  Vault Nine vouches for no node on your map (and 1 not on your map: not a listing on chain, or not read yet)']);
   });
 });

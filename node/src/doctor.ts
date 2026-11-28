@@ -534,6 +534,18 @@ export function foundThroughNodes(providers: FoundRow[], most = 10): string[] {
   return [...named.slice(0, most).map(line), ...(named.length > most ? [`  and ${named.length - most} more named by nodes`] : [])];
 }
 
+export type VouchRow = { by: string; named: { name: string | null; address: string; onMap: boolean }[] };
+
+/** Which node vouches for which (/orrery/known), one line a node: the names on this router's map, and how many it names
+ * that are not on the map (not a listing on chain, or not read yet). */
+export function vouchLines(vouches: VouchRow[]): string[] {
+  return vouches.map((v) => {
+    const on = v.named.filter((n) => n.onMap).map((n) => n.name ?? `${n.address.slice(0, 4)}\u2026${n.address.slice(-4)}`);
+    const off = v.named.length - on.length;
+    return `  ${v.by} vouches for ${on.length ? on.join(', ') : 'no node on your map'}${off ? ` (and ${off} not on your map: not a listing on chain, or not read yet)` : ''}`;
+  });
+}
+
 /** Where the router's map of the network came from, in one line: how many listings it has, and how many of them are in
  * the RPC's list, from peers (named by peer routers, read on chain), or only in its own record. Null when it has none. */
 export function mapLine(providers: FoundRow[]): string | null {
@@ -575,6 +587,8 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   else if (status.rpcLeftOut) out.push(rpcLeftOutLine(status.rpcLeftOut));
   out.push(...foundThroughPeers(status.providers ?? []));
   out.push(...foundThroughNodes(status.providers ?? []));
+  const vouches = (status as { vouches?: VouchRow[] }).vouches ?? [];
+  if (vouches.length) out.push(`nodes naming nodes (/orrery/known): ${vouches.length} node${vouches.length === 1 ? ' names' : 's name'} others`, ...vouchLines(vouches));
   return out;
 }
 

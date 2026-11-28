@@ -3589,7 +3589,9 @@ const all4 = () => registry.entries.size;
   reg.known?.clear();
   await registry.refresh();
   type NamedRow = { address: string; found?: string; namedBy?: string[] };
-  const namedRow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: NamedRow[] }).providers.find((p) => p.address === halo);
+  const namedStatus = (await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: NamedRow[]; vouches?: { by: string; named: { name: string | null; onMap: boolean }[] }[] };
+  const namedRow = namedStatus.providers.find((p) => p.address === halo);
+  const vouchRow = (namedStatus.vouches ?? []).find((v) => v.by === 'Ironbridge Compute');
   const namedPage = await (await fetch(`${ROUTER}/`)).text();
   const foundCapAt = namedPage.indexOf('const foundCap=');
   const { runInNewContext: runNamedPage } = await import('node:vm');
@@ -3607,6 +3609,10 @@ const all4 = () => registry.entries.size;
   check('the router console, running its own page code on the live status, marks the listing found because Ironbridge Compute named it',
     namedCap === ' <span class=cap>named by Ironbridge Compute</span>',
     namedCap || 'no mark from the console code');
+  const vouchLine = namedPeers.split('\n').find((l) => l.includes(' vouches for ')) ?? '';
+  check('the router says which node vouches for which: the status lists Ironbridge Compute naming Halo Compute, and orrery peers prints the line',
+    !!vouchRow && vouchRow.named.length === 1 && vouchRow.named[0].name === 'Halo Compute' && vouchRow.named[0].onMap && vouchLine.trim() === 'Ironbridge Compute vouches for Halo Compute',
+    `status: ${vouchRow ? `${vouchRow.by} → ${vouchRow.named.map((n) => n.name ?? '?').join(', ')}` : 'no vouches'} · orrery peers: ${vouchLine.trim() || 'no line'}`);
 }
 // orrery provider check reads each listing a node names (--knows) on chain, as a router would: an open listing passes, an
 // address that is not one fails with what routers will do with it.

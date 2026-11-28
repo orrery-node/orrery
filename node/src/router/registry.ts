@@ -112,6 +112,11 @@ export class Registry {
   namedBy(address: string): string[] {
     return [...this.known].filter(([, k]) => k.named.includes(address)).map(([by]) => by);
   }
+
+  /** Which listed node names which others at /orrery/known, as last asked: nodes that name none are left out. */
+  vouches(): { by: string; named: string[] }[] {
+    return [...this.known].filter(([by, k]) => k.named.length && this.entries.has(by)).map(([by, k]) => ({ by, named: [...k.named] }));
+  }
   /** Nodes whose address on this network stopped answering this router's health checks, with until when that address is
    * passed over: the node is reached as listed on chain meanwhile, whatever its beacons still say. */
   private lanDown = new Map<string, number>();
