@@ -2,6 +2,7 @@
 // already redeemed on chain and what is waiting. Read from /orrery/status, which answers only on this computer.
 import { nextPayoutSentence, noticeSentence, payoutFailedSentence, payoutRows, type Held, type NextPayout, type NoticeSent, type PayoutSummary } from './payouts.ts';
 import { reachSentence, type ReachNow } from './reach.ts';
+import { lanSentence } from '../lan.ts';
 import { slotsSentence, type SlotState } from './slots.ts';
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
@@ -119,7 +120,7 @@ export function consoleKeyPage(): string {
 export function providerConsolePage(): string {
   return `${consoleHead(`${NAME} provider`, 'Provider console')}
 <main>
-<div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p><p class="lede" id="reach" hidden></p></div>
+<div><h1><span>Your node.</span> Every answer, paid by the router that asked.</h1><p class="lede">Each answer comes back with a running total the router signed. Redeem pays the latest total on chain straight to your wallet, with nothing taken out. This page answers only on this computer.</p><p class="lede" id="reach" hidden></p><p class="lede" id="lan" hidden></p></div>
 <div class="stats" id="sum"></div>
 <p class="lede" id="fees" hidden></p>
 <section><h2>Recent answers, latest 12</h2><div class="wrap"><table><thead><tr><th>time</th><th>model</th><th>channel</th><th>tokens</th><th>earned</th><th>note</th></tr></thead><tbody id="recent"></tbody></table></div><p class="lede" id="slots" hidden></p></section>
@@ -138,6 +139,7 @@ const nextPayoutSentence=${nextPayoutSentence.toString()};
 const payoutFailedSentence=${payoutFailedSentence.toString()};
 const pacedSentence=${pacedSentence.toString()};
 const noticeSentence=${noticeSentence.toString()};
+const lanSentence=${lanSentence.toString()};
 const slotsSentence=${slotsSentence.toString()};
 const checked={};
 let cardMonth='';
@@ -163,7 +165,7 @@ document.getElementById('sum').className=s.wallet?'stats five':'stats';
 document.getElementById('recent').innerHTML=s.recent.slice(0,12).map(r=>'<tr><td>'+new Date(r.at).toLocaleTimeString()+'</td><td>'+esc(r.model)+'</td><td>'+esc(r.channel.slice(0,8))+'</td><td>'+r.inputTokens+'+'+r.outputTokens+'</td><td class=go>$'+esc(r.cost)+'</td><td>'+(r.sealed?'<span class=go>sealed</span> ':'')+(r.off?'<span class=go>holder −'+(r.off/100)+'%</span>':'')+'</td></tr>').join('')||'<tr class=empty><td colspan=6>No answers yet. Routers find you through your listing on chain.</td></tr>';
 if(s.payouts)s.payouts.checked=Object.assign({},s.payouts.checked,checked);document.getElementById('payouts').innerHTML=payoutRows(s.payouts);document.getElementById('check').hidden=!(s.payouts&&s.payouts.recent.length);
 const pf=payoutFailedSentence(s.payoutFailed),pe=document.getElementById('failed');pe.textContent=pf;pe.hidden=!pf;const nx=nextPayoutSentence(s.nextPayout),ne=document.getElementById('next');ne.textContent=nx;ne.hidden=!nx;const no=document.getElementById('notice');no.textContent=s.notify?'Payout notices go '+noticeSentence(s.notify.host,s.notify.last,Date.now())+'.':'';no.hidden=!s.notify;
-const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;
+const rs=reachSentence(s.reach,Date.now()),re=document.getElementById('reach');re.textContent=rs;re.hidden=!rs;const ls=lanSentence(s.lan,Date.now()),le=document.getElementById('lan');le.textContent=ls;le.hidden=!ls;
 const sl=document.getElementById('slots');sl.textContent=s.slots?'Slots: '+slotsSentence(s.slots)+'. When every slot is answering, the next free one goes to the largest holder discount.':'';sl.hidden=!s.slots;
 try{const e=await (await fetch('/orrery/earnings?since=24h',K)).json();const fe=document.getElementById('fees');fe.textContent=e.fees?'Fee money for payouts: '+e.fees.line+'.':'';fe.className=e.fees&&e.fees.low?'lede stop':'lede';fe.hidden=!e.fees;document.getElementById('earn').innerHTML=e.total.answers?[...e.rows,{...e.total,key:'total'}].map(r=>'<tr><td>'+esc(r.key)+'</td><td>'+r.answers+'</td><td>'+Number(r.inputTokens).toLocaleString('en-US')+'</td><td>'+Number(r.outputTokens).toLocaleString('en-US')+'</td><td class=go>$'+esc(r.usd)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served in the last 24 hours.</td></tr>';const ho=document.getElementById('holders'),hl=e.holders&&e.holders.answers?e.holders.line:'';ho.textContent=hl?hl.charAt(0).toUpperCase()+hl.slice(1)+'.':'';ho.hidden=!hl;const kd=document.getElementById('kinds'),ks=(e.kinds||[]);kd.textContent=ks.length>1?'By kind of work: '+ks.map(k=>k.key+' '+k.answers+' answer'+(k.answers===1?'':'s')+', $'+k.usd).join(' · ')+'.':'';kd.hidden=!(ks.length>1);const pc=document.getElementById('paced');pc.textContent=e.paced?pacedSentence(e.paced,e.total.answers):'';pc.hidden=!e.paced;}catch(err){}
 try{const b=await (await fetch('/orrery/books?since=7d',K)).json();const mo=document.getElementById('month');mo.textContent=b.month&&b.month.line?b.month.line+'.':'';mo.hidden=!(b.month&&b.month.line);document.getElementById('days').innerHTML=b.rows.length?[...b.rows,b.total].map(r=>'<tr><td>'+esc(r.day)+'</td><td>'+Number(r.answers).toLocaleString('en-US')+'</td><td>$'+esc(r.billed)+'</td><td>'+Number(r.payouts)+'</td><td class=go>$'+esc(r.paid)+'</td></tr>').join(''):'<tr class=empty><td colspan=5>Nothing served or paid out in the last 7 days.</td></tr>';const cs=document.getElementById('cardsec');if(b.month&&b.month.answers){drawCard(b.month,s.name);cs.hidden=false;}else cs.hidden=true;}catch(err){}

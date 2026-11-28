@@ -39,6 +39,17 @@ describe('the local console pages', () => {
     assert.deepEqual(routerConsole.lanBits({ lan: null, lanAnnouncing: null }), []);
   });
 
+  it('the node console says where the node says it is on its network, with the code the page runs', () => {
+    const html = providerConsolePage();
+    assert.ok(html.includes('id="lan"') && html.includes('const lanSentence=') && html.includes('lanSentence(s.lan,Date.now())'), 'the line and its code');
+    const at = html.indexOf('const lanSentence=') + 'const lanSentence='.length;
+    const src = html.slice(at, html.indexOf(';\nconst ', at));
+    const a = { to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', sent: 4, at: 1_000 };
+    const want = 'On this network: saying where this node is to 192.168.1.255:7373 every 15 s, signed with the node key; routers there reach it at http://192.168.1.20:7070 (4 sent, the last 12 s ago).';
+    assert.equal(String(runInNewContext(`(${src})(a, 13400)`, { a })), want, 'the inlined copy runs on its own');
+    assert.equal(String(runInNewContext(`(${src})(null, 0)`, {})), '');
+  });
+
   it('carry their two typefaces inside the page', () => {
     for (const [name, html] of Object.entries(pages)) {
       assert.equal((html.match(/@font-face/g) ?? []).length, 2, `${name} console`);

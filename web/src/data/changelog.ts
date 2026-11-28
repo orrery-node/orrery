@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: 'The node console says where a node started with `--lan-announce` says it is on its network, the address routers there reach it at, and how many signed beacons went out, as `orrery provider status` does.' },
   { who: 'router', text: 'The router console says, beside the peers, how many routers it heard on this network and whether it reads them as peers, and how many beacons its own `--lan-announce` sent.' },
   { who: 'router', text: '`orrery peers` and `orrery doctor` name the routers heard on this network (address and key), say whether this router reads them as peers or how to start (`--lan-peers`), and what this router itself says there with `--lan-announce` and how many beacons went out.' },
   { who: 'router', text: '`--lan-peers`: with `--lan-listen`, the routers heard on this network are read as peers, each pinned to the key that signed what it said, shown as met through this network and counted like a router met through a peer; up to `--meet-max`, read again as soon as a new one is heard, and dropped when it goes quiet.' },

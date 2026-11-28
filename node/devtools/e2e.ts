@@ -3403,6 +3403,11 @@ const all4 = () => registry.entries.size;
   const lanTool = await (lanMcp as unknown as (msg: unknown, router: string, f: typeof fetch, v: string) => Promise<{ result?: { content?: { text?: string }[] } } | null>)({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'peers', arguments: {} } }, ROUTER, fetch, 'rehearsal').then((r) => r?.result?.content?.[0]?.text ?? '').catch(() => '');
   const lanPage = await (await fetch(`${ROUTER}/`)).text();
   const lanNodeStatus = (await cliOut(['status'])).split('\n').find((l) => l.startsWith('  on this network')) ?? '';
+  const nodePageLan = await (await fetch(`http://127.0.0.1:${ibPort}/?key=${ibKey}`)).text();
+  const nodeStatusLan = await (await fetch(`http://127.0.0.1:${ibPort}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json();
+  const lanFnAt = nodePageLan.indexOf('const lanSentence=');
+  const { runInNewContext: runNodePage } = await import('node:vm');
+  const nodeConsoleLan = lanFnAt < 0 ? '' : String(runNodePage(`(${nodePageLan.slice(lanFnAt + 'const lanSentence='.length, nodePageLan.indexOf(';\nconst ', lanFnAt + 1))})(s.lan, Date.now())`, { s: nodeStatusLan }));
   forged();
   kl.stopLan?.();
   await rl.stopLan?.();
@@ -3421,6 +3426,9 @@ const all4 = () => registry.entries.size;
   check('orrery provider status says where the node says it is on its network, to whom, and how many signed beacons went out',
     new RegExp(`^  on this network {7}saying where it is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key: routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)$`).test(lanNodeStatus),
     lanNodeStatus.replaceAll('127.0.0.1', '<host>').trim().slice(0, 200) || 'no line in provider status');
+  check('the node console, running its own page code on the node\u2019s live status, says where the node says it is on its network and how many signed beacons went out',
+    nodePageLan.includes('id="lan"') && new RegExp(`^On this network: saying where this node is to ${heardAt.replaceAll('.', '\\.')} every 15 s, signed with the node key; routers there reach it at ${nearUrl.replaceAll('.', '\\.')} \\(\\d+ sent, the last \\d+ s ago\\)\\.$`).test(nodeConsoleLan),
+    nodeConsoleLan.replaceAll('127.0.0.1', '<host>').slice(0, 200) || 'no line in the node console');
 }
 // Routers on the same network find each other: one started with --lan-announce (and --share-notes) says where its notes
 // are, signed with its session key; a router's --lan-listen keeps it only with that key's signature.

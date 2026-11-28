@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · The node console says where a node started with `--lan-announce` says it is on its network, the address routers there reach it at, and how many signed beacons went out, as `orrery provider status` does.
 - **Router** · The router console says, beside the peers, how many routers it heard on this network and whether it reads them as peers, and how many beacons its own `--lan-announce` sent.
 - **Router** · `orrery peers` and `orrery doctor` name the routers heard on this network (address and key), say whether this router reads them as peers or how to start (`--lan-peers`), and what this router itself says there with `--lan-announce` and how many beacons went out.
 - **Router** · `--lan-peers`: with `--lan-listen`, the routers heard on this network are read as peers, each pinned to the key that signed what it said, shown as met through this network and counted like a router met through a peer; up to `--meet-max`, read again as soon as a new one is heard, and dropped when it goes quiet.

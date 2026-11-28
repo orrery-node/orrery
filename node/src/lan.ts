@@ -125,6 +125,14 @@ export function announceLine(a: Announcing, now = Date.now()): string {
   return `  on this network       saying where it is to ${a.to} every ${LAN_EVERY_MS / 1000} s, signed with the node key: routers there reach it at ${a.url} (${last})`;
 }
 
+/** The node console's sentence for --lan-announce, or nothing when the node does not say where it is. Self-contained:
+ * the console page inlines it. */
+export function lanSentence(a: { to: string; url: string; sent: number; at: number | null } | null | undefined, now: number): string {
+  if (!a) return '';
+  const last = a.at === null ? 'none sent yet' : a.sent + ' sent, the last ' + Math.max(0, Math.round((now - a.at) / 1000)) + ' s ago';
+  return 'On this network: saying where this node is to ' + a.to + ' every 15 s, signed with the node key; routers there reach it at ' + a.url + ' (' + last + ').';
+}
+
 /** What a router heard on its network: the latest beacon for each listing, with when it came. */
 export class LanListener {
   private heard = new Map<string, Beacon>();
