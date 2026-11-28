@@ -1,0 +1,22 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { Keypair } from '@solana/web3.js';
+import { KNOWN_MAX, knownList, readKnown } from '../src/known.ts';
+
+const a = Keypair.generate().publicKey.toBase58();
+const b = Keypair.generate().publicKey.toBase58();
+const own = Keypair.generate().publicKey.toBase58();
+
+describe('nodes naming other nodes', () => {
+  it('a node names each listing it was given once, well-formed, never its own', () => {
+    assert.deepEqual(knownList([a, ` ${b} `, a, 'not-a-listing', own], own), [a, b]);
+    assert.deepEqual(knownList(undefined, own), []);
+    assert.equal(knownList(Array.from({ length: KNOWN_MAX + 10 }, () => Keypair.generate().publicKey.toBase58()), own).length, KNOWN_MAX);
+  });
+
+  it('a router reads a node\'s list as data: well-formed addresses only, at most KNOWN_MAX', () => {
+    assert.deepEqual(readKnown({ known: [a, 7, 'x', a, b] }), [a, b]);
+    assert.deepEqual(readKnown({ known: 'nope' }), []);
+    assert.deepEqual(readKnown(null), []);
+  });
+});

@@ -3541,6 +3541,18 @@ const all4 = () => registry.entries.size;
     !!lanSt?.lan && /^127\.0\.0\.1:\d+$/.test(lanSt.lan.listening ?? '') && lanSt.lan.peers === true,
     lanSt ? `listening ${lanSt.lan?.listening?.replace('127.0.0.1', '<host>') ?? 'not'}, lan peers ${lanSt.lan?.peers ?? 'off'}` : `the router did not start${exited !== null ? ` (exit ${exited})` : ''}`);
 }
+// A node names other nodes its operator vouches for (--knows) at /orrery/known: each once, well-formed, never itself.
+{
+  const ironCfg = nodes[1].cfg as { knows?: string[] };
+  const before = ironCfg.knows;
+  ironCfg.knows = [nodes[3].pda.toBase58(), 'not-a-listing', nodes[1].pda.toBase58(), nodes[3].pda.toBase58()];
+  const knownRes = await fetch('http://127.0.0.1:17282/orrery/known');
+  const known = knownRes.ok ? ((await knownRes.json()) as { known?: string[] }).known ?? [] : null;
+  ironCfg.knows = before;
+  check('a node names the other nodes its operator vouches for at /orrery/known: each once, well-formed, never itself',
+    !!known && known.length === 1 && known[0] === nodes[3].pda.toBase58(),
+    known ? `named ${known.length}: ${known.map((k) => (k === nodes[3].pda.toBase58() ? 'Halo Compute' : k.slice(0, 6))).join(', ')}` : `answer ${knownRes.status}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

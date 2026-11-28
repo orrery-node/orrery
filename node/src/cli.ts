@@ -136,6 +136,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --upstream <url> --name <name> --public-url <url> --out <file> --force
   ${CLI} provider burn    --config provider.json [--yes]   what your burn pledge owes now; with --yes, buy the network token with it and burn it
   ${CLI} provider check   --config provider.json [--json]   is this node ready to earn: model server, public address, listing, fee money, enclave, pledge
+  ${CLI} provider start   --config provider.json [--knows <listing,…>]   --knows names other nodes' listings at /orrery/known (nodes you vouch for)
   ${CLI} provider start   --config provider.json [--lan-announce host:port [--lan-url <url>]]   --lan-announce says where this node is on its network every 15 s, signed with the node key, to a router's --lan-listen (or the network's broadcast address, x.x.x.255:7373), so routers there reach it directly
   ${CLI} provider compose --config provider.json [--out docker-compose.yml] [--print]   a docker-compose file that runs this node in a container
   ${CLI} provider console --config provider.json   the address of this node's console, with its key (on this computer only)
@@ -307,6 +308,8 @@ async function provider(sub: string) {
   if (process.env.ORRERY_UPSTREAM_URL) cfg.upstream.baseUrl = process.env.ORRERY_UPSTREAM_URL;
   const lanAnnounce = lanFlag(argv, 'lan-announce', null) ?? process.env.ORRERY_LAN_ANNOUNCE;
   if (lanAnnounce) cfg.lan = { announce: lanAnnounce, url: flag('lan-url', process.env.ORRERY_LAN_URL) ?? cfg.lan?.url };
+  const knows = flag('knows', process.env.ORRERY_KNOWS);
+  if (knows) cfg.knows = knows.split(',').map((a) => a.trim()).filter(Boolean);
   if (sub === 'compose') {
     // A docker-compose file for this node: the official Node image running this package, nothing built or hosted by us.
     const out = flag('out', 'docker-compose.yml')!;
