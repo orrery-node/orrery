@@ -4,6 +4,7 @@ import { Keypair } from '@solana/web3.js';
 import { signerOf } from '../src/keys.ts';
 import { announce, announceLine, beaconSigned, lanAddress, lanFlag, LAN_FRESH_MS, LAN_MAX_HEARD, LAN_MAX_ROUTERS, LanListener, parseBeacon, parseRouterBeacon, routerBeaconSigned, signBeacon, signRouterBeacon, type Beacon } from '../src/lan.ts';
 import { addLanNode, onLan, relayFor, setLanNodes, setNodeRelay } from '../src/proxy.ts';
+import { lanCheckLine } from '../src/provider/check.ts';
 import { lanLine } from '../src/router/server.ts';
 
 const node = Keypair.generate();
@@ -150,6 +151,13 @@ describe('a node saying where it is on its own network', () => {
     lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.30:7171', now - 1_000, signerOf(r))), now);
     lan.take(JSON.stringify(signRouterBeacon(r.publicKey.toBase58(), 'http://192.168.1.31:7171', now, signerOf(r))), now);
     assert.deepEqual(told, ['http://192.168.1.30:7171', 'http://192.168.1.31:7171']);
+  });
+
+  it('orrery provider check reads the address a node gives routers on its network, as they would', () => {
+    const want = Buffer.alloc(32, 7);
+    assert.deepEqual(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: Buffer.alloc(32, 7), want }), { ok: true, what: 'this network', detail: "says where it is to 192.168.1.255:7373; routers there reach it at http://192.168.1.20:7070, which serves this node's price list" });
+    assert.equal(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: null, want }).ok, false);
+    assert.match(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: Buffer.alloc(32, 8), want }).detail, /another price list/);
   });
 
   it('the router says once where a node on its network is reached', () => {

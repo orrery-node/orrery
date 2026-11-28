@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'provider', text: '`orrery provider check` with `--lan-announce` reads the address the node gives routers on its network (`--lan-url`) as they would, and fails, saying what to fix, when nothing answers there or the price list there is not the one on chain.' },
   { who: 'router', text: '`--lan-listen` on its own listens on port 7373 (or `ORRERY_LAN_LISTEN`), so `--lan-listen --lan-peers` no longer reads the next flag as an address; `--lan-announce` with no address says what it needs.' },
   { who: 'provider', text: 'The node console says where a node started with `--lan-announce` says it is on its network, the address routers there reach it at, and how many signed beacons went out, as `orrery provider status` does.' },
   { who: 'router', text: 'The router console says, beside the peers, how many routers it heard on this network and whether it reads them as peers, and how many beacons its own `--lan-announce` sent.' },

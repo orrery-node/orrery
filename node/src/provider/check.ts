@@ -18,6 +18,7 @@ import { FEE_FLOOR_LAMPORTS, NODE_VERSION, TOKEN_ACCOUNT_BYTES, type ProviderNod
 import { readOwnStatus } from './console.ts';
 import { fetchNode } from '../proxy.ts';
 import { latestOnNpm, newer, NO_UPDATE_CHECK } from '../doctor.ts';
+import { networkAddress } from '../lan.ts';
 
 export type CheckLine = { ok: boolean | null; what: string; detail: string };
 
@@ -98,6 +99,14 @@ export function servedManifestLine(served: Buffer | null, chain: Uint8Array, url
   if (!served) return { ok: false, what: 'manifest', detail: `${url}/v1/manifest did not answer, so routers cannot read this node’s prices` };
   if (served.equals(chain)) return null;
   return { ok: false, what: 'manifest', detail: `the price list ${url} serves is not the one on chain, so routers refuse this node: run provider register if the new prices are right, and restart the node so it serves what is listed` };
+}
+
+/** With --lan-announce: whether the address this node gives routers on its network serves this node's price list (the
+ * one on chain once listed), read there as a router on that network would. */
+export function lanCheckLine(o: { to: string; url: string; served: Buffer | null; want: Uint8Array }): CheckLine {
+  if (!o.served) return { ok: false, what: 'this network', detail: `${o.url}/v1/manifest did not answer, so routers that hear this node on its network would not reach it there: --lan-url is the address they are sent to` };
+  if (!o.served.equals(Buffer.from(o.want))) return { ok: false, what: 'this network', detail: `${o.url} serves another price list than this node's, so routers on its network would refuse it there: --lan-url must reach this node` };
+  return { ok: true, what: 'this network', detail: `says where it is to ${o.to}; routers there reach it at ${o.url}, which serves this node's price list` };
 }
 
 /** The line `provider status` prints for it: what the state means for routers, and the command that clears it. */
@@ -231,6 +240,13 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
     const served = await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? Buffer.from(await r.arrayBuffer()) : null)).catch(() => null);
     const line = servedManifestLine(served ? manifestHash(served) : null, acct.manifestHash, cfg.publicUrl);
     if (line) out.push(line);
+  }
+
+  // The address this node gives routers on its own network (--lan-announce), read there as they would read it.
+  if (cfg.lan) {
+    const url = (cfg.lan.url ?? `http://${networkAddress() ?? '127.0.0.1'}:${cfg.listen}`).replace(/\/$/, '');
+    const served = await fetchWithTimeout(`${url}/v1/manifest`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? Buffer.from(await r.arrayBuffer()) : null)).catch(() => null);
+    out.push(lanCheckLine({ to: cfg.lan.announce, url, served: served ? manifestHash(served) : null, want: acct?.active ? acct.manifestHash : node.manifestHash }));
   }
 
   // Payouts go to the wallet's USDC account. A wallet made by `orrery wallet new` has none yet: the first payout opens it.
