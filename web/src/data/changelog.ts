@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery doctor` says which proxy the running router uses and what it means: with `--tor`, that the nodes and the Solana RPC see a Tor exit and Tor resolves their names.' },
   { who: 'router', text: 'With `--tor` and nothing at Tor\'s port, the router does not start and says how to start Tor (the tor service on 9050, the Tor Browser on 9150 with `--tor 9150`); it never goes around the proxy.' },
   { who: 'everyone', text: '`--tor [port]`: every request to the nodes and the Solana RPC goes through the Tor on this computer (its SOCKS port, 9050 unless given or `ORRERY_TOR_PORT`), with names resolved by Tor; the status names the proxy Tor. Not with `--proxy`, which it replaces.' },
   { who: 'router', text: '`orrery peers` (and the `peers` tool in `orrery mcp`) says which node vouches for which at `/orrery/known`, by name for the nodes on your map and how many more it names; the status has `vouches`.' },

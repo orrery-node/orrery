@@ -184,6 +184,8 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   // A router started before an update keeps the old code until it is started again: npm install changes the files only.
   const behind = routerBehind(status?.version, o.installed === undefined ? PACKAGE_VERSION : o.installed);
   if (behind) out.push({ ok: null, what: '  release', detail: behind });
+  const routerProxy = (status as { proxy?: string | null } | null)?.proxy;
+  if (routerProxy) out.push({ ok: null, what: '  proxy', detail: routerProxyLine(routerProxy) });
   // The peer routers it reads, the relay it runs and how it found the listings: the console's Peers section, in lines.
   // The peers in one line first, then a line for each in the order orrery peers lists them.
   if (status?.peers?.length) {
@@ -298,6 +300,13 @@ export function lanRoutersLine(routers: { key: string; url: string }[], lanPeers
 /** What this router says on its network (--lan-announce): where its notes are, to whom, how many beacons went out. */
 export function lanAnnouncingLine(a: { to: string; url: string; sent: number }): string {
   return `this router says where its notes are (${a.url}) to ${a.to} every 15 s, signed with its key: ${a.sent} sent`;
+}
+
+/** The running router's proxy as `orrery doctor` says it: for --tor, that the nodes and the RPC see a Tor exit and names
+ * are resolved by Tor; for any other, that they see the proxy's address. */
+export function routerProxyLine(label: string): string {
+  if (label.startsWith('Tor (')) return `${label}: the nodes and the Solana RPC see a Tor exit, not this computer, and Tor resolves their names`;
+  return `${label}: the nodes and the Solana RPC see this proxy's address, not this computer`;
 }
 
 /** How many routers this router's relay carried today, as a count only. */

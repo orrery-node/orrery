@@ -1,4 +1,5 @@
 import { after, before, describe, it } from 'node:test';
+import { routerProxyLine } from '../src/doctor.ts';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -597,5 +598,10 @@ describe('--tor', () => {
   it('says how to start Tor when nothing answers at its port, and the Tor Browser\'s own port', () => {
     assert.equal(proxyDownLine(torProxy(['router', '--tor'], {})!), "nothing answers at 127.0.0.1:9050, where --tor looks for Tor's SOCKS port: start Tor first (the tor service listens on 9050; the Tor Browser on 9150, so --tor 9150 while it is open). The router does not fall back to reaching nodes directly");
     assert.equal(proxyDownLine(parseProxy('http://127.0.0.1:8118')), 'nothing answers at the proxy 127.0.0.1:8118; start it first. The router does not fall back to reaching nodes directly');
+  });
+
+  it('orrery doctor says what the running router\'s proxy means: a Tor exit for --tor, the proxy\'s address otherwise', () => {
+    assert.equal(routerProxyLine('Tor (127.0.0.1:9050)'), 'Tor (127.0.0.1:9050): the nodes and the Solana RPC see a Tor exit, not this computer, and Tor resolves their names');
+    assert.equal(routerProxyLine('127.0.0.1:8118'), "127.0.0.1:8118: the nodes and the Solana RPC see this proxy's address, not this computer");
   });
 });

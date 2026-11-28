@@ -3705,6 +3705,7 @@ const all4 = () => registry.entries.size;
     if (torSt && (torSt.providers?.length ?? 0) > 0) break;
     await sleep(200);
   }
+  const torDoc = (await doctor({ rpc: RPC, mint: usdc, router: 'http://127.0.0.1:17298', deposit: USD })).find((l) => l.what.trim() === 'proxy')?.detail ?? '';
   torRouter.kill();
   await new Promise((done) => (torRouter.exitCode !== null ? done(null) : torRouter.once('exit', () => done(null))));
   for (const c of torSockets) c.destroy();
@@ -3729,6 +3730,9 @@ const all4 = () => registry.entries.size;
   check('orrery router --tor with nothing at Tor\u2019s port does not start, and says how to start Tor',
     noTor.code !== null && noTor.code !== 0 && noTor.err.includes(`nothing answers at 127.0.0.1:${deadPort}, where --tor looks for Tor's SOCKS port: start Tor first`),
     `exit ${noTor.code ?? 'killed'} · ${noTor.err.replace(String(deadPort), '<port>').trim().split('\n').pop()?.slice(0, 150) || 'nothing said'}`);
+  check('orrery doctor says the running router goes through Tor: the nodes and the RPC see a Tor exit, and Tor resolves their names',
+    torDoc === `Tor (127.0.0.1:${torPort}): the nodes and the Solana RPC see a Tor exit, not this computer, and Tor resolves their names`,
+    torDoc.replace(String(torPort), '<port>') || 'no proxy line in orrery doctor');
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
