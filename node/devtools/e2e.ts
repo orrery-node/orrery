@@ -3419,6 +3419,7 @@ const all4 = () => registry.entries.size;
   const downAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': near1.pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
   const downStatus = downAsk.status;
   await downAsk.text();
+  const downDoc = (await doctor({ rpc: RPC, mint: usdc, router: ROUTER, deposit: USD })).find((l) => l.what.trim() === 'this network')?.detail ?? '';
   const nodeConsoleLan = lanFnAt < 0 ? '' : String(runNodePage(`(${nodePageLan.slice(lanFnAt + 'const lanSentence='.length, nodePageLan.indexOf(';\nconst ', lanFnAt + 1))})(s.lan, Date.now())`, { s: nodeStatusLan }));
   forged();
   kl.stopLan?.();
@@ -3446,6 +3447,9 @@ const all4 = () => registry.entries.size;
   check('a node that stops answering at its address on this network is reached as listed again: the router passes that address over for five minutes though its beacons still say it, and the node answers',
     !!downRow && downRow.lan === null && downRow.endpoint === 'http://127.0.0.1:17282' && (downRow.lanDownFor ?? 0) > 240_000 && downStatus === 200,
     downRow ? `after the address went quiet: lan ${downRow.lan ? 'still used' : 'set aside'}, endpoint ${downRow.endpoint.replace('127.0.0.1', '<host>')}, passed over ${Math.round((downRow.lanDownFor ?? 0) / 1000)} s more, answer ${downStatus}` : 'no row');
+  check('orrery doctor says which node stopped answering on this network and for how long it is reached as listed',
+    downDoc.includes('Ironbridge Compute stopped answering there and is reached as listed for 5 more min'),
+    downDoc.replaceAll('127.0.0.1', '<host>').slice(0, 220) || 'no line');
 }
 // Routers on the same network find each other: one started with --lan-announce (and --share-notes) says where its notes
 // are, signed with its session key; a router's --lan-listen keeps it only with that key's signature.

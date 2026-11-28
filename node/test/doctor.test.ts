@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanAnnouncingLine, lanDoctorLine, lanRoutersLine, LAN_LISTINGS_LINE, lanNear, mapLine as mapLineOf, newer, noPeerRelayLine, peersReport as peersReportOf, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
+import { bytesText, byTrust, fullRelaysText, holderLaneLine, lanAnnouncingLine, lanDoctorLine, lanQuiet, lanRoutersLine, LAN_LISTINGS_LINE, lanNear, mapLine as mapLineOf, newer, noPeerRelayLine, peersReport as peersReportOf, peerCheck, peerLine, peersReport, peersSummary, relayChoices, relayLine, render, routerBehind, versionCheck } from '../src/doctor.ts';
 import { agentDayLine, keptLine, paidLine, routersTodayLine } from '../src/doctor.ts';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -334,5 +334,11 @@ describe('orrery doctor, what the running router paid', () => {
     assert.equal(lanRoutersLine([{ key: k, url: 'http://192.168.1.30:7171' }], false), `1 router heard on this network, each signed with its own key: http://192.168.1.30:7171 (KKKK\u2026abcd); start this router with --lan-peers to read them as peers`);
     assert.equal(lanRoutersLine([{ key: k, url: 'http://192.168.1.30:7171' }, { key: k, url: 'http://192.168.1.31:7171' }], true), `2 routers heard on this network, each signed with its own key: http://192.168.1.30:7171 (KKKK\u2026abcd), http://192.168.1.31:7171 (KKKK\u2026abcd); read as peers, each pinned to that key`);
     assert.equal(lanAnnouncingLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.30:7171', sent: 3 }), 'this router says where its notes are (http://192.168.1.30:7171) to 192.168.1.255:7373 every 15 s, signed with its key: 3 sent');
+  });
+
+  it('says which node stopped answering on this network and for how long it is reached as listed', () => {
+    const providers = [{ address: 'A'.repeat(44), name: 'Kestrel GPU Co-op', lan: null, lanDownFor: 299_000 }, { address: 'B'.repeat(44), name: 'Vault Nine', lan: null, lanDownFor: 0 }];
+    assert.deepEqual(lanQuiet(providers), [{ name: 'Kestrel GPU Co-op', ms: 299_000 }]);
+    assert.equal(lanDoctorLine({ listening: '0.0.0.0:7373', heard: 2 }, [], lanQuiet(providers)), 'listening on 0.0.0.0:7373 (UDP): 2 listings heard on this network, none reached there yet; Kestrel GPU Co-op stopped answering there and is reached as listed for 5 more min; the other 1 not used (no such listing on chain, or not signed by the node key on it)');
   });
 });

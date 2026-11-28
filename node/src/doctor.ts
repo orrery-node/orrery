@@ -199,7 +199,7 @@ export async function doctor(o: { rpc: string; mint: PublicKey; wallet?: PublicK
   else if (via?.peerRelay) out.push({ ok: null, what: '  nodes via', detail: `${via.peerRelay}, a peer's relay (--proxy-via-peers): the nodes see that router, not this computer${via.spreadRelays ? SPREAD_WAITS : ''}` });
   else if (via?.proxyViaPeers) out.push({ ok: null, what: '  nodes via', detail: noPeerRelayLine((status?.peers ?? []).filter((p) => ((p as { relayDownFor?: number | null }).relayDownFor ?? 0) > 0).length) });
   const lan = (status as { lan?: { listening: string | null; heard: number } | null } | null)?.lan;
-  if (lan) out.push({ ok: null, what: '  this network', detail: lanDoctorLine(lan, lanNear((status?.providers ?? []) as FoundRow[])) });
+  if (lan) out.push({ ok: null, what: '  this network', detail: lanDoctorLine(lan, lanNear((status?.providers ?? []) as FoundRow[]), lanQuiet((status?.providers ?? []) as FoundRow[])) });
   const lanMore = status as { lan?: { routers?: { key: string; url: string }[]; peers?: boolean } | null; lanAnnouncing?: { to: string; url: string; sent: number } | null } | null;
   const routersLine = lanMore?.lan ? lanRoutersLine(lanMore.lan.routers ?? [], !!lanMore.lan.peers) : null;
   if (routersLine) out.push({ ok: null, what: '  this network', detail: routersLine });
@@ -278,12 +278,13 @@ export { bytesText, rpcLeftOutLine };
 
 /** --lan-listen as `orrery doctor` says it: where the router listens, how many listings it heard on its network, and
  * which nodes it reaches there directly (only those whose listing's node key signed where they are). */
-export function lanDoctorLine(lan: { listening: string | null; heard: number }, near: { name: string; url: string }[]): string {
+export function lanDoctorLine(lan: { listening: string | null; heard: number }, near: { name: string; url: string }[], down: { name: string; ms: number }[] = []): string {
   const at = lan.listening ?? '?';
+  const quiet = down.length ? `; ${down.map((d) => `${d.name} stopped answering there and is reached as listed for ${Math.max(1, Math.ceil(d.ms / 60_000))} more min`).join(', ')}` : '';
   if (!lan.heard) return `listening on ${at} (UDP) for nodes on this network; none has said where it is yet: a node joins with orrery provider start --lan-announce <this computer>:${at.split(':').pop()} (or the network's broadcast address)`;
   const reached = near.length ? `${near.length} reached there directly: ${near.map((x) => `${x.name} at ${x.url}`).join(', ')}` : 'none reached there yet';
-  const rest = lan.heard - near.length;
-  return `listening on ${at} (UDP): ${lan.heard} listing${lan.heard === 1 ? '' : 's'} heard on this network, ${reached}${rest > 0 ? `; the other ${rest} not used (no such listing on chain, or not signed by the node key on it)` : ''}`;
+  const rest = lan.heard - near.length - down.length;
+  return `listening on ${at} (UDP): ${lan.heard} listing${lan.heard === 1 ? '' : 's'} heard on this network, ${reached}${quiet}${rest > 0 ? `; the other ${rest} not used (no such listing on chain, or not signed by the node key on it)` : ''}`;
 }
 
 /** The routers heard on this network (each signed with its own key), and whether this router reads them as peers. */
@@ -496,11 +497,16 @@ export function listingsDetail(n: number, discovery: string | null, fromRecord: 
 /** Where the listings came from when the RPC will not list the program and no peer named any: the router's own record. */
 export const RECORD_LINE = 'the listings came from this router\u2019s own record of the nodes it watched before, each checked on chain (this RPC does not list the program\u2019s accounts; add a peer router with --peer to find new ones)';
 
-export type FoundRow = { address: string; name?: string | null; found?: string; via?: string | null; peers?: { routers: number } | null; lan?: { url: string } | null };
+export type FoundRow = { address: string; name?: string | null; found?: string; via?: string | null; peers?: { routers: number } | null; lan?: { url: string } | null; lanDownFor?: number };
 
 /** The nodes a router reaches on its own network, by name and the address there. */
 export function lanNear(providers: FoundRow[]): { name: string; url: string }[] {
   return providers.filter((p) => p.lan).map((p) => ({ name: p.name ?? `${p.address.slice(0, 6)}\u2026`, url: p.lan!.url }));
+}
+
+/** The nodes whose address on this network went quiet, by name and how long more they are reached as listed. */
+export function lanQuiet(providers: FoundRow[]): { name: string; ms: number }[] {
+  return providers.filter((p) => (p.lanDownFor ?? 0) > 0).map((p) => ({ name: p.name ?? `${p.address.slice(0, 6)}\u2026`, ms: p.lanDownFor! }));
 }
 
 /** Where the listings came from when the RPC will not list the program and only nodes on this network named them. */
@@ -549,7 +555,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   const route = nodesViaLine(status);
   if (route) out.push(route);
   if ((status.peerRelays?.length ?? 0) > 1) out.push(...spreadByNode(status.providers ?? []));
-  if (status.lan) out.push(`this network: ${lanDoctorLine(status.lan, lanNear(status.providers ?? []))}`);
+  if (status.lan) out.push(`this network: ${lanDoctorLine(status.lan, lanNear(status.providers ?? []), lanQuiet(status.providers ?? []))}`);
   const heardRouters = status.lan ? lanRoutersLine(status.lan.routers ?? [], !!status.lan.peers) : null;
   if (heardRouters) out.push(`this network: ${heardRouters}`);
   if (status.lanAnnouncing) out.push(`this network: ${lanAnnouncingLine(status.lanAnnouncing)}`);

@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Router** · `orrery doctor` and `orrery peers` say which node stopped answering at its address on this network and for how many more minutes it is reached as listed.
 - **Router** · A node that stops answering the router's health checks at its address on this network is reached as listed on chain again for five minutes, whatever its beacons still say, and the router says so in its log; the status shows `lanDownFor` for it.
 - **Node** · `orrery provider check` with `--lan-announce` reads the address the node gives routers on its network (`--lan-url`) as they would, and fails, saying what to fix, when nothing answers there or the price list there is not the one on chain.
 - **Router** · `--lan-listen` on its own listens on port 7373 (or `ORRERY_LAN_LISTEN`), so `--lan-listen --lan-peers` no longer reads the next flag as an address; `--lan-announce` with no address says what it needs.
