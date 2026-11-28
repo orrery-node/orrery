@@ -252,6 +252,11 @@ const send = (res: ServerResponse, status: number, body: unknown, headers: Recor
 /** What a peer met on this router's own network says it was met through. */
 export const LAN_VIA = 'this network';
 
+/** A node that stopped answering at its address on this router's own network. */
+export function lanDownLine(name: string, url: string, listed: string): string {
+  return `${name} stopped answering on this network at ${url}: reached as listed (${listed}) for the next 5 min, then tried on this network again`;
+}
+
 /** A node first reached on this router's own network. */
 export function lanLine(name: string, url: string, listed: string): string {
   return `${name} is on this network: its requests go to ${url} directly (listed on chain at ${listed}), checked by the node key on its listing`;
@@ -374,6 +379,11 @@ export class Router {
     o.channels.note ??= (l) => this.log(l);
     // Peer exchange: the listings the peer routers named, for an RPC that will not list the program's accounts.
     o.registry.peerListings ??= () => [...this.peerNotes.values()].flat().map((n) => n.address);
+    o.registry.onLanDown ??= (e) => {
+      this.log(lanDownLine(e.manifest?.name ?? e.address, e.lan?.url ?? '?', e.lan?.listed ?? e.account.endpoint));
+      this.lanSaid.delete(e.address);
+      this.soonRefresh();
+    };
   }
 
   /** Says once when the RPC's list of the program starts leaving out listings the peers named, and again when the count
@@ -403,15 +413,7 @@ export class Router {
     lan.onRouter = () => {
       if (this.o.lanPeers) void this.readPeers();
     };
-    lan.onNew = () => {
-      if (this.lanTimer) return;
-      this.lanTimer = setTimeout(() => {
-        this.lanTimer = null;
-        this.lanRefreshedAt = Date.now();
-        void this.o.registry.refresh().then(() => this.noteLan(), () => undefined);
-      }, Math.max(1_000, this.lanRefreshedAt + 15_000 - Date.now()));
-      this.lanTimer.unref?.();
-    };
+    lan.onNew = () => this.soonRefresh();
     this.log(`listening on ${at} (UDP) for nodes on this network: one whose listing's node key signs where it is gets its requests there, directly`);
     return at;
   }
@@ -457,6 +459,17 @@ export class Router {
     this.lanAnnounceStop?.();
     this.lanAnnounceStop = null;
     this.lanAnnouncing = null;
+  }
+
+  /** Refreshes the listings a second from now, and never more often than every 15 seconds: for what this network says. */
+  private soonRefresh(): void {
+    if (this.lanTimer) return;
+    this.lanTimer = setTimeout(() => {
+      this.lanTimer = null;
+      this.lanRefreshedAt = Date.now();
+      void this.o.registry.refresh().then(() => this.noteLan(), () => undefined);
+    }, Math.max(1_000, this.lanRefreshedAt + 15_000 - Date.now()));
+    this.lanTimer.unref?.();
   }
 
   /** Says once for each node first reached on this network, with where it is listed. */
@@ -1019,6 +1032,8 @@ export class Router {
       found: this.o.registry.throughPeers.has(e.address) ? 'peers' : this.o.registry.fromLan.has(e.address) ? 'lan' : this.o.registry.fromRecord.has(e.address) ? 'record' : 'rpc',
       // On this router's own network: where its requests go there, and the address on chain they would go to otherwise.
       lan: e.lan ?? null,
+      // How long more its address on this network is passed over after it stopped answering there (ms), or 0.
+      lanDownFor: this.o.registry.lanDownFor(e.address),
       // The peer relay this router's requests to this node go through now (--proxy-via-peers), or null for its own way.
       via: ((r) => (r ? `http://${r.host}:${r.port}` : null))(this.viaPeers ? relayFor(e.account.endpoint) : null),
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),

@@ -5,7 +5,7 @@ import { signerOf } from '../src/keys.ts';
 import { announce, announceLine, beaconSigned, lanAddress, lanFlag, LAN_FRESH_MS, LAN_MAX_HEARD, LAN_MAX_ROUTERS, LanListener, parseBeacon, parseRouterBeacon, routerBeaconSigned, signBeacon, signRouterBeacon, type Beacon } from '../src/lan.ts';
 import { addLanNode, onLan, relayFor, setLanNodes, setNodeRelay } from '../src/proxy.ts';
 import { lanCheckLine } from '../src/provider/check.ts';
-import { lanLine } from '../src/router/server.ts';
+import { lanDownLine, lanLine } from '../src/router/server.ts';
 
 const node = Keypair.generate();
 const listing = Keypair.generate().publicKey.toBase58();
@@ -158,6 +158,10 @@ describe('a node saying where it is on its own network', () => {
     assert.deepEqual(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: Buffer.alloc(32, 7), want }), { ok: true, what: 'this network', detail: "says where it is to 192.168.1.255:7373; routers there reach it at http://192.168.1.20:7070, which serves this node's price list" });
     assert.equal(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: null, want }).ok, false);
     assert.match(lanCheckLine({ to: '192.168.1.255:7373', url: 'http://192.168.1.20:7070', served: Buffer.alloc(32, 8), want }).detail, /another price list/);
+  });
+
+  it('the router says when a node stops answering on its network, and that it is reached as listed meanwhile', () => {
+    assert.equal(lanDownLine('Kestrel GPU Co-op', 'http://192.168.1.20:7070', 'https://kestrel.example'), 'Kestrel GPU Co-op stopped answering on this network at http://192.168.1.20:7070: reached as listed (https://kestrel.example) for the next 5 min, then tried on this network again');
   });
 
   it('the router says once where a node on its network is reached', () => {

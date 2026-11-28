@@ -82,6 +82,9 @@ export function rpcLeftOutLine(n: number): string {
   return `${n} listing${n === 1 ? '' : 's'} this RPC's list of the program left out, named by peer routers and read on chain one by one: the router uses ${n === 1 ? 'it' : 'them'} too`;
 }
 
+/** How long a node's address on this router's own network is passed over after it stopped answering there. */
+export const LAN_DOWN_MS = 5 * 60_000;
+
 export class Registry {
   entries = new Map<string, ProviderEntry>();
   /** Listing addresses peer routers named (their notes), for an RPC that will not list the program's accounts. */
@@ -94,6 +97,16 @@ export class Registry {
   lanBeacons?: () => Beacon[];
   /** The listings this router has only because a node on its own network named itself, read on chain by address. */
   fromLan = new Set<string>();
+  /** Nodes whose address on this network stopped answering this router's health checks, with until when that address is
+   * passed over: the node is reached as listed on chain meanwhile, whatever its beacons still say. */
+  private lanDown = new Map<string, number>();
+  /** Told when a node stops answering at its address on this network (the router logs it and refreshes soon). */
+  onLanDown?: (e: ProviderEntry) => void;
+
+  /** How long more a node's address on this network is passed over, in ms; 0 when it is not. */
+  lanDownFor(address: string, now = Date.now()): number {
+    return Math.max(0, (this.lanDown.get(address) ?? 0) - now);
+  }
   /** Listings the RPC's list of the program left out that peer routers named and the chain confirmed: an RPC that drops a
    * listing (behind, or leaving it out) cannot hide a node the peers have seen. */
   rpcLeftOut = 0;
@@ -249,6 +262,7 @@ export class Registry {
 
   /** The URL on this router's own network a node said it is at, when the node key on its listing signed that and it is recent. */
   private lanUrl(address: string, nodeKey: PublicKey): string | null {
+    if (this.lanDownFor(address) > 0) return null;
     const b = (this.lanBeacons?.() ?? []).find((x) => x.listing === address);
     return b && beaconSigned(b, nodeKey) ? b.url : null;
   }
@@ -377,6 +391,10 @@ export class Registry {
         const h = (await fetchNode(`${e.account.endpoint.replace(/\/$/, '')}/health`, { timeoutMs: 2_500 }).then((r) => (r.ok ? r.json() : (drop(r), null))).catch(() => null)) as { upstream?: string } | null;
         if (!h) {
           e.unansweredAt ??= Date.now();
+          if (e.lan && !this.lanDownFor(e.address)) {
+            this.lanDown.set(e.address, Date.now() + LAN_DOWN_MS);
+            this.onLanDown?.(e);
+          }
           return;
         }
         e.unansweredAt = undefined;

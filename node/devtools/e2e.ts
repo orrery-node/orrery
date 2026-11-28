@@ -3372,7 +3372,8 @@ const all4 = () => registry.entries.size;
   const near1 = nodes[1];
   const halo = nodes[3];
   let through = 0;
-  const near = tcpServer((c) => { c.on('data', (d: Buffer) => (through += d.length)); const up = netConnect(17282, '127.0.0.1'); c.pipe(up).pipe(c); up.on('error', () => c.destroy()); c.on('error', () => up.destroy()); });
+  const nearSockets = new Set<import('node:net').Socket>();
+  const near = tcpServer((c) => { nearSockets.add(c); c.on('close', () => nearSockets.delete(c)); c.on('data', (d: Buffer) => (through += d.length)); const up = netConnect(17282, '127.0.0.1'); c.pipe(up).pipe(c); up.on('error', () => c.destroy()); c.on('error', () => up.destroy()); });
   await new Promise<void>((done) => near.listen(0, '127.0.0.1', () => done()));
   const nearUrl = `http://127.0.0.1:${(near.address() as { port: number }).port}`;
   const rl = router as unknown as { startLan?: (s: string) => Promise<string>; stopLan?: () => Promise<void> };
@@ -3409,12 +3410,20 @@ const all4 = () => registry.entries.size;
   const nodeStatusLan = await (await fetch(`http://127.0.0.1:${ibPort}/orrery/status`, { headers: { 'x-orrery-console-key': ibKey } })).json();
   const lanFnAt = nodePageLan.indexOf('const lanSentence=');
   const { runInNewContext: runNodePage } = await import('node:vm');
+  near.close();
+  for (const c of nearSockets) c.destroy();
+  await registry.checkHealth();
+  await registry.refresh();
+  type DownRow = { address: string; endpoint: string; lan: { url: string } | null; lanDownFor?: number };
+  const downRow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: DownRow[] }).providers.find((p) => p.address === near1.pda.toBase58());
+  const downAsk = await fetch(`${ROUTER}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-orrery-provider': near1.pda.toBase58() }, body: JSON.stringify({ model: 'llama-3.3-70b', max_tokens: 16, messages: [{ role: 'user', content: 'Say hello.' }] }) });
+  const downStatus = downAsk.status;
+  await downAsk.text();
   const nodeConsoleLan = lanFnAt < 0 ? '' : String(runNodePage(`(${nodePageLan.slice(lanFnAt + 'const lanSentence='.length, nodePageLan.indexOf(';\nconst ', lanFnAt + 1))})(s.lan, Date.now())`, { s: nodeStatusLan }));
   forged();
   kl.stopLan?.();
   await rl.stopLan?.();
   const after = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: LanRow[]; lan: unknown }).providers.find((p) => p.address === near1.pda.toBase58());
-  near.close();
   check('a node on the router\u2019s own network says where it is, signed with its node key: the router reads its manifest there (still the hash on chain) and sends its requests there directly; a beacon for another listing signed with the wrong key changes nothing; orrery doctor says what it heard and reached there',
     !!nRow?.lan && nRow.lan.url === nearUrl && nRow.lan.listed === 'http://127.0.0.1:17282' && nRow.endpoint === nearUrl && nRow.problem === null && nearStatus === 200 && askedNear > 0
       && !!hRow && hRow.lan === null && hRow.endpoint === 'http://127.0.0.1:17284' && lanTop?.nodes === 1 && (lanTop?.heard ?? 0) >= 2
@@ -3434,6 +3443,9 @@ const all4 = () => registry.entries.size;
   check('orrery provider check reads the address a node gives routers on its network as they would: it passes when that address serves the price list on chain and fails, saying what to fix, when nothing answers there',
     lanCheckGood.includes('✓') && lanCheckGood.includes(`routers there reach it at ${nearUrl}, which serves this node's price list`) && lanCheckBad.includes('✗') && lanCheckBad.includes('http://127.0.0.1:9/v1/manifest did not answer'),
     `good: ${lanCheckGood.replaceAll('127.0.0.1', '<host>').trim().slice(0, 110) || 'no line'} · bad: ${lanCheckBad.replaceAll('127.0.0.1', '<host>').trim().slice(0, 90) || 'no line'}`);
+  check('a node that stops answering at its address on this network is reached as listed again: the router passes that address over for five minutes though its beacons still say it, and the node answers',
+    !!downRow && downRow.lan === null && downRow.endpoint === 'http://127.0.0.1:17282' && (downRow.lanDownFor ?? 0) > 240_000 && downStatus === 200,
+    downRow ? `after the address went quiet: lan ${downRow.lan ? 'still used' : 'set aside'}, endpoint ${downRow.endpoint.replace('127.0.0.1', '<host>')}, passed over ${Math.round((downRow.lanDownFor ?? 0) / 1000)} s more, answer ${downStatus}` : 'no row');
 }
 // Routers on the same network find each other: one started with --lan-announce (and --share-notes) says where its notes
 // are, signed with its session key; a router's --lan-listen keeps it only with that key's signature.
