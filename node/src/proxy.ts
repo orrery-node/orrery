@@ -32,6 +32,13 @@ export function torProxy(args: string[], env: Record<string, string | undefined>
   return { ...parseProxy(`socks5h://127.0.0.1:${port}`), label: `Tor (127.0.0.1:${port})` };
 }
 
+/** What a router says when nothing answers at its proxy as it starts: for --tor, how to start Tor (and the Tor Browser's
+ * own port); for any other proxy, to start it first. Either way it does not go around the proxy. */
+export function proxyDownLine(p: Proxy): string {
+  if (p.label.startsWith('Tor (')) return `nothing answers at ${p.host}:${p.port}, where --tor looks for Tor's SOCKS port: start Tor first (the tor service listens on 9050; the Tor Browser on 9150, so --tor 9150 while it is open). The router does not fall back to reaching nodes directly`;
+  return `nothing answers at the proxy ${p.label}; start it first. The router does not fall back to reaching nodes directly`;
+}
+
 /** Reads `http://host:port`, `socks5://host:port` (or `host:port`, or with `user:pass@`). The label is what gets
  * printed: never the password. */
 export function parseProxy(text: string): Proxy {

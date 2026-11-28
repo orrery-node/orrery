@@ -48,7 +48,7 @@ import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
 import { fetchCrls } from './tee/crl.ts';
-import { torProxy, fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy } from './proxy.ts';
+import { torProxy, fetchNode, nodeProxy, parseProxy, proxyAnswers, proxyDownLine, setNodeProxy } from './proxy.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { fetchTcbInfo } from './tee/tcb.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
@@ -158,7 +158,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
 
 async function router() {
   const proxy = nodeProxy();
-  if (proxy && !(await proxyAnswers(proxy))) throw new Error(`nothing answers at the proxy ${proxy.label}; start it first. The router does not fall back to reaching nodes directly`);
+  if (proxy && !(await proxyAnswers(proxy))) throw new Error(proxyDownLine(proxy));
   const conn = rpcConnection(rpc());
   const walletPath = walletFlag();
   const wallet = walletPath ? loadKeypair(expand(walletPath)) : null;

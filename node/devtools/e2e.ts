@@ -3709,11 +3709,26 @@ const all4 = () => registry.entries.size;
   await new Promise((done) => (torRouter.exitCode !== null ? done(null) : torRouter.once('exit', () => done(null))));
   for (const c of torSockets) c.destroy();
   await new Promise((done) => tor.close(done));
+  // With nothing at Tor's port, the router does not start, and says how to start Tor.
+  const deadTor = createHttpServer();
+  await new Promise<void>((done) => deadTor.listen(0, '127.0.0.1', () => done()));
+  const deadPort = (deadTor.address() as { port: number }).port;
+  await new Promise((done) => deadTor.close(done));
+  const noTor = await new Promise<{ code: number | null; err: string }>((done) => {
+    let err = '';
+    const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'router', '--port', '17298', '--rpc', RPC, '--mint', usdc.toBase58(), '--tor'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ORRERY_HOME: torHome, ORRERY_TOR_PORT: String(deadPort) } });
+    pc.stderr!.on('data', (c) => (err += c));
+    const stop = setTimeout(() => pc.kill(), 20_000);
+    pc.on('exit', (code) => { clearTimeout(stop); done({ code, err }); });
+  });
   const rpcPort = Number(new URL(RPC).port);
   const throughTor = { rpc: torAsked.some((a) => a.endsWith(` ${rpcPort}`)), nodes: torAsked.filter((a) => providerSpecs.some((s) => a.endsWith(` ${s.port}`))).length };
   check('orrery router --tor sends the RPC and the nodes through the Tor on this computer, and its status says so',
     torSt?.proxy === `Tor (127.0.0.1:${torPort})` && throughTor.rpc && throughTor.nodes > 0 && (torSt?.providers?.length ?? 0) > 0,
     `status proxy ${(torSt?.proxy ?? 'none').replace(String(torPort), '<port>')} · through the stand-in: RPC ${throughTor.rpc ? 'yes' : 'no'}, node connections ${throughTor.nodes} · providers ${torSt?.providers?.length ?? 0}`);
+  check('orrery router --tor with nothing at Tor\u2019s port does not start, and says how to start Tor',
+    noTor.code !== null && noTor.code !== 0 && noTor.err.includes(`nothing answers at 127.0.0.1:${deadPort}, where --tor looks for Tor's SOCKS port: start Tor first`),
+    `exit ${noTor.code ?? 'killed'} · ${noTor.err.replace(String(deadPort), '<port>').trim().split('\n').pop()?.slice(0, 150) || 'nothing said'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
