@@ -187,6 +187,18 @@ Providers can publish holder prices: hold a share of the network token's supply 
 "holder": { "tiers": [{ "share": 10, "off": 2000 }, { "share": 100, "off": 3500 }] }   // basis points
 ```
 
+## Peer to peer
+
+Routers help each other without a company in the middle, and every claim they pass on is signed and checked on chain.
+
+- **Notes:** `orrery router --share-notes` serves what your router saw of each node (up, answering); `--peer <url>#<key>` reads another router's notes, pinned to the key that signs them, and `--meet-peers` meets the routers your peers read.
+- **Relays:** `--relay <port>` carries other routers' traffic to listed nodes only; `--proxy-via-peers` sends your requests through a signed peer's relay, and `--spread-relays` spreads your nodes over all of them, so no single peer sees all of your traffic. `orrery peers --relays` lists what your peers offer.
+- **A map no single RPC controls:** listings your peers name, listings nodes vouch for (`orrery provider start --knows <listing,…>`) and listings in your router's own record are each read on chain by address, so an RPC that leaves one out cannot hide it.
+- **Your own network:** `orrery provider start --lan-announce <host:port>` says where a node is on your network, signed with its node key; `orrery router --lan-listen` reaches it there directly. With `--share-notes --lan-announce` routers in one building find each other, and `--lan-peers` reads them as pinned peers.
+- **$OREY holders:** on a relay with a holder lane, twice the connections and a ride past its daily limit; `--relay-holders-only` keeps a relay for holders alone.
+
+`orrery peers`, `orrery doctor` and the router console show where each piece stands.
+
 ## Commands
 
 | Command | Does |
