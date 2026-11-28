@@ -4,7 +4,9 @@ Every orrery-node release in plain words, newest first. Times are when the relea
 
 Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells you when a newer release is out.
 
-## Unreleased (in main)
+## 0.1.32 · 2026-11-28 09:04 UTC
+
+**Your own network, and a map no single RPC controls: a node says where it is on your network, signed with its node key, and routers reach it there directly; routers in one building find each other and read each other's notes; nodes vouch for nodes, and every listing a peer, a node or the router's own record names is read on chain by address; relays spread your traffic (--spread-relays), carry $OREY holders on twice the connections, or only holders (--relay-holders-only); and orrery peers, doctor, provider check and both consoles show where each piece stands.**
 
 - **Router** · `orrery peers` says, for each listing a router found because nodes named it, which nodes did; the status has `namedBy` for every node.
 - **Router** · Nodes introduce nodes: a router asks the nodes it lists which others they name at `/orrery/known` (each node at most every ten minutes, 32 a refresh), reads those listings on chain by address and adds them to its map, so an RPC that leaves a listing out cannot hide a node another node vouches for; the status marks them `found: nodes` and the map line counts them.
@@ -49,6 +51,8 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 - **Router** · A node you have used does not vanish because an RPC stopped listing it: the router reads the listings in its own record of the nodes it watched before (kept across restarts) by address on chain, alongside the ones its peers named, so with an RPC that will not list the program and no peers it still finds the nodes it knew. The status says `discovery: record` and `found: record`, and `orrery peers`, `orrery doctor` and the console say so.
 - **Router** · The router says which nodes it found only through its peers: each node in the status has `found` (`rpc` or `peers`), the console marks it "found through peers", and `orrery peers` (and the `peers` tool in `orrery mcp`) lists each one with how many peer routers named it.
 - **Router** · One RPC is no longer the whole map: when the RPC lists the program but leaves a listing out (behind, or dropping it), the router reads the listings its peer routers named by address, keeps each one the chain confirms, and uses it. `orrery peers`, `orrery doctor`, the console and the log say how many; an address the chain does not hold is read again only after ten minutes.
+
+`npx -y orrery-node@0.1.32`
 
 ## 0.1.31 · 2026-11-26 09:05 UTC
 
