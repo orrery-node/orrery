@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Everyone** · `--tor [port]`: every request to the nodes and the Solana RPC goes through the Tor on this computer (its SOCKS port, 9050 unless given or `ORRERY_TOR_PORT`), with names resolved by Tor; the status names the proxy Tor. Not with `--proxy`, which it replaces.
 - **Router** · `orrery peers` (and the `peers` tool in `orrery mcp`) says which node vouches for which at `/orrery/known`, by name for the nodes on your map and how many more it names; the status has `vouches`.
 - **Node** · `orrery provider status` (and `--json`, as `knows`) and the node console say how many other nodes the node names at `/orrery/known`, and from which `--knows-file`.
 - **Node** · `orrery provider start --knows-file <path>`: the listings a node names at `/orrery/known`, one a line with `#` for notes, read again at every request, so an operator adds or drops a node without a restart; `orrery provider check` reads them on chain too.

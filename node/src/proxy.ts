@@ -21,6 +21,17 @@ import { fetchWithTimeout } from './sse.ts';
 export type Proxy = { kind: 'http' | 'socks5'; host: string; port: number; auth: string | null; user: string | null; pass: string | null; label: string; extra?: () => Record<string, string> };
 type Init = RequestInit & { timeoutMs?: number };
 
+/** --tor [port]: the Tor running on this computer as --proxy, by its SOCKS port (9050 unless given, or ORRERY_TOR_PORT),
+ * socks5h so the names of nodes and the RPC are resolved by Tor, not here. Null when --tor is not given. */
+export function torProxy(args: string[], env: Record<string, string | undefined> = process.env): Proxy | null {
+  const i = args.indexOf('--tor');
+  if (i < 0) return null;
+  const next = args[i + 1];
+  const port = next !== undefined && /^\d{1,5}$/.test(next) ? Number(next) : Number(env.ORRERY_TOR_PORT ?? 9050);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error(`--tor takes the port of Tor's SOCKS listener on this computer (9050 unless your torrc says otherwise), not "${next}"`);
+  return { ...parseProxy(`socks5h://127.0.0.1:${port}`), label: `Tor (127.0.0.1:${port})` };
+}
+
 /** Reads `http://host:port`, `socks5://host:port` (or `host:port`, or with `user:pass@`). The label is what gets
  * printed: never the password. */
 export function parseProxy(text: string): Proxy {

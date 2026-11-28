@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'everyone', text: '`--tor [port]`: every request to the nodes and the Solana RPC goes through the Tor on this computer (its SOCKS port, 9050 unless given or `ORRERY_TOR_PORT`), with names resolved by Tor; the status names the proxy Tor. Not with `--proxy`, which it replaces.' },
   { who: 'router', text: '`orrery peers` (and the `peers` tool in `orrery mcp`) says which node vouches for which at `/orrery/known`, by name for the nodes on your map and how many more it names; the status has `vouches`.' },
   { who: 'provider', text: '`orrery provider status` (and `--json`, as `knows`) and the node console say how many other nodes the node names at `/orrery/known`, and from which `--knows-file`.' },
   { who: 'provider', text: '`orrery provider start --knows-file <path>`: the listings a node names at `/orrery/known`, one a line with `#` for notes, read again at every request, so an operator adds or drops a node without a restart; `orrery provider check` reads them on chain too.' },

@@ -3654,6 +3654,67 @@ const all4 = () => registry.entries.size;
     knowsStatus.includes('Names 2 other nodes at /orrery/known (--knows and ') && knowsStatus.includes('knows.txt, read again at every request)') && knowsConsole.startsWith('Names 2 other nodes at /orrery/known'),
     `status: ${knowsStatus.trim().replace(WORK, '<work>').slice(0, 120) || 'no line'} · console: ${knowsConsole.replace(WORK, '<work>').slice(0, 60) || 'none'}`);
 }
+// orrery router --tor: every request to the RPC and the nodes goes through the Tor on this computer (here a stand-in
+// SOCKS5 server on a test port, given by ORRERY_TOR_PORT), names included, and the status says it is Tor.
+{
+  const { createServer: socksServer } = await import('node:net');
+  const torAsked: string[] = [];
+  const torSockets = new Set<import('node:net').Socket>();
+  const tor = socksServer((c) => {
+    torSockets.add(c);
+    c.on('close', () => torSockets.delete(c));
+    let buf = Buffer.alloc(0), step = 0;
+    const onData = (d: Buffer) => {
+      buf = Buffer.concat([buf, d]);
+      if (step === 0) {
+        if (buf.length < 2 || buf.length < 2 + buf[1]) return;
+        buf = buf.subarray(2 + buf[1]);
+        c.write(Buffer.from([5, 0]));
+        step = 1;
+      }
+      if (step === 1) {
+        if (buf.length < 5) return;
+        const len = buf[3] === 1 ? 4 : buf[3] === 3 ? 1 + buf[4] : 16;
+        if (buf.length < 4 + len + 2) return;
+        const host = buf[3] === 1 ? [...buf.subarray(4, 8)].join('.') : buf.subarray(5, 5 + buf[4]).toString();
+        const port = buf.readUInt16BE(4 + len);
+        const rest = buf.subarray(4 + len + 2);
+        step = 2;
+        c.off('data', onData);
+        torAsked.push(`${buf[3] === 3 ? 'name' : 'ip'} ${port}`);
+        const up = netConnect(port, host === 'localhost' ? '127.0.0.1' : host, () => {
+          c.write(Buffer.from([5, 0, 0, 1, 127, 0, 0, 1, 0, 0]));
+          if (rest.length) up.write(rest);
+          c.pipe(up);
+          up.pipe(c);
+        });
+        up.on('error', () => c.destroy());
+        c.on('error', () => up.destroy());
+      }
+    };
+    c.on('data', onData);
+  });
+  await new Promise<void>((done) => tor.listen(0, '127.0.0.1', () => done()));
+  const torPort = (tor.address() as { port: number }).port;
+  const torHome = join(WORK, 'home-tor');
+  mkdirSync(torHome, { recursive: true });
+  const torRouter = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'router', '--port', '17298', '--rpc', RPC, '--mint', usdc.toBase58(), '--tor'], { stdio: 'ignore', env: { ...process.env, ORRERY_HOME: torHome, ORRERY_TOR_PORT: String(torPort) } });
+  let torSt = null as { proxy?: string | null; providers?: unknown[] } | null;
+  for (let i = 0; i < 100 && torRouter.exitCode === null; i++) {
+    torSt = await fetch('http://127.0.0.1:17298/orrery/status').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (torSt && (torSt.providers?.length ?? 0) > 0) break;
+    await sleep(200);
+  }
+  torRouter.kill();
+  await new Promise((done) => (torRouter.exitCode !== null ? done(null) : torRouter.once('exit', () => done(null))));
+  for (const c of torSockets) c.destroy();
+  await new Promise((done) => tor.close(done));
+  const rpcPort = Number(new URL(RPC).port);
+  const throughTor = { rpc: torAsked.some((a) => a.endsWith(` ${rpcPort}`)), nodes: torAsked.filter((a) => providerSpecs.some((s) => a.endsWith(` ${s.port}`))).length };
+  check('orrery router --tor sends the RPC and the nodes through the Tor on this computer, and its status says so',
+    torSt?.proxy === `Tor (127.0.0.1:${torPort})` && throughTor.rpc && throughTor.nodes > 0 && (torSt?.providers?.length ?? 0) > 0,
+    `status proxy ${(torSt?.proxy ?? 'none').replace(String(torPort), '<port>')} · through the stand-in: RPC ${throughTor.rpc ? 'yes' : 'no'}, node connections ${throughTor.nodes} · providers ${torSt?.providers?.length ?? 0}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

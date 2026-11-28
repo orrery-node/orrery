@@ -48,7 +48,7 @@ import { reprice, renderReprice } from './provider/reprice.ts';
 import { parseTdxQuote, tdxFmspc, verifyTdx } from './tee/tdx.ts';
 import { auditEnclave, renderChecks } from './tee/audit.ts';
 import { fetchCrls } from './tee/crl.ts';
-import { fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy } from './proxy.ts';
+import { torProxy, fetchNode, nodeProxy, parseProxy, proxyAnswers, setNodeProxy } from './proxy.ts';
 import { fetchWithTimeout } from './sse.ts';
 import { fetchTcbInfo } from './tee/tcb.ts';
 import { burnDue, loadBook, splBurner } from './burn.ts';
@@ -105,6 +105,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --lan-peers               with --lan-listen, read the routers heard on this network as peers, each pinned to the key that signed what it said (counted like a router met through a peer; up to --meet-max)
       --lan-listen [[host:]port]  listen (UDP; 7373 on every interface when no port is given, env ORRERY_LAN_LISTEN) for nodes on this network saying where they are (their --lan-announce): a node whose listing's node key signs it gets its requests there, directly, never through --proxy or a relay, and a listing heard this way is read on chain even when the RPC leaves it out 
       --relay <port>            open a relay on this port: other routers reach the listed nodes through it (their --proxy http://<this computer>:<port>), so nodes see this computer and not them; only listed nodes, never this router's own API (--relay-host to pick the interface, --relay-per-client <n> for how many connections one address may have open through it at once, 16; --relay-peers-only to carry traffic only for your peer routers, --relay-holders-only to carry only routers that hold $OREY; --relay-max-mb <n> to stop taking new connections once it has carried that much in a day; --proxy-via-peers to send your own requests to nodes through the least busy relay your signed peers offer; add --spread-relays to spread the nodes over all of them, each node always through the same one)
+      --tor [port]              reach nodes and the Solana RPC through the Tor running on this computer (its SOCKS port, 9050 unless given; names are resolved by Tor too)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
@@ -657,7 +658,11 @@ async function main() {
   const proxyText = proxyAt >= 0 ? ownArgs[proxyAt + 1] : process.env.ORRERY_PROXY;
   // A privacy flag that was typed without its address must stop here, not run without a proxy.
   if (proxyAt >= 0 && (!proxyText || proxyText.startsWith('--'))) throw new Error('--proxy needs an address, e.g. --proxy http://127.0.0.1:8118 or --proxy socks5://127.0.0.1:9050');
-  if (proxyText) setNodeProxy(parseProxy(proxyText));
+  // --tor is --proxy to the Tor on this computer: one or the other, never both.
+  const tor = torProxy(ownArgs);
+  if (tor && proxyAt >= 0) throw new Error('--tor already sends everything through the Tor on this computer; give --tor or --proxy, not both');
+  if (tor) setNodeProxy(tor);
+  else if (proxyText) setNodeProxy(parseProxy(proxyText));
   if (cmd === 'provider' && sub === 'init') {
     const out = flag('out', 'provider.json')!;
     if (existsSync(out) && !has('force')) throw new Error(`${out} exists; pass --force to replace it`);

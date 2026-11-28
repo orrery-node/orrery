@@ -8,7 +8,7 @@ import { createServer as createTlsServer } from 'node:https';
 import { connect, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fetchNode, httpTunnel, ipv6Bytes, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, socksTunnel, viaProxy } from '../src/proxy.ts';
+import { torProxy, fetchNode, httpTunnel, ipv6Bytes, nodeProxy, parseProxy, proxyAnswers, setNodeProxy, socksTunnel, viaProxy } from '../src/proxy.ts';
 import { createServer as createTcpServer, type Socket } from 'node:net';
 import { Keypair, SystemProgram, Transaction, type Connection } from '@solana/web3.js';
 import { NO_WEBSOCKET, rpcConnection } from '../src/chain/connect.ts';
@@ -581,5 +581,16 @@ describe('tunnels kept between requests', () => {
     setNodeProxy(null);
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(await live(), 0);
+  });
+});
+
+describe('--tor', () => {
+  it('is the Tor on this computer as a SOCKS5 proxy that resolves names itself, on 9050 unless given', () => {
+    assert.equal(torProxy(['router']), null);
+    const t = torProxy(['router', '--tor'], {})!;
+    assert.deepEqual([t.kind, t.host, t.port, t.label], ['socks5', '127.0.0.1', 9050, 'Tor (127.0.0.1:9050)']);
+    assert.equal(torProxy(['router', '--tor', '9150'], {})!.port, 9150);
+    assert.equal(torProxy(['router', '--tor', '--peer', 'x'], { ORRERY_TOR_PORT: '9250' })!.port, 9250);
+    assert.throws(() => torProxy(['router', '--tor'], { ORRERY_TOR_PORT: 'abc' }), /--tor takes the port/);
   });
 });
