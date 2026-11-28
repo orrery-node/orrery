@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { KNOWN_MAX, knownList, readKnown } from '../src/known.ts';
 import { foundThroughNodes, mapLine } from '../src/doctor.ts';
+import { knowsCheckLine } from '../src/provider/check.ts';
 
 const a = Keypair.generate().publicKey.toBase58();
 const b = Keypair.generate().publicKey.toBase58();
@@ -28,5 +29,11 @@ describe('nodes naming other nodes', () => {
   it('orrery peers says which nodes named each listing found that way', () => {
     assert.deepEqual(foundThroughNodes([{ address: a, found: 'rpc' }, { address: b, name: 'Halo Compute', found: 'nodes', namedBy: ['Ironbridge Compute'] }]), [`  Halo Compute (${b.slice(0, 4)}\u2026${b.slice(-4)}): named by Ironbridge Compute at /orrery/known, read on chain`]);
     assert.deepEqual(foundThroughNodes([{ address: a, found: 'rpc' }]), []);
+  });
+
+  it('orrery provider check says whether each listing a node names is an open listing on chain', () => {
+    assert.equal(knowsCheckLine([], new Set()), null);
+    assert.deepEqual(knowsCheckLine([a, b], new Set([a, b])), { ok: true, what: 'knows', detail: 'names 2 nodes at /orrery/known, each an open listing on chain' });
+    assert.deepEqual(knowsCheckLine([a, b], new Set([a])), { ok: false, what: 'knows', detail: `names 2 at /orrery/known; 1 is not an open listing on chain, so routers leave it off: ${b}` });
   });
 });

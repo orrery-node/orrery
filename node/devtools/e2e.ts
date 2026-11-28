@@ -3608,6 +3608,17 @@ const all4 = () => registry.entries.size;
     namedCap === ' <span class=cap>named by Ironbridge Compute</span>',
     namedCap || 'no mark from the console code');
 }
+// orrery provider check reads each listing a node names (--knows) on chain, as a router would: an open listing passes, an
+// address that is not one fails with what routers will do with it.
+{
+  const halo = nodes[3].pda.toBase58();
+  const madeUp = Keypair.generate().publicKey.toBase58();
+  const knowsGood = (await cliOut(['check', '--knows', halo])).split('\n').find((l) => l.includes('at /orrery/known')) ?? '';
+  const knowsBad = (await cliOut(['check', '--knows', `${halo},${madeUp}`])).split('\n').find((l) => l.includes('at /orrery/known')) ?? '';
+  check('orrery provider check reads each listing a node names with --knows on chain: an open listing passes, a made-up one fails with what routers will do',
+    knowsGood.startsWith('✓') && knowsGood.includes('names 1 node at /orrery/known, each an open listing on chain') && knowsBad.startsWith('✗') && knowsBad.includes(`1 is not an open listing on chain, so routers leave it off: ${madeUp}`),
+    `good: ${knowsGood.trim().slice(0, 90) || 'no line'} · bad: ${knowsBad.trim().replace(madeUp, '<made up>').slice(0, 120) || 'no line'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

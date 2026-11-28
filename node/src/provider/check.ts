@@ -2,7 +2,9 @@
 // lists: the model server, the address routers will call, the listing on chain, the fee money, the enclave, the pledge.
 import { readRefused, refusedCounts, refusedText } from './refusal.ts';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { decodeProvider, pda } from '../chain/program.ts';
+import { decodeProvider, pda, programId } from '../chain/program.ts';
+import { knownList } from '../known.ts';
+import { PublicKey } from '@solana/web3.js';
 import { kindOf, kindPath, manifestHash } from '../manifest.ts';
 import { usd } from '../pricing.ts';
 import { Registry, readWire } from '../router/registry.ts';
@@ -99,6 +101,15 @@ export function servedManifestLine(served: Buffer | null, chain: Uint8Array, url
   if (!served) return { ok: false, what: 'manifest', detail: `${url}/v1/manifest did not answer, so routers cannot read this node’s prices` };
   if (served.equals(chain)) return null;
   return { ok: false, what: 'manifest', detail: `the price list ${url} serves is not the one on chain, so routers refuse this node: run provider register if the new prices are right, and restart the node so it serves what is listed` };
+}
+
+/** With --knows: whether each listing this node names at /orrery/known is an open listing on chain. One that is not (a
+ * typo, a closed node) is left off by every router that reads it, so it is said here first. */
+export function knowsCheckLine(named: string[], open: Set<string>): CheckLine | null {
+  if (!named.length) return null;
+  const missing = named.filter((a) => !open.has(a));
+  if (!missing.length) return { ok: true, what: 'knows', detail: `names ${named.length} node${named.length === 1 ? '' : 's'} at /orrery/known, each an open listing on chain` };
+  return { ok: false, what: 'knows', detail: `names ${named.length} at /orrery/known; ${missing.length} ${missing.length === 1 ? 'is' : 'are'} not an open listing on chain, so routers leave ${missing.length === 1 ? 'it' : 'them'} off: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ` and ${missing.length - 3} more` : ''}` };
 }
 
 /** With --lan-announce: whether the address this node gives routers on its network serves this node's price list (the
@@ -239,6 +250,23 @@ export async function providerCheck(node: ProviderNode): Promise<CheckLine[]> {
   if (acct?.active && health?.provider === node.pda.toBase58()) {
     const served = await fetchWithTimeout(`${cfg.publicUrl.replace(/\/$/, '')}/v1/manifest`, { timeoutMs: 5_000 }).then(async (r) => (r.ok ? Buffer.from(await r.arrayBuffer()) : null)).catch(() => null);
     const line = servedManifestLine(served ? manifestHash(served) : null, acct.manifestHash, cfg.publicUrl);
+    if (line) out.push(line);
+  }
+
+  // The listings this node names for routers (--knows), each read on chain as a router would read it.
+  const named = knownList(cfg.knows, node.pda.toBase58());
+  if (named.length) {
+    const infos = await node.conn.getMultipleAccountsInfo(named.map((a) => new PublicKey(a))).catch(() => null);
+    const open = new Set(named.filter((a, i) => {
+      const info = infos?.[i];
+      if (!info || !info.owner.equals(programId())) return false;
+      try {
+        return decodeProvider(Buffer.from(info.data)).active;
+      } catch {
+        return false;
+      }
+    }));
+    const line = infos ? knowsCheckLine(named, open) : { ok: null, what: 'knows', detail: `names ${named.length} at /orrery/known; this RPC did not read them now` };
     if (line) out.push(line);
   }
 
