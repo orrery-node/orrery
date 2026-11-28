@@ -6,6 +6,7 @@ Get the newest: `npx -y orrery-node@latest doctor`. `orrery doctor` also tells y
 
 ## Unreleased (in main)
 
+- **Node** · `orrery provider start --tor` (or `--proxy`): the node's own requests to the Solana RPC go through Tor too, and with nothing at the proxy the node does not start (it says how to start Tor) instead of reaching the RPC directly.
 - **Router** · `orrery doctor` says which proxy the running router uses and what it means: with `--tor`, that the nodes and the Solana RPC see a Tor exit and Tor resolves their names.
 - **Router** · With `--tor` and nothing at Tor's port, the router does not start and says how to start Tor (the tor service on 9050, the Tor Browser on 9150 with `--tor 9150`); it never goes around the proxy.
 - **Everyone** · `--tor [port]`: every request to the nodes and the Solana RPC goes through the Tor on this computer (its SOCKS port, 9050 unless given or `ORRERY_TOR_PORT`), with names resolved by Tor; the status names the proxy Tor. Not with `--proxy`, which it replaces.

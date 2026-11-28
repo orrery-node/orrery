@@ -3722,6 +3722,14 @@ const all4 = () => registry.entries.size;
     const stop = setTimeout(() => pc.kill(), 20_000);
     pc.on('exit', (code) => { clearTimeout(stop); done({ code, err }); });
   });
+  // A node started with --tor and nothing at Tor's port does not start either, before it takes its port.
+  const nodeNoTor = await new Promise<{ code: number | null; err: string }>((done) => {
+    let err = '';
+    const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'provider', 'start', '--config', ironCfgPath, '--tor'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ORRERY_TOR_PORT: String(deadPort) } });
+    pc.stderr!.on('data', (c) => (err += c));
+    const stop = setTimeout(() => pc.kill(), 20_000);
+    pc.on('exit', (code) => { clearTimeout(stop); done({ code, err }); });
+  });
   const rpcPort = Number(new URL(RPC).port);
   const throughTor = { rpc: torAsked.some((a) => a.endsWith(` ${rpcPort}`)), nodes: torAsked.filter((a) => providerSpecs.some((s) => a.endsWith(` ${s.port}`))).length };
   check('orrery router --tor sends the RPC and the nodes through the Tor on this computer, and its status says so',
@@ -3733,6 +3741,9 @@ const all4 = () => registry.entries.size;
   check('orrery doctor says the running router goes through Tor: the nodes and the RPC see a Tor exit, and Tor resolves their names',
     torDoc === `Tor (127.0.0.1:${torPort}): the nodes and the Solana RPC see a Tor exit, not this computer, and Tor resolves their names`,
     torDoc.replace(String(torPort), '<port>') || 'no proxy line in orrery doctor');
+  check('orrery provider start --tor with nothing at Tor\u2019s port does not start, says how to start Tor, and never reaches the RPC around it',
+    nodeNoTor.code !== null && nodeNoTor.code !== 0 && nodeNoTor.err.includes(`nothing answers at 127.0.0.1:${deadPort}, where --tor looks for Tor's SOCKS port: start Tor first`) && nodeNoTor.err.includes('The node does not fall back to reaching the RPC directly'),
+    `exit ${nodeNoTor.code ?? 'killed'} · ${nodeNoTor.err.replace(String(deadPort), '<port>').trim().split('\n').pop()?.slice(0, 160) || 'nothing said'}`);
 }
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.

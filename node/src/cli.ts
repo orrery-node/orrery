@@ -105,7 +105,7 @@ const HELP = `${NAME} — peer-to-peer AI inference, settled on Solana
       --lan-peers               with --lan-listen, read the routers heard on this network as peers, each pinned to the key that signed what it said (counted like a router met through a peer; up to --meet-max)
       --lan-listen [[host:]port]  listen (UDP; 7373 on every interface when no port is given, env ORRERY_LAN_LISTEN) for nodes on this network saying where they are (their --lan-announce): a node whose listing's node key signs it gets its requests there, directly, never through --proxy or a relay, and a listing heard this way is read on chain even when the RPC leaves it out 
       --relay <port>            open a relay on this port: other routers reach the listed nodes through it (their --proxy http://<this computer>:<port>), so nodes see this computer and not them; only listed nodes, never this router's own API (--relay-host to pick the interface, --relay-per-client <n> for how many connections one address may have open through it at once, 16; --relay-peers-only to carry traffic only for your peer routers, --relay-holders-only to carry only routers that hold $OREY; --relay-max-mb <n> to stop taking new connections once it has carried that much in a day; --proxy-via-peers to send your own requests to nodes through the least busy relay your signed peers offer; add --spread-relays to spread the nodes over all of them, each node always through the same one)
-      --tor [port]              reach nodes and the Solana RPC through the Tor running on this computer (its SOCKS port, 9050 unless given; names are resolved by Tor too)
+      --tor [port]              reach nodes and the Solana RPC through the Tor running on this computer (orrery provider start --tor: the node's own RPC requests too) (its SOCKS port, 9050 unless given; names are resolved by Tor too)
       --proxy <url>             reach nodes and the Solana RPC through this proxy (http://host:port or socks5://host:port), so they see its address and not yours; no direct fallback (env ORRERY_PROXY)
       --min-reputation <0-1>    auto route ignores providers below this (default 0.2)
       --alias <from=to,...>     answer other model names with a network model, e.g. 'claude-*=llama-3.3-70b'
@@ -314,6 +314,10 @@ async function provider(sub: string) {
   if (knows) cfg.knows = knows.split(',').map((a) => a.trim()).filter(Boolean);
   const knowsFile = flag('knows-file', process.env.ORRERY_KNOWS_FILE);
   if (knowsFile) cfg.knowsFile = expand(knowsFile);
+  // A node told to reach the RPC through a proxy (--proxy, --tor) does not start without it, as a router does not: checked
+  // before anything asks the RPC.
+  const startProxy = sub === 'start' ? nodeProxy() : null;
+  if (startProxy && !(await proxyAnswers(startProxy))) throw new Error(proxyDownLine(startProxy).replace('The router does not fall back to reaching nodes directly', 'The node does not fall back to reaching the RPC directly'));
   if (sub === 'compose') {
     // A docker-compose file for this node: the official Node image running this package, nothing built or hosted by us.
     const out = flag('out', 'docker-compose.yml')!;
