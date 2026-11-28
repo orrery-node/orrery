@@ -7,6 +7,7 @@ export type Change = { who: 'router' | 'provider' | 'everyone'; text: string };
 export type Release = { version: string; at: string; headline: string; changes: Change[] };
 
 export const UNRELEASED: Change[] = [
+  { who: 'router', text: '`orrery peers` says, for each listing a router found because nodes named it, which nodes did; the status has `namedBy` for every node.' },
   { who: 'router', text: 'Nodes introduce nodes: a router asks the nodes it lists which others they name at `/orrery/known` (each node at most every ten minutes, 32 a refresh), reads those listings on chain by address and adds them to its map, so an RPC that leaves a listing out cannot hide a node another node vouches for; the status marks them `found: nodes` and the map line counts them.' },
   { who: 'provider', text: '`orrery provider start --knows <listing,…>`: a node names other nodes\' listings its operator vouches for at `/orrery/known`, each once, well-formed and never its own.' },
   { who: 'router', text: '`orrery doctor` and `orrery peers` say which node stopped answering at its address on this network and for how many more minutes it is reached as listed.' },

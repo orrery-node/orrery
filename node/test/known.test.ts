@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
 import { KNOWN_MAX, knownList, readKnown } from '../src/known.ts';
-import { mapLine } from '../src/doctor.ts';
+import { foundThroughNodes, mapLine } from '../src/doctor.ts';
 
 const a = Keypair.generate().publicKey.toBase58();
 const b = Keypair.generate().publicKey.toBase58();
@@ -23,5 +23,10 @@ describe('nodes naming other nodes', () => {
 
   it('the map line counts the listings the router has only because nodes named them', () => {
     assert.equal(mapLine([{ address: a, found: 'rpc' }, { address: b, found: 'nodes' }]), "the map: 2 listings, 1 in the RPC's list, 1 named by nodes");
+  });
+
+  it('orrery peers says which nodes named each listing found that way', () => {
+    assert.deepEqual(foundThroughNodes([{ address: a, found: 'rpc' }, { address: b, name: 'Halo Compute', found: 'nodes', namedBy: ['Ironbridge Compute'] }]), [`  Halo Compute (${b.slice(0, 4)}\u2026${b.slice(-4)}): named by Ironbridge Compute at /orrery/known, read on chain`]);
+    assert.deepEqual(foundThroughNodes([{ address: a, found: 'rpc' }]), []);
   });
 });

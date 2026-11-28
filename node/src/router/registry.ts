@@ -107,6 +107,11 @@ export class Registry {
   fromNodes = new Set<string>();
   /** What each node named at /orrery/known, and when it was asked. */
   private known = new Map<string, { at: number; named: string[] }>();
+
+  /** The nodes (listing addresses) that name this listing at /orrery/known, as last asked. */
+  namedBy(address: string): string[] {
+    return [...this.known].filter(([, k]) => k.named.includes(address)).map(([by]) => by);
+  }
   /** Nodes whose address on this network stopped answering this router's health checks, with until when that address is
    * passed over: the node is reached as listed on chain meanwhile, whatever its beacons still say. */
   private lanDown = new Map<string, number>();
@@ -281,14 +286,19 @@ export class Registry {
       this.known.set(address, { at: now, named });
     }));
     const have = new Set(got.map((x) => x.pubkey.toBase58()));
-    const fresh = [...new Set([...this.known.values()].flatMap((k) => k.named))].filter((a) => !have.has(a) && (this.absentUntil.get(a) ?? 0) <= now);
+    const namedAll = new Set([...this.known.values()].flatMap((k) => k.named));
+    // A listing the RPC left out that this router also had in its own record counts as found by nodes when a node names
+    // it now: a node vouching for it today says more than the router having watched it before.
+    const recordNamed = [...this.fromRecord].filter((a) => namedAll.has(a));
+    this.fromNodes = new Set(recordNamed);
+    const fresh = [...namedAll].filter((a) => !have.has(a) && (this.absentUntil.get(a) ?? 0) <= now);
     if (!fresh.length) return got;
     const keys = fresh.flatMap((a) => { try { return [new PublicKey(a)]; } catch { return []; } });
     const more = await this.readNamed(keys).catch(() => null);
     if (!more) return got;
     const found = new Set(more.map((x) => x.pubkey.toBase58()));
     for (const a of fresh) if (!found.has(a)) this.absentUntil.set(a, now + 10 * 60_000);
-    this.fromNodes = found;
+    this.fromNodes = new Set([...found, ...recordNamed]);
     return [...got, ...more];
   }
 

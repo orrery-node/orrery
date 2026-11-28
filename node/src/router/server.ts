@@ -1034,6 +1034,8 @@ export class Router {
       lan: e.lan ?? null,
       // How long more its address on this network is passed over after it stopped answering there (ms), or 0.
       lanDownFor: this.o.registry.lanDownFor(e.address),
+      // The nodes that name it at /orrery/known (--knows), by name when this router lists them.
+      namedBy: this.o.registry.namedBy(e.address).map((a) => this.o.registry.entries.get(a)?.manifest?.name ?? a),
       // The peer relay this router's requests to this node go through now (--proxy-via-peers), or null for its own way.
       via: ((r) => (r ? `http://${r.host}:${r.port}` : null))(this.viaPeers ? relayFor(e.account.endpoint) : null),
       models: e.manifest?.models.length ?? 0, settled: usd(e.account.settled, 2), redeems: Number(e.account.redeems),

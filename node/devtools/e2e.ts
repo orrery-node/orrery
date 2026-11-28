@@ -3574,6 +3574,33 @@ const all4 = () => registry.entries.size;
     !plain.entries.has(halo) && told.entries.has(halo) && !!told.entries.get(halo)?.manifest && fromNodes.has(halo) && !told.entries.has(madeUp) && fromNodes.size === 1,
     `RPC list without Halo · no node naming it: ${plain.entries.has(halo) ? 'on the map' : 'off the map'} · Ironbridge naming it (and one made up): ${told.entries.has(halo) ? 'on the map' : 'off'}, price list ${told.entries.get(halo)?.manifest ? 'read' : 'missing'}, named by nodes ${fromNodes.size}, made up ${told.entries.has(madeUp) ? 'on the map' : 'left off'}`);
 }
+// The running router says which node named a listing it found that way: its status marks the listing found by nodes with
+// who named it, and orrery peers prints that line.
+{
+  const ironCfg = nodes[1].cfg as { knows?: string[] };
+  const before = ironCfg.knows;
+  const halo = nodes[3].pda.toBase58();
+  const reg = registry as unknown as { conn: typeof conn; known?: Map<string, unknown> };
+  const realConn = reg.conn;
+  reg.conn = Object.assign(Object.create(realConn) as object, {
+    getProgramAccounts: async (...a: Parameters<typeof conn.getProgramAccounts>) => (await realConn.getProgramAccounts(...a)).filter((x) => x.pubkey.toBase58() !== halo),
+  }) as unknown as typeof conn;
+  ironCfg.knows = [halo];
+  reg.known?.clear();
+  await registry.refresh();
+  type NamedRow = { address: string; found?: string; namedBy?: string[] };
+  const namedRow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: NamedRow[] }).providers.find((p) => p.address === halo);
+  const namedPeers = await new Promise<string>((done) => { let out = ''; const pc = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'node/src/cli.ts'), 'peers', '--router', ROUTER], { stdio: ['ignore', 'pipe', 'ignore'] }); pc.stdout!.on('data', (c) => (out += c)); pc.on('exit', () => done(out)); });
+  reg.conn = realConn;
+  ironCfg.knows = before;
+  reg.known?.clear();
+  await registry.refresh();
+  const namedLine = namedPeers.split('\n').find((l) => l.includes('at /orrery/known')) ?? '';
+  const backRow = ((await (await fetch(`${ROUTER}/orrery/status`)).json()) as { providers: NamedRow[] }).providers.find((p) => p.address === halo);
+  check('the running router says which node named a listing it found that way: status found is nodes with Ironbridge Compute as the namer, orrery peers prints it, and it is back to the RPC after',
+    namedRow?.found === 'nodes' && JSON.stringify(namedRow.namedBy) === JSON.stringify(['Ironbridge Compute']) && /^  Halo Compute \([^)]+\): named by Ironbridge Compute at \/orrery\/known, read on chain$/.test(namedLine) && backRow?.found === 'rpc',
+    `status found ${namedRow?.found ?? 'missing'}, named by ${(namedRow?.namedBy ?? []).join(', ') || 'nobody'} · orrery peers: ${namedLine.trim().replace(/[1-9A-HJ-NP-Za-km-z]{4}\u2026[1-9A-HJ-NP-Za-km-z]{4}/, '<key>') || 'no line'} · after ${backRow?.found ?? 'missing'}`);
+}
 // A relay that turns a request away (busy, or not listing that node yet) is not the node: a router whose --proxy is a
 // relay counts nothing against the node and cools nothing down, and its error says the relay refused.
 {

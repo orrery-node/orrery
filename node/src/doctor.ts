@@ -497,7 +497,7 @@ export function listingsDetail(n: number, discovery: string | null, fromRecord: 
 /** Where the listings came from when the RPC will not list the program and no peer named any: the router's own record. */
 export const RECORD_LINE = 'the listings came from this router\u2019s own record of the nodes it watched before, each checked on chain (this RPC does not list the program\u2019s accounts; add a peer router with --peer to find new ones)';
 
-export type FoundRow = { address: string; name?: string | null; found?: string; via?: string | null; peers?: { routers: number } | null; lan?: { url: string } | null; lanDownFor?: number };
+export type FoundRow = { address: string; name?: string | null; found?: string; via?: string | null; peers?: { routers: number } | null; lan?: { url: string } | null; lanDownFor?: number; namedBy?: string[] };
 
 /** The nodes a router reaches on its own network, by name and the address there. */
 export function lanNear(providers: FoundRow[]): { name: string; url: string }[] {
@@ -524,6 +524,14 @@ export function foundThroughPeers(providers: FoundRow[], most = 10): string[] {
     return `  ${p.name ? `${p.name} (${p.address.slice(0, 4)}\u2026${p.address.slice(-4)})` : p.address}: found through peers${n ? `, named by ${n} peer router${n === 1 ? '' : 's'}` : ''}, read on chain`;
   };
   return [...through.slice(0, most).map(line), ...(through.length > most ? [`  and ${through.length - most} more found through peers`] : []), ...recordLine];
+}
+
+/** The listings a router has only because nodes it lists named them (/orrery/known), one line each with which nodes
+ * did: the part of its map the nodes drew. At most ten, then how many more. */
+export function foundThroughNodes(providers: FoundRow[], most = 10): string[] {
+  const named = providers.filter((p) => p.found === 'nodes');
+  const line = (p: FoundRow) => `  ${p.name ? `${p.name} (${p.address.slice(0, 4)}\u2026${p.address.slice(-4)})` : p.address}: named by ${(p.namedBy ?? []).length ? (p.namedBy ?? []).join(', ') : 'a node'} at /orrery/known, read on chain`;
+  return [...named.slice(0, most).map(line), ...(named.length > most ? [`  and ${named.length - most} more named by nodes`] : [])];
 }
 
 /** Where the router's map of the network came from, in one line: how many listings it has, and how many of them are in
@@ -566,6 +574,7 @@ export function peersReport(status: { peers?: PeerRow[]; relay?: { port: number 
   else if (status.discovery === 'lan') out.push(LAN_LISTINGS_LINE);
   else if (status.rpcLeftOut) out.push(rpcLeftOutLine(status.rpcLeftOut));
   out.push(...foundThroughPeers(status.providers ?? []));
+  out.push(...foundThroughNodes(status.providers ?? []));
   return out;
 }
 
